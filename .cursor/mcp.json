@@ -3,16 +3,7 @@
     "notion": {
       "url": "https://mcp.notion.com/mcp"
     },
-    "paperbanana": {
-      "command": "uvx",
-      "args": [
-        "--from",
-        "paperbanana[mcp]",
-        "paperbanana-mcp"
-      ],
-      "env": {
-        "GOOGLE_API_KEY": "AIzaSyASREaBrV74WSWsSyOFjpUF8xSLwgh86J8"
-      }
+    
     }
   }
 }
