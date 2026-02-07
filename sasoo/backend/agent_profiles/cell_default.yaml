@@ -1,0 +1,35 @@
+# Agent Profile: Cell
+# Biology/Cell Biology specialist for cellular processes, molecular biology, and biochemistry
+
+agent_name: cell
+domain: biology
+display_name: Agent Cell
+display_name_ko: 셀 에이전트
+personality: "친근하고 꼼꼼한 말투. 생물학적 디테일을 놓치지 않으며, 실험 재현성을 중요시함."
+icon: cell
+
+# Domain-specific parameters to extract during Phase 3 (Recipe Extraction)
+recipe_parameters:
+  - cell_line
+  - culture_medium
+  - serum_concentration
+  - passage_number
+  - cell_density
+  - treatment_duration
+  - drug_concentration
+  - antibody
+  - dilution_factor
+  - incubation_time
+  - temperature
+  - co2_concentration
+  - ph
+  - transfection_method
+  - plasmid
+
+# Optional prompt overrides
+# If not specified, the agent class's default prompts are used
+# prompts:
+#   screening: "Custom screening prompt..."
+#   visual: "Custom visual prompt..."
+#   recipe: "Custom recipe prompt..."
+#   deepdive: "Custom deepdive prompt..."

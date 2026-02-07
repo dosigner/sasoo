@@ -1,0 +1,29 @@
+# Sasoo Backend Dependencies
+# FastAPI framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.12
+
+# PDF processing
+PyMuPDF>=1.25.0
+pdfplumber>=0.11.0
+
+# LLM providers
+google-genai>=1.0.0
+anthropic>=0.40.0
+
+# Paper visualization
+paperbanana>=0.1.0
+
+# Data / validation
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+aiosqlite>=0.20.0
+aiofiles>=24.1.0
+PyYAML>=6.0.0
+
+# Image processing
+Pillow>=11.0.0
+
+# Environment
+python-dotenv>=1.0.1

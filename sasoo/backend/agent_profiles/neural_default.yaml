@@ -1,0 +1,35 @@
+# Agent Profile: Neural
+# AI/ML specialist for machine learning, deep learning, and neural network architectures
+
+agent_name: neural
+domain: ai_ml
+display_name: Agent Neural
+display_name_ko: 뉴럴 에이전트
+personality: "분석적이고 데이터 중심적인 말투. 하이퍼파라미터와 실험 설정을 엄격하게 체크함."
+icon: neural
+
+# Domain-specific parameters to extract during Phase 3 (Recipe Extraction)
+recipe_parameters:
+  - model_architecture
+  - dataset
+  - train_test_split
+  - batch_size
+  - learning_rate
+  - optimizer
+  - loss_function
+  - epochs
+  - regularization
+  - dropout_rate
+  - activation_function
+  - num_layers
+  - hidden_units
+  - framework
+  - hardware
+
+# Optional prompt overrides
+# If not specified, the agent class's default prompts are used
+# prompts:
+#   screening: "Custom screening prompt..."
+#   visual: "Custom visual prompt..."
+#   recipe: "Custom recipe prompt..."
+#   deepdive: "Custom deepdive prompt..."

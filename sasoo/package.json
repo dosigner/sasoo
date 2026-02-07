@@ -1,0 +1,67 @@
+{
+  "name": "sasoo",
+  "version": "0.1.0",
+  "description": "Sasoo - AI-powered academic paper analysis tool",
+  "private": true,
+  "main": "dist-electron/main.js",
+  "author": "dosigner",
+  "license": "MIT",
+  "scripts": {
+    "dev": "concurrently --kill-others \"pnpm dev:frontend\" \"pnpm dev:electron\"",
+    "dev:frontend": "cd frontend && pnpm dev",
+    "dev:electron": "tsc -p electron/tsconfig.json && electron . --no-sandbox --disable-gpu",
+    "dev:electron:watch": "concurrently \"tsc -p electron/tsconfig.json --watch\" \"electron . --no-sandbox\"",
+    "build:frontend": "cd frontend && pnpm build",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "build": "pnpm build:frontend && pnpm build:electron && electron-builder",
+    "start": "electron . --no-sandbox",
+    "clean": "rm -rf dist dist-electron frontend/dist",
+    "postinstall": "cd frontend && pnpm install"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.16",
+    "concurrently": "^8.2.2",
+    "electron": "^28.2.1",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.3.3"
+  },
+  "build": {
+    "appId": "com.dosigner.sasoo",
+    "productName": "Sasoo",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "frontend/dist/**/*",
+      "backend/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend",
+        "filter": [
+          "**/*.py",
+          "requirements.txt",
+          "**/*.json",
+          "**/*.yaml"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.education",
+      "target": ["dmg", "zip"]
+    },
+    "win": {
+      "target": ["nsis", "portable"]
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Education"
+    }
+  }
+}
