@@ -25,6 +25,9 @@ venv/
 *.swp
 *.swo
 
+# OMC state
+.omc/
+
 # OS
 .DS_Store
 Thumbs.db
