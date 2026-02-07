@@ -1840,6 +1840,30 @@ Be exhaustive. Do NOT summarize or abbreviate. Include every relevant numerical 
         result = await _call_gemini(prompt, model="gemini-3-flash-preview")
 
     explanation = result["text"].strip()
+
+    # Gemini sometimes returns JSON instead of plain markdown — extract and flatten
+    if explanation.startswith("{") or explanation.startswith("```json"):
+        try:
+            raw = explanation
+            if raw.startswith("```json"):
+                raw = raw.split("```json", 1)[1].rsplit("```", 1)[0]
+            data = json.loads(raw)
+            # Flatten nested JSON values into a single markdown string
+            def _extract_md(obj: object) -> str:
+                if isinstance(obj, str):
+                    return obj
+                if isinstance(obj, dict):
+                    return "\n\n".join(
+                        _extract_md(v) for v in obj.values()
+                        if v and isinstance(v, (str, dict, list))
+                    )
+                if isinstance(obj, list):
+                    return "\n".join(_extract_md(i) for i in obj)
+                return str(obj)
+            explanation = _extract_md(data).strip()
+        except (json.JSONDecodeError, TypeError):
+            pass  # Not valid JSON, use as-is
+
     cost = _calculate_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
     # Cache the explanation in the figures table

@@ -232,16 +232,77 @@
 
   /* Split view resize handle */
   .resize-handle {
-    @apply w-1 cursor-col-resize bg-surface-700 hover:bg-primary-500 transition-colors duration-150 relative;
+    width: 6px;
+    @apply cursor-col-resize bg-surface-700 transition-all duration-200 relative flex-shrink-0;
   }
 
+  /* Expanded hit area for easier grabbing */
   .resize-handle::before {
     content: '';
-    @apply absolute inset-y-0 -left-1 -right-1;
+    @apply absolute inset-y-0 -left-2 -right-2 z-10;
+  }
+
+  /* Grip dots (3 vertical dots in center) */
+  .resize-handle::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 2px;
+    height: 20px;
+    background-image: radial-gradient(circle, currentColor 1px, transparent 1px);
+    background-size: 2px 7px;
+    background-repeat: repeat-y;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  .resize-handle:hover::after,
+  .resize-handle:focus-visible::after,
+  .resize-handle.active::after {
+    opacity: 0.6;
+  }
+
+  /* Hover state: widen + color */
+  .resize-handle:hover {
+    width: 8px;
+    @apply bg-primary-500/70;
+    box-shadow: -2px 0 8px rgba(99, 102, 241, 0.1), 2px 0 8px rgba(99, 102, 241, 0.1);
+  }
+
+  /* Active/dragging state */
+  .resize-handle.active {
+    width: 8px;
+    @apply bg-primary-500;
+    box-shadow: -3px 0 12px rgba(99, 102, 241, 0.2), 3px 0 12px rgba(99, 102, 241, 0.2);
+  }
+
+  /* Snap indicator */
+  .resize-handle.snapping {
+    @apply bg-primary-400;
+    box-shadow: -4px 0 16px rgba(99, 102, 241, 0.3), 4px 0 16px rgba(99, 102, 241, 0.3);
+  }
+
+  /* Focus visible for keyboard users */
+  .resize-handle:focus-visible {
+    width: 8px;
+    @apply bg-primary-500 outline-none;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.5);
   }
 
   .light .resize-handle {
-    @apply bg-surface-300 hover:bg-primary-500;
+    @apply bg-surface-300;
+  }
+
+  .light .resize-handle:hover {
+    @apply bg-primary-500/70;
+    box-shadow: -2px 0 8px rgba(79, 70, 229, 0.1), 2px 0 8px rgba(79, 70, 229, 0.1);
+  }
+
+  .light .resize-handle.active {
+    @apply bg-primary-500;
+    box-shadow: -3px 0 12px rgba(79, 70, 229, 0.15), 3px 0 12px rgba(79, 70, 229, 0.15);
   }
 
   /* Fade in animation for progressive loading */

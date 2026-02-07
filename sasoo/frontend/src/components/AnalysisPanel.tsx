@@ -387,13 +387,13 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
 
   if (phase === 'screening') {
     if (data.summary) lines.push(`${data.summary}\n`);
-    if (data.domain) lines.push(`**Domain:** ${data.domain}`);
-    if (data.relevance_score != null) lines.push(`**Relevance:** ${(Number(data.relevance_score) * 100).toFixed(0)}%`);
-    if (data.methodology_type) lines.push(`**Methodology:** ${data.methodology_type}`);
-    if (data.estimated_complexity) lines.push(`**Complexity:** ${data.estimated_complexity}`);
-    if (data.is_experimental != null) lines.push(`**Experimental:** ${data.is_experimental ? 'Yes' : 'No'}`);
-    if (data.has_figures != null) lines.push(`**Has Figures:** ${data.has_figures ? 'Yes' : 'No'}`);
-    if (data.agent_recommended) lines.push(`**Agent:** ${data.agent_recommended}`);
+    if (data.domain) lines.push(`**Domain:** ${data.domain}  `);
+    if (data.relevance_score != null) lines.push(`**Relevance:** ${(Number(data.relevance_score) * 100).toFixed(0)}%  `);
+    if (data.methodology_type) lines.push(`**Methodology:** ${data.methodology_type}  `);
+    if (data.estimated_complexity) lines.push(`**Complexity:** ${data.estimated_complexity}  `);
+    if (data.is_experimental != null) lines.push(`**Experimental:** ${data.is_experimental ? 'Yes' : 'No'}  `);
+    if (data.has_figures != null) lines.push(`**Has Figures:** ${data.has_figures ? 'Yes' : 'No'}  `);
+    if (data.agent_recommended) lines.push(`**Agent:** ${data.agent_recommended}  `);
     const topics = data.key_topics as string[] | undefined;
     if (topics?.length) {
       lines.push('\n**Key Topics:**');
