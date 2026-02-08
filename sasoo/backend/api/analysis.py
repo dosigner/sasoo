@@ -532,7 +532,7 @@ Return ONLY valid JSON (마크다운 펜스 없이, 설명 없이):
     phase_status.tokens_in = result["tokens_in"]
     phase_status.tokens_out = result["tokens_out"]
     phase_status.cost_usd = cost
-    status.progress_pct = 75.0
+    status.progress_pct = max(status.progress_pct, 60.0)
     status.total_cost_usd += cost
     status.total_tokens_in += result["tokens_in"]
     status.total_tokens_out += result["tokens_out"]
@@ -608,8 +608,8 @@ Return ONLY valid JSON (마크다운 펜스 없이):
     phase_status.tokens_in = result["tokens_in"]
     phase_status.tokens_out = result["tokens_out"]
     phase_status.cost_usd = cost
-    # 85% — visualization step still needs to run after deep_dive
-    status.progress_pct = 85.0
+    # 80% — visualization step still needs to run after deep_dive
+    status.progress_pct = max(status.progress_pct, 80.0)
     status.total_cost_usd += cost
     status.total_tokens_in += result["tokens_in"]
     status.total_tokens_out += result["tokens_out"]
@@ -1248,7 +1248,14 @@ async def get_analysis_status(paper_id: int):
         else:
             phases.append(PhaseStatus(phase=AnalysisPhase(phase_name), status="pending"))
 
-    progress = (len(completed_phases & set(phase_order)) / 4) * 100
+    # Check if visualization is also completed
+    has_viz = "visualization" in completed_phases or "viz_plan" in completed_phases
+    completed_main = len(completed_phases & set(phase_order))
+    if has_viz:
+        progress = (completed_main / 4) * 80 + 20  # 80% for phases + 20% for viz
+    else:
+        progress = (completed_main / 4) * 80  # Max 80% without viz
+    progress = min(progress, 100.0)
 
     return AnalysisStatus(
         paper_id=paper_id,

@@ -50,7 +50,7 @@ interface UseAnalysisReturn {
 
 // Polling intervals
 const POLL_INTERVAL_ACTIVE = 2000; // 2s while actively running
-const POLL_INTERVAL_IDLE = 10000; // 10s when completed / idle
+// POLL_INTERVAL_IDLE removed: completed papers no longer poll
 
 // ---------------------------------------------------------------------------
 // Hook
@@ -98,78 +98,73 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
           .map((p) => p.phase);
         const isCompleted = phaseStatus.overall_status === 'completed';
 
-      // Fetch results whenever any phase completes
-      if (completedPhases.length > 0) {
-        try {
-          const res = await getAnalysisResults(paperId);
-          if (mountedRef.current) setResults(res);
-        } catch (err) {
-          console.warn('[useAnalysis] Failed to fetch results:', err);
-        }
-      }
-
-      // Fetch figures after visual phase completes
-      if (
-        completedPhases.includes('visual') &&
-        !fetchedPhases.current.has('visual')
-      ) {
-        fetchedPhases.current.add('visual');
-        try {
-          const figs = await getFigures(paperId);
-          if (mountedRef.current) setFigures(figs);
-        } catch (err) {
-          console.warn('[useAnalysis] Failed to fetch figures:', err);
-        }
-      }
-
-      // Fetch recipe after recipe phase completes
-      if (
-        completedPhases.includes('recipe') &&
-        !fetchedPhases.current.has('recipe')
-      ) {
-        fetchedPhases.current.add('recipe');
-        try {
-          const rec = await getRecipe(paperId);
-          if (mountedRef.current) setRecipe(rec);
-        } catch (err) {
-          console.warn('[useAnalysis] Failed to fetch recipe:', err);
-        }
-      }
-
-      // Fetch deep_dive results (text only) when deep_dive completes
-      // NOTE: Visualizations are NOT fetched here — they're fetched when
-      // overall_status becomes "completed" (after viz generation finishes)
-      if (
-        completedPhases.includes('deep_dive') &&
-        !fetchedPhases.current.has('deep_dive')
-      ) {
-        fetchedPhases.current.add('deep_dive');
-        // Results are already fetched above, nothing else to do here
-      }
-
-      // Fetch visualizations after deep_dive completes (they generate in parallel)
-      // Keep retrying on subsequent polls until we get data or pipeline finishes
-      if (completedPhases.includes('deep_dive')) {
-        const alreadyHasViz = fetchedPhases.current.has('visualizations');
-        // Try the new visualization plan (up to 5 items)
-        try {
-          const viz = await getVisualizations(paperId);
-          if (mountedRef.current && viz.items.length > 0) {
-            setVisualizations(viz);
-            fetchedPhases.current.add('visualizations');
-            return;
-          }
-        } catch (err) {
-          console.warn('[useAnalysis] Failed to fetch visualizations:', err);
-        }
-        // If pipeline is completed and still no viz, try legacy mermaid once
-        if (isCompleted && !alreadyHasViz) {
-          fetchedPhases.current.add('visualizations');
+        // Fetch results whenever any phase completes
+        if (completedPhases.length > 0) {
           try {
-            const dia = await getMermaid(paperId);
-            if (mountedRef.current) setMermaid(dia);
+            const res = await getAnalysisResults(paperId);
+            if (mountedRef.current) setResults(res);
           } catch (err) {
-            console.warn('[useAnalysis] Failed to fetch mermaid:', err);
+            console.warn('[useAnalysis] Failed to fetch results:', err);
+          }
+        }
+
+        // Fetch figures after visual phase completes
+        if (
+          completedPhases.includes('visual') &&
+          !fetchedPhases.current.has('visual')
+        ) {
+          fetchedPhases.current.add('visual');
+          try {
+            const figs = await getFigures(paperId);
+            if (mountedRef.current) setFigures(figs);
+          } catch (err) {
+            console.warn('[useAnalysis] Failed to fetch figures:', err);
+          }
+        }
+
+        // Fetch recipe after recipe phase completes
+        if (
+          completedPhases.includes('recipe') &&
+          !fetchedPhases.current.has('recipe')
+        ) {
+          fetchedPhases.current.add('recipe');
+          try {
+            const rec = await getRecipe(paperId);
+            if (mountedRef.current) setRecipe(rec);
+          } catch (err) {
+            console.warn('[useAnalysis] Failed to fetch recipe:', err);
+          }
+        }
+
+        // Fetch deep_dive results (text only) when deep_dive completes
+        if (
+          completedPhases.includes('deep_dive') &&
+          !fetchedPhases.current.has('deep_dive')
+        ) {
+          fetchedPhases.current.add('deep_dive');
+        }
+
+        // Fetch visualizations after deep_dive completes (they generate in parallel)
+        if (completedPhases.includes('deep_dive')) {
+          const alreadyHasViz = fetchedPhases.current.has('visualizations');
+          try {
+            const viz = await getVisualizations(paperId);
+            if (mountedRef.current && viz.items.length > 0) {
+              setVisualizations(viz);
+              fetchedPhases.current.add('visualizations');
+              return;
+            }
+          } catch (err) {
+            console.warn('[useAnalysis] Failed to fetch visualizations:', err);
+          }
+          if (isCompleted && !alreadyHasViz) {
+            fetchedPhases.current.add('visualizations');
+            try {
+              const dia = await getMermaid(paperId);
+              if (mountedRef.current) setMermaid(dia);
+            } catch (err) {
+              console.warn('[useAnalysis] Failed to fetch mermaid:', err);
+            }
           }
         }
       } finally {
