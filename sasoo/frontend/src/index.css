@@ -674,7 +674,7 @@
   background-color: theme('colors.surface.50');
 }
 
-.light [class*="bg-surface-800"]:not(aside):not(pre):not(code) {
+.light [class*="bg-surface-800"]:not(aside):not(pre):not(code):not([class*="backdrop-blur"]) {
   background-color: theme('colors.surface.50');
 }
 

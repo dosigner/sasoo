@@ -87,6 +87,8 @@ export default function Settings() {
       document.documentElement.classList.add('dark');
       document.documentElement.classList.remove('light');
     }
+    // Sync to localStorage so App.tsx can restore on next load
+    localStorage.setItem('sasoo-theme', theme);
   }, [theme]);
 
   // -----------------------------------------------------------------------

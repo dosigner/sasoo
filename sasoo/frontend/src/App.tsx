@@ -56,16 +56,32 @@ function App() {
   // Detect if we're on the workbench page (needs full screen)
   const isWorkbench = location.pathname.startsWith('/workbench');
 
-  // Load theme from localStorage on mount
+  // Load theme: localStorage first (instant), then sync with backend
   useEffect(() => {
-    const savedTheme = localStorage.getItem('sasoo-theme');
-    if (savedTheme === 'light') {
-      document.documentElement.classList.add('light');
-      document.documentElement.classList.remove('dark');
-    } else {
-      document.documentElement.classList.add('dark');
-      document.documentElement.classList.remove('light');
+    function applyTheme(t: string) {
+      if (t === 'light') {
+        document.documentElement.classList.add('light');
+        document.documentElement.classList.remove('dark');
+      } else {
+        document.documentElement.classList.add('dark');
+        document.documentElement.classList.remove('light');
+      }
     }
+
+    // Phase 1: instant restore from localStorage (no flash)
+    const cached = localStorage.getItem('sasoo-theme');
+    applyTheme(cached || 'dark');
+
+    // Phase 2: sync with backend as source of truth
+    fetch('/api/settings')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.theme && data.theme !== cached) {
+          localStorage.setItem('sasoo-theme', data.theme);
+          applyTheme(data.theme);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Load sidebar state from localStorage
