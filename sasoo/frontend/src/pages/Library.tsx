@@ -406,7 +406,7 @@ export default function Library() {
 
       {/* Filter panel */}
       {showFilters && (
-        <div className="card mb-4 fade-in-up">
+        <div className="glass rounded-2xl p-4 mb-4 fade-in-up">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-xs font-semibold text-surface-300 uppercase tracking-wider">
               Filters

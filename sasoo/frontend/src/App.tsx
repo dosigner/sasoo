@@ -90,7 +90,7 @@ function App() {
         <div className="flex h-screen bg-surface-900 text-surface-200">
       {/* Sidebar */}
       <aside
-        className={`flex flex-col bg-surface-800 border-r border-surface-700 transition-all duration-300 shrink-0 ${
+        className={`flex flex-col bg-surface-800/85 backdrop-blur-xl border-r border-surface-700/50 transition-all duration-300 shrink-0 ${
           sidebarCollapsed ? 'w-16' : 'w-56'
         }`}
       >
@@ -101,7 +101,7 @@ function App() {
           </div>
           {!sidebarCollapsed && (
             <div className="min-w-0">
-              <h1 className="text-sm font-bold text-surface-100 tracking-tight">
+              <h1 className="text-base font-bold text-surface-100 tracking-apple-tight">
                 Sasoo
               </h1>
               <p className="text-2xs text-surface-500 truncate">

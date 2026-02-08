@@ -420,7 +420,7 @@ export default function FigureGallery({
           <ImageIcon className="w-4 h-4 text-primary-400" />
           Extracted Figures
         </h3>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 2xl:grid-cols-4 gap-3">
           <FigureSkeleton />
           <FigureSkeleton />
           <FigureSkeleton />
@@ -456,7 +456,7 @@ export default function FigureGallery({
         </span>
       </h3>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 2xl:grid-cols-4 gap-3">
         {figures.map((figure, index) => {
           const badge = qualityBadge(figure.quality);
 

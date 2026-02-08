@@ -250,7 +250,7 @@ export default function Workbench() {
   return (
     <div className="flex flex-col h-full">
       {/* Top bar: paper info + controls */}
-      <div className="flex items-center justify-between px-4 py-2 bg-surface-800 border-b border-surface-700 shrink-0">
+      <div className="flex items-center justify-between px-4 py-2 bg-surface-800/90 backdrop-blur-lg border-b border-surface-700/50 shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={togglePdf}

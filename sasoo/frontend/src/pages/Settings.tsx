@@ -406,7 +406,7 @@ export default function Settings() {
 
       {/* Sticky save bar when changes exist */}
       {hasChanges && (
-        <div className="fixed bottom-0 left-0 right-0 bg-surface-800/95 backdrop-blur-sm border-t border-surface-700 px-6 py-3 z-40">
+        <div className="fixed bottom-0 left-0 right-0 bg-surface-800/85 backdrop-blur-lg border-t border-surface-700/50 px-6 py-3 z-40">
           <div className="max-w-3xl mx-auto flex items-center justify-between">
             <span className="text-sm text-surface-400">
               You have unsaved changes

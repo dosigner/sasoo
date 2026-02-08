@@ -207,10 +207,10 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
                 width: `${budgetPercentage}%`,
                 background:
                   budgetPercentage >= 80
-                    ? '#ef4444'
+                    ? '#ff453a'
                     : budgetPercentage >= 60
-                      ? '#f59e0b'
-                      : '#10b981',
+                      ? '#ff9f0a'
+                      : '#30d158',
               }}
             />
           </div>

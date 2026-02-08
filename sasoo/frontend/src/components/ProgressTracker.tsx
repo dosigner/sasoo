@@ -110,7 +110,7 @@ export default function ProgressTracker({
   const isComplete = phases.every((p) => p.status === 'completed');
 
   return (
-    <div className="card px-5 py-4">
+    <div className="glass rounded-2xl px-5 py-4">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
@@ -142,8 +142,8 @@ export default function ProgressTracker({
           style={{
             width: `${overallProgress}%`,
             background: isComplete
-              ? '#10b981'
-              : 'linear-gradient(90deg, #6366f1, #818cf8)',
+              ? '#30d158'
+              : 'linear-gradient(90deg, #007aff, #0a84ff)',
           }}
         />
       </div>

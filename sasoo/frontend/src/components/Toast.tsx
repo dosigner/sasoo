@@ -115,7 +115,7 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
         w-96 max-w-full
         transition-all duration-200
         ${isExiting ? 'opacity-0 translate-x-4' : 'opacity-100 translate-x-0 animate-slide-in-right'}
-        bg-white border-surface-200 dark:bg-surface-800 dark:border-surface-700
+        bg-white/90 backdrop-blur-lg border-surface-200/60 dark:bg-surface-800/90 dark:backdrop-blur-lg dark:border-surface-700/50
       `}
     >
       {/* Content */}
@@ -198,7 +198,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {children}
 
       {/* Toast container - bottom-right corner */}
-      <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-3 pointer-events-none">
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 pointer-events-none">
         {toasts.map((toast) => (
           <div key={toast.id} className="pointer-events-auto">
             <ToastItem toast={toast} onRemove={removeToast} />

@@ -196,7 +196,7 @@ export default function Upload() {
           onDrop={handleDrop}
           className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all duration-200 ${
             isDragging
-              ? 'border-primary-500 bg-primary-500/10 scale-[1.02]'
+              ? 'border-primary-500 bg-primary-500/10 backdrop-blur-md scale-[1.02]'
               : selectedFile
                 ? 'border-surface-600 bg-surface-800'
                 : 'border-surface-600 bg-surface-800/50 hover:border-surface-500 hover:bg-surface-800'
