@@ -51,6 +51,7 @@ from models.schemas import (
     VisualizationPlanResponse,
 )
 from services.pricing import calc_cost
+from services.pdf_cache import get_pdf_text
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
@@ -108,20 +109,59 @@ _SYSTEM_INSTRUCTION_KO = (
 )
 
 
-async def _call_gemini(prompt: str, model: str = "gemini-3-flash-preview") -> dict:
+async def _call_gemini(
+    prompt: str,
+    model: str = "gemini-3-flash-preview",
+    thinking_level: str | None = None,
+    image_paths: list[str] | None = None,
+) -> dict:
     """
     Call Gemini API and return parsed response with token counts.
     Runs synchronous SDK call in executor to avoid blocking.
+
+    thinking_level: "minimal" (1024), "medium" (4096), "high" (8192), or None.
+    image_paths: Optional list of absolute paths to images to include in the request.
     """
     def _sync_call():
         from google.genai import types as _gtypes
         client = _get_gemini_client()
+
+        config_kwargs: dict = {
+            "system_instruction": _SYSTEM_INSTRUCTION_KO,
+        }
+        if thinking_level:
+            budgets = {"minimal": 1024, "medium": 4096, "high": 8192}
+            config_kwargs["thinking_config"] = _gtypes.ThinkingConfig(
+                thinking_budget=budgets.get(thinking_level, 4096),
+            )
+            config_kwargs["temperature"] = 1.0  # Required when thinking is enabled
+
+        # Build multimodal content if image_paths provided
+        if image_paths:
+            parts: list[_gtypes.Part] = []
+            for img_path in image_paths:
+                img_file = Path(img_path)
+                if img_file.exists():
+                    img_bytes = img_file.read_bytes()
+                    suffix = img_file.suffix.lower()
+                    mime_map = {
+                        ".png": "image/png",
+                        ".jpg": "image/jpeg",
+                        ".jpeg": "image/jpeg",
+                        ".gif": "image/gif",
+                        ".webp": "image/webp",
+                    }
+                    mime_type = mime_map.get(suffix, "image/png")
+                    parts.append(_gtypes.Part.from_bytes(data=img_bytes, mime_type=mime_type))
+            parts.append(_gtypes.Part.from_text(text=prompt))
+            contents = [_gtypes.Content(parts=parts, role="user")]
+        else:
+            contents = prompt
+
         response = client.models.generate_content(
             model=model,
-            contents=prompt,
-            config=_gtypes.GenerateContentConfig(
-                system_instruction=_SYSTEM_INSTRUCTION_KO,
-            ),
+            contents=contents,
+            config=_gtypes.GenerateContentConfig(**config_kwargs),
         )
         text = response.text or ""
         # Extract usage if available
@@ -977,17 +1017,8 @@ async def _run_full_analysis(paper_id: int):
         folder_name = paper["folder_name"]
         paper_dir = get_paper_dir(folder_name)
 
-        # Find and read the PDF
-        pdf_files = list(paper_dir.glob("*.pdf"))
-        if not pdf_files:
-            raise FileNotFoundError(f"No PDF found in {paper_dir}")
-
-        import fitz
-        doc = fitz.open(str(pdf_files[0]))
-        full_text = ""
-        for page in doc:
-            full_text += page.get_text() + "\n"
-        doc.close()
+        # Read PDF text (cached)
+        full_text = get_pdf_text(paper_dir)
 
         # Check for cancellation
         if cancel_event.is_set():
@@ -1371,21 +1402,14 @@ async def get_mermaid(paper_id: int):
     if recipe_result:
         recipe_text = f"\n\nRecipe data:\n{recipe_result['result'][:3000]}"
 
-    # Get paper text for context
+    # Get paper text for context (cached)
     folder_name = paper["folder_name"]
     paper_dir = get_paper_dir(folder_name)
-    pdf_files = list(paper_dir.glob("*.pdf"))
-
     paper_text = ""
-    if pdf_files:
-        try:
-            import fitz
-            doc = fitz.open(str(pdf_files[0]))
-            for page in doc:
-                paper_text += page.get_text() + "\n"
-            doc.close()
-        except Exception:
-            pass
+    try:
+        paper_text = get_pdf_text(paper_dir)
+    except FileNotFoundError:
+        pass
 
     prompt = f"""Generate a Mermaid flowchart diagram that shows the experimental process/methodology flow of this research paper.
 
@@ -1575,21 +1599,14 @@ async def explain_figure(paper_id: int, figure_id: int):
             model_used="cached",
         )
 
-    # Load paper full text
+    # Load paper full text (cached)
     folder_name = paper["folder_name"]
     paper_dir = get_paper_dir(folder_name)
-    pdf_files = list(paper_dir.glob("*.pdf"))
-
     full_text = ""
-    if pdf_files:
-        try:
-            import fitz
-            doc = fitz.open(str(pdf_files[0]))
-            for page in doc:
-                full_text += page.get_text() + "\n"
-            doc.close()
-        except Exception:
-            pass
+    try:
+        full_text = get_pdf_text(paper_dir)
+    except FileNotFoundError:
+        pass
 
     # Gather all analysis results for context
     results = await fetch_all(
@@ -1987,8 +2004,9 @@ async def explain_figure(paper_id: int, figure_id: int):
 You are writing an extremely detailed explanation of a specific figure from a scientific paper in your domain ({persona['domain']}). Your explanation should be so thorough that a domain expert can fully understand the paper's methodology, results, and significance just by reading your explanation alongside the figure.
 
 FIGURE TO EXPLAIN:
-- Figure number: {figure_num}
-- Caption: {caption}
+- Figure identifier: {figure_num}
+- Caption from paper: {caption if caption else "(캡션 미추출)"}
+- **아래 첨부된 실제 그림 이미지를 분석하세요.**
 
 ALL FIGURES IN PAPER (for cross-reference):
 {figures_context}
@@ -2018,6 +2036,8 @@ Write your explanation in Korean, using Markdown formatting. Structure it as fol
 
 Be exhaustive. Do NOT summarize or abbreviate. Include every relevant numerical value, parameter, and condition from the paper text. A reader should understand the complete experimental context just from your explanation.
 
+중요: 첨부된 이미지를 직접 보고 분석하세요. 이미지에 보이는 모든 요소(축, 레이블, 곡선, 데이터 포인트, 서브패널, 화살표, 색상 코딩, 스케일 바 등)를 실제로 확인하고 설명해야 합니다.
+
 --- PAPER FULL TEXT ---
 {full_text[:15000]}
 
@@ -2025,10 +2045,14 @@ Be exhaustive. Do NOT summarize or abbreviate. Include every relevant numerical 
 {analysis_context[:5000]}
 """
 
+    # Get the figure's file path and pass it to Gemini for multimodal analysis
+    figure_image_path = figure.get("file_path")
+    image_paths_arg = [figure_image_path] if figure_image_path and Path(figure_image_path).exists() else None
+
     try:
-        result = await _call_gemini(prompt, model="gemini-3-pro-preview")
+        result = await _call_gemini(prompt, model="gemini-3-flash-preview", thinking_level="high", image_paths=image_paths_arg)
     except Exception:
-        result = await _call_gemini(prompt, model="gemini-3-flash-preview")
+        result = await _call_gemini(prompt, model="gemini-3-flash-preview", image_paths=image_paths_arg)
 
     explanation = result["text"].strip()
 

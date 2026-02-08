@@ -15,6 +15,8 @@ import fitz  # PyMuPDF
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
+from services.pdf_cache import warm_cache
+
 from models.database import (
     PAPERS_DIR,
     execute_insert,
@@ -185,6 +187,101 @@ def extract_pdf_metadata(pdf_path: str) -> dict:
     }
 
 
+def extract_figure_captions(pdf_path: str) -> list[tuple[int, int, str]]:
+    """
+    Extract figure captions from a PDF using regex.
+
+    Returns list of (page_0indexed, fig_number, caption_text).
+    Only returns caption DEFINITIONS, not inline references.
+    """
+    doc = fitz.open(pdf_path)
+    results: list[tuple[int, int, str]] = []
+    seen_figs: set[int] = set()
+
+    for page_idx in range(len(doc)):
+        page_text = doc[page_idx].get_text()
+
+        # Find "Fig. N." or "Figure N." or "Fig. N:" caption definitions
+        for m in re.finditer(
+            r'(?:Fig\.|Figure)\s*(\d+)\s*[.:][ \t]*(.*)',
+            page_text,
+        ):
+            fig_num = int(m.group(1))
+            if fig_num in seen_figs:
+                continue  # Skip inline refs, keep first = caption definition
+
+            rest = m.group(2).strip()
+
+            # If rest is very short or empty, caption is on next line
+            if len(rest) < 5:
+                after = page_text[m.end():]
+                lines = after.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    if line:
+                        rest = (rest + " " + line).strip()
+                        break
+
+            # Truncate at ~200 chars at sentence boundary
+            if len(rest) > 200:
+                rest = rest[:200]
+                last_period = rest.rfind('.')
+                if last_period > 50:
+                    rest = rest[:last_period + 1]
+
+            if rest:
+                seen_figs.add(fig_num)
+                results.append((page_idx, fig_num, rest))
+
+    doc.close()
+    return results
+
+
+def match_captions_to_figures(
+    figures: list[dict],
+    captions: list[tuple[int, int, str]],
+) -> dict[str, str]:
+    """
+    Match extracted images to figure captions by page proximity.
+
+    figures: list with 'figure_num' keys like 'p2_img1'
+    captions: from extract_figure_captions
+
+    Returns {figure_num: "Fig. N. caption text"}
+    """
+    if not captions:
+        return {}
+
+    # Group captions by page (0-indexed)
+    page_caps: dict[int, list[tuple[int, str]]] = {}
+    for page_idx, fig_num, text in captions:
+        page_caps.setdefault(page_idx, []).append((fig_num, text))
+
+    result: dict[str, str] = {}
+    assigned_caps: set[int] = set()
+
+    for fig in figures:
+        fn = fig["figure_num"]  # e.g., "p2_img1"
+        m = re.match(r'p(\d+)_img(\d+)', fn)
+        if not m:
+            continue
+        page_0indexed = int(m.group(1)) - 1  # figure_num is 1-indexed
+
+        # Look on same page, then ±1 page
+        for offset in [0, 1, -1]:
+            check_page = page_0indexed + offset
+            if check_page in page_caps:
+                for cap_fig_num, cap_text in page_caps[check_page]:
+                    if cap_fig_num not in assigned_caps:
+                        result[fn] = f"Fig. {cap_fig_num}. {cap_text}"
+                        assigned_caps.add(cap_fig_num)
+                        break
+            if fn in result:
+                break
+
+    return result
+
+
 def extract_figures_from_pdf(pdf_path: str, output_dir: str) -> list[dict]:
     """
     Extract images/figures from a PDF and save them to output_dir.
@@ -279,12 +376,25 @@ async def upload_paper(file: UploadFile = File(...)):
         shutil.rmtree(paper_dir, ignore_errors=True)
         raise HTTPException(status_code=422, detail=f"Failed to parse PDF: {str(e)}")
 
+    # Pre-cache full text for later analysis phases
+    warm_cache(paper_dir)
+
     # Extract figures
     figures_dir = get_figures_dir(folder_name)
     try:
         figures = extract_figures_from_pdf(str(pdf_path), str(figures_dir))
     except Exception:
         figures = []
+
+    # Extract and match figure captions
+    try:
+        captions_list = extract_figure_captions(str(pdf_path))
+        caption_map = match_captions_to_figures(figures, captions_list)
+        for fig in figures:
+            if fig["figure_num"] in caption_map:
+                fig["caption"] = caption_map[fig["figure_num"]]
+    except Exception:
+        pass  # Caption extraction is best-effort
 
     # Insert paper into DB
     paper_id = await execute_insert(
@@ -384,6 +494,46 @@ async def list_papers(
     return PaperListResponse(papers=papers, total=total, page=page, page_size=page_size)
 
 
+@router.post("/backfill-all-captions")
+async def backfill_all_captions():
+    """Backfill figure captions for ALL papers."""
+    papers = await fetch_all("SELECT * FROM papers", ())
+    total_updated = 0
+
+    for paper in papers:
+        folder_name = paper["folder_name"]
+        paper_dir = get_paper_dir(folder_name)
+        pdf_files = list(paper_dir.glob("*.pdf"))
+        if not pdf_files:
+            continue
+
+        try:
+            captions_list = extract_figure_captions(str(pdf_files[0]))
+        except Exception:
+            continue
+
+        figures = await fetch_all(
+            "SELECT * FROM figures WHERE paper_id = ? ORDER BY figure_num",
+            (paper["id"],),
+        )
+
+        fig_dicts = [{"figure_num": f["figure_num"]} for f in figures]
+        caption_map = match_captions_to_figures(fig_dicts, captions_list)
+
+        db = await get_db()
+        for fig in figures:
+            fn = fig["figure_num"]
+            if fn in caption_map:
+                await db.execute(
+                    "UPDATE figures SET caption = ? WHERE id = ?",
+                    (caption_map[fn], fig["id"]),
+                )
+                total_updated += 1
+        await db.commit()
+
+    return {"total_updated": total_updated, "papers_processed": len(papers)}
+
+
 @router.get("/{paper_id}", response_model=PaperResponse)
 async def get_paper(paper_id: int):
     """Get a single paper by ID."""
@@ -477,6 +627,47 @@ async def delete_paper(paper_id: int):
         shutil.rmtree(figures_dir, ignore_errors=True)
 
     return None
+
+
+@router.post("/{paper_id}/backfill-captions")
+async def backfill_captions(paper_id: int):
+    """Backfill figure captions for an existing paper."""
+    paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
+    if paper is None:
+        raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
+
+    folder_name = paper["folder_name"]
+    paper_dir = get_paper_dir(folder_name)
+    pdf_files = list(paper_dir.glob("*.pdf"))
+    if not pdf_files:
+        raise HTTPException(status_code=404, detail="PDF file not found.")
+
+    # Extract captions
+    captions_list = extract_figure_captions(str(pdf_files[0]))
+
+    # Get existing figures
+    figures = await fetch_all(
+        "SELECT * FROM figures WHERE paper_id = ? ORDER BY figure_num",
+        (paper_id,),
+    )
+
+    fig_dicts = [{"figure_num": f["figure_num"]} for f in figures]
+    caption_map = match_captions_to_figures(fig_dicts, captions_list)
+
+    # Update captions in DB
+    updated = 0
+    db = await get_db()
+    for fig in figures:
+        fn = fig["figure_num"]
+        if fn in caption_map:
+            await db.execute(
+                "UPDATE figures SET caption = ? WHERE id = ?",
+                (caption_map[fn], fig["id"]),
+            )
+            updated += 1
+    await db.commit()
+
+    return {"updated": updated, "total": len(figures), "captions": caption_map}
 
 
 # ---------------------------------------------------------------------------
