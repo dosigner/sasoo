@@ -27,6 +27,12 @@ venv/
 
 # OMC state
 .omc/
+AGENTS.md
+**/AGENTS.md
+
+# Project docs (local only)
+PRD_*.md
+outputs/
 
 # OS
 .DS_Store
