@@ -9,8 +9,9 @@ import {
   PanelLeft,
   Columns2,
   PanelRight,
+  Square,
 } from 'lucide-react';
-import { getPaper, getPdfUrl, type Paper } from '@/lib/api';
+import { getPaper, getPdfUrl, cancelAnalysis, type Paper } from '@/lib/api';
 import { useAnalysis } from '@/hooks/useAnalysis';
 import PdfViewer from '@/components/PdfViewer';
 import AnalysisPanel from '@/components/AnalysisPanel';
@@ -323,9 +324,25 @@ export default function Workbench() {
             </button>
           )}
           {isRunning && (
-            <div className="flex items-center gap-2 text-xs text-primary-400">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Analyzing...</span>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 text-xs text-primary-400">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Analyzing... {status?.progress_pct ? `${Math.round(status.progress_pct)}%` : ''}</span>
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    await cancelAnalysis(id!);
+                  } catch {
+                    // Cancel may fail if already completed
+                  }
+                }}
+                className="btn-ghost text-xs py-1 px-2 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                title="분석 취소"
+              >
+                <Square className="w-3 h-3" />
+                취소
+              </button>
             </div>
           )}
         </div>

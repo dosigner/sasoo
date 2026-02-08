@@ -8,42 +8,44 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Primary brand palette
+        // Apple-style primary blue palette
         primary: {
-          50: '#eef2ff',
-          100: '#e0e7ff',
-          200: '#c7d2fe',
-          300: '#a5b4fc',
-          400: '#818cf8',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
-          800: '#3730a3',
-          900: '#312e81',
-          950: '#1e1b4b',
+          50:  '#e5f1ff',
+          100: '#cce3ff',
+          200: '#99c7ff',
+          300: '#66abff',
+          400: '#0a84ff',  // Apple dark mode blue
+          500: '#007aff',  // Apple system blue
+          600: '#0071e3',  // Apple website CTA blue
+          700: '#005bb5',
+          800: '#004a93',
+          900: '#003a75',
+          950: '#002952',
         },
-        // Semantic surface colors for the dark UI
+        // Apple neutral gray surface palette
         surface: {
-          50: '#f8fafc',
-          100: '#f1f5f9',
-          200: '#e2e8f0',
-          300: '#cbd5e1',
-          400: '#94a3b8',
-          500: '#64748b',
-          600: '#475569',
-          700: '#334155',
-          800: '#1e293b',
-          900: '#0f172a',
-          950: '#020617',
+          50:  '#f5f5f7',  // Apple light secondary
+          100: '#e8e8ed',
+          200: '#d1d1d6',
+          300: '#aeaeb2',
+          400: '#8e8e93',  // Apple system gray
+          500: '#636366',
+          600: '#48484a',
+          700: '#3a3a3c',
+          800: '#1c1c1e',  // Apple dark secondary
+          900: '#000000',  // Apple pure dark
+          950: '#000000',
         },
       },
       fontFamily: {
         sans: [
+          '"SF Pro Display"',
+          '"SF Pro Text"',
           '-apple-system',
           'BlinkMacSystemFont',
-          '"Segoe UI"',
+          '"Apple SD Gothic Neo"',
           '"Noto Sans KR"',
-          'Roboto',
+          '"Segoe UI"',
           '"Helvetica Neue"',
           'Arial',
           'sans-serif',
@@ -60,6 +62,10 @@ export default {
       fontSize: {
         '2xs': ['0.625rem', { lineHeight: '0.875rem' }],
       },
+      letterSpacing: {
+        'apple-tight': '-0.025em',
+        'apple-body': '-0.01em',
+      },
       spacing: {
         '18': '4.5rem',
         '88': '22rem',
@@ -67,8 +73,8 @@ export default {
         '128': '32rem',
       },
       animation: {
-        'fade-in': 'fadeIn 0.2s ease-out',
-        'fade-out': 'fadeOut 0.2s ease-in',
+        'fade-in': 'fadeIn 0.3s ease-out',
+        'fade-out': 'fadeOut 0.3s ease-out',
         'slide-in-right': 'slideInRight 0.3s ease-out',
         'slide-in-left': 'slideInLeft 0.3s ease-out',
         'slide-up': 'slideUp 0.3s ease-out',
@@ -110,19 +116,19 @@ export default {
         DEFAULT: {
           css: {
             maxWidth: 'none',
-            color: '#e2e8f0',
+            color: '#e8e8ed',
             a: {
-              color: '#818cf8',
+              color: '#0a84ff',
               '&:hover': {
-                color: '#a5b4fc',
+                color: '#66abff',
               },
             },
             strong: {
-              color: '#f1f5f9',
+              color: '#f5f5f7',
             },
             code: {
-              color: '#e2e8f0',
-              backgroundColor: '#1e293b',
+              color: '#e8e8ed',
+              backgroundColor: '#1c1c1e',
               borderRadius: '0.25rem',
               padding: '0.125rem 0.25rem',
             },
@@ -132,22 +138,22 @@ export default {
             'code::after': {
               content: '""',
             },
-            h1: { color: '#f1f5f9' },
-            h2: { color: '#f1f5f9' },
-            h3: { color: '#f1f5f9' },
-            h4: { color: '#f1f5f9' },
+            h1: { color: '#f5f5f7' },
+            h2: { color: '#f5f5f7' },
+            h3: { color: '#f5f5f7' },
+            h4: { color: '#f5f5f7' },
             blockquote: {
-              color: '#94a3b8',
-              borderLeftColor: '#4f46e5',
+              color: '#8e8e93',
+              borderLeftColor: '#0071e3',
             },
             hr: {
-              borderColor: '#334155',
+              borderColor: '#3a3a3c',
             },
             'thead th': {
-              color: '#f1f5f9',
+              color: '#f5f5f7',
             },
             'tbody td': {
-              borderBottomColor: '#334155',
+              borderBottomColor: '#3a3a3c',
             },
           },
         },

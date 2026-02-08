@@ -385,6 +385,12 @@ export async function getAnalysisResults(
   return request<AnalysisResults>(`/analysis/${paperId}/results`);
 }
 
+export async function cancelAnalysis(paperId: string): Promise<void> {
+  return request<void>(`/analysis/${paperId}/cancel`, {
+    method: 'POST',
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Result sub-resource endpoints
 // ---------------------------------------------------------------------------

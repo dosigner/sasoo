@@ -23,6 +23,8 @@ from typing import Any, Optional
 from google import genai
 from google.genai import types
 
+from services.pricing import calc_cost
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -42,13 +44,6 @@ THINKING_BUDGETS: dict[str, int] = {
     "minimal": 1024,
     "medium": 4096,
     "high": 8192,
-}
-
-# Pricing (USD per 1M tokens) -- flash / pro estimates
-PRICING: dict[str, dict[str, float]] = {
-    MODEL_FLASH: {"input": 0.10, "output": 0.40},
-    MODEL_PRO: {"input": 1.25, "output": 5.00},
-    MODEL_PRO_IMAGE: {"input": 1.25, "output": 5.00},
 }
 
 
@@ -142,12 +137,6 @@ def _load_api_key() -> str:
     return key
 
 
-def _calc_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    """Calculate cost in USD for a single call."""
-    pricing = PRICING.get(model, PRICING[MODEL_FLASH])
-    cost = (input_tokens / 1_000_000) * pricing["input"] + \
-           (output_tokens / 1_000_000) * pricing["output"]
-    return round(cost, 8)
 
 
 def _extract_json(text: str) -> dict:
@@ -169,6 +158,19 @@ def _extract_json(text: str) -> dict:
         logger.error("Failed to parse JSON from model output: %s", exc)
         logger.debug("Raw output:\n%s", text)
         return {"_raw": text, "_parse_error": str(exc)}
+
+
+def is_parse_error(result: dict) -> bool:
+    """
+    Check if a result dict contains a JSON parse error.
+
+    Args:
+        result: Dictionary returned from _extract_json or similar parsing.
+
+    Returns:
+        True if the result contains a parse error indicator.
+    """
+    return "_parse_error" in result
 
 
 # ---------------------------------------------------------------------------
@@ -259,7 +261,7 @@ class GeminiClient:
             input_tokens = response.usage_metadata.prompt_token_count or 0
             output_tokens = response.usage_metadata.candidates_token_count or 0
 
-        cost = _calc_cost(model, input_tokens, output_tokens)
+        cost = calc_cost(model, input_tokens, output_tokens)
         self.usage.add(UsageRecord(
             model=model,
             input_tokens=input_tokens,
@@ -739,7 +741,7 @@ class GeminiClient:
             input_tokens = response.usage_metadata.prompt_token_count or 0
             output_tokens = response.usage_metadata.candidates_token_count or 0
 
-        cost = _calc_cost(MODEL_PRO_IMAGE, input_tokens, output_tokens)
+        cost = calc_cost(MODEL_PRO_IMAGE, input_tokens, output_tokens)
         self.usage.add(UsageRecord(
             model=MODEL_PRO_IMAGE,
             input_tokens=input_tokens,

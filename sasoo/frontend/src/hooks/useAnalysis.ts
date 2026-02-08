@@ -71,6 +71,7 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
   const fetchedPhases = useRef<Set<string>>(new Set());
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
+  const fetchingRef = useRef(false);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -89,20 +90,21 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
   // -----------------------------------------------------------------------
   const fetchPhaseResources = useCallback(
     async (phaseStatus: AnalysisStatus) => {
-      if (!paperId) return;
-
-      const completedPhases = phaseStatus.phases
-        .filter((p) => p.status === 'completed')
-        .map((p) => p.phase);
-      const isCompleted = phaseStatus.overall_status === 'completed';
+      if (!paperId || fetchingRef.current) return;
+      fetchingRef.current = true;
+      try {
+        const completedPhases = phaseStatus.phases
+          .filter((p) => p.status === 'completed')
+          .map((p) => p.phase);
+        const isCompleted = phaseStatus.overall_status === 'completed';
 
       // Fetch results whenever any phase completes
       if (completedPhases.length > 0) {
         try {
           const res = await getAnalysisResults(paperId);
           if (mountedRef.current) setResults(res);
-        } catch {
-          // Results may not be ready yet
+        } catch (err) {
+          console.warn('[useAnalysis] Failed to fetch results:', err);
         }
       }
 
@@ -115,8 +117,8 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
         try {
           const figs = await getFigures(paperId);
           if (mountedRef.current) setFigures(figs);
-        } catch {
-          // Figures may not be available
+        } catch (err) {
+          console.warn('[useAnalysis] Failed to fetch figures:', err);
         }
       }
 
@@ -129,8 +131,8 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
         try {
           const rec = await getRecipe(paperId);
           if (mountedRef.current) setRecipe(rec);
-        } catch {
-          // Recipe may not be available
+        } catch (err) {
+          console.warn('[useAnalysis] Failed to fetch recipe:', err);
         }
       }
 
@@ -157,8 +159,8 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
             fetchedPhases.current.add('visualizations');
             return;
           }
-        } catch {
-          // Visualizations may not be available yet
+        } catch (err) {
+          console.warn('[useAnalysis] Failed to fetch visualizations:', err);
         }
         // If pipeline is completed and still no viz, try legacy mermaid once
         if (isCompleted && !alreadyHasViz) {
@@ -166,10 +168,12 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
           try {
             const dia = await getMermaid(paperId);
             if (mountedRef.current) setMermaid(dia);
-          } catch {
-            // Mermaid may not be available
+          } catch (err) {
+            console.warn('[useAnalysis] Failed to fetch mermaid:', err);
           }
         }
+      } finally {
+        fetchingRef.current = false;
       }
     },
     [paperId]
@@ -311,8 +315,7 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
         } else if (s.overall_status === 'completed') {
           setIsRunning(false);
           await fetchPhaseResources(s);
-          // Light polling for completed papers (in case of re-analysis)
-          startPolling(POLL_INTERVAL_IDLE);
+          // No polling needed for completed papers
         }
       } catch (err) {
         if (cancelled) return;

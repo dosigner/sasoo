@@ -139,17 +139,13 @@ def extract_pdf_metadata(pdf_path: str) -> dict:
             if 1900 <= y <= 2100:
                 year = y
     if year is None:
-        year_matches = re.findall(r"\b(19|20)\d{2}\b", first_pages_text[:3000])
+        # Find all 4-digit years in the first 3000 characters
+        year_matches = re.findall(r"\b((?:19|20)\d{2})\b", first_pages_text[:3000])
         if year_matches:
-            # Pick the most common year in the first chunk
             from collections import Counter
-            year_counts = Counter(int(m + first_pages_text[first_pages_text.find(m):first_pages_text.find(m)+4][-2:]) for m in [])
-            # Simpler: just take the first plausible year
-            for ym in year_matches:
-                full_year = int(first_pages_text[first_pages_text.find(ym):first_pages_text.find(ym)+4])
-                if 1990 <= full_year <= 2100:
-                    year = full_year
-                    break
+            year_counts = Counter(int(y) for y in year_matches if 1990 <= int(y) <= 2100)
+            if year_counts:
+                year = year_counts.most_common(1)[0][0]
 
     # DOI
     doi = None

@@ -11,6 +11,7 @@ Phases:
 
 import asyncio
 import json
+import logging
 import os
 import traceback
 from datetime import datetime
@@ -18,6 +19,8 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+
+logger = logging.getLogger(__name__)
 
 from models.database import (
     execute_insert,
@@ -47,6 +50,7 @@ from models.schemas import (
     VisualizationItem,
     VisualizationPlanResponse,
 )
+from services.pricing import calc_cost
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
@@ -55,6 +59,12 @@ router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 # ---------------------------------------------------------------------------
 # Tracks running analyses so /status can report progress without DB polling.
 _running_analyses: dict[int, AnalysisStatus] = {}
+
+# Cancellation events for each running analysis
+_cancel_events: dict[int, asyncio.Event] = {}
+
+# Lock for thread-safe access to _running_analyses
+_analyses_lock = asyncio.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -179,24 +189,15 @@ def _clean_llm_json(text: str) -> str:
     return cleaned
 
 
-# ---------------------------------------------------------------------------
-# Cost calculation
-# ---------------------------------------------------------------------------
-
-# Approximate pricing per 1M tokens (USD)
-MODEL_PRICING = {
-    "gemini-3-flash-preview": {"input": 0.15, "output": 0.60},
-    "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
-    "gemini-3-pro-preview": {"input": 1.25, "output": 10.00},
-    "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
-}
-
-
-def _calculate_cost(model: str, tokens_in: int, tokens_out: int) -> float:
-    """Calculate USD cost for a given model call."""
-    pricing = MODEL_PRICING.get(model, {"input": 1.0, "output": 3.0})
-    cost = (tokens_in * pricing["input"] + tokens_out * pricing["output"]) / 1_000_000
-    return round(cost, 6)
+def _is_error_result(text: str) -> bool:
+    """Check if an LLM result text indicates an error."""
+    if not text or not text.strip():
+        return True
+    try:
+        data = json.loads(text)
+        return "_parse_error" in data or "error" in data
+    except (json.JSONDecodeError, TypeError):
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -237,8 +238,17 @@ Return ONLY valid JSON (마크다운 펜스 없이):
 
     result = await _call_gemini(prompt)
     # Clean markdown fences from JSON response
-    result["text"] = _clean_llm_json(result["text"])
-    cost = _calculate_cost(result["model"], result["tokens_in"], result["tokens_out"])
+    cleaned_text = _clean_llm_json(result["text"])
+
+    # Validate JSON before storing
+    try:
+        json.loads(cleaned_text)
+        result["text"] = cleaned_text
+    except json.JSONDecodeError as exc:
+        logger.warning("Phase 1 JSON validation failed: %s", exc)
+        result["text"] = json.dumps({"_raw": cleaned_text, "_parse_error": str(exc)})
+
+    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
     # Store in DB
     await execute_insert(
@@ -255,7 +265,7 @@ Return ONLY valid JSON (마크다운 펜스 없이):
     phase_status.tokens_in = result["tokens_in"]
     phase_status.tokens_out = result["tokens_out"]
     phase_status.cost_usd = cost
-    status.progress_pct = max(status.progress_pct, 25.0)
+    status.progress_pct = max(status.progress_pct, 20.0)
     status.total_cost_usd += cost
     status.total_tokens_in += result["tokens_in"]
     status.total_tokens_out += result["tokens_out"]
@@ -305,8 +315,17 @@ Return ONLY valid JSON (마크다운 펜스 없이):
 """
 
     result = await _call_gemini(prompt)
-    result["text"] = _clean_llm_json(result["text"])
-    cost = _calculate_cost(result["model"], result["tokens_in"], result["tokens_out"])
+    cleaned_text = _clean_llm_json(result["text"])
+
+    # Validate JSON before storing
+    try:
+        json.loads(cleaned_text)
+        result["text"] = cleaned_text
+    except json.JSONDecodeError as exc:
+        logger.warning("Phase 2 JSON validation failed: %s", exc)
+        result["text"] = json.dumps({"_raw": cleaned_text, "_parse_error": str(exc)})
+
+    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
     await execute_insert(
         """INSERT INTO analysis_results (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd)
@@ -321,7 +340,7 @@ Return ONLY valid JSON (마크다운 펜스 없이):
     phase_status.tokens_in = result["tokens_in"]
     phase_status.tokens_out = result["tokens_out"]
     phase_status.cost_usd = cost
-    status.progress_pct = max(status.progress_pct, 50.0)
+    status.progress_pct = max(status.progress_pct, 40.0)
     status.total_cost_usd += cost
     status.total_tokens_in += result["tokens_in"]
     status.total_tokens_out += result["tokens_out"]
@@ -345,10 +364,13 @@ async def _run_recipe(paper_id: int, text: str, status: AnalysisStatus) -> dict:
     text_lower = text.lower()
     # Try to find the start of the Methods/Experimental section
     methods_markers = [
-        "methods", "experimental", "materials and methods",
-        "experimental setup", "experimental procedure",
+        "methods", "methodology", "experimental", "materials and methods",
+        "experimental setup", "experimental procedure", "experimental details",
         "fabrication", "sample preparation", "measurement",
-        "실험", "방법", "재료 및 방법",
+        "simulation setup", "simulation method", "computational method",
+        "numerical method", "synthesis", "characterization",
+        "실험", "방법", "실험 방법", "실험 절차", "재료 및 방법",
+        "시뮬레이션", "합성", "측정",
     ]
     methods_start = -1
     for marker in methods_markers:
@@ -401,6 +423,34 @@ learning_rate, batch_size, epochs, training_time, regularization,
 dropout_rate, weight_initialization, training_data_size, test_data_split,
 loss_function, evaluation_metric, GPU_type, precision (fp16/fp32),
 augmentation_method, pretrained_model, fine_tuning_strategy"""
+            elif domain in ("materials", "crystal"):
+                domain_hint = """
+DOMAIN-SPECIFIC PARAMETERS (Materials Science) — extract ALL of these if mentioned:
+substrate_type, substrate_temperature (C/K), deposition_rate (nm/s, A/s), chamber_pressure (Pa/Torr),
+film_thickness (nm/um), annealing_temperature (C/K), annealing_duration (min/h), annealing_atmosphere,
+precursor_materials, target_composition, sputtering_power (W), RF_frequency (MHz),
+grain_size (nm/um), crystal_structure, lattice_parameter (A/nm), surface_roughness (nm),
+hardness (GPa), Young_modulus (GPa), thermal_conductivity (W/mK), electrical_resistivity (ohm*cm),
+XRD_peaks (2theta), FWHM, crystallinity (%), porosity (%)"""
+            elif domain in ("energy", "volt"):
+                domain_hint = """
+DOMAIN-SPECIFIC PARAMETERS (Energy) — extract ALL of these if mentioned:
+cell_efficiency (%), open_circuit_voltage (V), short_circuit_current (mA/cm2),
+fill_factor, bandgap (eV), absorber_thickness (nm/um), electrode_material,
+electrolyte_composition, charge_capacity (mAh/g), discharge_rate (C),
+cycle_number, capacity_retention (%), coulombic_efficiency (%),
+power_density (W/kg), energy_density (Wh/kg), internal_resistance (ohm),
+operating_temperature (C), illumination_intensity (mW/cm2, sun),
+active_area (cm2), HTL_material, ETL_material, perovskite_composition"""
+            elif domain in ("quantum", "qubit"):
+                domain_hint = """
+DOMAIN-SPECIFIC PARAMETERS (Quantum) — extract ALL of these if mentioned:
+qubit_type, coherence_time_T1 (us/ms), coherence_time_T2 (us/ms), gate_fidelity (%),
+readout_fidelity (%), operating_temperature (mK/K), coupling_strength (MHz/GHz),
+resonator_frequency (GHz), anharmonicity (MHz), quantum_volume,
+error_rate, circuit_depth, number_of_qubits, connectivity,
+magnetic_field (T/mT), microwave_frequency (GHz), microwave_power (dBm),
+Rabi_frequency (MHz), detuning (MHz), photon_number, squeezing_parameter (dB)"""
             else:
                 domain_hint = """
 Look for ALL quantitative parameters: temperatures, pressures, durations, concentrations,
@@ -457,8 +507,17 @@ Return ONLY valid JSON (마크다운 펜스 없이, 설명 없이):
         # Fallback to Gemini if Anthropic fails
         result = await _call_gemini(prompt)
 
-    result["text"] = _clean_llm_json(result["text"])
-    cost = _calculate_cost(result["model"], result["tokens_in"], result["tokens_out"])
+    cleaned_text = _clean_llm_json(result["text"])
+
+    # Validate JSON before storing
+    try:
+        json.loads(cleaned_text)
+        result["text"] = cleaned_text
+    except json.JSONDecodeError as exc:
+        logger.warning("Phase 3 JSON validation failed: %s", exc)
+        result["text"] = json.dumps({"_raw": cleaned_text, "_parse_error": str(exc)})
+
+    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
     await execute_insert(
         """INSERT INTO analysis_results (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd)
@@ -524,8 +583,17 @@ Return ONLY valid JSON (마크다운 펜스 없이):
     except Exception:
         result = await _call_gemini(prompt)
 
-    result["text"] = _clean_llm_json(result["text"])
-    cost = _calculate_cost(result["model"], result["tokens_in"], result["tokens_out"])
+    cleaned_text = _clean_llm_json(result["text"])
+
+    # Validate JSON before storing
+    try:
+        json.loads(cleaned_text)
+        result["text"] = cleaned_text
+    except json.JSONDecodeError as exc:
+        logger.warning("Phase 4 JSON validation failed: %s", exc)
+        result["text"] = json.dumps({"_raw": cleaned_text, "_parse_error": str(exc)})
+
+    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
     await execute_insert(
         """INSERT INTO analysis_results (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd)
@@ -619,7 +687,7 @@ Return ONLY valid JSON (마크다운 펜스 없이). 아래 구조를 정확히 
 """
 
     result = await _call_gemini(prompt, model="gemini-3-pro-preview")
-    cost = _calculate_cost(result["model"], result["tokens_in"], result["tokens_out"])
+    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
     status.total_cost_usd += cost
     status.total_tokens_in += result["tokens_in"]
@@ -886,7 +954,13 @@ async def _run_full_analysis(paper_id: int):
         phases=[],
         progress_pct=0.0,
     )
-    _running_analyses[paper_id] = status
+
+    async with _analyses_lock:
+        _running_analyses[paper_id] = status
+
+    # Create cancellation event
+    cancel_event = asyncio.Event()
+    _cancel_events[paper_id] = cancel_event
 
     try:
         # Mark paper as analyzing
@@ -915,22 +989,67 @@ async def _run_full_analysis(paper_id: int):
             full_text += page.get_text() + "\n"
         doc.close()
 
+        # Check for cancellation
+        if cancel_event.is_set():
+            status.overall_status = "cancelled"
+            await execute_update("UPDATE papers SET status = ? WHERE id = ?", ("cancelled", paper_id))
+            return
+
         # Phase 1 + 2: Run Screening and Visual in parallel (independent)
         r1, r2 = await asyncio.gather(
             _run_screening(paper_id, full_text, status),
             _run_visual(paper_id, full_text, folder_name, status),
         )
 
+        # Check for cancellation
+        if cancel_event.is_set():
+            status.overall_status = "cancelled"
+            await execute_update("UPDATE papers SET status = ? WHERE id = ?", ("cancelled", paper_id))
+            return
+
+        # Collect only successful results for downstream use
+        previous = []
+        if r1.get("text") and not _is_error_result(r1["text"]):
+            previous.append(r1["text"])
+        if r2.get("text") and not _is_error_result(r2["text"]):
+            previous.append(r2["text"])
+
         # Phase 3: Recipe Extraction (depends on text only)
         r3 = await _run_recipe(paper_id, full_text, status)
 
+        # Check for cancellation
+        if cancel_event.is_set():
+            status.overall_status = "cancelled"
+            await execute_update("UPDATE papers SET status = ? WHERE id = ?", ("cancelled", paper_id))
+            return
+
+        if r3.get("text") and not _is_error_result(r3["text"]):
+            previous.append(r3["text"])
+
         # Phase 4: Deep Dive (depends on all previous results)
-        previous = [r1["text"], r2["text"], r3["text"]]
         r4 = await _run_deep_dive(paper_id, full_text, previous, status)
+
+        # Check for cancellation
+        if cancel_event.is_set():
+            status.overall_status = "cancelled"
+            await execute_update("UPDATE papers SET status = ? WHERE id = ?", ("cancelled", paper_id))
+            return
+
+        if r4.get("text") and not _is_error_result(r4["text"]):
+            previous.append(r4["text"])
 
         # Phase 5: Visualization Planning & Generation (Gemini Pro 3)
         # Gemini Pro 3 decides up to 5 visualizations, each Mermaid or PaperBanana
-        all_results = [r1["text"], r2["text"], r3["text"], r4["text"]]
+        all_results = []
+        if r1.get("text") and not _is_error_result(r1["text"]):
+            all_results.append(r1["text"])
+        if r2.get("text") and not _is_error_result(r2["text"]):
+            all_results.append(r2["text"])
+        if r3.get("text") and not _is_error_result(r3["text"]):
+            all_results.append(r3["text"])
+        if r4.get("text") and not _is_error_result(r4["text"]):
+            all_results.append(r4["text"])
+
         try:
             await _run_visualizations(
                 paper_id, full_text, folder_name, all_results, status
@@ -941,6 +1060,12 @@ async def _run_full_analysis(paper_id: int):
             logging.getLogger(__name__).warning(
                 "Visualization generation failed for paper %d: %s", paper_id, viz_err
             )
+
+        # Check for cancellation one last time
+        if cancel_event.is_set():
+            status.overall_status = "cancelled"
+            await execute_update("UPDATE papers SET status = ? WHERE id = ?", ("cancelled", paper_id))
+            return
 
         # Mark paper as completed
         await execute_update(
@@ -971,8 +1096,17 @@ async def _run_full_analysis(paper_id: int):
         )
 
     finally:
-        # Keep status in memory for a while (will be cleaned up eventually)
-        pass
+        # Clean up cancellation event
+        _cancel_events.pop(paper_id, None)
+        # Schedule cleanup of stale analyses after 1 hour
+        async def _cleanup_stale():
+            await asyncio.sleep(3600)  # 1 hour
+            async with _analyses_lock:
+                if paper_id in _running_analyses:
+                    status = _running_analyses[paper_id]
+                    if status.overall_status != "running":
+                        del _running_analyses[paper_id]
+        asyncio.create_task(_cleanup_stale())
 
 
 # ---------------------------------------------------------------------------
@@ -989,23 +1123,52 @@ async def run_analysis(paper_id: int, background_tasks: BackgroundTasks):
     if paper is None:
         raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
 
-    # Check if already running
-    if paper_id in _running_analyses:
-        running = _running_analyses[paper_id]
-        if running.overall_status == "running":
-            raise HTTPException(
-                status_code=409,
-                detail=f"Analysis for paper {paper_id} is already running.",
-            )
+    async with _analyses_lock:
+        # Check if already running
+        if paper_id in _running_analyses:
+            running = _running_analyses[paper_id]
+            if running.overall_status == "running":
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Analysis for paper {paper_id} is already running.",
+                )
+
+        # Clear in-memory state from previous run
+        if paper_id in _running_analyses:
+            del _running_analyses[paper_id]
+
+    # Check budget before starting
+    from api.settings import _get_all_settings
+    settings = await _get_all_settings()
+    monthly_limit = float(settings.get("monthly_budget_limit", "50.0"))
+
+    # Calculate current month spending
+    current_month = datetime.utcnow().strftime("%Y-%m")
+    month_start = f"{current_month}-01"
+    month_num = int(current_month.split("-")[1])
+    year = int(current_month.split("-")[0])
+    if month_num == 12:
+        month_end = f"{year + 1}-01-01"
+    else:
+        month_end = f"{year}-{month_num + 1:02d}-01"
+
+    cost_rows = await fetch_all(
+        "SELECT cost_usd FROM analysis_results WHERE created_at >= ? AND created_at < ? AND phase != 'error'",
+        (month_start, month_end),
+    )
+    current_spending = sum(r.get("cost_usd") or 0.0 for r in cost_rows)
+
+    if current_spending >= monthly_limit:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Monthly budget limit exceeded (${current_spending:.2f} / ${monthly_limit:.2f}). "
+                   f"Increase your budget in Settings to continue.",
+        )
 
     # Clear previous results if re-running
     db = await get_db()
     await db.execute("DELETE FROM analysis_results WHERE paper_id = ?", (paper_id,))
     await db.commit()
-
-    # Clear in-memory state from previous run
-    if paper_id in _running_analyses:
-        del _running_analyses[paper_id]
 
     # Launch background analysis
     background_tasks.add_task(_run_full_analysis, paper_id)
@@ -1015,6 +1178,27 @@ async def run_analysis(paper_id: int, background_tasks: BackgroundTasks):
         "status": "started",
         "message": "Analysis pipeline started. Poll /status for progress.",
     }
+
+
+@router.post("/{paper_id}/cancel", status_code=200)
+async def cancel_analysis(paper_id: int):
+    """
+    Cancel a running analysis for a paper.
+    """
+    # Check if there's a cancel event for this paper
+    if paper_id in _cancel_events:
+        _cancel_events[paper_id].set()
+        return {"paper_id": paper_id, "status": "cancelling"}
+
+    # Check if the paper is running and update its status
+    if paper_id in _running_analyses:
+        running = _running_analyses[paper_id]
+        if running.overall_status == "running":
+            running.overall_status = "cancelled"
+            await execute_update("UPDATE papers SET status = ? WHERE id = ?", ("cancelled", paper_id))
+            return {"paper_id": paper_id, "status": "cancelled"}
+
+    raise HTTPException(status_code=404, detail=f"No running analysis for paper {paper_id}")
 
 
 @router.get("/{paper_id}/status", response_model=AnalysisStatus)
@@ -1864,7 +2048,7 @@ Be exhaustive. Do NOT summarize or abbreviate. Include every relevant numerical 
         except (json.JSONDecodeError, TypeError):
             pass  # Not valid JSON, use as-is
 
-    cost = _calculate_cost(result["model"], result["tokens_in"], result["tokens_out"])
+    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
     # Cache the explanation in the figures table
     await execute_update(

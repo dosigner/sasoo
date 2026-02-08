@@ -19,6 +19,8 @@ from typing import Any, Optional
 
 import anthropic
 
+from services.pricing import calc_cost
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -29,12 +31,6 @@ LIBRARY_ROOT = Path.home() / "sasoo-library"
 CONFIG_PATH = LIBRARY_ROOT / "config.json"
 
 MODEL_SONNET = "claude-sonnet-4-5-20250929"
-
-# Pricing (USD per 1M tokens) -- Claude Sonnet 4.5
-PRICING = {
-    "input": 3.00,
-    "output": 15.00,
-}
 
 MAX_TOKENS = 4096
 
@@ -111,11 +107,6 @@ def _load_api_key() -> str:
     return key
 
 
-def _calc_cost(input_tokens: int, output_tokens: int) -> float:
-    """Calculate cost in USD for a single call."""
-    cost = (input_tokens / 1_000_000) * PRICING["input"] + \
-           (output_tokens / 1_000_000) * PRICING["output"]
-    return round(cost, 8)
 
 
 def _extract_mermaid(text: str) -> str:
@@ -323,7 +314,7 @@ class ClaudeClient:
         # Extract usage
         input_tokens = message.usage.input_tokens
         output_tokens = message.usage.output_tokens
-        cost = _calc_cost(input_tokens, output_tokens)
+        cost = calc_cost(MODEL_SONNET, input_tokens, output_tokens)
 
         self.usage.add(UsageRecord(
             model=MODEL_SONNET,

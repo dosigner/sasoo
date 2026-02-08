@@ -35,6 +35,7 @@ from models.schemas import AnalysisPhase
 from services.viz.viz_router import VizRouter, VizRouterOutput
 from services.viz.mermaid_generator import MermaidGenerator, MermaidOutput
 from services.viz.paperbanana_bridge import PaperBananaBridge
+from services.pricing import calc_cost
 
 logger = logging.getLogger(__name__)
 
@@ -115,24 +116,6 @@ class AnalysisReport:
 # Progress callback type
 ProgressCallback = Callable[[str, float, str], Coroutine[Any, Any, None]]
 # Signature: async callback(phase_name: str, progress_pct: float, message: str)
-
-
-# ---------------------------------------------------------------------------
-# Cost Constants (per 1M tokens)
-# ---------------------------------------------------------------------------
-
-_COST_TABLE = {
-    "gemini-3-flash-preview": {"input": 0.50, "output": 3.00},
-    "gemini-3-pro-preview": {"input": 2.00, "output": 12.00},
-    "claude-sonnet-4-5-20250929": {"input": 3.00, "output": 15.00},
-}
-
-
-def _calc_cost(model: str, tokens_in: int, tokens_out: int) -> float:
-    """Calculate USD cost for a given model and token counts."""
-    rates = _COST_TABLE.get(model, {"input": 0.0, "output": 0.0})
-    cost = (tokens_in / 1_000_000) * rates["input"] + (tokens_out / 1_000_000) * rates["output"]
-    return round(cost, 6)
 
 
 # ---------------------------------------------------------------------------
@@ -342,18 +325,29 @@ class AnalysisPipeline:
             # Extract token usage
             usage = self._extract_usage(response, model)
 
-            phase_result.result = result_data
-            phase_result.usage = usage
-            phase_result.status = "completed"
-
-            # Check relevance and log
-            relevance = result_data.get("relevance_score", result_data.get("relevance", ""))
-            if isinstance(relevance, str) and relevance.lower() == "low":
-                logger.info(
-                    "Paper %d: Low relevance detected in screening. "
-                    "Continuing analysis (user can choose to skip).",
+            # Check for parse errors
+            if "raw_response" in result_data or "_parse_error" in result_data:
+                logger.warning(
+                    "Paper %d Phase 1: JSON parse error detected. Storing raw response for debugging.",
                     paper_id,
                 )
+                phase_result.status = "error"
+                phase_result.error_message = result_data.get("_parse_error", "JSON parsing failed")
+            else:
+                phase_result.status = "completed"
+
+            phase_result.result = result_data
+            phase_result.usage = usage
+
+            # Check relevance and log (only if parsing succeeded)
+            if phase_result.status == "completed":
+                relevance = result_data.get("relevance_score", result_data.get("relevance", ""))
+                if isinstance(relevance, str) and relevance.lower() == "low":
+                    logger.info(
+                        "Paper %d: Low relevance detected in screening. "
+                        "Continuing analysis (user can choose to skip).",
+                        paper_id,
+                    )
 
         except Exception as exc:
             logger.error("Phase 1 (Screening) failed for paper %d: %s", paper_id, exc)
@@ -441,12 +435,23 @@ class AnalysisPipeline:
             result_data = self._parse_json_response(response)
             usage = self._extract_usage(response, model)
 
+            # Check for parse errors
+            if "raw_response" in result_data or "_parse_error" in result_data:
+                logger.warning(
+                    "Paper %d Phase 2: JSON parse error detected. Storing raw response for debugging.",
+                    paper_id,
+                )
+                phase_result.status = "error"
+                phase_result.error_message = result_data.get("_parse_error", "JSON parsing failed")
+            else:
+                phase_result.status = "completed"
+
             phase_result.result = result_data
             phase_result.usage = usage
-            phase_result.status = "completed"
 
-            # Store figure analysis results to DB
-            await self._store_figure_analyses(paper_id, result_data, parsed_paper)
+            # Store figure analysis results to DB (only if parsing succeeded)
+            if phase_result.status == "completed":
+                await self._store_figure_analyses(paper_id, result_data, parsed_paper)
 
         except Exception as exc:
             logger.error("Phase 2 (Visual) failed for paper %d: %s", paper_id, exc)
@@ -516,9 +521,19 @@ class AnalysisPipeline:
             result_data = self._parse_json_response(response)
             usage = self._extract_usage(response, model)
 
+            # Check for parse errors
+            if "raw_response" in result_data or "_parse_error" in result_data:
+                logger.warning(
+                    "Paper %d Phase 3: JSON parse error detected. Storing raw response for debugging.",
+                    paper_id,
+                )
+                phase_result.status = "error"
+                phase_result.error_message = result_data.get("_parse_error", "JSON parsing failed")
+            else:
+                phase_result.status = "completed"
+
             phase_result.result = result_data
             phase_result.usage = usage
-            phase_result.status = "completed"
 
         except Exception as exc:
             logger.error("Phase 3 (Recipe) failed for paper %d: %s", paper_id, exc)
@@ -589,9 +604,19 @@ class AnalysisPipeline:
             result_data = self._parse_json_response(response)
             usage = self._extract_usage(response, model)
 
+            # Check for parse errors
+            if "raw_response" in result_data or "_parse_error" in result_data:
+                logger.warning(
+                    "Paper %d Phase 4: JSON parse error detected. Storing raw response for debugging.",
+                    paper_id,
+                )
+                phase_result.status = "error"
+                phase_result.error_message = result_data.get("_parse_error", "JSON parsing failed")
+            else:
+                phase_result.status = "completed"
+
             phase_result.result = result_data
             phase_result.usage = usage
-            phase_result.status = "completed"
 
         except Exception as exc:
             logger.error("Phase 4 (Deep Dive) failed for paper %d: %s", paper_id, exc)
@@ -849,9 +874,9 @@ class AnalysisPipeline:
 
         try:
             return json.loads(text)
-        except json.JSONDecodeError:
-            logger.warning("Failed to parse JSON response, returning raw text.")
-            return {"raw_response": text}
+        except json.JSONDecodeError as exc:
+            logger.warning("Failed to parse JSON response: %s", exc)
+            return {"raw_response": text, "_parse_error": str(exc)}
 
     def _extract_usage(self, response: Any, model: str) -> TokenUsage:
         """Extract token usage info from an LLM response object."""
@@ -869,7 +894,7 @@ class AnalysisPipeline:
             tokens_out = getattr(usage, "candidates_token_count", 0) or \
                           getattr(usage, "output_tokens", 0) or 0
 
-        cost = _calc_cost(model, tokens_in, tokens_out)
+        cost = calc_cost(model, tokens_in, tokens_out)
 
         return TokenUsage(
             tokens_in=tokens_in,

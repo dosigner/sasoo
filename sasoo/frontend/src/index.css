@@ -3,37 +3,37 @@
 @tailwind utilities;
 
 :root {
-  --color-bg-primary: #0f172a;
-  --color-bg-secondary: #1e293b;
-  --color-bg-tertiary: #334155;
-  --color-text-primary: #f1f5f9;
-  --color-text-secondary: #e2e8f0;
-  --color-text-muted: #94a3b8;
-  --color-accent: #6366f1;
-  --color-accent-hover: #818cf8;
-  --color-border: #334155;
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --color-error: #ef4444;
+  --color-bg-primary: #000000;
+  --color-bg-secondary: #1c1c1e;
+  --color-bg-tertiary: #3a3a3c;
+  --color-text-primary: #f5f5f7;
+  --color-text-secondary: #e8e8ed;
+  --color-text-muted: #8e8e93;
+  --color-accent: #0a84ff;
+  --color-accent-hover: #409cff;
+  --color-border: #3a3a3c;
+  --color-success: #30d158;
+  --color-warning: #ffd60a;
+  --color-error: #ff453a;
   --sidebar-width: 16rem;
   --sidebar-collapsed-width: 4rem;
   --header-height: 3rem;
-  --transition-speed: 200ms;
+  --transition-speed: 300ms;
 }
 
 .light {
-  --color-bg-primary: #ffffff;
-  --color-bg-secondary: #f8fafc;
-  --color-bg-tertiary: #e2e8f0;
-  --color-text-primary: #0f172a;
-  --color-text-secondary: #1e293b;
-  --color-text-muted: #64748b;
-  --color-accent: #4f46e5;
-  --color-accent-hover: #6366f1;
-  --color-border: #cbd5e1;
-  --color-success: #059669;
-  --color-warning: #d97706;
-  --color-error: #dc2626;
+  --color-bg-primary: #f5f5f7;
+  --color-bg-secondary: #ffffff;
+  --color-bg-tertiary: #e8e8ed;
+  --color-text-primary: #1d1d1f;
+  --color-text-secondary: #3a3a3c;
+  --color-text-muted: #86868b;
+  --color-accent: #007aff;
+  --color-accent-hover: #0071e3;
+  --color-border: #d1d1d6;
+  --color-success: #34c759;
+  --color-warning: #ff9f0a;
+  --color-error: #ff3b30;
 }
 
 @layer base {
@@ -45,12 +45,12 @@
 
   body {
     @apply bg-surface-900 text-surface-200;
-    transition: background-color var(--transition-speed), color var(--transition-speed);
+    transition: background-color var(--transition-speed) ease-out, color var(--transition-speed) ease-out;
   }
 
   .light body,
   .light {
-    @apply bg-white text-surface-800;
+    @apply bg-surface-50 text-surface-800;
   }
 
   /* Custom scrollbar for dark theme */
@@ -65,7 +65,7 @@
 
   ::-webkit-scrollbar-thumb {
     @apply bg-surface-600 rounded-full;
-    transition: background-color var(--transition-speed);
+    transition: background-color var(--transition-speed) ease-out;
   }
 
   ::-webkit-scrollbar-thumb:hover {
@@ -95,20 +95,20 @@
 @layer components {
   /* Reusable card component */
   .card {
-    @apply bg-surface-800 border border-surface-700 rounded-xl p-4;
+    @apply bg-surface-800 border border-surface-700/60 rounded-2xl p-4;
   }
 
   .light .card {
-    @apply bg-white border-surface-200 shadow-sm;
+    @apply bg-white border-surface-200/80 shadow-sm;
   }
 
   .card-hover {
-    @apply card transition-all duration-200 hover:border-primary-500/50 hover:shadow-lg hover:shadow-primary-500/5;
+    @apply card transition-all duration-300 ease-out hover:border-primary-500/40 hover:shadow-lg hover:shadow-primary-500/5;
   }
 
   /* Button variants */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface-900 disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all duration-300 ease-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface-900 disabled:opacity-50 disabled:pointer-events-none;
   }
 
   .light .btn {
@@ -116,15 +116,15 @@
   }
 
   .btn-primary {
-    @apply btn bg-primary-600 text-white hover:bg-primary-500 focus:ring-primary-500;
+    @apply btn bg-primary-600 text-white rounded-full hover:bg-primary-500 focus:ring-primary-500 font-semibold;
   }
 
   .btn-secondary {
-    @apply btn bg-surface-700 text-surface-200 hover:bg-surface-600 focus:ring-surface-500;
+    @apply btn bg-surface-700 text-surface-200 rounded-xl hover:bg-surface-600 focus:ring-surface-500 border border-surface-600/50;
   }
 
   .light .btn-secondary {
-    @apply bg-surface-100 text-surface-700 hover:bg-surface-200;
+    @apply bg-surface-100 text-surface-700 hover:bg-surface-200 border-surface-200;
   }
 
   .btn-ghost {
@@ -136,16 +136,16 @@
   }
 
   .btn-danger {
-    @apply btn bg-red-600 text-white hover:bg-red-500 focus:ring-red-500;
+    @apply btn bg-red-600 text-white hover:bg-red-500 focus:ring-red-500 rounded-full;
   }
 
   /* Input styles */
   .input {
-    @apply w-full rounded-lg border border-surface-600 bg-surface-800 px-3 py-2 text-sm text-surface-200 placeholder-surface-500 transition-colors focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500;
+    @apply w-full rounded-xl border border-surface-600/60 bg-surface-800 px-3 py-2 text-sm text-surface-200 placeholder-surface-500 transition-colors duration-300 ease-out focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500;
   }
 
   .light .input {
-    @apply border-surface-300 bg-white text-surface-800 placeholder-surface-400;
+    @apply border-surface-300/80 bg-white text-surface-800 placeholder-surface-400;
   }
 
   /* Badge */
@@ -203,7 +203,7 @@
 /* Utilities (unlayered to avoid @apply circular dependency with custom colors) */
   /* Glass morphism effect */
   .glass {
-    @apply bg-surface-800/80 backdrop-blur-md border border-surface-700/50;
+    @apply bg-surface-800/80 backdrop-blur-md border border-surface-700/40;
   }
 
   .light .glass {
@@ -233,7 +233,7 @@
   /* Split view resize handle */
   .resize-handle {
     width: 6px;
-    @apply cursor-col-resize bg-surface-700 transition-all duration-200 relative flex-shrink-0;
+    @apply cursor-col-resize bg-surface-700 transition-all duration-300 ease-out relative flex-shrink-0;
   }
 
   /* Expanded hit area for easier grabbing */
@@ -255,7 +255,7 @@
     background-size: 2px 7px;
     background-repeat: repeat-y;
     opacity: 0;
-    transition: opacity 0.2s ease;
+    transition: opacity 0.3s ease-out;
   }
 
   .resize-handle:hover::after,
@@ -268,27 +268,27 @@
   .resize-handle:hover {
     width: 8px;
     @apply bg-primary-500/70;
-    box-shadow: -2px 0 8px rgba(99, 102, 241, 0.1), 2px 0 8px rgba(99, 102, 241, 0.1);
+    box-shadow: -2px 0 8px rgba(10, 132, 255, 0.1), 2px 0 8px rgba(10, 132, 255, 0.1);
   }
 
   /* Active/dragging state */
   .resize-handle.active {
     width: 8px;
     @apply bg-primary-500;
-    box-shadow: -3px 0 12px rgba(99, 102, 241, 0.2), 3px 0 12px rgba(99, 102, 241, 0.2);
+    box-shadow: -3px 0 12px rgba(10, 132, 255, 0.2), 3px 0 12px rgba(10, 132, 255, 0.2);
   }
 
   /* Snap indicator */
   .resize-handle.snapping {
     @apply bg-primary-400;
-    box-shadow: -4px 0 16px rgba(99, 102, 241, 0.3), 4px 0 16px rgba(99, 102, 241, 0.3);
+    box-shadow: -4px 0 16px rgba(10, 132, 255, 0.3), 4px 0 16px rgba(10, 132, 255, 0.3);
   }
 
   /* Focus visible for keyboard users */
   .resize-handle:focus-visible {
     width: 8px;
     @apply bg-primary-500 outline-none;
-    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.5);
+    box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.5);
   }
 
   .light .resize-handle {
@@ -297,12 +297,12 @@
 
   .light .resize-handle:hover {
     @apply bg-primary-500/70;
-    box-shadow: -2px 0 8px rgba(79, 70, 229, 0.1), 2px 0 8px rgba(79, 70, 229, 0.1);
+    box-shadow: -2px 0 8px rgba(0, 113, 227, 0.1), 2px 0 8px rgba(0, 113, 227, 0.1);
   }
 
   .light .resize-handle.active {
     @apply bg-primary-500;
-    box-shadow: -3px 0 12px rgba(79, 70, 229, 0.15), 3px 0 12px rgba(79, 70, 229, 0.15);
+    box-shadow: -3px 0 12px rgba(0, 113, 227, 0.15), 3px 0 12px rgba(0, 113, 227, 0.15);
   }
 
   /* Fade in animation for progressive loading */
@@ -405,7 +405,7 @@
   /* Figure explanation panel */
   .figure-explanation-panel {
     scrollbar-width: thin;
-    scrollbar-color: rgba(100, 116, 139, 0.3) transparent;
+    scrollbar-color: rgba(99, 99, 102, 0.3) transparent;
   }
 
   .figure-explanation-panel::-webkit-scrollbar {
@@ -513,7 +513,7 @@
   }
 
   .light .figure-explanation-panel {
-    scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+    scrollbar-color: rgba(174, 174, 178, 0.3) transparent;
   }
 
   .light .figure-explanation-panel::-webkit-scrollbar-thumb {
@@ -578,7 +578,7 @@
 /* ── App Layout: Light theme ── */
 
 .light .flex.h-screen {
-  background-color: #ffffff;
+  background-color: #f5f5f7;
   color: theme('colors.surface.800');
 }
 
@@ -637,7 +637,7 @@
 /* ── Workbench: Light theme ── */
 
 .light main {
-  background-color: #ffffff;
+  background-color: #f5f5f7;
 }
 
 /* Workbench header bar */
@@ -648,7 +648,7 @@
 
 /* Pages & panels background overrides */
 .light [class*="bg-surface-900"] {
-  background-color: #ffffff;
+  background-color: #f5f5f7;
 }
 
 .light [class*="bg-surface-950"] {
