@@ -13,9 +13,13 @@
     "dev:electron:watch": "concurrently \"tsc -p electron/tsconfig.json --watch\" \"electron . --no-sandbox\"",
     "build:frontend": "cd frontend && pnpm build",
     "build:electron": "tsc -p electron/tsconfig.json",
+    "build:backend": "node scripts/build-backend.js",
     "build": "pnpm build:frontend && pnpm build:electron && electron-builder",
+    "build:win": "pnpm build:backend && pnpm build:frontend && pnpm build:electron && electron-builder --win",
+    "build:mac": "pnpm build:backend && pnpm build:frontend && pnpm build:electron && electron-builder --mac",
+    "build:linux": "pnpm build:backend && pnpm build:frontend && pnpm build:electron && electron-builder --linux",
     "start": "electron . --no-sandbox",
-    "clean": "rm -rf dist dist-electron frontend/dist",
+    "clean": "rm -rf dist dist-electron frontend/dist backend/dist backend/build",
     "postinstall": "cd frontend && pnpm install"
   },
   "dependencies": {
@@ -37,18 +41,14 @@
     },
     "files": [
       "dist-electron/**/*",
-      "frontend/dist/**/*",
-      "backend/**/*"
+      "frontend/dist/**/*"
     ],
     "extraResources": [
       {
-        "from": "backend",
-        "to": "backend",
+        "from": "backend/dist/sasoo-backend",
+        "to": "backend/sasoo-backend",
         "filter": [
-          "**/*.py",
-          "requirements.txt",
-          "**/*.json",
-          "**/*.yaml"
+          "**/*"
         ]
       }
     ],
@@ -57,7 +57,14 @@
       "target": ["dmg", "zip"]
     },
     "win": {
-      "target": ["nsis", "portable"]
+      "target": ["nsis"],
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     },
     "linux": {
       "target": ["AppImage", "deb"],

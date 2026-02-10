@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, protocol } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, protocol, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { PythonManager } from './python-manager';
@@ -347,9 +347,25 @@ app.on('before-quit', async () => {
   }
 });
 
-// Security: Prevent new window creation
+// Security: Handle external links and prevent unwanted window creation
 app.on('web-contents-created', (_event, contents) => {
-  contents.setWindowOpenHandler(() => {
+  // Handle window.open() - open external URLs in system browser
+  contents.setWindowOpenHandler(({ url }) => {
+    // Allow external URLs to open in system browser
+    if (url.startsWith('https://') || url.startsWith('http://')) {
+      shell.openExternal(url);
+    }
     return { action: 'deny' };
+  });
+
+  // Handle <a target="_blank"> clicks - open in system browser
+  contents.on('will-navigate', (event, url) => {
+    // Allow navigation within the app (file:// or localhost)
+    if (url.startsWith('file://') || url.includes('localhost')) {
+      return;
+    }
+    // Open external URLs in system browser
+    event.preventDefault();
+    shell.openExternal(url);
   });
 });

@@ -227,7 +227,10 @@ export class ApiError extends Error {
 // Base request helper
 // ---------------------------------------------------------------------------
 
-const API_BASE = '/api';
+// In Electron production (file:// protocol), use absolute URL
+// In development (http://), use relative URL (Vite proxy handles it)
+const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
+const API_BASE = isFileProtocol ? 'http://localhost:8000/api' : '/api';
 
 async function request<T>(
   endpoint: string,
@@ -462,6 +465,23 @@ export async function getCostSummary(): Promise<CostSummary> {
 
 export function getPdfUrl(paperId: string): string {
   return `${API_BASE}/papers/${paperId}/pdf`;
+}
+
+// ---------------------------------------------------------------------------
+// Static file URL helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Transform a relative static URL (e.g., /static/library/...) to an absolute URL
+ * when running in Electron production mode (file:// protocol).
+ */
+export function getStaticUrl(relativeUrl: string | null | undefined): string {
+  if (!relativeUrl) return '';
+  // In Electron production (file:// protocol), use absolute backend URL
+  if (isFileProtocol && relativeUrl.startsWith('/static/')) {
+    return `http://localhost:8000${relativeUrl}`;
+  }
+  return relativeUrl;
 }
 
 // ---------------------------------------------------------------------------

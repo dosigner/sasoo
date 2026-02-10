@@ -326,7 +326,7 @@ class SettingsModel(BaseModel):
     """Application settings."""
     gemini_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
-    library_path: str = "~/sasoo-library"
+    library_path: str = "./library"
     default_domain: DomainType = DomainType.OPTICS
     auto_analyze: bool = True
     language: str = "ko"           # ko | en

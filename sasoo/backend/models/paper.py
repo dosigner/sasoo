@@ -4,17 +4,88 @@ Data models for parsed papers and their components.
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+import json
+
+
+@dataclass
+class FigureReference:
+    """A reference to a figure in the paper text (e.g., 'As shown in Fig. 1A...')."""
+    text: str  # The sentence or context containing the reference
+    page_number: int  # Page where this reference appears
+    figure_label: str  # e.g., "1", "1A", "1B"
+
+
+@dataclass
+class SubCaption:
+    """Represents a sub-figure caption (e.g., (A), (B), (C))."""
+    label: str  # e.g., "A", "B", "C"
+    text: str   # Description for this sub-figure
+    references: list[FigureReference] = field(default_factory=list)  # In-text mentions
+
+
+@dataclass
+class StructuredCaption:
+    """Structured caption with title and sub-captions."""
+    title: str  # Main figure title (e.g., "Optical setup and measurements")
+    sub_captions: list[SubCaption] = field(default_factory=list)
+    references: list[FigureReference] = field(default_factory=list)  # All in-text mentions
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "title": self.title,
+            "sub_captions": [
+                {
+                    "label": sc.label,
+                    "text": sc.text,
+                    "references": [
+                        {"text": r.text, "page": r.page_number}
+                        for r in sc.references
+                    ]
+                }
+                for sc in self.sub_captions
+            ],
+            "references": [
+                {"text": r.text, "page": r.page_number, "label": r.figure_label}
+                for r in self.references
+            ]
+        }
+
+    def to_json(self) -> str:
+        """Convert to JSON string."""
+        return json.dumps(self.to_dict(), ensure_ascii=False)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "StructuredCaption":
+        """Create from dictionary."""
+        return cls(
+            title=data.get("title", ""),
+            sub_captions=[
+                SubCaption(label=sc["label"], text=sc["text"])
+                for sc in data.get("sub_captions", [])
+            ]
+        )
+
+    def get_full_text(self) -> str:
+        """Get full caption as plain text."""
+        parts = [self.title]
+        for sc in self.sub_captions:
+            parts.append(f"({sc.label}) {sc.text}")
+        return " ".join(parts)
 
 
 @dataclass
 class Figure:
     """Represents an extracted figure from a paper."""
-    figure_id: str  # e.g., "figure_1"
+    figure_id: str  # e.g., "figure_1" or "figure_1a" for sub-figures
     page_number: int
     bbox: tuple[float, float, float, float]  # (x0, y0, x1, y1)
     image_path: Path
-    caption: str = ""
+    caption: str = ""  # Raw caption text (backward compatible)
     caption_bbox: Optional[tuple[float, float, float, float]] = None
+    structured_caption: Optional[StructuredCaption] = None  # Parsed structured caption
+    parent_figure_id: Optional[str] = None  # For sub-figures, points to main figure
+    sub_label: Optional[str] = None  # e.g., "A", "B", "C" for sub-figures
 
 
 @dataclass

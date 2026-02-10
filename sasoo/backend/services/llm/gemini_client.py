@@ -7,7 +7,7 @@ Models:
   - gemini-3-pro-preview     : Phase 3 (Recipe) + Phase 4 (DeepDive)
   - gemini-3-pro-image-preview : PaperBanana image generation
 
-Config: ~/sasoo-library/config.json  ->  { "gemini_api_key": "..." }
+Config: <project>/library/config.json  ->  { "gemini_api_key": "..." }
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-LIBRARY_ROOT = Path.home() / "sasoo-library"
+from models.database import LIBRARY_ROOT
 CONFIG_PATH = LIBRARY_ROOT / "config.json"
 
 # Model identifiers
@@ -123,18 +123,52 @@ class UsageTracker:
 # ---------------------------------------------------------------------------
 
 def _load_api_key() -> str:
-    """Load Gemini API key from ~/sasoo-library/config.json."""
-    if not CONFIG_PATH.exists():
-        raise FileNotFoundError(
-            f"Config file not found: {CONFIG_PATH}. "
-            "Create it with: {\"gemini_api_key\": \"YOUR_KEY\"}"
-        )
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        config = json.load(f)
-    key = config.get("gemini_api_key", "")
-    if not key:
-        raise ValueError("gemini_api_key is empty in config.json")
-    return key
+    """
+    Load Gemini API key from multiple sources (priority order):
+    1. Environment variable GEMINI_API_KEY
+    2. SQLite database settings table
+    3. Legacy config.json file
+    """
+    import os
+    import sqlite3
+
+    # 1. Check environment variable first
+    env_key = os.environ.get("GEMINI_API_KEY", "")
+    if env_key:
+        return env_key
+
+    # 2. Check database settings
+    db_path = LIBRARY_ROOT / "sasoo.db"
+    if db_path.exists():
+        try:
+            conn = sqlite3.connect(str(db_path))
+            cursor = conn.execute(
+                "SELECT value FROM settings WHERE key = 'gemini_api_key'"
+            )
+            row = cursor.fetchone()
+            conn.close()
+            if row and row[0]:
+                return row[0]
+        except Exception as e:
+            logger.warning(f"Failed to load API key from database: {e}")
+
+    # 3. Fall back to config.json (legacy)
+    if CONFIG_PATH.exists():
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            key = config.get("gemini_api_key", "")
+            if key:
+                return key
+        except Exception as e:
+            logger.warning(f"Failed to load config.json: {e}")
+
+    raise ValueError(
+        "Gemini API key not found. Set it via:\n"
+        "  1. Environment variable GEMINI_API_KEY\n"
+        "  2. Settings page in the app\n"
+        "  3. config.json file in library folder"
+    )
 
 
 
@@ -915,6 +949,55 @@ class GeminiClient:
             response_mime_type=response_mime_type,
         )
         return response
+
+    # ------------------------------------------------------------------
+    # Image-based generation (for sub-figure detection etc.)
+    # ------------------------------------------------------------------
+
+    async def generate_with_image(
+        self,
+        prompt: str,
+        image_base64: str,
+        image_mime_type: str = "image/png",
+        model: str = MODEL_FLASH,
+        system_prompt: Optional[str] = None,
+        thinking_level: str = "minimal",
+        phase: str = "vision",
+    ) -> str:
+        """
+        Generate text response from image + prompt.
+
+        Args:
+            prompt: Text prompt describing what to analyze.
+            image_base64: Base64-encoded image data.
+            image_mime_type: MIME type of the image.
+            model: Model to use (default: Flash for speed).
+            system_prompt: Optional system instruction.
+            thinking_level: Thinking budget level.
+            phase: Phase name for usage tracking.
+
+        Returns:
+            Generated text response.
+        """
+        # Decode base64 to bytes
+        image_bytes = base64.b64decode(image_base64)
+
+        parts: list[types.Part] = [
+            types.Part.from_bytes(data=image_bytes, mime_type=image_mime_type),
+            types.Part.from_text(text=prompt),
+        ]
+
+        content = [types.Content(parts=parts, role="user")]
+
+        response = await self._call(
+            model=model,
+            contents=content,
+            system_instruction=system_prompt,
+            thinking_level=thinking_level,
+            phase=phase,
+        )
+
+        return self._response_text(response)
 
     # ------------------------------------------------------------------
     # Utility

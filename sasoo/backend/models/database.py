@@ -1,10 +1,16 @@
 """
 Sasoo - Database Layer
 Async SQLite database management using aiosqlite.
-DB location: ~/sasoo-library/sasoo.db
+
+DB location:
+  - Development: <project>/backend/library/sasoo.db
+  - Production:  %APPDATA%/Sasoo/library/sasoo.db (Windows)
+                 ~/Library/Application Support/Sasoo/library (macOS)
+                 ~/.local/share/Sasoo/library (Linux)
 """
 
 import os
+import sys
 import aiosqlite
 from pathlib import Path
 from typing import Optional
@@ -13,14 +19,36 @@ from typing import Optional
 # Configuration
 # ---------------------------------------------------------------------------
 
-LIBRARY_ROOT = Path.home() / "sasoo-library"
-DB_PATH = LIBRARY_ROOT / "sasoo.db"
 
-# Sub-directories created alongside the DB
-FIGURES_DIR = LIBRARY_ROOT / "figures"
-PAPERS_DIR = LIBRARY_ROOT / "papers"
-EXPORTS_DIR = LIBRARY_ROOT / "exports"
-PAPERBANANA_DIR = LIBRARY_ROOT / "paperbanana"
+def _is_bundled() -> bool:
+    """Check if running as a PyInstaller bundle."""
+    return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
+
+
+def _get_library_root() -> Path:
+    """
+    Determine the library root directory based on environment.
+
+    - Development: backend/library/ (relative to source)
+    - Production: User's app data directory
+    """
+    if _is_bundled():
+        # Production: Use platform-specific app data directory
+        if sys.platform == 'win32':
+            base = Path(os.environ.get('APPDATA', Path.home() / 'AppData' / 'Roaming'))
+        elif sys.platform == 'darwin':
+            base = Path.home() / 'Library' / 'Application Support'
+        else:
+            base = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local' / 'share'))
+
+        return base / 'Sasoo' / 'library'
+    else:
+        # Development: Use local library folder
+        return Path(__file__).resolve().parent.parent / "library"
+
+
+LIBRARY_ROOT = _get_library_root()
+DB_PATH = LIBRARY_ROOT / "sasoo.db"
 
 # ---------------------------------------------------------------------------
 # SQL Schema
@@ -106,8 +134,7 @@ async def init_db() -> None:
     global _db_connection
 
     # Ensure directories exist
-    for directory in (LIBRARY_ROOT, FIGURES_DIR, PAPERS_DIR, EXPORTS_DIR, PAPERBANANA_DIR):
-        directory.mkdir(parents=True, exist_ok=True)
+    LIBRARY_ROOT.mkdir(parents=True, exist_ok=True)
 
     _db_connection = await aiosqlite.connect(str(DB_PATH))
     _db_connection.row_factory = aiosqlite.Row
@@ -187,18 +214,18 @@ async def execute_update(query: str, params: tuple = ()) -> int:
 
 def get_paper_dir(folder_name: str) -> Path:
     """Return the absolute path to a paper's folder inside the library."""
-    return PAPERS_DIR / folder_name
+    return LIBRARY_ROOT / folder_name
 
 
 def get_figures_dir(folder_name: str) -> Path:
     """Return the absolute path to a paper's figures directory."""
-    d = FIGURES_DIR / folder_name
+    d = LIBRARY_ROOT / folder_name / "figures"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
 def get_paperbanana_dir(folder_name: str) -> Path:
     """Return the absolute path for PaperBanana output."""
-    d = PAPERBANANA_DIR / folder_name
+    d = LIBRARY_ROOT / folder_name / "paperbanana"
     d.mkdir(parents=True, exist_ok=True)
     return d

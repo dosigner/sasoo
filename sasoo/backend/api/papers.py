@@ -18,7 +18,6 @@ from fastapi.responses import FileResponse
 from services.pdf_cache import warm_cache
 
 from models.database import (
-    PAPERS_DIR,
     execute_insert,
     execute_update,
     fetch_all,
@@ -244,7 +243,7 @@ def match_captions_to_figures(
     """
     Match extracted images to figure captions by page proximity.
 
-    figures: list with 'figure_num' keys like 'p2_img1'
+    figures: list with 'figure_num' keys like 'p2_fig1' or 'p2_img1'
     captions: from extract_figure_captions
 
     Returns {figure_num: "Fig. N. caption text"}
@@ -261,11 +260,11 @@ def match_captions_to_figures(
     assigned_caps: set[int] = set()
 
     for fig in figures:
-        fn = fig["figure_num"]  # e.g., "p2_img1"
-        m = re.match(r'p(\d+)_img(\d+)', fn)
+        fn = fig["figure_num"]  # e.g., "p2_fig1" or legacy "p2_img1"
+        m = re.match(r'p(\d+)_(?:fig|img)(\d+)', fn)
         if not m:
             continue
-        page_0indexed = int(m.group(1)) - 1  # figure_num is 1-indexed
+        page_0indexed = int(m.group(1)) - 1  # page number is 1-indexed
 
         # Look on same page, then ±1 page
         for offset in [0, 1, -1]:
@@ -282,47 +281,107 @@ def match_captions_to_figures(
     return result
 
 
+def _group_image_rects(rects: list[fitz.Rect], margin: float = 20) -> list[list[fitz.Rect]]:
+    """
+    Group image rectangles that overlap or are close together (same figure).
+    Uses union-find to cluster spatially adjacent images.
+    """
+    n = len(rects)
+    if n == 0:
+        return []
+    if n == 1:
+        return [rects]
+
+    parent = list(range(n))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a: int, b: int) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    # Expand each rect by margin and check overlaps
+    for i in range(n):
+        expanded = fitz.Rect(
+            rects[i].x0 - margin, rects[i].y0 - margin,
+            rects[i].x1 + margin, rects[i].y1 + margin,
+        )
+        for j in range(i + 1, n):
+            if expanded.intersects(rects[j]):
+                union(i, j)
+
+    # Group by root
+    groups: dict[int, list[fitz.Rect]] = {}
+    for i in range(n):
+        root = find(i)
+        groups.setdefault(root, []).append(rects[i])
+
+    return list(groups.values())
+
+
 def extract_figures_from_pdf(pdf_path: str, output_dir: str) -> list[dict]:
     """
-    Extract images/figures from a PDF and save them to output_dir.
-    Returns list of figure metadata dicts.
+    Extract whole figures from a PDF by detecting image regions on each page
+    and rendering them as page clips.  Nearby images (e.g. sub-panels a, b, c)
+    are grouped together so each logical figure is saved as one image.
     """
     doc = fitz.open(pdf_path)
     figures: list[dict] = []
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
+    RENDER_DPI = 200
+    MIN_IMAGE_DIM = 50   # Skip tiny images (icons, bullets)
+    GROUP_MARGIN = 20     # Points: distance to merge sub-panels
+    CLIP_PADDING = 8      # Points: padding around the rendered region
+
     for page_num in range(len(doc)):
         page = doc[page_num]
-        image_list = page.get_images(full=True)
+        page_rect = page.rect
 
-        for img_idx, img_info in enumerate(image_list):
-            xref = img_info[0]
-            try:
-                base_image = doc.extract_image(xref)
-            except Exception:
+        # Collect bounding boxes of all images on this page
+        image_rects: list[fitz.Rect] = []
+        for img_info in page.get_image_info():
+            bbox = fitz.Rect(img_info["bbox"])
+            if bbox.width < MIN_IMAGE_DIM or bbox.height < MIN_IMAGE_DIM:
                 continue
+            image_rects.append(bbox)
 
-            if base_image is None:
-                continue
+        if not image_rects:
+            continue
 
-            image_bytes = base_image.get("image")
-            image_ext = base_image.get("ext", "png")
-            width = base_image.get("width", 0)
-            height = base_image.get("height", 0)
+        # Group nearby images into logical figures
+        groups = _group_image_rects(image_rects, margin=GROUP_MARGIN)
 
-            if not image_bytes or width < 50 or height < 50:
-                # Skip tiny images (icons, bullets, etc.)
-                continue
+        for group_idx, group_rects in enumerate(groups):
+            # Compute bounding rect of the group (union of all sub-rects)
+            union_rect = group_rects[0]
+            for r in group_rects[1:]:
+                union_rect = union_rect | r
 
-            fig_num = f"p{page_num + 1}_img{img_idx + 1}"
-            fig_filename = f"{fig_num}.{image_ext}"
+            # Add padding, clamped to page bounds
+            clip_rect = fitz.Rect(
+                max(union_rect.x0 - CLIP_PADDING, page_rect.x0),
+                max(union_rect.y0 - CLIP_PADDING, page_rect.y0),
+                min(union_rect.x1 + CLIP_PADDING, page_rect.x1),
+                min(union_rect.y1 + CLIP_PADDING, page_rect.y1),
+            )
+
+            # Render this region as a high-resolution PNG
+            mat = fitz.Matrix(RENDER_DPI / 72, RENDER_DPI / 72)
+            pix = page.get_pixmap(matrix=mat, clip=clip_rect, alpha=False)
+
+            fig_num = f"p{page_num + 1}_fig{group_idx + 1}"
+            fig_filename = f"{fig_num}.png"
             fig_path = output_path / fig_filename
+            pix.save(str(fig_path))
 
-            with open(fig_path, "wb") as f:
-                f.write(image_bytes)
-
-            # Determine quality heuristic
+            width, height = pix.width, pix.height
             quality = "high"
             if width < 200 or height < 200:
                 quality = "low"
@@ -331,7 +390,7 @@ def extract_figures_from_pdf(pdf_path: str, output_dir: str) -> list[dict]:
 
             figures.append({
                 "figure_num": fig_num,
-                "caption": None,  # Captions require LLM or heuristic parsing
+                "caption": None,
                 "file_path": str(fig_path),
                 "quality": quality,
             })
@@ -357,24 +416,42 @@ async def upload_paper(file: UploadFile = File(...)):
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are accepted.")
 
-    # Generate unique folder name
-    folder_name = f"{uuid.uuid4().hex[:12]}_{_sanitize_filename(file.filename)}"
+    # Save PDF to temp location first, extract metadata, then generate folder name
+    content = await file.read()
+
+    # Use a temporary directory for initial PDF processing
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_pdf = Path(tmp_dir) / file.filename
+        with open(tmp_pdf, "wb") as f:
+            f.write(content)
+
+        # Extract metadata
+        try:
+            metadata = extract_pdf_metadata(str(tmp_pdf))
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"Failed to parse PDF: {str(e)}")
+
+    # Generate folder name via Gemini Flash (fallback to UUID)
+    try:
+        from services.naming_service import generate_folder_name
+        folder_name = await generate_folder_name(
+            title=metadata["title"],
+            year=metadata.get("year"),
+            journal=metadata.get("journal"),
+            domain=metadata.get("domain"),
+            abstract=metadata.get("first_pages_text", "")[:500],
+        )
+    except Exception:
+        folder_name = f"{uuid.uuid4().hex[:12]}_{_sanitize_filename(file.filename)}"
+
     paper_dir = get_paper_dir(folder_name)
     paper_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save the uploaded PDF
+    # Save PDF to final location
     pdf_path = paper_dir / file.filename
-    content = await file.read()
     with open(pdf_path, "wb") as f:
         f.write(content)
-
-    # Extract metadata
-    try:
-        metadata = extract_pdf_metadata(str(pdf_path))
-    except Exception as e:
-        # Clean up on failure
-        shutil.rmtree(paper_dir, ignore_errors=True)
-        raise HTTPException(status_code=422, detail=f"Failed to parse PDF: {str(e)}")
 
     # Pre-cache full text for later analysis phases
     warm_cache(paper_dir)
@@ -395,6 +472,25 @@ async def upload_paper(file: UploadFile = File(...)):
                 fig["caption"] = caption_map[fig["figure_num"]]
     except Exception:
         pass  # Caption extraction is best-effort
+
+    # Generate descriptive figure filenames via Gemini Flash
+    try:
+        from services.naming_service import generate_figure_names
+        captions_for_naming = [
+            {"figure_num": fig["figure_num"], "caption": fig.get("caption", ""), "page": fig["figure_num"]}
+            for fig in figures
+        ]
+        if captions_for_naming:
+            new_names = await generate_figure_names(captions_for_naming)
+            for fig, new_name in zip(figures, new_names):
+                old_path = Path(fig["file_path"])
+                if old_path.exists():
+                    new_path = old_path.parent / f"{new_name}{old_path.suffix}"
+                    if not new_path.exists():
+                        old_path.rename(new_path)
+                        fig["file_path"] = str(new_path)
+    except Exception:
+        pass  # Figure renaming is best-effort
 
     # Insert paper into DB
     paper_id = await execute_insert(
@@ -617,14 +713,10 @@ async def delete_paper(paper_id: int):
     await db.execute("DELETE FROM papers WHERE id = ?", (paper_id,))
     await db.commit()
 
-    # Remove files from disk
+    # Remove files from disk (figures are now inside paper_dir)
     paper_dir = get_paper_dir(folder_name)
     if paper_dir.exists():
         shutil.rmtree(paper_dir, ignore_errors=True)
-
-    figures_dir = get_figures_dir(folder_name)
-    if figures_dir.exists():
-        shutil.rmtree(figures_dir, ignore_errors=True)
 
     return None
 

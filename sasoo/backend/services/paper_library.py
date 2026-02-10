@@ -20,7 +20,6 @@ from models.database import (
     fetch_one,
     get_db,
     get_paper_dir,
-    PAPERS_DIR,
 )
 
 logger = logging.getLogger(__name__)

@@ -218,10 +218,10 @@ export default function Settings() {
               <p className="text-2xs text-surface-600 mt-1">
                 Used for Gemini Flash and Gemini Pro models. Get a key at{' '}
                 <a
-                  href="https://aistudio.google.com/app/apikey"
+                  href="https://aistudio.google.com/api-keys"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-primary-400 hover:text-primary-300"
+                  className="text-primary-400 hover:text-primary-300 underline underline-offset-2"
                 >
                   Google AI Studio
                 </a>
@@ -257,10 +257,10 @@ export default function Settings() {
               <p className="text-2xs text-surface-600 mt-1">
                 Used for Claude Sonnet for advanced analysis. Get a key at{' '}
                 <a
-                  href="https://console.anthropic.com/"
+                  href="https://platform.claude.com/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-primary-400 hover:text-primary-300"
+                  className="text-primary-400 hover:text-primary-300 underline underline-offset-2"
                 >
                   Anthropic Console
                 </a>
@@ -307,13 +307,16 @@ export default function Settings() {
               </div>
               <button
                 onClick={() => setAutoAnalyze(!autoAnalyze)}
-                className={`relative w-10 h-5 rounded-full transition-colors ${
-                  autoAnalyze ? 'bg-primary-600' : 'bg-surface-600'
+                className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
+                  autoAnalyze ? 'bg-primary-500' : 'bg-surface-600'
                 }`}
+                type="button"
+                role="switch"
+                aria-checked={autoAnalyze}
               >
                 <span
-                  className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                    autoAnalyze ? 'translate-x-5' : 'translate-x-0.5'
+                  className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                    autoAnalyze ? 'translate-x-5' : 'translate-x-0'
                   }`}
                 />
               </button>

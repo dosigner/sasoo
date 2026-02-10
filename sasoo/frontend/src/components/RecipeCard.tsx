@@ -315,10 +315,10 @@ export default function RecipeCard({
             {criticalNotes.map((note, index) => (
               <div
                 key={index}
-                className="flex items-start gap-2 bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2"
+                className="flex items-start gap-2 bg-amber-500/5 [.light_&]:bg-amber-500/10 border border-amber-500/20 [.light_&]:border-amber-600/30 rounded-lg px-3 py-2"
               >
-                <AlertTriangle className="w-3 h-3 text-amber-400 mt-0.5 shrink-0" />
-                <p className="text-2xs text-amber-300/80 leading-relaxed">
+                <AlertTriangle className="w-3 h-3 text-amber-400 [.light_&]:text-amber-600 mt-0.5 shrink-0" />
+                <p className="text-2xs text-amber-300/80 [.light_&]:text-amber-700 leading-relaxed">
                   {note}
                 </p>
               </div>
@@ -329,12 +329,12 @@ export default function RecipeCard({
 
       {/* Missing Info */}
       {missingInfo.length > 0 && (
-        <div className="card p-3 mb-3 border-red-500/20 bg-red-500/5">
-          <h4 className="text-xs font-semibold text-red-300 mb-1.5">Missing Information</h4>
+        <div className="card p-3 mb-3 border-red-500/20 [.light_&]:border-red-600/30 bg-red-500/5 [.light_&]:bg-red-500/10">
+          <h4 className="text-xs font-semibold text-red-300 [.light_&]:text-red-700 mb-1.5">Missing Information</h4>
           <ul className="space-y-1">
             {missingInfo.map((info, index) => (
-              <li key={index} className="text-2xs text-red-300/70 flex items-start gap-1.5">
-                <span className="text-red-400 mt-0.5">?</span>
+              <li key={index} className="text-2xs text-red-300/70 [.light_&]:text-red-600 flex items-start gap-1.5">
+                <span className="text-red-400 [.light_&]:text-red-600 mt-0.5">?</span>
                 {info}
               </li>
             ))}

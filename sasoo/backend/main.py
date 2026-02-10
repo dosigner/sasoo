@@ -15,10 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from models.database import (
-    FIGURES_DIR,
     LIBRARY_ROOT,
-    PAPERBANANA_DIR,
-    PAPERS_DIR,
     close_db,
     init_db,
 )
@@ -76,6 +73,7 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://127.0.0.1:8080",
     "app://.",                  # Electron origin
+    "null",                     # file:// protocol (Electron production)
 ]
 
 app.add_middleware(
@@ -87,27 +85,15 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
-# Static file mounts (figures, PaperBanana images, uploaded PDFs)
+# Static file mount (unified library directory)
 # ---------------------------------------------------------------------------
 
-# Ensure directories exist before mounting
-for d in (FIGURES_DIR, PAPERBANANA_DIR, PAPERS_DIR):
-    d.mkdir(parents=True, exist_ok=True)
+LIBRARY_ROOT.mkdir(parents=True, exist_ok=True)
 
 app.mount(
-    "/static/figures",
-    StaticFiles(directory=str(FIGURES_DIR)),
-    name="figures",
-)
-app.mount(
-    "/static/paperbanana",
-    StaticFiles(directory=str(PAPERBANANA_DIR)),
-    name="paperbanana",
-)
-app.mount(
-    "/static/papers",
-    StaticFiles(directory=str(PAPERS_DIR)),
-    name="papers",
+    "/static/library",
+    StaticFiles(directory=str(LIBRARY_ROOT)),
+    name="library",
 )
 
 # ---------------------------------------------------------------------------
@@ -143,16 +129,39 @@ async def health_check():
 
 
 # ---------------------------------------------------------------------------
-# Run directly with: python main.py
+# Run directly with: python main.py [--host HOST] [--port PORT]
+# Production usage: sasoo-backend.exe --host 127.0.0.1 --port 8000
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    import argparse
+    import sys
     import uvicorn
 
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        reload_dirs=[str(Path(__file__).resolve().parent)],
-    )
+    parser = argparse.ArgumentParser(description="Sasoo Backend Server")
+    parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
+    parser.add_argument("--reload", action="store_true", help="Enable auto-reload (dev only)")
+
+    args = parser.parse_args()
+
+    # Determine if we're running as a bundled executable
+    is_bundled = getattr(sys, 'frozen', False)
+
+    # In bundled mode, run the app object directly (no reload)
+    # In development, allow reload
+    if is_bundled:
+        uvicorn.run(
+            app,
+            host=args.host,
+            port=args.port,
+            log_level="info",
+        )
+    else:
+        uvicorn.run(
+            "main:app",
+            host=args.host,
+            port=args.port,
+            reload=args.reload,
+            reload_dirs=[str(Path(__file__).resolve().parent)] if args.reload else None,
+        )

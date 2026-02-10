@@ -20,6 +20,7 @@ export class PythonManager {
   private isShuttingDown: boolean = false;
   private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
   private startupResolver: ((value: boolean) => void) | null = null;
+  private usesBundledBackend: boolean = false;
 
   constructor(config: PythonManagerConfig) {
     this.config = {
@@ -30,6 +31,29 @@ export class PythonManager {
       startupTimeoutMs: 30000,
       ...config,
     };
+  }
+
+  /**
+   * Check if a bundled backend executable exists.
+   * Returns the path to sasoo-backend.exe if found, null otherwise.
+   */
+  private getBundledBackendPath(): string | null {
+    // In production, the bundled backend is in resources/backend/sasoo-backend/
+    const possiblePaths = [
+      // Windows production path
+      path.join(this.config.backendPath, 'sasoo-backend', 'sasoo-backend.exe'),
+      // macOS/Linux production path
+      path.join(this.config.backendPath, 'sasoo-backend', 'sasoo-backend'),
+    ];
+
+    for (const exePath of possiblePaths) {
+      if (fs.existsSync(exePath)) {
+        console.log(`[PythonManager] Found bundled backend at: ${exePath}`);
+        return exePath;
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -63,7 +87,8 @@ export class PythonManager {
   }
 
   /**
-   * Start the FastAPI backend server using uvicorn.
+   * Start the FastAPI backend server.
+   * Uses bundled sasoo-backend.exe in production, uvicorn in development.
    */
   async start(): Promise<void> {
     if (this.process) {
@@ -72,34 +97,62 @@ export class PythonManager {
     }
 
     this.isShuttingDown = false;
-    const pythonPath = this.resolvePythonPath();
 
-    console.log(`[PythonManager] Starting FastAPI server on port ${this.config.port}`);
-    console.log(`[PythonManager] Python: ${pythonPath}`);
-    console.log(`[PythonManager] Backend path: ${this.config.backendPath}`);
+    // Check for bundled backend first (production mode)
+    const bundledBackend = this.getBundledBackendPath();
 
-    const args = [
-      '-m', 'uvicorn',
-      'main:app',
-      '--host', '127.0.0.1',
-      '--port', String(this.config.port),
-      '--log-level', this.config.isDev ? 'debug' : 'info',
-    ];
+    if (bundledBackend && !this.config.isDev) {
+      // Production: Use bundled executable
+      this.usesBundledBackend = true;
+      console.log(`[PythonManager] Starting bundled backend on port ${this.config.port}`);
+      console.log(`[PythonManager] Executable: ${bundledBackend}`);
 
-    if (this.config.isDev) {
-      args.push('--reload');
+      const args = [
+        '--host', '127.0.0.1',
+        '--port', String(this.config.port),
+      ];
+
+      this.process = spawn(bundledBackend, args, {
+        cwd: path.dirname(bundledBackend),
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          SASOO_PORT: String(this.config.port),
+          SASOO_ENV: 'production',
+        },
+      });
+    } else {
+      // Development: Use Python + uvicorn
+      this.usesBundledBackend = false;
+      const pythonPath = this.resolvePythonPath();
+
+      console.log(`[PythonManager] Starting FastAPI server on port ${this.config.port}`);
+      console.log(`[PythonManager] Python: ${pythonPath}`);
+      console.log(`[PythonManager] Backend path: ${this.config.backendPath}`);
+
+      const args = [
+        '-m', 'uvicorn',
+        'main:app',
+        '--host', '127.0.0.1',
+        '--port', String(this.config.port),
+        '--log-level', this.config.isDev ? 'debug' : 'info',
+      ];
+
+      if (this.config.isDev) {
+        args.push('--reload');
+      }
+
+      this.process = spawn(pythonPath, args, {
+        cwd: this.config.backendPath,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          PYTHONUNBUFFERED: '1',
+          SASOO_PORT: String(this.config.port),
+          SASOO_ENV: this.config.isDev ? 'development' : 'production',
+        },
+      });
     }
-
-    this.process = spawn(pythonPath, args, {
-      cwd: this.config.backendPath,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        PYTHONUNBUFFERED: '1',
-        SASOO_PORT: String(this.config.port),
-        SASOO_ENV: this.config.isDev ? 'development' : 'production',
-      },
-    });
 
     // Log stdout
     this.process.stdout?.on('data', (data: Buffer) => {

@@ -23,6 +23,7 @@
     "remark-gfm": "^4.0.0"
   },
   "devDependencies": {
+    "@types/node": "^25.2.2",
     "@types/react": "^18.2.52",
     "@types/react-dom": "^18.2.18",
     "@vitejs/plugin-react": "^4.2.1",

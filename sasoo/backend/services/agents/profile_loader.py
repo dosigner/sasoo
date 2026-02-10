@@ -7,12 +7,16 @@ Agent profiles allow customization of:
   - Recipe parameters (domain-specific extraction fields)
   - Phase prompts (optional overrides for screening/visual/recipe/deepdive)
 
-Profile Location: ~/sasoo-library/agent_profiles/{agent_name}_default.yaml
+Profile Location:
+  - Development: <project>/backend/library/agent_profiles/{agent_name}_default.yaml
+  - Production (bundled defaults): sys._MEIPASS/agent_profiles/
+  - Production (user overrides): %APPDATA%/Sasoo/library/agent_profiles/
 """
 
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from typing import Any, Optional
 
@@ -25,9 +29,27 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
+def _is_bundled() -> bool:
+    """Check if running as a PyInstaller bundle."""
+    return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
+
+
+def _get_bundled_profiles_directory() -> Path:
+    """Get the bundled agent profiles directory (read-only defaults)."""
+    if _is_bundled():
+        return Path(sys._MEIPASS) / "agent_profiles"
+    return Path(__file__).resolve().parent.parent.parent / "library" / "agent_profiles"
+
+
 def get_profiles_directory() -> Path:
-    """Get the agent profiles directory path."""
-    return Path.home() / "sasoo-library" / "agent_profiles"
+    """
+    Get the agent profiles directory path.
+
+    In production, this returns the user-writable directory for custom profiles.
+    Bundled defaults are in a separate location (sys._MEIPASS).
+    """
+    from models.database import LIBRARY_ROOT
+    return LIBRARY_ROOT / "agent_profiles"
 
 
 # ---------------------------------------------------------------------------
@@ -89,17 +111,35 @@ def load_profile(agent_name: str) -> Optional[AgentProfile]:
     """
     Load an agent profile from YAML file.
 
+    Search order:
+      1. User profiles directory (allows user customization)
+      2. Bundled defaults (read-only, shipped with app)
+
     Args:
         agent_name: Agent identifier (e.g., "photon", "cell", "neural")
 
     Returns:
         AgentProfile if file exists, None otherwise
     """
-    profiles_dir = get_profiles_directory()
-    yaml_path = profiles_dir / f"{agent_name}_default.yaml"
+    filename = f"{agent_name}_default.yaml"
 
-    if not yaml_path.exists():
-        logger.info(f"No profile found for agent '{agent_name}' at {yaml_path}")
+    # Search paths: user directory first, then bundled defaults
+    search_paths = [
+        get_profiles_directory() / filename,
+    ]
+
+    # Add bundled path if running as PyInstaller bundle
+    if _is_bundled():
+        search_paths.append(_get_bundled_profiles_directory() / filename)
+
+    yaml_path = None
+    for path in search_paths:
+        if path.exists():
+            yaml_path = path
+            break
+
+    if yaml_path is None:
+        logger.info(f"No profile found for agent '{agent_name}' in search paths")
         return None
 
     try:
@@ -160,27 +200,47 @@ def list_profiles() -> list[str]:
     """
     List all available agent profile names.
 
+    Combines profiles from:
+      1. User profiles directory
+      2. Bundled defaults (if running as PyInstaller bundle)
+
     Returns:
         List of agent names (without _default.yaml suffix)
     """
-    profiles_dir = get_profiles_directory()
+    profiles = set()
 
-    if not profiles_dir.exists():
-        return []
+    # Check user profiles directory
+    user_profiles_dir = get_profiles_directory()
+    if user_profiles_dir.exists():
+        for yaml_file in user_profiles_dir.glob("*_default.yaml"):
+            agent_name = yaml_file.stem.replace("_default", "")
+            profiles.add(agent_name)
 
-    profiles = []
-    for yaml_file in profiles_dir.glob("*_default.yaml"):
-        agent_name = yaml_file.stem.replace("_default", "")
-        profiles.append(agent_name)
+    # Check bundled profiles directory
+    if _is_bundled():
+        bundled_dir = _get_bundled_profiles_directory()
+        if bundled_dir.exists():
+            for yaml_file in bundled_dir.glob("*_default.yaml"):
+                agent_name = yaml_file.stem.replace("_default", "")
+                profiles.add(agent_name)
 
     return sorted(profiles)
 
 
 def profile_exists(agent_name: str) -> bool:
-    """Check if a profile exists for the given agent."""
-    profiles_dir = get_profiles_directory()
-    yaml_path = profiles_dir / f"{agent_name}_default.yaml"
-    return yaml_path.exists()
+    """Check if a profile exists for the given agent (user or bundled)."""
+    filename = f"{agent_name}_default.yaml"
+
+    # Check user profiles
+    if (get_profiles_directory() / filename).exists():
+        return True
+
+    # Check bundled profiles
+    if _is_bundled():
+        if (_get_bundled_profiles_directory() / filename).exists():
+            return True
+
+    return False
 
 
 # ---------------------------------------------------------------------------

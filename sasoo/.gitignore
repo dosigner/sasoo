@@ -6,10 +6,17 @@ dist/
 dist-electron/
 *.tsbuildinfo
 
-# Environment variables
+# Environment variables (NEVER commit API keys!)
 .env
 .env.local
 .env.*.local
+*.env
+
+# User data and API keys storage (contains sensitive data)
+backend/library/
+**/sasoo.db
+**/sasoo.db-wal
+**/sasoo.db-shm
 
 # Python
 __pycache__/

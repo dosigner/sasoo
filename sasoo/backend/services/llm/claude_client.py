@@ -5,7 +5,7 @@ Wraps Anthropic SDK for Mermaid diagram generation.
 Model: claude-sonnet-4-5-20250929
 Purpose: Convert visualization JSON specs into Mermaid diagram code.
 
-Config: ~/sasoo-library/config.json  ->  { "anthropic_api_key": "..." }
+Config: <project>/library/config.json  ->  { "anthropic_api_key": "..." }
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-LIBRARY_ROOT = Path.home() / "sasoo-library"
+from models.database import LIBRARY_ROOT
 CONFIG_PATH = LIBRARY_ROOT / "config.json"
 
 MODEL_SONNET = "claude-sonnet-4-5-20250929"
@@ -93,7 +93,7 @@ class UsageTracker:
 # ---------------------------------------------------------------------------
 
 def _load_api_key() -> str:
-    """Load Anthropic API key from ~/sasoo-library/config.json."""
+    """Load Anthropic API key from library/config.json."""
     if not CONFIG_PATH.exists():
         raise FileNotFoundError(
             f"Config file not found: {CONFIG_PATH}. "

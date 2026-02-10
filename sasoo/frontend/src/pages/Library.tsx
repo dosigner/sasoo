@@ -12,7 +12,6 @@ import {
   Trash2,
   Clock,
   Tag,
-  X,
   Loader2,
   AlertCircle,
   BookOpen,
@@ -64,11 +63,10 @@ function statusBadge(status: PaperStatus): {
 interface PaperCardProps {
   paper: Paper;
   onOpen: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string, title: string) => void;
 }
 
 function PaperCard({ paper, onOpen, onDelete }: PaperCardProps) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const badge = statusBadge(paper.status);
 
   return (
@@ -126,40 +124,17 @@ function PaperCard({ paper, onOpen, onDelete }: PaperCardProps) {
         </div>
 
         {/* Delete */}
-        {confirmDelete ? (
-          <div
-            className="flex items-center gap-1"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => {
-                onDelete(String(paper.id));
-                setConfirmDelete(false);
-              }}
-              className="text-2xs text-red-400 hover:text-red-300 px-2 py-0.5 rounded bg-red-500/10"
-            >
-              Confirm
-            </button>
-            <button
-              onClick={() => setConfirmDelete(false)}
-              className="text-2xs text-surface-500 hover:text-surface-300 px-1"
-            >
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setConfirmDelete(true);
-            }}
-            className="p-1 rounded opacity-0 group-hover:opacity-100 text-surface-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
-            title="Delete paper"
-            aria-label="삭제"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        )}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(String(paper.id), paper.title);
+          }}
+          className="p-1 rounded opacity-0 group-hover:opacity-100 text-surface-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+          title="Delete paper and all associated files"
+          aria-label="삭제"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
       </div>
     </div>
   );
@@ -170,7 +145,6 @@ function PaperCard({ paper, onOpen, onDelete }: PaperCardProps) {
 // ---------------------------------------------------------------------------
 
 function PaperRow({ paper, onOpen, onDelete }: PaperCardProps) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const badge = statusBadge(paper.status);
 
   return (
@@ -212,34 +186,14 @@ function PaperRow({ paper, onOpen, onDelete }: PaperCardProps) {
 
       {/* Delete */}
       <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
-        {confirmDelete ? (
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => {
-                onDelete(String(paper.id));
-                setConfirmDelete(false);
-              }}
-              className="text-2xs text-red-400 hover:text-red-300 px-2 py-0.5 rounded bg-red-500/10"
-            >
-              Delete
-            </button>
-            <button
-              onClick={() => setConfirmDelete(false)}
-              className="text-2xs text-surface-500 hover:text-surface-300 px-1"
-              aria-label="취소"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setConfirmDelete(true)}
-            className="p-1.5 rounded opacity-0 group-hover:opacity-100 text-surface-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
-            aria-label="삭제"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        )}
+        <button
+          onClick={() => onDelete(String(paper.id), paper.title)}
+          className="p-1.5 rounded opacity-0 group-hover:opacity-100 text-surface-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+          title="Delete paper and all associated files"
+          aria-label="삭제"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
       </div>
     </div>
   );
@@ -253,6 +207,16 @@ export default function Library() {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [showFilters, setShowFilters] = useState(false);
+  const [deleteModal, setDeleteModal] = useState<{
+    show: boolean;
+    paperId: string | null;
+    paperTitle: string;
+  }>({
+    show: false,
+    paperId: null,
+    paperTitle: '',
+  });
+  const [deleting, setDeleting] = useState(false);
 
   const {
     papers,
@@ -276,15 +240,33 @@ export default function Library() {
   );
 
   const handleDeletePaper = useCallback(
-    async (id: string) => {
-      try {
-        await deletePaper(id);
-      } catch {
-        // Error handled in hook
-      }
+    async (id: string, title: string) => {
+      setDeleteModal({
+        show: true,
+        paperId: id,
+        paperTitle: title,
+      });
     },
-    [deletePaper]
+    []
   );
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteModal.paperId) return;
+
+    setDeleting(true);
+    try {
+      await deletePaper(deleteModal.paperId);
+      setDeleteModal({ show: false, paperId: null, paperTitle: '' });
+    } catch {
+      // Error handled in hook
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleteModal.paperId, deletePaper]);
+
+  const cancelDelete = useCallback(() => {
+    setDeleteModal({ show: false, paperId: null, paperTitle: '' });
+  }, []);
 
   const clearFilters = useCallback(() => {
     setFilters({
@@ -608,6 +590,86 @@ export default function Library() {
             >
               <ChevronRight className="w-4 h-4" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModal.show && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in"
+          onClick={cancelDelete}
+        >
+          <div
+            className="bg-surface-800 [.light_&]:bg-white border border-surface-700 [.light_&]:border-surface-200 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-start gap-3 mb-4">
+              <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/20">
+                <AlertCircle className="w-5 h-5 text-red-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-semibold text-surface-100 [.light_&]:text-surface-900 mb-1">
+                  Delete Paper?
+                </h3>
+                <p className="text-sm text-surface-400 [.light_&]:text-surface-600">
+                  This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="mb-6 space-y-3">
+              <div className="bg-surface-700/30 [.light_&]:bg-surface-100 border border-surface-700/50 [.light_&]:border-surface-200 rounded-lg p-3">
+                <p className="text-sm text-surface-300 [.light_&]:text-surface-700 font-medium mb-1">
+                  {deleteModal.paperTitle}
+                </p>
+                <p className="text-2xs text-surface-500 [.light_&]:text-surface-600">
+                  Paper ID: {deleteModal.paperId}
+                </p>
+              </div>
+
+              <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3">
+                <p className="text-xs text-red-400 [.light_&]:text-red-600 leading-relaxed">
+                  <strong>The following will be permanently deleted:</strong>
+                  <br />
+                  • PDF file and all extracted figures
+                  <br />
+                  • Analysis results and metadata
+                  <br />
+                  • Associated folder in library directory
+                </p>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 justify-end">
+              <button
+                onClick={cancelDelete}
+                disabled={deleting}
+                className="btn-ghost text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="btn-danger text-sm"
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete Permanently
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

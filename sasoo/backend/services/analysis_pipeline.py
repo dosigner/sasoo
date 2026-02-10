@@ -28,7 +28,6 @@ from models.database import (
     execute_update,
     fetch_all,
     get_paper_dir,
-    PAPERS_DIR,
 )
 from models.schemas import AnalysisPhase
 

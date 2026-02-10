@@ -28,7 +28,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 DEFAULT_SETTINGS: dict[str, str] = {
     "gemini_api_key": "",
     "anthropic_api_key": "",
-    "library_path": str(Path.home() / "sasoo-library"),
+    "library_path": str(Path(__file__).resolve().parent.parent / "library"),
     "default_domain": "optics",
     "auto_analyze": "true",
     "language": "ko",
@@ -103,7 +103,7 @@ async def get_settings():
     return SettingsModel(
         gemini_api_key=_mask_api_key(raw.get("gemini_api_key", "")),
         anthropic_api_key=_mask_api_key(raw.get("anthropic_api_key", "")),
-        library_path=raw.get("library_path", str(Path.home() / "sasoo-library")),
+        library_path=raw.get("library_path", str(Path(__file__).resolve().parent.parent / "library")),
         default_domain=raw.get("default_domain", "optics"),
         auto_analyze=raw.get("auto_analyze", "true").lower() == "true",
         language=raw.get("language", "ko"),

@@ -13,16 +13,17 @@ import {
   Circle,
   AlertCircle,
 } from 'lucide-react';
-import type {
-  AnalysisResults,
-  AnalysisStatus,
-  FigureListResponse,
-  Recipe,
-  MermaidDiagram,
-  VisualizationPlan,
-  VisualizationItem,
-  PhaseStatusValue,
-  AnalysisPhase,
+import {
+  getStaticUrl,
+  type AnalysisResults,
+  type AnalysisStatus,
+  type FigureListResponse,
+  type Recipe,
+  type MermaidDiagram,
+  type VisualizationPlan,
+  type VisualizationItem,
+  type PhaseStatusValue,
+  type AnalysisPhase,
 } from '@/lib/api';
 import FigureGallery from './FigureGallery';
 import RecipeCard from './RecipeCard';
@@ -544,7 +545,7 @@ function PaperBananaViewer({ item }: { item: VisualizationItem }) {
   return (
     <div className="overflow-hidden rounded-lg border border-surface-700">
       <img
-        src={item.image_url}
+        src={getStaticUrl(item.image_url)}
         alt={item.title}
         className="w-full h-auto object-contain bg-surface-800"
         loading="lazy"

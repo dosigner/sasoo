@@ -53,10 +53,16 @@ function qualityBadge(quality: string | null): {
 /** Build a URL for a figure's image from its file_path */
 function getFigureImageUrl(figure: Figure): string {
   if (!figure.file_path) return '';
-  const figuresIdx = figure.file_path.indexOf('/figures/');
-  if (figuresIdx >= 0) {
-    const relative = figure.file_path.substring(figuresIdx + '/figures/'.length);
-    return `/static/figures/${relative}`;
+  // Normalize backslashes to forward slashes (Windows paths)
+  const normalized = figure.file_path.replace(/\\/g, '/');
+  // Extract path relative to library root: {folder}/figures/{filename}
+  const libraryIdx = normalized.indexOf('/library/');
+  if (libraryIdx >= 0) {
+    const relative = normalized.substring(libraryIdx + '/library/'.length);
+    // In Electron production (file:// protocol), use absolute backend URL
+    const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
+    const baseUrl = isFileProtocol ? 'http://localhost:8000' : '';
+    return `${baseUrl}/static/library/${encodeURI(relative)}`;
   }
   return figure.file_path;
 }
