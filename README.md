@@ -30,7 +30,7 @@ PDF 던져주면 4단계로 쪼개서 분석하고, 레시피 카드까지 뽑�
 
 <br/>
 
-<img src="docs/assets/procedure.png" alt="Sasoo 4-Phase Pipeline" width="600" />
+<img src="sasoo/docs/assets/procedure.png" alt="Sasoo 4-Phase Pipeline" width="600" />
 
 </div>
 
@@ -86,7 +86,7 @@ Sasoo(사수)는 이 문제를 해결하기 위해 만들어졌다.
 <tr>
 <td align="center" width="220">
 <br/>
-<img src="docs/assets/photon.png" alt="Agent Photon" width="140" />
+<img src="sasoo/docs/assets/photon.png" alt="Agent Photon" width="140" />
 <h4>Photon 선배</h4>
 <sub>광학 · 레이저 · FSO</sub><br/><br/>
 <b>직설적 🔥</b><br/><br/>
@@ -95,7 +95,7 @@ Sasoo(사수)는 이 문제를 해결하기 위해 만들어졌다.
 </td>
 <td align="center" width="220">
 <br/>
-<img src="docs/assets/bio.png" alt="Agent Cell" width="140" />
+<img src="sasoo/docs/assets/bio.png" alt="Agent Cell" width="140" />
 <h4>Cell 선배</h4>
 <sub>바이오 · 분자생물학</sub><br/><br/>
 <b>꼼꼼함 🔬</b><br/><br/>
@@ -104,7 +104,7 @@ Sasoo(사수)는 이 문제를 해결하기 위해 만들어졌다.
 </td>
 <td align="center" width="220">
 <br/>
-<img src="docs/assets/neural.png" alt="Agent Neural" width="140" />
+<img src="sasoo/docs/assets/neural.png" alt="Agent Neural" width="140" />
 <h4>Neural 선배</h4>
 <sub>딥러닝 · NLP · CV</sub><br/><br/>
 <b>분석적 🧠</b><br/><br/>
@@ -113,8 +113,8 @@ Sasoo(사수)는 이 문제를 해결하기 위해 만들어졌다.
 </td>
 <td align="center" width="220">
 <br/>
-<img src="docs/assets/circuit.png" alt="Agent Circuit" width="140" />
-<h4>Circuit 선배 🚧</h4>
+<img src="sasoo/docs/assets/circuit.png" alt="Agent Circuit" width="140" />
+<h4>Circuit 선배</h4>
 <sub>회로 · 반도체 · 신호처리</sub><br/><br/>
 <b>체계적 ⚡</b><br/><br/>
 <em>"이 회로 시뮬레이션<br/>조건이 좀 빠져있어"</em>
@@ -224,7 +224,7 @@ flowchart LR
 <tr>
 <td align="center">🧑‍🔬</td>
 <td><b>도메인 에이전트</b></td>
-<td>분야별 전문 선배가 맞춤 분석 (Photon, Cell, Neural, Circuit🚧)</td>
+<td>분야별 전문 선배가 맞춤 분석 (Photon, Cell, Neural, Circuit)</td>
 </tr>
 <tr>
 <td align="center">🧠</td>
@@ -298,6 +298,7 @@ graph TB
             Photon["🔴 Photon<br/>광학"]
             Cell["🟢 Cell<br/>바이오"]
             Neural["🟣 Neural<br/>AI/ML"]
+            Circuit["🟡 Circuit<br/>전자공학"]
         end
 
         subgraph LLM["LLM Clients"]
@@ -474,7 +475,7 @@ Write-Host "Done! Run: pnpm dev"
 <br/>
 
 <div align="center">
-<img src="docs/assets/procedure.png" alt="4-Phase Analysis Pipeline" width="720" />
+<img src="sasoo/docs/assets/procedure.png" alt="4-Phase Analysis Pipeline" width="720" />
 </div>
 
 <br/>
@@ -631,7 +632,7 @@ Introduction과 Results & Discussion을 깊이 분석:
 <td><code>learning_rate</code> <code>batch_size</code> <code>num_epochs</code> <code>model_architecture</code></td>
 </tr>
 <tr>
-<td align="center">🟡 <b>Circuit</b> 🚧</td>
+<td align="center">🟡 <b>Circuit</b></td>
 <td>회로 설계, 반도체, 신호처리</td>
 <td align="center">체계적 ⚡</td>
 <td><code>supply_voltage</code> <code>frequency</code> <code>gain</code> <code>impedance</code></td>
@@ -789,7 +790,8 @@ sasoo/
 │       │   ├── profile_loader.py   # 에이전트 프로필 로더
 │       │   ├── agent_photon.py     # 🔴 광학 전문
 │       │   ├── agent_cell.py       # 🟢 바이오 전문
-│       │   └── agent_neural.py     # 🟣 AI/ML 전문
+│       │   ├── agent_neural.py     # 🟣 AI/ML 전문
+│       │   └── agent_circuit.py   # 🟡 전자공학 전문
 │       ├── llm/
 │       │   ├── gemini_client.py    # Gemini API 래퍼
 │       │   └── claude_client.py    # Claude API 래퍼
@@ -944,7 +946,7 @@ sasoo/
 - [x] 비용 대시보드
 - [x] 다크/라이트 테마
 - [x] 에이전트 캐릭터 일러스트 + UI 통합
-- [ ] Agent Circuit (전자공학)
+- [x] Agent Circuit (전자공학)
 - [ ] 논문 간 비교 분석
 - [ ] Zotero 연동
 - [ ] 논문 추천 시스템
