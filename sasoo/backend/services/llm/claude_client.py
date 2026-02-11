@@ -27,8 +27,7 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-from models.database import LIBRARY_ROOT
-CONFIG_PATH = LIBRARY_ROOT / "config.json"
+from models.database import CONFIG_PATH
 
 MODEL_SONNET = "claude-sonnet-4-5-20250929"
 

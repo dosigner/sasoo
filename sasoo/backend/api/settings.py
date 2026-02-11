@@ -54,12 +54,6 @@ async def _ensure_defaults() -> None:
                 "INSERT INTO settings (key, value) VALUES (?, ?)",
                 (key, value),
             )
-    # Always sync library_path with current LIBRARY_ROOT
-    # (handles migration between machines or dev→production)
-    await db.execute(
-        "UPDATE settings SET value = ? WHERE key = 'library_path'",
-        (str(LIBRARY_ROOT),),
-    )
     await db.commit()
 
 

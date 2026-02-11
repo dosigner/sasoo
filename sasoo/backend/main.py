@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from models.database import (
+    APP_DATA_ROOT,
     LIBRARY_ROOT,
     close_db,
     init_db,
@@ -35,7 +36,8 @@ async def lifespan(app: FastAPI):
     """Application lifespan: initialize resources on startup, clean up on shutdown."""
     # --- Startup ---
     await init_db()
-    print(f"[Sasoo] Database initialized at {LIBRARY_ROOT / 'sasoo.db'}")
+    print(f"[Sasoo] App data root: {APP_DATA_ROOT}")
+    print(f"[Sasoo] Database: {APP_DATA_ROOT / 'sasoo.db'}")
     print(f"[Sasoo] Library root: {LIBRARY_ROOT}")
 
     # Load API keys from database into environment variables
@@ -47,12 +49,16 @@ async def lifespan(app: FastAPI):
             if v:
                 if k == "gemini_api_key":
                     os.environ.setdefault("GEMINI_API_KEY", v)
-                    os.environ.setdefault("GOOGLE_API_KEY", v)  # PaperBanana uses this
                 elif k == "anthropic_api_key":
                     os.environ.setdefault("ANTHROPIC_API_KEY", v)
         print("[Sasoo] API keys loaded from database into environment.")
     except Exception as exc:
         print(f"[Sasoo] Warning: Could not load API keys from DB: {exc}")
+
+    # Always sync GOOGLE_API_KEY with GEMINI_API_KEY (PaperBanana uses this)
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    if gemini_key:
+        os.environ["GOOGLE_API_KEY"] = gemini_key
 
     yield
 
@@ -104,6 +110,7 @@ app.add_middleware(
 # Static file mount (unified library directory)
 # ---------------------------------------------------------------------------
 
+APP_DATA_ROOT.mkdir(parents=True, exist_ok=True)
 LIBRARY_ROOT.mkdir(parents=True, exist_ok=True)
 
 app.mount(
@@ -142,6 +149,15 @@ async def root():
 @app.get("/health", tags=["health"])
 async def health_check():
     return {"status": "ok"}
+
+
+@app.post("/shutdown", tags=["health"])
+async def shutdown():
+    """Graceful shutdown endpoint (called by Electron on app quit)."""
+    import signal
+
+    os.kill(os.getpid(), signal.SIGINT)
+    return {"status": "shutting_down"}
 
 
 # ---------------------------------------------------------------------------

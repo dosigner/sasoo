@@ -2,11 +2,14 @@
 Sasoo - Database Layer
 Async SQLite database management using aiosqlite.
 
-DB location:
-  - Development: <project>/backend/library/sasoo.db
-  - Production:  %APPDATA%/Sasoo/library/sasoo.db (Windows)
-                 ~/Library/Application Support/Sasoo/library (macOS)
-                 ~/.local/share/Sasoo/library (Linux)
+Paths:
+  App data (DB, config, agent_profiles):
+    - Development: <project>/backend/library/
+    - Production:  %APPDATA%/Sasoo/ (Windows)
+
+  Paper library (user-configurable):
+    - Development: <project>/backend/library/
+    - Production:  %APPDATA%/Sasoo/library/ (default, changeable in Settings)
 """
 
 import os
@@ -31,30 +34,63 @@ def _is_bundled() -> bool:
     return False
 
 
-def _get_library_root() -> Path:
+def _get_app_data_root() -> Path:
     """
-    Determine the library root directory based on environment.
+    App-internal data directory (DB, config, agent_profiles).
+    Fixed path — users should not modify this directly.
 
-    - Development: backend/library/ (relative to source)
-    - Production: User's app data directory
+    - Development: backend/library/ (same as library root)
+    - Production:  %APPDATA%/Sasoo/ (Windows)
+                   ~/Library/Application Support/Sasoo/ (macOS)
+                   ~/.local/share/Sasoo/ (Linux)
     """
     if _is_bundled():
-        # Production: Use platform-specific app data directory
         if sys.platform == 'win32':
             base = Path(os.environ.get('APPDATA', Path.home() / 'AppData' / 'Roaming'))
         elif sys.platform == 'darwin':
             base = Path.home() / 'Library' / 'Application Support'
         else:
             base = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local' / 'share'))
+        return base / 'Sasoo'
+    else:
+        return Path(__file__).resolve().parent.parent / "library"
 
-        return base / 'Sasoo' / 'library'
+
+def _get_library_root() -> Path:
+    """
+    Determine the paper library root directory.
+
+    - Development: backend/library/ (relative to source)
+    - Production:  User-configured path (read from DB settings),
+                   or %APPDATA%/Sasoo/library/ by default.
+    """
+    if _is_bundled():
+        default = _get_app_data_root() / "library"
+        # Check DB for user-configured library path
+        db_path = _get_app_data_root() / "sasoo.db"
+        if db_path.exists():
+            try:
+                import sqlite3
+                conn = sqlite3.connect(str(db_path))
+                cursor = conn.execute(
+                    "SELECT value FROM settings WHERE key = 'library_path'"
+                )
+                row = cursor.fetchone()
+                conn.close()
+                if row and row[0]:
+                    return Path(row[0])
+            except Exception:
+                pass
+        return default
     else:
         # Development: Use local library folder
         return Path(__file__).resolve().parent.parent / "library"
 
 
+APP_DATA_ROOT = _get_app_data_root()
 LIBRARY_ROOT = _get_library_root()
-DB_PATH = LIBRARY_ROOT / "sasoo.db"
+DB_PATH = APP_DATA_ROOT / "sasoo.db"
+CONFIG_PATH = APP_DATA_ROOT / "config.json"
 
 # ---------------------------------------------------------------------------
 # SQL Schema
@@ -140,6 +176,7 @@ async def init_db() -> None:
     global _db_connection
 
     # Ensure directories exist
+    APP_DATA_ROOT.mkdir(parents=True, exist_ok=True)
     LIBRARY_ROOT.mkdir(parents=True, exist_ok=True)
 
     _db_connection = await aiosqlite.connect(str(DB_PATH))

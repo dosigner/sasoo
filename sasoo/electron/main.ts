@@ -1,10 +1,10 @@
-import { app, BrowserWindow, ipcMain, dialog, protocol, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { PythonManager } from './python-manager';
+import { BACKEND_PORT, FRONTEND_DEV_URL } from './config';
 
 const isDev = !app.isPackaged;
-const VITE_DEV_SERVER_URL = 'http://localhost:5173';
 
 let mainWindow: BrowserWindow | null = null;
 let pythonManager: PythonManager | null = null;
@@ -47,7 +47,7 @@ async function createWindow(): Promise<void> {
   });
 
   if (isDev) {
-    await mainWindow.loadURL(VITE_DEV_SERVER_URL);
+    await mainWindow.loadURL(FRONTEND_DEV_URL);
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
     const indexPath = path.join(__dirname, '..', 'frontend', 'dist', 'index.html');
@@ -105,6 +105,26 @@ function registerIpcHandlers(): void {
     return { canceled: false, filePaths: result.filePaths, files };
   });
 
+  // File dialog: Open directory (for library path selection)
+  ipcMain.handle('dialog:openDirectory', async (_event, options?: {
+    title?: string;
+    defaultPath?: string;
+  }) => {
+    if (!mainWindow) return { canceled: true, directoryPath: undefined };
+
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: options?.title ?? 'Select Folder',
+      defaultPath: options?.defaultPath,
+      properties: ['openDirectory', 'createDirectory'],
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true, directoryPath: undefined };
+    }
+
+    return { canceled: false, directoryPath: result.filePaths[0] };
+  });
+
   // File dialog: Save file
   ipcMain.handle('dialog:saveFile', async (_event, options?: {
     title?: string;
@@ -157,125 +177,6 @@ function registerIpcHandlers(): void {
     }
   });
 
-  // Get analysis status from backend
-  ipcMain.handle('analysis:getStatus', async (_event, analysisId: string) => {
-    try {
-      const response = await fetch(`http://localhost:8000/api/analysis/${analysisId}/status`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
-    }
-  });
-
-  // Run analysis via backend
-  ipcMain.handle('analysis:run', async (_event, payload: {
-    paperId: string;
-    analysisType: string;
-    options?: Record<string, unknown>;
-  }) => {
-    try {
-      const response = await fetch('http://localhost:8000/api/analysis/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
-    }
-  });
-
-  // Get papers list from backend
-  ipcMain.handle('papers:getAll', async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/papers');
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
-    }
-  });
-
-  // Get single paper
-  ipcMain.handle('papers:get', async (_event, paperId: string) => {
-    try {
-      const response = await fetch(`http://localhost:8000/api/papers/${paperId}`);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
-    }
-  });
-
-  // Upload paper (PDF) to backend
-  ipcMain.handle('papers:upload', async (_event, filePath: string) => {
-    try {
-      const fileBuffer = await fs.promises.readFile(filePath);
-      const fileName = path.basename(filePath);
-
-      const formData = new FormData();
-      formData.append('file', new Blob([fileBuffer], { type: 'application/pdf' }), fileName);
-
-      const response = await fetch('http://localhost:8000/api/papers/upload', {
-        method: 'POST',
-        body: formData,
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
-    }
-  });
-
-  // Delete paper
-  ipcMain.handle('papers:delete', async (_event, paperId: string) => {
-    try {
-      const response = await fetch(`http://localhost:8000/api/papers/${paperId}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
-    }
-  });
-
-  // Get settings
-  ipcMain.handle('settings:get', async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/settings');
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
-    }
-  });
-
-  // Update settings
-  ipcMain.handle('settings:update', async (_event, settings: Record<string, unknown>) => {
-    try {
-      const response = await fetch('http://localhost:8000/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return await response.json();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
-    }
-  });
-
   // Backend health check
   ipcMain.handle('backend:health', async () => {
     if (!pythonManager) return { healthy: false, error: 'Python manager not initialized' };
@@ -310,7 +211,7 @@ async function initialize(): Promise<void> {
   // Start Python backend
   pythonManager = new PythonManager({
     backendPath: getBackendPath(),
-    port: 8000,
+    port: BACKEND_PORT,
     isDev,
   });
 

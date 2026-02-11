@@ -48,8 +48,8 @@ def get_profiles_directory() -> Path:
     In production, this returns the user-writable directory for custom profiles.
     Bundled defaults are in a separate location (sys._MEIPASS).
     """
-    from models.database import LIBRARY_ROOT
-    return LIBRARY_ROOT / "agent_profiles"
+    from models.database import APP_DATA_ROOT
+    return APP_DATA_ROOT / "agent_profiles"
 
 
 # ---------------------------------------------------------------------------

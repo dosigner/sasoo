@@ -2,8 +2,6 @@
 
 <br/>
 
-<img src="docs/assets/logo.png" alt="Sasoo Logo" width="120" />
-
 # Sasoo (사수)
 
 ### 논문을 같이 읽어주는 AI 연구실 동료
@@ -32,12 +30,7 @@ PDF 던져주면 4단계로 쪼개서 분석하고, 레시피 카드까지 뽑�
 
 <br/>
 
-<!-- 스크린샷 placeholder -->
-<table><tr><td align="center">
-<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-<em>📸 스크린샷은 <code>docs/assets/</code>에 추가 후 교체</em>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br/><br/>
-</td></tr></table>
+<img src="docs/assets/procedure.png" alt="Sasoo 4-Phase Pipeline" width="600" />
 
 </div>
 
@@ -55,6 +48,7 @@ PDF 던져주면 4단계로 쪼개서 분석하고, 레시피 카드까지 뽑�
 - [AI 에이전트 시스템](#-ai-에이전트-시스템)
 - [기술 스택](#-기술-스택)
 - [프로젝트 구조](#-프로젝트-구조)
+  - [저장 경로 구조](#저장-경로-구조)
 - [빌드 & 배포](#-빌드--배포)
 - [로드맵](#-로드맵)
 - [기여 & 라이선스](#-기여--라이선스)
@@ -90,36 +84,36 @@ Sasoo(사수)는 이 문제를 해결하기 위해 만들어졌다.
 <div align="center">
 <table>
 <tr>
-<td align="center" width="200">
+<td align="center" width="220">
 <br/>
-<h3>🔴</h3>
+<img src="docs/assets/photon.png" alt="Agent Photon" width="140" />
 <h4>Photon 선배</h4>
 <sub>광학 · 레이저 · FSO</sub><br/><br/>
 <b>직설적 🔥</b><br/><br/>
 <em>"이거 봐봐,<br/>error bar가 없잖아"</em>
 <br/><br/>
 </td>
-<td align="center" width="200">
+<td align="center" width="220">
 <br/>
-<h3>🟢</h3>
+<img src="docs/assets/bio.png" alt="Agent Cell" width="140" />
 <h4>Cell 선배</h4>
 <sub>바이오 · 분자생물학</sub><br/><br/>
 <b>꼼꼼함 🔬</b><br/><br/>
 <em>"n수가 적은데?<br/>통계 어떻게 한 거야?"</em>
 <br/><br/>
 </td>
-<td align="center" width="200">
+<td align="center" width="220">
 <br/>
-<h3>🟣</h3>
+<img src="docs/assets/neural.png" alt="Agent Neural" width="140" />
 <h4>Neural 선배</h4>
 <sub>딥러닝 · NLP · CV</sub><br/><br/>
 <b>분석적 🧠</b><br/><br/>
 <em>"ablation이 빠져있네,<br/>이 loss는 좀 이상한데?"</em>
 <br/><br/>
 </td>
-<td align="center" width="200">
+<td align="center" width="220">
 <br/>
-<h3>🟡</h3>
+<img src="docs/assets/circuit.png" alt="Agent Circuit" width="140" />
 <h4>Circuit 선배 🚧</h4>
 <sub>회로 · 반도체 · 신호처리</sub><br/><br/>
 <b>체계적 ⚡</b><br/><br/>
@@ -480,6 +474,12 @@ Write-Host "Done! Run: pnpm dev"
 <br/>
 
 <div align="center">
+<img src="docs/assets/procedure.png" alt="4-Phase Analysis Pipeline" width="720" />
+</div>
+
+<br/>
+
+<div align="center">
 <table>
 <tr>
 <td align="center" width="220">
@@ -676,12 +676,17 @@ flowchart · sequence · state · class
 
 **Gemini Thinking Budget:**
 
-| Phase | 모델 | Thinking | 이유 |
-|:-----:|:------|:--------:|:-----|
-| 1 | Flash | `1,024` | 빠른 분류, 깊은 사고 불필요 |
-| 2 | Flash | `4,096` | 이미지 분석에 중간 수준 |
-| 3 | Pro | `8,192` | 파라미터 추출에 꼼꼼한 사고 |
-| 4 | Pro | `8,192` | 비판적 분석에 최대 사고 |
+| 호출 | 모델 | Thinking | 이유 |
+|:-----|:------|:--------:|:-----|
+| Phase 1: Screening | Flash | `1,024` | 빠른 분류, 깊은 사고 불필요 |
+| Phase 2: Visual | Flash | `4,096` | 전체 Figure 품질 평가 (축·에러바·데이터 품질) |
+| Phase 3: Recipe | Pro | `8,192` | 파라미터 하나하나 꼼꼼한 추출 |
+| Phase 4: DeepDive | Pro | `8,192` | Claim↔Evidence 매핑, 비판적 분석 |
+| Viz Router | Flash | `4,096` | 시각화 유형 라우팅 |
+| Domain 분류 | Flash | `1,024` | 키워드 매칭 보조 (시맨틱 fallback) |
+| Figure 상세 설명 | Flash | `8,192` | 개별 Figure 전문가 해설 (on-demand, 캐싱) |
+
+> **Phase 2 vs Figure 상세 설명**: Phase 2는 전체 Figure를 한번에 훑으며 **데이터 품질을 평가**하는 단계이고, Figure 상세 설명은 FigureGallery에서 개별 Figure를 클릭했을 때 **논문 전체 맥락 + 에이전트 페르소나**로 깊이 해석하는 별도 API다. 후자는 입력 컨텍스트가 무겁고(전체 텍스트 + 분석 결과) 사용자 기대치가 높아 `high`(8,192)를 사용하며, DB에 캐싱되어 Figure당 1회만 비용 발생한다.
 
 <br/>
 
@@ -772,11 +777,16 @@ sasoo/
 │       ├── analysis_pipeline.py    # 4단계 오케스트레이터
 │       ├── domain_router.py        # 도메인 분류 + 에이전트 라우팅
 │       ├── pdf_parser.py           # PDF → 텍스트·Figure·테이블
+│       ├── pdf_cache.py            # PDF 텍스트 캐시
 │       ├── section_splitter.py     # 섹션 자동 분할
+│       ├── subfigure_detector.py   # Figure 자동 추출
+│       ├── naming_service.py       # 논문 명명 규칙
+│       ├── paper_library.py        # 라이브러리 관리
 │       ├── report_generator.py     # Markdown 보고서
 │       ├── pricing.py              # API 비용 추적
 │       ├── agents/
 │       │   ├── base_agent.py       # 에이전트 추상 클래스
+│       │   ├── profile_loader.py   # 에이전트 프로필 로더
 │       │   ├── agent_photon.py     # 🔴 광학 전문
 │       │   ├── agent_cell.py       # 🟢 바이오 전문
 │       │   └── agent_neural.py     # 🟣 AI/ML 전문
@@ -791,26 +801,42 @@ sasoo/
 ├── ⚛️ frontend/
 │   └── src/
 │       ├── App.tsx                 # 메인 앱 + 라우팅
+│       ├── assets/
+│       │   └── agents/             # 에이전트 캐릭터 이미지
+│       │       ├── photon.png
+│       │       ├── bio.png
+│       │       ├── neural.png
+│       │       └── circuit.png
 │       ├── pages/
-│       │   ├── Upload.tsx          # PDF 업로드
+│       │   ├── Upload.tsx          # PDF 업로드 + 에이전트 카드
 │       │   ├── Workbench.tsx       # 분석 워크벤치
 │       │   ├── Library.tsx         # 논문 라이브러리
 │       │   └── Settings.tsx        # 설정
 │       ├── components/
-│       │   ├── AnalysisPanel.tsx   # 분석 결과 뷰어
+│       │   ├── AnalysisPanel.tsx   # 분석 결과 + 에이전트 배지
 │       │   ├── PdfViewer.tsx       # PDF 뷰어
 │       │   ├── RecipeCard.tsx      # 레시피 카드
 │       │   ├── FigureGallery.tsx   # Figure 갤러리
 │       │   ├── MermaidRenderer.tsx # Mermaid 렌더러
 │       │   ├── CostDashboard.tsx   # 비용 대시보드
-│       │   └── ProgressTracker.tsx # 진행률 표시기
+│       │   ├── ProgressTracker.tsx # 진행률 표시기
+│       │   ├── ErrorBoundary.tsx   # 에러 핸들링
+│       │   └── Toast.tsx           # 토스트 알림
+│       ├── hooks/
+│       │   ├── useAnalysis.ts      # 분석 파이프라인 훅
+│       │   ├── usePapers.ts        # 논문 관리 훅
+│       │   └── useFocusTrap.ts     # 접근성 훅
 │       └── lib/
-│           └── api.ts              # API 클라이언트
+│           ├── api.ts              # API 클라이언트
+│           └── agents.ts           # 에이전트 메타데이터 + 헬퍼
 │
 ├── 🖥️ electron/
 │   ├── main.ts                     # Electron 메인 프로세스
 │   ├── preload.ts                  # IPC Bridge
 │   └── python-manager.ts           # Python 프로세스 관리
+│
+├── 📄 docs/
+│   └── assets/                     # 에이전트 캐릭터 + 다이어그램
 │
 └── 📚 library/                     # 논문 저장소 (자동 생성)
     └── <Year>_<Author>_<Title>/
@@ -823,6 +849,38 @@ sasoo/
 ```
 
 </details>
+
+<br/>
+
+### 저장 경로 구조
+
+앱 내부 데이터(DB, 설정)와 사용자 데이터(논문)는 분리되어 저장된다.
+
+<div align="center">
+<table>
+<tr>
+<th width="130">구분</th>
+<th width="240">Production 경로</th>
+<th width="240">Development 경로</th>
+<th>내용</th>
+</tr>
+<tr>
+<td align="center"><b>앱 데이터</b><br/><sub>(고정)</sub></td>
+<td><code>%APPDATA%/Sasoo/</code></td>
+<td><code>backend/library/</code></td>
+<td><code>sasoo.db</code>, <code>config.json</code>, <code>agent_profiles/</code></td>
+</tr>
+<tr>
+<td align="center"><b>논문 라이브러리</b><br/><sub>(사용자 지정 가능)</sub></td>
+<td><code>%APPDATA%/Sasoo/library/</code><br/><sub>또는 Settings에서 변경</sub></td>
+<td><code>backend/library/</code></td>
+<td>PDF, figures, 분석 결과 등</td>
+</tr>
+</table>
+</div>
+
+> **Settings > Library Storage Path**에서 논문 저장 경로를 변경할 수 있다.
+> 변경 후 앱 재시작 필요. 기존 파일은 자동으로 이동되지 않는다.
 
 <br/>
 
@@ -885,6 +943,7 @@ sasoo/
 - [x] PaperBanana 일러스트 연동
 - [x] 비용 대시보드
 - [x] 다크/라이트 테마
+- [x] 에이전트 캐릭터 일러스트 + UI 통합
 - [ ] Agent Circuit (전자공학)
 - [ ] 논문 간 비교 분석
 - [ ] Zotero 연동

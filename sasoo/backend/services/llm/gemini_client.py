@@ -31,8 +31,7 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-from models.database import LIBRARY_ROOT
-CONFIG_PATH = LIBRARY_ROOT / "config.json"
+from models.database import DB_PATH, CONFIG_PATH
 
 # Model identifiers
 MODEL_FLASH = "gemini-3-flash-preview"
@@ -138,7 +137,7 @@ def _load_api_key() -> str:
         return env_key
 
     # 2. Check database settings
-    db_path = LIBRARY_ROOT / "sasoo.db"
+    db_path = DB_PATH
     if db_path.exists():
         try:
             conn = sqlite3.connect(str(db_path))

@@ -284,15 +284,36 @@ export default function Settings() {
               <label className="text-xs text-surface-400 block mb-1.5">
                 Library Storage Path
               </label>
-              <input
-                type="text"
-                value={libraryPath}
-                onChange={(e) => setLibraryPath(e.target.value)}
-                placeholder="/path/to/papers"
-                className="input"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={libraryPath}
+                  onChange={(e) => setLibraryPath(e.target.value)}
+                  placeholder="/path/to/papers"
+                  className="input flex-1"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (window.electronAPI?.openDirectory) {
+                      const result = await window.electronAPI.openDirectory({
+                        title: 'Select Library Folder',
+                        defaultPath: libraryPath || undefined,
+                      });
+                      if (!result.canceled && result.directoryPath) {
+                        setLibraryPath(result.directoryPath);
+                      }
+                    }
+                  }}
+                  className="btn-ghost px-3 shrink-0"
+                  title="Browse folder"
+                >
+                  <FolderOpen className="w-4 h-4" />
+                </button>
+              </div>
               <p className="text-2xs text-surface-600 mt-1">
                 Directory where uploaded PDFs and analysis results are stored.
+                Changes take effect after restarting the app. Existing files are not moved automatically.
               </p>
             </div>
 
