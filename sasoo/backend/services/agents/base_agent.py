@@ -153,19 +153,28 @@ class BaseAgent(ABC):
     # Utility methods (shared by all agents)
     # ------------------------------------------------------------------
 
+    # Korean output instruction prepended to all phase prompts
+    _OUTPUT_LANG_INSTRUCTION = (
+        "[OUTPUT LANGUAGE] Always respond in casual Korean (반말). "
+        "Use a conversational, senior-researcher tone. "
+        "Technical terms may remain in English.\n\n"
+    )
+
     def get_system_prompt(self, phase: str) -> str:
         """
         Return the prompt for a given phase name.
         This is the primary dispatcher used by AnalysisPipeline.
+        Prepends Korean output language instruction to all prompts.
         """
         prompts = self.get_all_prompts()
         # Normalize phase name (deep_dive -> deepdive)
         normalized = phase.replace("_", "")
         for key, value in prompts.items():
             if key.replace("_", "") == normalized:
-                return value
+                return self._OUTPUT_LANG_INSTRUCTION + value
         # Fallback
-        return prompts.get(phase, "")
+        raw = prompts.get(phase, "")
+        return self._OUTPUT_LANG_INSTRUCTION + raw if raw else ""
 
     def get_all_prompts(self) -> dict[str, str]:
         """Return all phase prompts as a dict."""
