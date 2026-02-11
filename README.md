@@ -2,6 +2,8 @@
 
 <br/>
 
+<img src="sasoo/docs/assets/logo.png" alt="Sasoo Logo" width="140" />
+
 # Sasoo (사수)
 
 ### 논문을 같이 읽어주는 AI 연구실 동료

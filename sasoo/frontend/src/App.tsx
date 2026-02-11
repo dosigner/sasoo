@@ -7,8 +7,8 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  Beaker,
 } from 'lucide-react';
+import logoImg from '@/assets/logo.png';
 import { getApiBase } from '@/lib/api';
 
 // Components
@@ -113,8 +113,8 @@ function App() {
       >
         {/* Logo */}
         <div className="flex items-center gap-3 px-4 h-14 border-b border-surface-700 shrink-0">
-          <div className="w-8 h-8 rounded-lg bg-primary-500/10 border border-primary-500/20 flex items-center justify-center shrink-0">
-            <Beaker className="w-4.5 h-4.5 text-primary-400" />
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0">
+            <img src={logoImg} alt="Sasoo" className="w-8 h-8" />
           </div>
           {!sidebarCollapsed && (
             <div className="min-w-0">
