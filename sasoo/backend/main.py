@@ -38,6 +38,22 @@ async def lifespan(app: FastAPI):
     print(f"[Sasoo] Database initialized at {LIBRARY_ROOT / 'sasoo.db'}")
     print(f"[Sasoo] Library root: {LIBRARY_ROOT}")
 
+    # Load API keys from database into environment variables
+    from models.database import fetch_all
+    try:
+        rows = await fetch_all("SELECT key, value FROM settings WHERE key IN ('gemini_api_key', 'anthropic_api_key')")
+        for row in rows:
+            k, v = row["key"], row["value"]
+            if v:
+                if k == "gemini_api_key":
+                    os.environ.setdefault("GEMINI_API_KEY", v)
+                    os.environ.setdefault("GOOGLE_API_KEY", v)  # PaperBanana uses this
+                elif k == "anthropic_api_key":
+                    os.environ.setdefault("ANTHROPIC_API_KEY", v)
+        print("[Sasoo] API keys loaded from database into environment.")
+    except Exception as exc:
+        print(f"[Sasoo] Warning: Could not load API keys from DB: {exc}")
+
     yield
 
     # --- Shutdown ---

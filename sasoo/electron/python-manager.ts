@@ -98,8 +98,13 @@ export class PythonManager {
 
     this.isShuttingDown = false;
 
+    console.log('[PythonManager] Config:', JSON.stringify(this.config, null, 2));
+    console.log('[PythonManager] Backend path:', this.config.backendPath);
+    console.log('[PythonManager] isDev:', this.config.isDev);
+
     // Check for bundled backend first (production mode)
     const bundledBackend = this.getBundledBackendPath();
+    console.log('[PythonManager] Bundled backend path:', bundledBackend);
 
     if (bundledBackend && !this.config.isDev) {
       // Production: Use bundled executable

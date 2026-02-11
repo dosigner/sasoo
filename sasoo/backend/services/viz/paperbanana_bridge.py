@@ -27,13 +27,16 @@ _DiagramType = None
 
 try:
     from paperbanana import PaperBananaPipeline, GenerationInput, DiagramType
+    from paperbanana.core.config import Settings as PaperBananaSettings
 
     _PaperBananaPipeline = PaperBananaPipeline
     _GenerationInput = GenerationInput
     _DiagramType = DiagramType
+    _PaperBananaSettings = PaperBananaSettings
     _PAPERBANANA_AVAILABLE = True
     logger.info("PaperBanana package is available.")
 except ImportError:
+    _PaperBananaSettings = None
     logger.warning(
         "PaperBanana package is not installed. "
         "Install with: pip install paperbanana. "
@@ -71,9 +74,23 @@ class PaperBananaBridge:
 
     def __init__(self) -> None:
         self._pipeline = None
-        if _PAPERBANANA_AVAILABLE and _PaperBananaPipeline is not None:
+        import os
+
+        # Get API key from environment
+        api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY") or ""
+
+        logger.info(
+            "PaperBananaBridge: Initializing. API key available: %s (len=%d)",
+            bool(api_key),
+            len(api_key),
+        )
+
+        if _PAPERBANANA_AVAILABLE and _PaperBananaPipeline is not None and _PaperBananaSettings is not None:
             try:
-                self._pipeline = _PaperBananaPipeline()
+                # Explicitly pass API key via Settings to avoid caching issues
+                settings = _PaperBananaSettings(google_api_key=api_key if api_key else None)
+                self._pipeline = _PaperBananaPipeline(settings=settings)
+                logger.info("PaperBananaBridge: Pipeline initialized successfully with explicit API key")
             except Exception as exc:
                 logger.warning(
                     "PaperBananaBridge: Failed to initialize pipeline: %s", exc
@@ -105,8 +122,10 @@ class PaperBananaBridge:
         """
         if not self.is_available:
             logger.warning(
-                "PaperBananaBridge: Package not available. "
+                "PaperBananaBridge: Package not available (pipeline=%s, available=%s). "
                 "Cannot generate illustration for '%s'.",
+                self._pipeline,
+                _PAPERBANANA_AVAILABLE,
                 viz_target.get("title", "?"),
             )
             return None
@@ -140,9 +159,10 @@ class PaperBananaBridge:
             return save_path
 
         except Exception as exc:
+            import traceback
             logger.error(
-                "PaperBananaBridge: Failed to generate illustration '%s': %s",
-                title, exc,
+                "PaperBananaBridge: Failed to generate illustration '%s': %s\nTraceback: %s",
+                title, exc, traceback.format_exc(),
             )
             return None
 

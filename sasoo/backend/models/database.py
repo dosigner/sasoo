@@ -21,8 +21,14 @@ from typing import Optional
 
 
 def _is_bundled() -> bool:
-    """Check if running as a PyInstaller bundle."""
-    return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
+    """Check if running as a PyInstaller bundle or in Electron production mode."""
+    # PyInstaller bundle check
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        return True
+    # Electron production mode check (set by python-manager.ts)
+    if os.environ.get('SASOO_ENV') == 'production':
+        return True
+    return False
 
 
 def _get_library_root() -> Path:

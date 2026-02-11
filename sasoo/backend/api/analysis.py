@@ -833,6 +833,7 @@ async def _generate_single_paperbanana(paper_id: int, viz_item: dict, text: str,
     try:
         from services.viz.paperbanana_bridge import PaperBananaBridge
         bridge = PaperBananaBridge()
+        _logger.info("PaperBanana bridge.is_available: %s for '%s'", bridge.is_available, title)
         if bridge.is_available:
             paper_dir = str(get_paper_dir(folder_name))
 
@@ -849,7 +850,7 @@ async def _generate_single_paperbanana(paper_id: int, viz_item: dict, text: str,
 
             path = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(None, _sync_generate),
-                timeout=180.0,  # 3 minute timeout per illustration
+                timeout=300.0,  # 5 minute timeout per illustration
             )
             if path:
                 # Bridge saves to library/{folder}/paperbanana/{file}
@@ -859,8 +860,11 @@ async def _generate_single_paperbanana(paper_id: int, viz_item: dict, text: str,
         _logger.warning("PaperBanana generation timed out for '%s'", title)
     except Exception as exc:
         _logger.warning("PaperBanana bridge failed for '%s': %s", title, exc)
+        import traceback
+        _logger.warning("Traceback: %s", traceback.format_exc())
 
     # Fallback: Generate with PIL (simple diagram placeholder)
+    _logger.info("Using PIL fallback for '%s'", title)
     try:
         output_dir = get_paperbanana_dir(folder_name)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -876,10 +880,27 @@ async def _generate_single_paperbanana(paper_id: int, viz_item: dict, text: str,
         img = Image.new("RGB", (width, height), (30, 41, 59))
         draw = ImageDraw.Draw(img)
 
-        try:
-            font_lg = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
-            font_sm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
-        except (OSError, IOError):
+        # Try fonts with Korean support (platform-specific)
+        font_lg = None
+        font_sm = None
+        font_candidates = [
+            # Windows (Malgun Gothic - all Korean Windows)
+            "C:/Windows/Fonts/malgunbd.ttf",
+            "C:/Windows/Fonts/malgun.ttf",
+            # macOS
+            "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+            # Linux
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        ]
+        for fpath in font_candidates:
+            try:
+                font_lg = ImageFont.truetype(fpath, 24)
+                font_sm = ImageFont.truetype(fpath, 16)
+                break
+            except (OSError, IOError):
+                continue
+        if font_lg is None:
             font_lg = ImageFont.load_default()
             font_sm = ImageFont.load_default()
 
@@ -956,8 +977,26 @@ async def _run_visualizations(
             result_item["error_message"] = str(e)
         return result_item
 
-    tasks = [generate_one(i, item) for i, item in enumerate(viz_plan)]
-    generated_items = await asyncio.gather(*tasks, return_exceptions=False)
+    # Separate mermaid (can run in parallel) from paperbanana (run sequentially to avoid rate limits)
+    mermaid_items = [(i, item) for i, item in enumerate(viz_plan) if item.get("tool") == "mermaid"]
+    paperbanana_items = [(i, item) for i, item in enumerate(viz_plan) if item.get("tool") == "paperbanana"]
+
+    # Run mermaid generations in parallel
+    mermaid_tasks = [generate_one(i, item) for i, item in mermaid_items]
+    mermaid_results = await asyncio.gather(*mermaid_tasks, return_exceptions=False) if mermaid_tasks else []
+
+    # Run paperbanana generations sequentially to avoid API rate limits
+    paperbanana_results = []
+    for i, item in paperbanana_items:
+        result = await generate_one(i, item)
+        paperbanana_results.append(result)
+        # Small delay between PaperBanana calls to avoid rate limiting
+        if paperbanana_items.index((i, item)) < len(paperbanana_items) - 1:
+            await asyncio.sleep(2.0)
+
+    # Combine and sort by original index
+    all_results = list(mermaid_results) + paperbanana_results
+    generated_items = sorted(all_results, key=lambda x: x.get("id", 0))
 
     # Step 3: Store all visualization results in DB
     viz_result = {

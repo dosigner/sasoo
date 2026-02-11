@@ -229,14 +229,21 @@ export class ApiError extends Error {
 
 // In Electron production (file:// protocol), use absolute URL
 // In development (http://), use relative URL (Vite proxy handles it)
-const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
-const API_BASE = isFileProtocol ? 'http://localhost:8000/api' : '/api';
+function getApiBase(): string {
+  const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
+  return isFileProtocol ? 'http://localhost:8000/api' : '/api';
+}
+
+// For static URL helper
+function isFileProtocolCheck(): boolean {
+  return typeof window !== 'undefined' && window.location.protocol === 'file:';
+}
 
 async function request<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE}${endpoint}`;
+  const url = `${getApiBase()}${endpoint}`;
 
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
@@ -321,7 +328,7 @@ export async function uploadPaper(
       reject(new ApiError(0, 'Upload aborted'));
     });
 
-    xhr.open('POST', `${API_BASE}/papers/upload`);
+    xhr.open('POST', `${getApiBase()}/papers/upload`);
     xhr.send(formData);
   });
 }
@@ -464,7 +471,7 @@ export async function getCostSummary(): Promise<CostSummary> {
 // ---------------------------------------------------------------------------
 
 export function getPdfUrl(paperId: string): string {
-  return `${API_BASE}/papers/${paperId}/pdf`;
+  return `${getApiBase()}/papers/${paperId}/pdf`;
 }
 
 // ---------------------------------------------------------------------------
@@ -478,7 +485,7 @@ export function getPdfUrl(paperId: string): string {
 export function getStaticUrl(relativeUrl: string | null | undefined): string {
   if (!relativeUrl) return '';
   // In Electron production (file:// protocol), use absolute backend URL
-  if (isFileProtocol && relativeUrl.startsWith('/static/')) {
+  if (isFileProtocolCheck() && relativeUrl.startsWith('/static/')) {
     return `http://localhost:8000${relativeUrl}`;
   }
   return relativeUrl;

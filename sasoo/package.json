@@ -40,7 +40,10 @@
       "buildResources": "build"
     },
     "files": [
+      "package.json",
+      "dist-electron",
       "dist-electron/**/*",
+      "frontend/dist",
       "frontend/dist/**/*"
     ],
     "extraResources": [

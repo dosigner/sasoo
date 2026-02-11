@@ -10,7 +10,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from models.database import fetch_all, fetch_one, get_db
+from models.database import LIBRARY_ROOT, fetch_all, fetch_one, get_db
 from models.schemas import SettingsModel, SettingsUpdate
 from services.agents.profile_loader import (
     list_profiles,
@@ -28,7 +28,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 DEFAULT_SETTINGS: dict[str, str] = {
     "gemini_api_key": "",
     "anthropic_api_key": "",
-    "library_path": str(Path(__file__).resolve().parent.parent / "library"),
+    "library_path": str(LIBRARY_ROOT),
     "default_domain": "optics",
     "auto_analyze": "true",
     "language": "ko",
@@ -45,7 +45,7 @@ DEFAULT_SETTINGS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 async def _ensure_defaults() -> None:
-    """Insert default settings for any missing keys."""
+    """Insert default settings for any missing keys, and sync library_path."""
     db = await get_db()
     for key, value in DEFAULT_SETTINGS.items():
         existing = await fetch_one("SELECT key FROM settings WHERE key = ?", (key,))
@@ -54,6 +54,12 @@ async def _ensure_defaults() -> None:
                 "INSERT INTO settings (key, value) VALUES (?, ?)",
                 (key, value),
             )
+    # Always sync library_path with current LIBRARY_ROOT
+    # (handles migration between machines or dev→production)
+    await db.execute(
+        "UPDATE settings SET value = ? WHERE key = 'library_path'",
+        (str(LIBRARY_ROOT),),
+    )
     await db.commit()
 
 
@@ -103,7 +109,7 @@ async def get_settings():
     return SettingsModel(
         gemini_api_key=_mask_api_key(raw.get("gemini_api_key", "")),
         anthropic_api_key=_mask_api_key(raw.get("anthropic_api_key", "")),
-        library_path=raw.get("library_path", str(Path(__file__).resolve().parent.parent / "library")),
+        library_path=raw.get("library_path", str(LIBRARY_ROOT)),
         default_domain=raw.get("default_domain", "optics"),
         auto_analyze=raw.get("auto_analyze", "true").lower() == "true",
         language=raw.get("language", "ko"),
@@ -145,6 +151,7 @@ async def update_settings(update: SettingsUpdate):
     if "gemini_api_key" in update_data and update_data["gemini_api_key"]:
         import os
         os.environ["GEMINI_API_KEY"] = update_data["gemini_api_key"]
+        os.environ["GOOGLE_API_KEY"] = update_data["gemini_api_key"]  # PaperBanana uses this
 
     if "anthropic_api_key" in update_data and update_data["anthropic_api_key"]:
         import os
