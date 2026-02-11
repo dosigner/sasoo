@@ -8,6 +8,10 @@
 
 ### 논문을 같이 읽어주는 AI 연구실 동료
 
+<a href="https://github.com/dosigner/sasoo/releases/tag/v0.1.0">
+<img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download-Sasoo_v0.1.0_(Windows)-blue?style=for-the-badge&logo=windows&logoColor=white" alt="Download Sasoo" />
+</a>
+
 <br/>
 
 연구실에 들어왔는데 사수가 없다고?<br/>
@@ -33,12 +37,6 @@ PDF 던져주면 4단계로 쪼개서 분석하고, 레시피 카드까지 뽑�
 <br/>
 
 <img src="sasoo/docs/assets/procedure.png" alt="Sasoo 4-Phase Pipeline" width="600" />
-
-<br/>
-
-<a href="https://github.com/dosigner/sasoo/releases/tag/v0.1.0">
-<img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download-Sasoo_v0.1.0_(Windows)-blue?style=for-the-badge&logo=windows&logoColor=white" alt="Download Sasoo" />
-</a>
 
 </div>
 
