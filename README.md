@@ -17,7 +17,7 @@ PDF 던져주면 4단계로 쪼개서 분석하고, 레시피 카드까지 뽑�
 <br/>
 
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.1.0-brightgreen?style=flat-square)]()
+[![Version](https://img.shields.io/badge/version-0.1.0-brightgreen?style=flat-square)](https://github.com/dosigner/sasoo/releases/tag/v0.1.0)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![Node](https://img.shields.io/badge/node-18%2B-339933?style=flat-square&logo=node.js&logoColor=white)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)]()
@@ -34,6 +34,12 @@ PDF 던져주면 4단계로 쪼개서 분석하고, 레시피 카드까지 뽑�
 
 <img src="sasoo/docs/assets/procedure.png" alt="Sasoo 4-Phase Pipeline" width="600" />
 
+<br/>
+
+<a href="https://github.com/dosigner/sasoo/releases/tag/v0.1.0">
+<img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download-Sasoo_v0.1.0_(Windows)-blue?style=for-the-badge&logo=windows&logoColor=white" alt="Download Sasoo" />
+</a>
+
 </div>
 
 <br/>
@@ -41,6 +47,7 @@ PDF 던져주면 4단계로 쪼개서 분석하고, 레시피 카드까지 뽑�
 <details>
 <summary><b>📑 목차</b></summary>
 
+- [다운로드](#-다운로드)
 - [컨셉: 연구실 사수](#-컨셉--연구실-사수)
 - [한눈에 보는 워크플로우](#-한눈에-보는-워크플로우)
 - [주요 기능](#-주요-기능)
@@ -333,6 +340,44 @@ graph TB
     VizRouter --> PB
     Backend --> Storage
 ```
+
+<br/>
+
+---
+
+<br/>
+
+## ⬇️ 다운로드
+
+<br/>
+
+<div align="center">
+
+> **설치파일을 받아서 바로 사용하고 싶다면?**
+
+<table>
+<tr>
+<td align="center" width="400">
+<br/>
+<h3>🪟 Windows</h3>
+<a href="https://github.com/dosigner/sasoo/releases/tag/v0.1.0">
+<img src="https://img.shields.io/badge/Sasoo_Setup_0.1.0.exe-Download-2ea44f?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
+</a>
+<br/><br/>
+<sub>Windows 10/11 · 약 144MB · NSIS 인스톨러</sub>
+<br/><br/>
+</td>
+</tr>
+</table>
+
+<sub>macOS / Linux 빌드는 <a href="#-빌드--배포">빌드 & 배포</a> 섹션 참고</sub>
+
+</div>
+
+<br/>
+
+> **API 키 필요**: 설치 후 Settings에서 Gemini API Key를 입력해야 분석 기능을 사용할 수 있습니다.
+> 키 발급: [aistudio.google.com](https://aistudio.google.com)
 
 <br/>
 
