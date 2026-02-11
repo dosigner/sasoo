@@ -1,5 +1,7 @@
 // Sasoo API Client
-// Communicates with FastAPI backend at localhost:8000
+// Communicates with FastAPI backend
+
+const BACKEND_PORT = 8000;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -229,9 +231,9 @@ export class ApiError extends Error {
 
 // In Electron production (file:// protocol), use absolute URL
 // In development (http://), use relative URL (Vite proxy handles it)
-function getApiBase(): string {
+export function getApiBase(): string {
   const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
-  return isFileProtocol ? 'http://localhost:8000/api' : '/api';
+  return isFileProtocol ? `http://localhost:${BACKEND_PORT}/api` : '/api';
 }
 
 // For static URL helper
@@ -486,7 +488,7 @@ export function getStaticUrl(relativeUrl: string | null | undefined): string {
   if (!relativeUrl) return '';
   // In Electron production (file:// protocol), use absolute backend URL
   if (isFileProtocolCheck() && relativeUrl.startsWith('/static/')) {
-    return `http://localhost:8000${relativeUrl}`;
+    return `http://localhost:${BACKEND_PORT}${relativeUrl}`;
   }
   return relativeUrl;
 }

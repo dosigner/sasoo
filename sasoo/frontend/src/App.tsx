@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Beaker,
 } from 'lucide-react';
+import { getApiBase } from '@/lib/api';
 
 // Components
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -73,8 +74,7 @@ function App() {
     applyTheme(cached || 'dark');
 
     // Phase 2: sync with backend as source of truth
-    const apiBase = window.location.protocol === 'file:' ? 'http://localhost:8000/api' : '/api';
-    fetch(`${apiBase}/settings`)
+    fetch(`${getApiBase()}/settings`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.theme && data.theme !== cached) {

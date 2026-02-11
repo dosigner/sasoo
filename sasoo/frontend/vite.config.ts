@@ -2,6 +2,9 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
+const BACKEND_PORT = 8000;
+const BACKEND_TARGET = `http://localhost:${BACKEND_PORT}`;
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -14,22 +17,22 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: BACKEND_TARGET,
         changeOrigin: true,
         secure: false,
       },
       '/static': {
-        target: 'http://localhost:8000',
+        target: BACKEND_TARGET,
         changeOrigin: true,
         secure: false,
       },
       '/health': {
-        target: 'http://localhost:8000',
+        target: BACKEND_TARGET,
         changeOrigin: true,
         secure: false,
       },
       '/ws': {
-        target: 'ws://localhost:8000',
+        target: `ws://localhost:${BACKEND_PORT}`,
         ws: true,
         changeOrigin: true,
       },

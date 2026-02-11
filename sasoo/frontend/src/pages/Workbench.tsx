@@ -12,6 +12,7 @@ import {
   Square,
 } from 'lucide-react';
 import { getPaper, getPdfUrl, cancelAnalysis, type Paper } from '@/lib/api';
+import { getAgentMeta } from '@/lib/agents';
 import { useAnalysis } from '@/hooks/useAnalysis';
 import PdfViewer from '@/components/PdfViewer';
 import AnalysisPanel from '@/components/AnalysisPanel';
@@ -283,6 +284,18 @@ export default function Workbench() {
               )}
               <span className="w-1 h-1 rounded-full bg-surface-600" />
               <span className="badge-primary text-2xs">{paper.domain}</span>
+              {(() => {
+                const agent = getAgentMeta(paper.agent_used);
+                if (!agent) return null;
+                return (
+                  <img
+                    src={agent.image}
+                    alt={agent.name}
+                    className="w-5 h-5 rounded-full object-cover"
+                    title={`${agent.name} — ${agent.personality}`}
+                  />
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -397,6 +410,7 @@ export default function Workbench() {
             mermaid={mermaid}
             visualizations={visualizations}
             isRunning={isRunning}
+            agentName={paper?.agent_used}
             paperId={id}
           />
         </div>

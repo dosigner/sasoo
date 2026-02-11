@@ -320,6 +320,9 @@ export class PythonManager {
 
   /**
    * Gracefully stop the FastAPI server.
+   * On Windows, SIGTERM causes immediate hard kill (no graceful shutdown).
+   * Instead, we POST to /shutdown to let uvicorn shut down cleanly,
+   * then fall back to SIGINT/SIGKILL if the process doesn't exit in time.
    */
   async stop(): Promise<void> {
     this.isShuttingDown = true;
@@ -332,11 +335,25 @@ export class PythonManager {
 
     console.log('[PythonManager] Stopping FastAPI server...');
 
+    // Try graceful HTTP shutdown first
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      await fetch(`http://127.0.0.1:${this.config.port}/shutdown`, {
+        method: 'POST',
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      console.log('[PythonManager] Shutdown request sent via HTTP');
+    } catch {
+      console.warn('[PythonManager] HTTP shutdown request failed, falling back to signal');
+    }
+
     return new Promise((resolve) => {
       const forceKillTimeout = setTimeout(() => {
         if (this.process) {
           console.warn('[PythonManager] Force killing process');
-          this.process.kill('SIGKILL');
+          try { this.process.kill('SIGKILL'); } catch { /* already dead */ }
           this.process = null;
         }
         resolve();
@@ -349,10 +366,8 @@ export class PythonManager {
         resolve();
       });
 
-      // Send graceful shutdown signal
-      if (process.platform === 'win32') {
-        this.process!.kill('SIGTERM');
-      } else {
+      // If HTTP shutdown didn't trigger exit, send signal as backup
+      if (process.platform !== 'win32') {
         this.process!.kill('SIGINT');
       }
     });

@@ -829,7 +829,7 @@ async def _generate_single_paperbanana(paper_id: int, viz_item: dict, text: str,
     description = viz_item.get("description", "")
     category = viz_item.get("category", "conceptual_illustration")
 
-    # Try using the PaperBanana bridge (run in thread to avoid blocking event loop)
+    # Try using the PaperBanana bridge (fully async — no thread needed)
     try:
         from services.viz.paperbanana_bridge import PaperBananaBridge
         bridge = PaperBananaBridge()
@@ -837,19 +837,8 @@ async def _generate_single_paperbanana(paper_id: int, viz_item: dict, text: str,
         if bridge.is_available:
             paper_dir = str(get_paper_dir(folder_name))
 
-            # PaperBanana uses synchronous Gemini SDK internally,
-            # which blocks the event loop. Run in a thread pool.
-            def _sync_generate():
-                loop = asyncio.new_event_loop()
-                try:
-                    return loop.run_until_complete(
-                        bridge.generate_illustration(viz_item, paper_dir)
-                    )
-                finally:
-                    loop.close()
-
             path = await asyncio.wait_for(
-                asyncio.get_event_loop().run_in_executor(None, _sync_generate),
+                bridge.generate_illustration(viz_item, paper_dir),
                 timeout=300.0,  # 5 minute timeout per illustration
             )
             if path:
@@ -860,7 +849,6 @@ async def _generate_single_paperbanana(paper_id: int, viz_item: dict, text: str,
         _logger.warning("PaperBanana generation timed out for '%s'", title)
     except Exception as exc:
         _logger.warning("PaperBanana bridge failed for '%s': %s", title, exc)
-        import traceback
         _logger.warning("Traceback: %s", traceback.format_exc())
 
     # Fallback: Generate with PIL (simple diagram placeholder)
@@ -980,6 +968,8 @@ async def _run_visualizations(
     # Separate mermaid (can run in parallel) from paperbanana (run sequentially to avoid rate limits)
     mermaid_items = [(i, item) for i, item in enumerate(viz_plan) if item.get("tool") == "mermaid"]
     paperbanana_items = [(i, item) for i, item in enumerate(viz_plan) if item.get("tool") == "paperbanana"]
+    other_items = [(i, item) for i, item in enumerate(viz_plan)
+                   if item.get("tool") not in ("mermaid", "paperbanana")]
 
     # Run mermaid generations in parallel
     mermaid_tasks = [generate_one(i, item) for i, item in mermaid_items]
@@ -987,15 +977,19 @@ async def _run_visualizations(
 
     # Run paperbanana generations sequentially to avoid API rate limits
     paperbanana_results = []
-    for i, item in paperbanana_items:
+    for idx, (i, item) in enumerate(paperbanana_items):
         result = await generate_one(i, item)
         paperbanana_results.append(result)
         # Small delay between PaperBanana calls to avoid rate limiting
-        if paperbanana_items.index((i, item)) < len(paperbanana_items) - 1:
+        if idx < len(paperbanana_items) - 1:
             await asyncio.sleep(2.0)
 
+    # Run other tool types in parallel
+    other_tasks = [generate_one(i, item) for i, item in other_items]
+    other_results = await asyncio.gather(*other_tasks, return_exceptions=False) if other_tasks else []
+
     # Combine and sort by original index
-    all_results = list(mermaid_results) + paperbanana_results
+    all_results = list(mermaid_results) + paperbanana_results + list(other_results)
     generated_items = sorted(all_results, key=lambda x: x.get("id", 0))
 
     # Step 3: Store all visualization results in DB

@@ -25,6 +25,7 @@ import {
   type PhaseStatusValue,
   type AnalysisPhase,
 } from '@/lib/api';
+import { getAgentMeta } from '@/lib/agents';
 import FigureGallery from './FigureGallery';
 import RecipeCard from './RecipeCard';
 import MermaidRenderer from './MermaidRenderer';
@@ -708,25 +709,21 @@ export default function AnalysisPanel({
     );
   }
 
-  // Agent icon mapping
-  const getAgentIcon = (agent?: string) => {
-    switch (agent) {
-      case 'photon': return '🔬';
-      case 'cell': return '🧬';
-      case 'neural': return '🤖';
-      case 'circuit': return '⚡';
-      default: return '🔍';
-    }
-  };
+  const agentMeta = getAgentMeta(agentName);
 
   return (
     <div className="space-y-3 py-4 px-4 overflow-y-auto flex-1 min-h-0">
       {/* Agent badge */}
-      {agentName && (
+      {agentMeta && (
         <div className="mb-3">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary-500/10 text-primary-400 text-xs font-medium border border-primary-500/20">
-            <span>{getAgentIcon(agentName)}</span>
-            <span>Agent {agentName.charAt(0).toUpperCase() + agentName.slice(1)}</span>
+          <span className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg ${agentMeta.bgColor} ${agentMeta.color} text-xs font-medium border ${agentMeta.borderColor}`}>
+            <img
+              src={agentMeta.image}
+              alt={agentMeta.name}
+              className="w-6 h-6 rounded-md object-cover"
+            />
+            <span>{agentMeta.name}</span>
+            <span className="text-surface-500 font-normal">{agentMeta.personality}</span>
           </span>
         </div>
       )}

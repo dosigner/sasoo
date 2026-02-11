@@ -12,6 +12,7 @@ import {
   Beaker,
 } from 'lucide-react';
 import { uploadPaper, DOMAINS, type UploadResponse } from '@/lib/api';
+import { getAgentMeta } from '@/lib/agents';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -313,24 +314,33 @@ export default function Upload() {
                         {uploadResult.title}
                       </p>
                     </div>
-                    <div className="flex gap-4">
-                      <div>
-                        <span className="text-2xs text-surface-500 uppercase tracking-wider">
-                          Domain
-                        </span>
-                        <p className="text-sm text-surface-200 mt-0.5">
-                          {uploadResult.domain}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-2xs text-surface-500 uppercase tracking-wider">
-                          Agent
-                        </span>
-                        <p className="text-sm text-surface-200 mt-0.5">
-                          {uploadResult.agent_used}
-                        </p>
-                      </div>
-                    </div>
+                    {/* Agent card */}
+                    {(() => {
+                      const agent = getAgentMeta(uploadResult.agent_used);
+                      if (!agent) return null;
+                      return (
+                        <div className={`flex items-center gap-3 p-3 rounded-lg ${agent.bgColor} border ${agent.borderColor}`}>
+                          <img
+                            src={agent.image}
+                            alt={agent.name}
+                            className="w-16 h-16 rounded-lg object-cover shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-sm font-semibold ${agent.color}`}>
+                                {agent.name}
+                              </span>
+                              <span className="text-2xs text-surface-500">
+                                {agent.personality}
+                              </span>
+                            </div>
+                            <p className="text-xs text-surface-400 mt-0.5 italic">
+                              "{agent.quote}"
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Domain selection */}
                     <div>

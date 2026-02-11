@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import shutil
+import traceback
 from pathlib import Path
 from typing import Any, Optional
 
@@ -77,12 +78,11 @@ class PaperBananaBridge:
         import os
 
         # Get API key from environment
-        api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY") or ""
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
 
         logger.info(
-            "PaperBananaBridge: Initializing. API key available: %s (len=%d)",
+            "PaperBananaBridge: Initializing. API key available: %s",
             bool(api_key),
-            len(api_key),
         )
 
         if _PAPERBANANA_AVAILABLE and _PaperBananaPipeline is not None and _PaperBananaSettings is not None:
@@ -159,7 +159,6 @@ class PaperBananaBridge:
             return save_path
 
         except Exception as exc:
-            import traceback
             logger.error(
                 "PaperBananaBridge: Failed to generate illustration '%s': %s\nTraceback: %s",
                 title, exc, traceback.format_exc(),

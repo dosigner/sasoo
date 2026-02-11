@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   FileText,
 } from 'lucide-react';
+import { getApiBase } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -79,8 +80,7 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
       setLoading(true);
       setError(null);
       try {
-        const apiBase = window.location.protocol === 'file:' ? 'http://localhost:8000/api' : '/api';
-        const response = await fetch(`${apiBase}/settings/cost`);
+        const response = await fetch(`${getApiBase()}/settings/cost`);
         if (!response.ok) {
           throw new Error('Failed to fetch cost data');
         }
