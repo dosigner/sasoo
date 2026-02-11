@@ -36,12 +36,13 @@ try:
     _PaperBananaSettings = PaperBananaSettings
     _PAPERBANANA_AVAILABLE = True
     logger.info("PaperBanana package is available.")
-except ImportError:
+except ImportError as _import_err:
     _PaperBananaSettings = None
     logger.warning(
-        "PaperBanana package is not installed. "
+        "PaperBanana package import failed: %s. "
         "Install with: pip install paperbanana. "
-        "PaperBanana illustrations will be unavailable."
+        "PaperBanana illustrations will be unavailable.",
+        _import_err,
     )
 
 
@@ -75,31 +76,51 @@ class PaperBananaBridge:
 
     def __init__(self) -> None:
         self._pipeline = None
-        import os
-
-        # Get API key from environment
-        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
-
+        self._last_api_key: str = ""
         logger.info(
-            "PaperBananaBridge: Initializing. API key available: %s",
-            bool(api_key),
+            "PaperBananaBridge: Created. Package available: %s",
+            _PAPERBANANA_AVAILABLE,
         )
 
-        if _PAPERBANANA_AVAILABLE and _PaperBananaPipeline is not None and _PaperBananaSettings is not None:
-            try:
-                # Explicitly pass API key via Settings to avoid caching issues
-                settings = _PaperBananaSettings(google_api_key=api_key if api_key else None)
-                self._pipeline = _PaperBananaPipeline(settings=settings)
-                logger.info("PaperBananaBridge: Pipeline initialized successfully with explicit API key")
-            except Exception as exc:
-                logger.warning(
-                    "PaperBananaBridge: Failed to initialize pipeline: %s", exc
-                )
+    def _ensure_pipeline(self) -> bool:
+        """Lazily initialize the pipeline with the current API key.
+
+        This is called before each generation so that API keys loaded from
+        the database after app startup are picked up correctly (production
+        mode loads keys from DB in the lifespan handler, which runs after
+        module-level imports).
+        """
+        import os
+
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
+
+        # Already initialized with the same key
+        if self._pipeline is not None and api_key == self._last_api_key:
+            return True
+
+        if not api_key:
+            logger.warning("PaperBananaBridge: No API key available (GEMINI_API_KEY / GOOGLE_API_KEY not set)")
+            return False
+
+        if not (_PAPERBANANA_AVAILABLE and _PaperBananaPipeline is not None and _PaperBananaSettings is not None):
+            logger.warning("PaperBananaBridge: Package not available, cannot create pipeline")
+            return False
+
+        try:
+            settings = _PaperBananaSettings(google_api_key=api_key)
+            self._pipeline = _PaperBananaPipeline(settings=settings)
+            self._last_api_key = api_key
+            logger.info("PaperBananaBridge: Pipeline initialized successfully with API key")
+            return True
+        except Exception as exc:
+            logger.warning("PaperBananaBridge: Failed to initialize pipeline: %s", exc)
+            self._pipeline = None
+            return False
 
     @property
     def is_available(self) -> bool:
-        """Return True if PaperBanana is installed and pipeline is ready."""
-        return self._pipeline is not None
+        """Return True if PaperBanana is installed and pipeline can be initialized."""
+        return self._ensure_pipeline()
 
     # ------------------------------------------------------------------
     # Public API
@@ -120,9 +141,9 @@ class PaperBananaBridge:
         Returns:
             File path to the generated PNG image, or None if generation failed.
         """
-        if not self.is_available:
+        if not self._ensure_pipeline():
             logger.warning(
-                "PaperBananaBridge: Package not available (pipeline=%s, available=%s). "
+                "PaperBananaBridge: Pipeline not ready (pipeline=%s, pkg_available=%s). "
                 "Cannot generate illustration for '%s'.",
                 self._pipeline,
                 _PAPERBANANA_AVAILABLE,

@@ -48,9 +48,9 @@ async def lifespan(app: FastAPI):
             k, v = row["key"], row["value"]
             if v:
                 if k == "gemini_api_key":
-                    os.environ.setdefault("GEMINI_API_KEY", v)
+                    os.environ["GEMINI_API_KEY"] = v
                 elif k == "anthropic_api_key":
-                    os.environ.setdefault("ANTHROPIC_API_KEY", v)
+                    os.environ["ANTHROPIC_API_KEY"] = v
         print("[Sasoo] API keys loaded from database into environment.")
     except Exception as exc:
         print(f"[Sasoo] Warning: Could not load API keys from DB: {exc}")
