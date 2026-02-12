@@ -25,11 +25,34 @@ if agent_profiles_src.exists():
             (str(yaml_file), "agent_profiles")
         )
 
+# ---------------------------------------------------------------------------
+# PaperBanana data files (prompts, reference sets, configs)
+# These are installed as sibling directories to the paperbanana package
+# in site-packages, NOT inside it. PyInstaller only bundles .py files
+# via hiddenimports, so data files must be added explicitly.
+# ---------------------------------------------------------------------------
+paperbanana_data = []
+try:
+    import paperbanana as _pb
+    _pb_site = Path(_pb.__file__).resolve().parent.parent
+    for _dir_name in ("prompts", "data", "configs"):
+        _src = _pb_site / _dir_name
+        if _src.exists():
+            for _f in _src.rglob("*"):
+                if _f.is_file():
+                    # Preserve directory structure relative to site-packages
+                    paperbanana_data.append(
+                        (str(_f), str(_f.parent.relative_to(_pb_site)))
+                    )
+    print(f"[SPEC] PaperBanana data files collected: {len(paperbanana_data)}")
+except ImportError:
+    print("[SPEC] PaperBanana not installed, skipping data files")
+
 a = Analysis(
     ['main.py'],
     pathex=[str(backend_dir)],
     binaries=[],
-    datas=agent_profiles_data,
+    datas=agent_profiles_data + paperbanana_data,
     hiddenimports=[
         # FastAPI and dependencies
         'fastapi',

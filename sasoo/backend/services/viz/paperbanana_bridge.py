@@ -11,11 +11,19 @@ from __future__ import annotations
 
 import logging
 import shutil
+import sys
 import traceback
 from pathlib import Path
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# PyInstaller _MEIPASS detection
+# ---------------------------------------------------------------------------
+
+_IS_FROZEN = getattr(sys, "frozen", False)
+_MEIPASS = Path(getattr(sys, "_MEIPASS", "")) if _IS_FROZEN else None
 
 # ---------------------------------------------------------------------------
 # Attempt to import paperbanana (optional dependency)
@@ -25,6 +33,7 @@ _PAPERBANANA_AVAILABLE = False
 _PaperBananaPipeline = None
 _GenerationInput = None
 _DiagramType = None
+_IMPORT_ERROR_DETAIL = ""
 
 try:
     from paperbanana import PaperBananaPipeline, GenerationInput, DiagramType
@@ -35,14 +44,26 @@ try:
     _DiagramType = DiagramType
     _PaperBananaSettings = PaperBananaSettings
     _PAPERBANANA_AVAILABLE = True
-    logger.info("PaperBanana package is available.")
+    logger.info("PaperBanana package is available (frozen=%s).", _IS_FROZEN)
 except ImportError as _import_err:
     _PaperBananaSettings = None
+    _IMPORT_ERROR_DETAIL = f"{_import_err}\n{traceback.format_exc()}"
     logger.warning(
         "PaperBanana package import failed: %s. "
         "Install with: pip install paperbanana. "
-        "PaperBanana illustrations will be unavailable.",
+        "PaperBanana illustrations will be unavailable.\n"
+        "Full traceback: %s",
         _import_err,
+        traceback.format_exc(),
+    )
+except Exception as _exc:
+    # Catch non-ImportError exceptions (e.g. AttributeError in transitive imports)
+    _PaperBananaSettings = None
+    _IMPORT_ERROR_DETAIL = f"{_exc}\n{traceback.format_exc()}"
+    logger.warning(
+        "PaperBanana package import failed with unexpected error: %s\n%s",
+        _exc,
+        traceback.format_exc(),
     )
 
 
@@ -99,21 +120,71 @@ class PaperBananaBridge:
             return True
 
         if not api_key:
-            logger.warning("PaperBananaBridge: No API key available (GEMINI_API_KEY / GOOGLE_API_KEY not set)")
+            logger.warning(
+                "PaperBananaBridge: No API key available "
+                "(GEMINI_API_KEY=%s, GOOGLE_API_KEY=%s, frozen=%s)",
+                bool(os.environ.get("GEMINI_API_KEY")),
+                bool(os.environ.get("GOOGLE_API_KEY")),
+                _IS_FROZEN,
+            )
             return False
 
         if not (_PAPERBANANA_AVAILABLE and _PaperBananaPipeline is not None and _PaperBananaSettings is not None):
-            logger.warning("PaperBananaBridge: Package not available, cannot create pipeline")
+            logger.warning(
+                "PaperBananaBridge: Package not available "
+                "(available=%s, pipeline_cls=%s, settings_cls=%s, import_err=%s)",
+                _PAPERBANANA_AVAILABLE,
+                _PaperBananaPipeline is not None,
+                _PaperBananaSettings is not None,
+                _IMPORT_ERROR_DETAIL[:200] if _IMPORT_ERROR_DETAIL else "none",
+            )
             return False
 
         try:
             settings = _PaperBananaSettings(google_api_key=api_key)
             self._pipeline = _PaperBananaPipeline(settings=settings)
             self._last_api_key = api_key
-            logger.info("PaperBananaBridge: Pipeline initialized successfully with API key")
+
+            # --- PyInstaller fix: patch prompt_dir for frozen executables ---
+            if _IS_FROZEN and _MEIPASS is not None:
+                meipass_prompts = _MEIPASS / "prompts"
+                if meipass_prompts.exists():
+                    prompt_dir_str = str(meipass_prompts)
+                    # Patch all agents to use the _MEIPASS prompts directory
+                    for agent_name in ("retriever", "planner", "stylist", "visualizer", "critic"):
+                        agent = getattr(self._pipeline, agent_name, None)
+                        if agent is not None:
+                            agent.prompt_dir = Path(prompt_dir_str)
+                    logger.info(
+                        "PaperBananaBridge: Patched agent prompt_dir to %s",
+                        prompt_dir_str,
+                    )
+                else:
+                    logger.warning(
+                        "PaperBananaBridge: _MEIPASS/prompts not found at %s",
+                        meipass_prompts,
+                    )
+
+                # Also patch reference_set_path and guidelines if available
+                meipass_data = _MEIPASS / "data"
+                if meipass_data.exists():
+                    ref_path = meipass_data / "reference_sets"
+                    if ref_path.exists() and hasattr(self._pipeline, "reference_store"):
+                        self._pipeline.reference_store.path = ref_path
+                        self._pipeline.reference_store._loaded = False
+                        logger.info("PaperBananaBridge: Patched reference_store path to %s", ref_path)
+
+            logger.info(
+                "PaperBananaBridge: Pipeline initialized successfully "
+                "(frozen=%s, api_key_len=%d)",
+                _IS_FROZEN, len(api_key),
+            )
             return True
         except Exception as exc:
-            logger.warning("PaperBananaBridge: Failed to initialize pipeline: %s", exc)
+            logger.warning(
+                "PaperBananaBridge: Failed to initialize pipeline: %s\n%s",
+                exc, traceback.format_exc(),
+            )
             self._pipeline = None
             return False
 
