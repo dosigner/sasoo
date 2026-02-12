@@ -6,8 +6,17 @@ Runs on http://localhost:8000 by default.
 """
 
 import os
+import ssl
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+# Use OS certificate store (Windows Certificate Store) instead of bundled certifi.
+# Fixes SSL errors on networks with SSL inspection proxies (self-signed certs).
+try:
+    import truststore
+    truststore.inject_into_ssl()
+except ImportError:
+    pass
 
 from dotenv import load_dotenv
 from fastapi import FastAPI

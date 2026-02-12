@@ -112,6 +112,9 @@ a = Analysis(
         'python_multipart',
         'multipart',
 
+        # SSL / Network
+        'truststore',
+
         # Encodings
         'encodings',
         'encodings.idna',
