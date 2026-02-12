@@ -10,6 +10,7 @@ If paperbanana is not installed, degrades gracefully (returns None with warning)
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import sys
 import traceback
@@ -25,46 +26,82 @@ logger = logging.getLogger(__name__)
 _IS_FROZEN = getattr(sys, "frozen", False)
 _MEIPASS = Path(getattr(sys, "_MEIPASS", "")) if _IS_FROZEN else None
 
+print(f"[PaperBanana] Module loading: frozen={_IS_FROZEN}, MEIPASS={_MEIPASS}")
+
 # ---------------------------------------------------------------------------
-# Attempt to import paperbanana (optional dependency)
+# Step-by-step import of paperbanana (optional dependency)
 # ---------------------------------------------------------------------------
 
 _PAPERBANANA_AVAILABLE = False
 _PaperBananaPipeline = None
 _GenerationInput = None
 _DiagramType = None
+_PaperBananaSettings = None
 _IMPORT_ERROR_DETAIL = ""
 
-try:
-    from paperbanana import PaperBananaPipeline, GenerationInput, DiagramType
-    from paperbanana.core.config import Settings as PaperBananaSettings
 
-    _PaperBananaPipeline = PaperBananaPipeline
-    _GenerationInput = GenerationInput
-    _DiagramType = DiagramType
-    _PaperBananaSettings = PaperBananaSettings
-    _PAPERBANANA_AVAILABLE = True
-    logger.info("PaperBanana package is available (frozen=%s).", _IS_FROZEN)
-except ImportError as _import_err:
-    _PaperBananaSettings = None
-    _IMPORT_ERROR_DETAIL = f"{_import_err}\n{traceback.format_exc()}"
-    logger.warning(
-        "PaperBanana package import failed: %s. "
-        "Install with: pip install paperbanana. "
-        "PaperBanana illustrations will be unavailable.\n"
-        "Full traceback: %s",
-        _import_err,
-        traceback.format_exc(),
-    )
-except Exception as _exc:
-    # Catch non-ImportError exceptions (e.g. AttributeError in transitive imports)
-    _PaperBananaSettings = None
-    _IMPORT_ERROR_DETAIL = f"{_exc}\n{traceback.format_exc()}"
-    logger.warning(
-        "PaperBanana package import failed with unexpected error: %s\n%s",
-        _exc,
-        traceback.format_exc(),
-    )
+def _try_import_paperbanana() -> bool:
+    """Import paperbanana with step-by-step diagnostics.
+
+    Returns True if all imports succeed, False otherwise.
+    Sets module-level _PAPERBANANA_AVAILABLE and related globals.
+    """
+    global _PAPERBANANA_AVAILABLE, _PaperBananaPipeline, _GenerationInput
+    global _DiagramType, _PaperBananaSettings, _IMPORT_ERROR_DETAIL
+
+    steps: list[str] = []
+
+    try:
+        # Step 1: Core dependencies
+        import structlog  # noqa: F401
+        steps.append("structlog OK")
+
+        import yaml  # noqa: F401
+        steps.append("yaml OK")
+
+        from pydantic_settings import BaseSettings  # noqa: F401
+        steps.append("pydantic_settings OK")
+
+        from tenacity import retry  # noqa: F401
+        steps.append("tenacity OK")
+
+        # Step 2: PaperBanana core types (lightest import)
+        from paperbanana.core.types import DiagramType, GenerationInput
+        steps.append("core.types OK")
+
+        # Step 3: PaperBanana config
+        from paperbanana.core.config import Settings as PBSettings
+        steps.append("core.config OK")
+
+        # Step 4: Full pipeline (pulls in agents, providers, etc.)
+        from paperbanana import PaperBananaPipeline
+        steps.append("PaperBananaPipeline OK")
+
+        # All imports succeeded
+        _PaperBananaPipeline = PaperBananaPipeline
+        _GenerationInput = GenerationInput
+        _DiagramType = DiagramType
+        _PaperBananaSettings = PBSettings
+        _PAPERBANANA_AVAILABLE = True
+
+        print(f"[PaperBanana] Import SUCCESS: {' -> '.join(steps)}")
+        logger.info("PaperBanana package is available (frozen=%s).", _IS_FROZEN)
+        return True
+
+    except Exception as exc:
+        _IMPORT_ERROR_DETAIL = f"{exc}\n{traceback.format_exc()}"
+        print(
+            f"[PaperBanana] Import FAILED at step [{' -> '.join(steps)}]: "
+            f"{exc.__class__.__name__}: {exc}"
+        )
+        logger.warning(
+            "PaperBanana import failed: steps=%s, error=%s",
+            steps, exc,
+        )
+        return False
+
+
+_try_import_paperbanana()
 
 
 # ---------------------------------------------------------------------------
@@ -98,10 +135,7 @@ class PaperBananaBridge:
     def __init__(self) -> None:
         self._pipeline = None
         self._last_api_key: str = ""
-        logger.info(
-            "PaperBananaBridge: Created. Package available: %s",
-            _PAPERBANANA_AVAILABLE,
-        )
+        self.last_error: str = ""  # Expose failure reason for diagnostics
 
     def _ensure_pipeline(self) -> bool:
         """Lazily initialize the pipeline with the current API key.
@@ -111,7 +145,7 @@ class PaperBananaBridge:
         mode loads keys from DB in the lifespan handler, which runs after
         module-level imports).
         """
-        import os
+        self.last_error = ""
 
         api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or ""
 
@@ -120,71 +154,87 @@ class PaperBananaBridge:
             return True
 
         if not api_key:
-            logger.warning(
-                "PaperBananaBridge: No API key available "
-                "(GEMINI_API_KEY=%s, GOOGLE_API_KEY=%s, frozen=%s)",
-                bool(os.environ.get("GEMINI_API_KEY")),
-                bool(os.environ.get("GOOGLE_API_KEY")),
-                _IS_FROZEN,
+            self.last_error = (
+                f"No API key (GEMINI={bool(os.environ.get('GEMINI_API_KEY'))}, "
+                f"GOOGLE={bool(os.environ.get('GOOGLE_API_KEY'))})"
             )
+            print(f"[PaperBanana] {self.last_error}")
             return False
 
-        if not (_PAPERBANANA_AVAILABLE and _PaperBananaPipeline is not None and _PaperBananaSettings is not None):
-            logger.warning(
-                "PaperBananaBridge: Package not available "
-                "(available=%s, pipeline_cls=%s, settings_cls=%s, import_err=%s)",
-                _PAPERBANANA_AVAILABLE,
-                _PaperBananaPipeline is not None,
-                _PaperBananaSettings is not None,
-                _IMPORT_ERROR_DETAIL[:200] if _IMPORT_ERROR_DETAIL else "none",
+        if not _PAPERBANANA_AVAILABLE:
+            self.last_error = (
+                f"Import failed: {_IMPORT_ERROR_DETAIL[:300]}"
             )
+            print(f"[PaperBanana] {self.last_error}")
+            return False
+
+        if _PaperBananaPipeline is None or _PaperBananaSettings is None:
+            self.last_error = (
+                f"Package partially loaded (pipeline={_PaperBananaPipeline is not None}, "
+                f"settings={_PaperBananaSettings is not None})"
+            )
+            print(f"[PaperBanana] {self.last_error}")
             return False
 
         try:
-            settings = _PaperBananaSettings(google_api_key=api_key)
+            # Build settings — in frozen mode, use absolute MEIPASS paths
+            # so PaperBanana finds its data files inside _internal/
+            settings_kwargs: dict[str, Any] = {"google_api_key": api_key}
+
+            if _IS_FROZEN and _MEIPASS is not None:
+                meipass_str = str(_MEIPASS)
+                ref_path = str(_MEIPASS / "data" / "reference_sets")
+                guide_path = str(_MEIPASS / "data" / "guidelines")
+                out_path = str(_MEIPASS / "outputs")
+
+                settings_kwargs["reference_set_path"] = ref_path
+                settings_kwargs["guidelines_path"] = guide_path
+                settings_kwargs["output_dir"] = out_path
+
+                print(
+                    f"[PaperBanana] Frozen mode: MEIPASS={meipass_str}, "
+                    f"ref={ref_path}, guide={guide_path}, out={out_path}"
+                )
+
+            settings = _PaperBananaSettings(**settings_kwargs)
+            print(f"[PaperBanana] Settings created (api_key_len={len(api_key)})")
+
             self._pipeline = _PaperBananaPipeline(settings=settings)
             self._last_api_key = api_key
+            print(f"[PaperBanana] Pipeline created OK")
 
             # --- PyInstaller fix: patch prompt_dir for frozen executables ---
             if _IS_FROZEN and _MEIPASS is not None:
                 meipass_prompts = _MEIPASS / "prompts"
                 if meipass_prompts.exists():
-                    prompt_dir_str = str(meipass_prompts)
                     # Patch all agents to use the _MEIPASS prompts directory
+                    patched = []
                     for agent_name in ("retriever", "planner", "stylist", "visualizer", "critic"):
                         agent = getattr(self._pipeline, agent_name, None)
                         if agent is not None:
-                            agent.prompt_dir = Path(prompt_dir_str)
-                    logger.info(
-                        "PaperBananaBridge: Patched agent prompt_dir to %s",
-                        prompt_dir_str,
-                    )
+                            agent.prompt_dir = meipass_prompts
+                            patched.append(agent_name)
+                    print(f"[PaperBanana] Patched prompt_dir for agents: {patched}")
                 else:
-                    logger.warning(
-                        "PaperBananaBridge: _MEIPASS/prompts not found at %s",
-                        meipass_prompts,
-                    )
+                    print(f"[PaperBanana] WARNING: prompts not found at {meipass_prompts}")
 
-                # Also patch reference_set_path and guidelines if available
-                meipass_data = _MEIPASS / "data"
-                if meipass_data.exists():
-                    ref_path = meipass_data / "reference_sets"
-                    if ref_path.exists() and hasattr(self._pipeline, "reference_store"):
-                        self._pipeline.reference_store.path = ref_path
-                        self._pipeline.reference_store._loaded = False
-                        logger.info("PaperBananaBridge: Patched reference_store path to %s", ref_path)
+                # Patch reference_store path
+                meipass_refs = _MEIPASS / "data" / "reference_sets"
+                if meipass_refs.exists() and hasattr(self._pipeline, "reference_store"):
+                    self._pipeline.reference_store.path = meipass_refs
+                    self._pipeline.reference_store._loaded = False
+                    print(f"[PaperBanana] Patched reference_store to {meipass_refs}")
 
-            logger.info(
-                "PaperBananaBridge: Pipeline initialized successfully "
-                "(frozen=%s, api_key_len=%d)",
-                _IS_FROZEN, len(api_key),
+            print(
+                f"[PaperBanana] Pipeline ready (frozen={_IS_FROZEN}, "
+                f"key_len={len(api_key)})"
             )
             return True
+
         except Exception as exc:
-            logger.warning(
-                "PaperBananaBridge: Failed to initialize pipeline: %s\n%s",
-                exc, traceback.format_exc(),
-            )
+            self.last_error = f"Pipeline init failed: {exc}"
+            print(f"[PaperBanana] {self.last_error}")
+            print(f"[PaperBanana] Traceback: {traceback.format_exc()}")
             self._pipeline = None
             return False
 
@@ -213,12 +263,9 @@ class PaperBananaBridge:
             File path to the generated PNG image, or None if generation failed.
         """
         if not self._ensure_pipeline():
-            logger.warning(
-                "PaperBananaBridge: Pipeline not ready (pipeline=%s, pkg_available=%s). "
-                "Cannot generate illustration for '%s'.",
-                self._pipeline,
-                _PAPERBANANA_AVAILABLE,
-                viz_target.get("title", "?"),
+            print(
+                f"[PaperBanana] Pipeline not ready for '{viz_target.get('title', '?')}': "
+                f"{self.last_error}"
             )
             return None
 
@@ -240,19 +287,19 @@ class PaperBananaBridge:
                 diagram_type=diagram_type,
             )
 
+            print(f"[PaperBanana] Generating '{title}' (type={diagram_type})...")
             result = await self._pipeline.generate(generation_input)
 
             # Copy result image to paper directory
             save_path = self._save_image(result, title, paper_dir)
-            logger.info(
-                "PaperBananaBridge: Generated illustration '%s' -> %s",
-                title, save_path,
-            )
+            print(f"[PaperBanana] Generated '{title}' -> {save_path}")
             return save_path
 
         except Exception as exc:
+            self.last_error = f"Generation failed: {exc}"
+            print(f"[PaperBanana] {self.last_error}")
             logger.error(
-                "PaperBananaBridge: Failed to generate illustration '%s': %s\nTraceback: %s",
+                "PaperBananaBridge: Failed to generate '%s': %s\n%s",
                 title, exc, traceback.format_exc(),
             )
             return None
@@ -385,8 +432,8 @@ class PaperBananaBridge:
             result.save(str(save_path))
         else:
             logger.warning(
-                "PaperBananaBridge: Could not extract image from result object. "
-                "Result type: %s, attributes: %s",
+                "PaperBananaBridge: Could not extract image from result. "
+                "Type: %s, attrs: %s",
                 type(result).__name__,
                 dir(result),
             )

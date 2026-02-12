@@ -301,6 +301,55 @@ async def update_budget(monthly_limit_usd: float = Query(..., ge=0.0, descriptio
     return {"monthly_limit_usd": monthly_limit_usd, "status": "updated"}
 
 
+@router.get("/debug/paperbanana")
+async def debug_paperbanana():
+    """
+    Diagnostic endpoint: check PaperBanana availability and configuration.
+    Visit http://localhost:8000/api/settings/debug/paperbanana in browser.
+    """
+    import os
+    import sys
+
+    from services.viz.paperbanana_bridge import (
+        _IS_FROZEN,
+        _IMPORT_ERROR_DETAIL,
+        _MEIPASS,
+        _PAPERBANANA_AVAILABLE,
+        PaperBananaBridge,
+    )
+
+    bridge = PaperBananaBridge()
+    pipeline_ok = bridge.is_available
+
+    result = {
+        "frozen": _IS_FROZEN,
+        "meipass": str(_MEIPASS) if _MEIPASS else None,
+        "import_ok": _PAPERBANANA_AVAILABLE,
+        "import_error": _IMPORT_ERROR_DETAIL[:500] if _IMPORT_ERROR_DETAIL else None,
+        "pipeline_ok": pipeline_ok,
+        "pipeline_error": bridge.last_error or None,
+        "env": {
+            "GEMINI_API_KEY": bool(os.environ.get("GEMINI_API_KEY")),
+            "GOOGLE_API_KEY": bool(os.environ.get("GOOGLE_API_KEY")),
+        },
+    }
+
+    # Check data file paths if frozen
+    if _IS_FROZEN and _MEIPASS:
+        from pathlib import Path
+        meipass = Path(str(_MEIPASS))
+        result["data_files"] = {
+            "prompts_dir": str(meipass / "prompts"),
+            "prompts_exists": (meipass / "prompts").exists(),
+            "data_dir": str(meipass / "data"),
+            "data_exists": (meipass / "data").exists(),
+            "configs_dir": str(meipass / "configs"),
+            "configs_exists": (meipass / "configs").exists(),
+        }
+
+    return result
+
+
 @router.get("/keys/status")
 async def check_api_keys():
     """
