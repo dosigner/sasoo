@@ -179,13 +179,20 @@ class PaperBananaBridge:
         try:
             # Build settings — in frozen mode, use absolute MEIPASS paths
             # so PaperBanana finds its data files inside _internal/
-            settings_kwargs: dict[str, Any] = {"google_api_key": api_key}
+            #
+            # NOTE: Settings.google_api_key has alias="GOOGLE_API_KEY" and
+            # model_config has extra="ignore" without populate_by_name=True,
+            # so we MUST use the alias name in the constructor.
+            settings_kwargs: dict[str, Any] = {"GOOGLE_API_KEY": api_key}
 
             if _IS_FROZEN and _MEIPASS is not None:
                 meipass_str = str(_MEIPASS)
                 ref_path = str(_MEIPASS / "data" / "reference_sets")
                 guide_path = str(_MEIPASS / "data" / "guidelines")
-                out_path = str(_MEIPASS / "outputs")
+                # Use temp directory for outputs (not inside _internal/)
+                import tempfile
+                out_path = str(Path(tempfile.gettempdir()) / "sasoo" / "paperbanana")
+                Path(out_path).mkdir(parents=True, exist_ok=True)
 
                 settings_kwargs["reference_set_path"] = ref_path
                 settings_kwargs["guidelines_path"] = guide_path
@@ -197,7 +204,11 @@ class PaperBananaBridge:
                 )
 
             settings = _PaperBananaSettings(**settings_kwargs)
-            print(f"[PaperBanana] Settings created (api_key_len={len(api_key)})")
+            print(
+                f"[PaperBanana] Settings created "
+                f"(api_key_in_settings={bool(settings.google_api_key)}, "
+                f"api_key_len={len(api_key)})"
+            )
 
             self._pipeline = _PaperBananaPipeline(settings=settings)
             self._last_api_key = api_key
