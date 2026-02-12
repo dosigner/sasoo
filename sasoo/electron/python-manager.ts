@@ -122,6 +122,8 @@ export class PythonManager {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: {
           ...process.env,
+          PYTHONUTF8: '1',           // Force UTF-8 encoding (Korean Windows cp949 fix)
+          PYTHONUNBUFFERED: '1',
           SASOO_PORT: String(this.config.port),
           SASOO_ENV: 'production',
         },

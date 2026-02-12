@@ -229,12 +229,39 @@ class PaperBananaBridge:
                 else:
                     print(f"[PaperBanana] WARNING: prompts not found at {meipass_prompts}")
 
-                # Patch reference_store path
+                # Patch reference_store path and pre-load with UTF-8
+                # (Korean Windows uses cp949 by default; paperbanana opens
+                #  index.json without encoding="utf-8")
                 meipass_refs = _MEIPASS / "data" / "reference_sets"
                 if meipass_refs.exists() and hasattr(self._pipeline, "reference_store"):
-                    self._pipeline.reference_store.path = meipass_refs
-                    self._pipeline.reference_store._loaded = False
-                    print(f"[PaperBanana] Patched reference_store to {meipass_refs}")
+                    store = self._pipeline.reference_store
+                    store.path = meipass_refs
+                    store._loaded = False
+                    # Pre-load with explicit UTF-8 to avoid cp949 errors
+                    try:
+                        import json as _json
+                        from paperbanana.core.types import ReferenceExample as _RE
+                        idx = meipass_refs / "index.json"
+                        if idx.exists():
+                            with open(idx, encoding="utf-8") as _f:
+                                _data = _json.load(_f)
+                            store._examples = []
+                            for item in _data.get("examples", []):
+                                img = item.get("image_path", "")
+                                if img and not Path(img).is_absolute():
+                                    img = str(meipass_refs / img)
+                                store._examples.append(_RE(
+                                    id=item["id"],
+                                    source_context=item["source_context"],
+                                    caption=item["caption"],
+                                    image_path=img,
+                                    category=item.get("category"),
+                                ))
+                            store._loaded = True
+                            print(f"[PaperBanana] Pre-loaded {len(store._examples)} references (UTF-8)")
+                    except Exception as ref_exc:
+                        print(f"[PaperBanana] Reference pre-load failed: {ref_exc}")
+                        store._loaded = False
 
             print(
                 f"[PaperBanana] Pipeline ready (frozen={_IS_FROZEN}, "
