@@ -11,8 +11,10 @@ import {
   HardDrive,
   Beaker,
 } from 'lucide-react';
-import { uploadPaper, DOMAINS, type UploadResponse } from '@/lib/api';
+import { uploadPaper, updatePaper, DOMAINS, type UploadResponse } from '@/lib/api';
 import { getAgentMeta } from '@/lib/agents';
+import { useToast } from '@/components/Toast';
+import { S } from '@/lib/strings';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -40,6 +42,7 @@ type UploadStage = 'idle' | 'uploading' | 'parsing' | 'classified' | 'error';
 export default function Upload() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   const [stage, setStage] = useState<UploadStage>('idle');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -54,13 +57,13 @@ export default function Upload() {
   // -----------------------------------------------------------------------
   const validateFile = useCallback((file: File): string | null => {
     if (!ACCEPTED_TYPES.includes(file.type) && !file.name.endsWith('.pdf')) {
-      return 'Only PDF files are accepted.';
+      return S.upload.onlyPdf;
     }
     if (file.size > MAX_FILE_SIZE) {
-      return `File too large. Maximum size is ${formatFileSize(MAX_FILE_SIZE)}.`;
+      return S.upload.fileTooLarge(formatFileSize(MAX_FILE_SIZE));
     }
     if (file.size === 0) {
-      return 'File appears to be empty.';
+      return S.upload.fileEmpty;
     }
     return null;
   }, []);
@@ -104,22 +107,30 @@ export default function Upload() {
       setUploadResult(result);
       setDomainOverride(result.domain);
       setStage('classified');
+      toast.success(S.toast.uploadSuccess);
     } catch (err) {
       setStage('error');
-      setError(
-        err instanceof Error ? err.message : 'Upload failed. Please try again.'
-      );
+      setError(S.upload.uploadFailed);
+      if (err instanceof Error) console.warn('[upload] error:', err.message);
+      toast.error(S.toast.uploadFailed);
     }
-  }, [selectedFile]);
+  }, [selectedFile, toast]);
 
   // -----------------------------------------------------------------------
   // Navigate to workbench
   // -----------------------------------------------------------------------
-  const handleStartAnalysis = useCallback(() => {
-    if (uploadResult) {
+  const handleStartAnalysis = useCallback(async () => {
+    if (!uploadResult) return;
+    try {
+      // If user changed domain, update it on the backend before navigating
+      if (domainOverride && domainOverride !== uploadResult.domain) {
+        await updatePaper(uploadResult.id, { domain: domainOverride });
+      }
+      navigate(`/workbench/${uploadResult.id}`);
+    } catch {
       navigate(`/workbench/${uploadResult.id}`);
     }
-  }, [navigate, uploadResult]);
+  }, [navigate, uploadResult, domainOverride]);
 
   // -----------------------------------------------------------------------
   // Drag and drop handlers
@@ -181,11 +192,10 @@ export default function Upload() {
             <Beaker className="w-7 h-7 text-primary-400" />
           </div>
           <h1 className="text-2xl font-bold text-surface-100 mb-2">
-            Upload Paper
+            {S.upload.title}
           </h1>
           <p className="text-sm text-surface-400 max-w-sm mx-auto">
-            Upload an academic paper (PDF) for AI-powered analysis.
-            We'll extract figures, parameters, and generate visual summaries.
+            {S.upload.description}
           </p>
         </div>
 
@@ -223,7 +233,7 @@ export default function Upload() {
               </div>
               <div>
                 <p className="text-sm text-surface-200 mb-1">
-                  Drag and drop your PDF here
+                  {S.upload.dragDrop}
                 </p>
                 <p className="text-2xs text-surface-500">
                   or{' '}
@@ -231,19 +241,19 @@ export default function Upload() {
                     onClick={() => fileInputRef.current?.click()}
                     className="text-primary-400 hover:text-primary-300 underline underline-offset-2"
                   >
-                    browse files
+                    {S.upload.browse}
                   </button>
                 </p>
               </div>
               <div className="flex items-center justify-center gap-3 text-2xs text-surface-500">
                 <span className="flex items-center gap-1">
                   <FileText className="w-3 h-3" />
-                  PDF only
+                  {S.upload.pdfOnly}
                 </span>
                 <span className="w-1 h-1 rounded-full bg-surface-600" />
                 <span className="flex items-center gap-1">
                   <HardDrive className="w-3 h-3" />
-                  Max {formatFileSize(MAX_FILE_SIZE)}
+                  {S.upload.maxSize(formatFileSize(MAX_FILE_SIZE))}
                 </span>
               </div>
             </div>
@@ -290,8 +300,8 @@ export default function Upload() {
                   <div className="flex items-center justify-center gap-2 text-xs text-surface-400">
                     <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-400" />
                     {stage === 'uploading'
-                      ? `Uploading... ${uploadProgress}%`
-                      : 'Parsing PDF and classifying domain...'}
+                      ? S.upload.uploading(uploadProgress)
+                      : S.upload.parsing}
                   </div>
                 </div>
               )}
@@ -301,14 +311,14 @@ export default function Upload() {
                 <div className="space-y-4 fade-in-up">
                   <div className="flex items-center gap-2 text-sm text-emerald-400">
                     <Check className="w-4 h-4" />
-                    Paper uploaded and parsed successfully
+                    {S.upload.success}
                   </div>
 
                   {/* Paper info */}
                   <div className="bg-surface-700/50 rounded-lg p-4 text-left space-y-3">
                     <div>
                       <span className="text-2xs text-surface-500 uppercase tracking-wider">
-                        Title
+                        {S.upload.titleLabel}
                       </span>
                       <p className="text-sm text-surface-200 mt-0.5">
                         {uploadResult.title}
@@ -317,25 +327,39 @@ export default function Upload() {
                     {/* Agent card */}
                     {(() => {
                       const agent = getAgentMeta(uploadResult.agent_used);
-                      if (!agent) return null;
+                      const displayAgent = agent || {
+                        name: S.agent.unknownAgent,
+                        personality: S.agent.unknownDomain,
+                        quote: S.agent.fallbackQuote,
+                        color: 'text-surface-400',
+                        bgColor: 'bg-surface-500/10',
+                        borderColor: 'border-surface-500/20',
+                        image: null as string | null,
+                      };
                       return (
-                        <div className={`flex items-center gap-3 p-3 rounded-lg ${agent.bgColor} border ${agent.borderColor}`}>
-                          <img
-                            src={agent.image}
-                            alt={agent.name}
-                            className="w-16 h-16 rounded-lg object-cover shrink-0"
-                          />
+                        <div className={`flex items-center gap-3 p-3 rounded-lg ${displayAgent.bgColor} border ${displayAgent.borderColor}`}>
+                          {displayAgent.image ? (
+                            <img
+                              src={displayAgent.image}
+                              alt={displayAgent.name}
+                              className="w-16 h-16 rounded-lg object-cover shrink-0"
+                            />
+                          ) : (
+                            <div className="w-16 h-16 rounded-lg bg-surface-700 flex items-center justify-center shrink-0">
+                              <Beaker className="w-8 h-8 text-surface-500" />
+                            </div>
+                          )}
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className={`text-sm font-semibold ${agent.color}`}>
-                                {agent.name}
+                              <span className={`text-sm font-semibold ${displayAgent.color}`}>
+                                {displayAgent.name}
                               </span>
                               <span className="text-2xs text-surface-500">
-                                {agent.personality}
+                                {displayAgent.personality}
                               </span>
                             </div>
                             <p className="text-xs text-surface-400 mt-0.5 italic">
-                              "{agent.quote}"
+                              "{displayAgent.quote}"
                             </p>
                           </div>
                         </div>
@@ -345,7 +369,7 @@ export default function Upload() {
                     {/* Domain selection */}
                     <div>
                       <span className="text-2xs text-surface-500 uppercase tracking-wider">
-                        Detected Domain
+                        {S.upload.detectedDomain}
                       </span>
                       <select
                         value={domainOverride}
@@ -356,7 +380,7 @@ export default function Upload() {
                           <option key={domain.key} value={domain.key}>
                             {domain.label}
                             {domain.key === uploadResult.domain
-                              ? ' (detected)'
+                              ? ` ${S.upload.detected}`
                               : ''}
                           </option>
                         ))}
@@ -369,7 +393,7 @@ export default function Upload() {
                     onClick={handleStartAnalysis}
                     className="btn-primary w-full py-3 text-sm"
                   >
-                    Open & Analyze
+                    {S.upload.openAnalyze}
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -384,10 +408,10 @@ export default function Upload() {
                   </div>
                   <div className="flex gap-2">
                     <button onClick={handleUpload} className="btn-primary flex-1">
-                      Retry
+                      {S.upload.retry}
                     </button>
                     <button onClick={clearFile} className="btn-secondary">
-                      Clear
+                      {S.upload.clear}
                     </button>
                   </div>
                 </div>
@@ -400,7 +424,7 @@ export default function Upload() {
                   className="btn-primary w-full py-3 text-sm"
                 >
                   <UploadIcon className="w-4 h-4" />
-                  Upload Paper
+                  {S.upload.uploadBtn}
                 </button>
               )}
             </div>

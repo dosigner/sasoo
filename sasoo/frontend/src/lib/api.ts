@@ -192,6 +192,7 @@ export interface Settings {
   max_concurrent_analyses: number;
   gemini_model: string;
   anthropic_model: string;
+  monthly_budget?: number;
 }
 
 export interface CostSummary {

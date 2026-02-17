@@ -70,10 +70,29 @@ const AGENTS: Record<string, AgentMeta> = {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Fallback agent metadata for unknown domains */
+export const FALLBACK_AGENT: AgentMeta = {
+  key: 'unknown',
+  name: '알 수 없는 에이전트',
+  nameKo: '알 수 없음',
+  personality: '알 수 없는 분야',
+  quote: '분석 준비 중입니다.',
+  color: 'text-surface-400',
+  bgColor: 'bg-surface-500/10',
+  borderColor: 'border-surface-500/20',
+  image: '',
+};
+
 /** Get agent metadata by agent name (e.g. 'photon', 'cell') */
 export function getAgentMeta(name?: string): AgentMeta | null {
   if (!name) return null;
   return AGENTS[name.toLowerCase()] ?? null;
+}
+
+/** Get agent metadata with fallback for unknown agents */
+export function getAgentMetaOrFallback(name?: string): AgentMeta {
+  if (!name) return FALLBACK_AGENT;
+  return AGENTS[name.toLowerCase()] ?? FALLBACK_AGENT;
 }
 
 /** Get all agents */

@@ -19,6 +19,8 @@ import {
   type Settings as SettingsType,
 } from '@/lib/api';
 import CostDashboard from '@/components/CostDashboard';
+import { useToast } from '@/components/Toast';
+import { S } from '@/lib/strings';
 
 // ---------------------------------------------------------------------------
 // Component
@@ -30,6 +32,7 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   // Form state
   const [geminiKey, setGeminiKey] = useState('');
@@ -59,11 +62,11 @@ export default function Settings() {
         setLibraryPath(data.library_path || '');
         setTheme(data.theme || 'dark');
         setAutoAnalyze(data.auto_analyze ?? false);
+        setMonthlyBudget(data.monthly_budget ?? 50);
       } catch (err) {
         if (!cancelled) {
-          setError(
-            err instanceof Error ? err.message : 'Failed to load settings'
-          );
+          if (err instanceof Error) console.warn('[settings] load error:', err.message);
+          setError(S.settings.loadFailed);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -106,18 +109,20 @@ export default function Settings() {
         library_path: libraryPath,
         theme,
         auto_analyze: autoAnalyze,
+        monthly_budget: monthlyBudget,
       });
       setSettings(updated);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
+      toast.success(S.toast.settingsSaved);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Failed to save settings'
-      );
+      setError(S.settings.saveFailed);
+      if (err instanceof Error) console.warn('[settings] save error:', err.message);
+      toast.error(S.toast.settingsFailed);
     } finally {
       setSaving(false);
     }
-  }, [geminiKey, claudeKey, libraryPath, theme, autoAnalyze]);
+  }, [geminiKey, claudeKey, libraryPath, theme, autoAnalyze, monthlyBudget, toast]);
 
   // -----------------------------------------------------------------------
   // Check for unsaved changes
@@ -128,14 +133,15 @@ export default function Settings() {
       claudeKey !== (settings.anthropic_api_key || '') ||
       libraryPath !== (settings.library_path || '') ||
       theme !== (settings.theme || 'dark') ||
-      autoAnalyze !== (settings.auto_analyze ?? false));
+      autoAnalyze !== (settings.auto_analyze ?? false) ||
+      monthlyBudget !== (settings.monthly_budget ?? 50));
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-6 h-6 text-primary-400 animate-spin" />
-          <span className="text-sm text-surface-400">Loading settings...</span>
+          <span className="text-sm text-surface-400">{S.settings.loadingSettings}</span>
         </div>
       </div>
     );
@@ -148,10 +154,10 @@ export default function Settings() {
         <div>
           <h1 className="text-xl font-bold text-surface-100 flex items-center gap-2">
             <SettingsIcon className="w-5 h-5 text-primary-400" />
-            Settings
+            {S.settings.title}
           </h1>
           <p className="text-sm text-surface-500 mt-1">
-            Configure API keys, preferences, and view usage statistics.
+            {S.settings.description}
           </p>
         </div>
 
@@ -167,7 +173,7 @@ export default function Settings() {
           ) : (
             <Save className="w-4 h-4" />
           )}
-          {saving ? 'Saving...' : saved ? 'Saved' : 'Save Changes'}
+          {saving ? S.settings.saving : saved ? S.settings.saved : S.settings.save}
         </button>
       </div>
 
@@ -186,14 +192,14 @@ export default function Settings() {
         <section>
           <h2 className="text-sm font-semibold text-surface-200 flex items-center gap-2 mb-4">
             <Key className="w-4 h-4 text-primary-400" />
-            API Keys
+            {S.settings.apiKeys}
           </h2>
 
           <div className="space-y-4">
             {/* Gemini API key */}
             <div>
               <label className="text-xs text-surface-400 block mb-1.5">
-                Google Gemini API Key
+                {S.settings.geminiKey}
               </label>
               <div className="relative">
                 <input
@@ -216,7 +222,7 @@ export default function Settings() {
                 </button>
               </div>
               <p className="text-2xs text-surface-600 mt-1">
-                Used for Gemini Flash and Gemini Pro models. Get a key at{' '}
+                {S.settings.geminiHelp}{' '}
                 <a
                   href="https://aistudio.google.com/api-keys"
                   target="_blank"
@@ -225,14 +231,14 @@ export default function Settings() {
                 >
                   Google AI Studio
                 </a>
-                .
+                {S.settings.getKeyAt('')}
               </p>
             </div>
 
             {/* Claude API key */}
             <div>
               <label className="text-xs text-surface-400 block mb-1.5">
-                Anthropic Claude API Key
+                {S.settings.claudeKey}
               </label>
               <div className="relative">
                 <input
@@ -255,7 +261,7 @@ export default function Settings() {
                 </button>
               </div>
               <p className="text-2xs text-surface-600 mt-1">
-                Used for Claude Sonnet for advanced analysis. Get a key at{' '}
+                {S.settings.claudeHelp}{' '}
                 <a
                   href="https://platform.claude.com/"
                   target="_blank"
@@ -264,7 +270,7 @@ export default function Settings() {
                 >
                   Anthropic Console
                 </a>
-                .
+                {S.settings.getKeyAt('')}
               </p>
             </div>
           </div>
@@ -276,13 +282,13 @@ export default function Settings() {
         <section>
           <h2 className="text-sm font-semibold text-surface-200 flex items-center gap-2 mb-4">
             <FolderOpen className="w-4 h-4 text-primary-400" />
-            Library
+            {S.settings.librarySection}
           </h2>
 
           <div className="space-y-4">
             <div>
               <label className="text-xs text-surface-400 block mb-1.5">
-                Library Storage Path
+                {S.settings.libraryPath}
               </label>
               <div className="flex gap-2">
                 <input
@@ -297,7 +303,7 @@ export default function Settings() {
                   onClick={async () => {
                     if (window.electronAPI?.openDirectory) {
                       const result = await window.electronAPI.openDirectory({
-                        title: 'Select Library Folder',
+                        title: S.settings.browseFolderTitle,
                         defaultPath: libraryPath || undefined,
                       });
                       if (!result.canceled && result.directoryPath) {
@@ -306,24 +312,23 @@ export default function Settings() {
                     }
                   }}
                   className="btn-ghost px-3 shrink-0"
-                  title="Browse folder"
+                  title={S.settings.browseFolder}
                 >
                   <FolderOpen className="w-4 h-4" />
                 </button>
               </div>
               <p className="text-2xs text-surface-600 mt-1">
-                Directory where uploaded PDFs and analysis results are stored.
-                Changes take effect after restarting the app. Existing files are not moved automatically.
+                {S.settings.libraryPathHelp}
               </p>
             </div>
 
             <div className="flex items-center justify-between">
               <div>
                 <label className="text-xs text-surface-300">
-                  Auto-analyze on upload
+                  {S.settings.autoAnalyze}
                 </label>
                 <p className="text-2xs text-surface-600 mt-0.5">
-                  Automatically start analysis when a paper is uploaded.
+                  {S.settings.autoAnalyzeHelp}
                 </p>
               </div>
               <button
@@ -355,7 +360,7 @@ export default function Settings() {
             ) : (
               <Sun className="w-4 h-4 text-primary-400" />
             )}
-            Appearance
+            {S.settings.appearance}
           </h2>
 
           <div className="flex items-center gap-3">
@@ -368,7 +373,7 @@ export default function Settings() {
               }`}
             >
               <Moon className="w-4 h-4" />
-              <span className="text-sm">Dark</span>
+              <span className="text-sm">{S.settings.dark}</span>
             </button>
             <button
               onClick={() => setTheme('light')}
@@ -379,7 +384,7 @@ export default function Settings() {
               }`}
             >
               <Sun className="w-4 h-4" />
-              <span className="text-sm">Light</span>
+              <span className="text-sm">{S.settings.light}</span>
             </button>
           </div>
         </section>
@@ -390,12 +395,12 @@ export default function Settings() {
         <section>
           <h2 className="text-sm font-semibold text-surface-200 flex items-center gap-2 mb-4">
             <DollarSign className="w-4 h-4 text-primary-400" />
-            Budget
+            {S.settings.budget}
           </h2>
 
           <div>
             <label className="text-xs text-surface-400 block mb-1.5">
-              Monthly Budget Limit
+              {S.settings.monthlyBudget}
             </label>
             <div className="relative w-40">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-500">
@@ -413,7 +418,7 @@ export default function Settings() {
               />
             </div>
             <p className="text-2xs text-surface-600 mt-1">
-              You'll receive warnings when approaching this limit.
+              {S.settings.budgetHelp}
             </p>
           </div>
         </section>
@@ -424,7 +429,7 @@ export default function Settings() {
         <section>
           <h2 className="text-sm font-semibold text-surface-200 flex items-center gap-2 mb-4">
             <DollarSign className="w-4 h-4 text-primary-400" />
-            Usage & Costs
+            {S.settings.usageCosts}
           </h2>
           <CostDashboard />
         </section>
@@ -435,7 +440,7 @@ export default function Settings() {
         <div className="fixed bottom-0 left-0 right-0 bg-surface-800/85 backdrop-blur-lg border-t border-surface-700/50 px-6 py-3 z-40">
           <div className="max-w-3xl mx-auto flex items-center justify-between">
             <span className="text-sm text-surface-400">
-              You have unsaved changes
+              {S.settings.unsavedChanges}
             </span>
             <div className="flex items-center gap-2">
               <button
@@ -446,11 +451,12 @@ export default function Settings() {
                     setLibraryPath(settings.library_path || '');
                     setTheme(settings.theme || 'dark');
                     setAutoAnalyze(settings.auto_analyze ?? false);
+                    setMonthlyBudget(settings.monthly_budget ?? 50);
                   }
                 }}
                 className="btn-ghost text-sm"
               >
-                Discard
+                {S.settings.discard}
               </button>
               <button
                 onClick={handleSave}
@@ -462,7 +468,7 @@ export default function Settings() {
                 ) : (
                   <Save className="w-4 h-4" />
                 )}
-                Save Changes
+                {S.settings.save}
               </button>
             </div>
           </div>

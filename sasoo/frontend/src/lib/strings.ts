@@ -1,0 +1,364 @@
+// ---------------------------------------------------------------------------
+// Sasoo UI Strings (Korean)
+// ---------------------------------------------------------------------------
+// All user-facing strings in one place for consistency.
+
+export const S = {
+  // ── App / Navigation ──
+  app: {
+    name: 'Sasoo',
+    subtitle: '논문 분석',
+    upload: '논문 업로드',
+    library: '논문 라이브러리',
+    settings: '설정',
+    workbench: '워크벤치',
+    collapse: '접기',
+    expandSidebar: '사이드바 펼치기',
+    collapseSidebar: '사이드바 접기',
+  },
+
+  // ── Upload Page ──
+  upload: {
+    title: '논문 업로드',
+    description:
+      '학술 논문(PDF)을 업로드하면 AI가 그림 추출, 파라미터 분석, 시각적 요약을 생성합니다.',
+    dragDrop: 'PDF를 여기에 드래그하세요',
+    browse: '파일 찾기',
+    pdfOnly: 'PDF만 가능',
+    maxSize: (size: string) => `최대 ${size}`,
+    uploadBtn: '논문 업로드',
+    uploading: (pct: number) => `업로드 중... ${pct}%`,
+    parsing: 'PDF 분석 및 분야 분류 중...',
+    success: '논문 업로드 및 분석 준비 완료',
+    titleLabel: '제목',
+    detectedDomain: '감지된 분야',
+    detected: '(감지됨)',
+    openAnalyze: '열기 & 분석 시작',
+    retry: '다시 시도',
+    clear: '초기화',
+    onlyPdf: 'PDF 파일만 업로드할 수 있습니다.',
+    fileTooLarge: (max: string) => `파일이 너무 큽니다. 최대 크기는 ${max}입니다.`,
+    fileEmpty: '파일이 비어 있습니다.',
+    uploadFailed: '업로드에 실패했습니다. 다시 시도해 주세요.',
+  },
+
+  // ── Workbench ──
+  workbench: {
+    loading: '논문 불러오는 중...',
+    loadFailed: '논문을 불러올 수 없습니다',
+    notFound: '논문을 찾을 수 없습니다.',
+    showPdf: 'PDF 표시',
+    hidePdf: 'PDF 숨기기',
+    pdfFocus: 'PDF 중심',
+    even: '균등',
+    analysisFocus: '분석 중심',
+    startAnalysis: '분석 시작',
+    reAnalyze: '재분석',
+    analyzing: '분석 중...',
+    cancel: '취소',
+    panelResize: '패널 크기 조절',
+    backToLibrary: '라이브러리',
+  },
+
+  // ── PDF Viewer ──
+  pdf: {
+    loading: 'PDF 불러오는 중...',
+    loadFailed: 'PDF를 불러올 수 없습니다',
+  },
+
+  // ── Library ──
+  library: {
+    title: '논문 라이브러리',
+    paperCount: (n: number) => `총 ${n}건`,
+    searchPlaceholder: '제목, 저자, 키워드로 검색...',
+    filters: '필터',
+    clearAll: '전체 해제',
+    domain: '분야',
+    allDomains: '모든 분야',
+    year: '연도',
+    anyYear: '모든 연도',
+    status: '상태',
+    allStatuses: '모든 상태',
+    tags: '태그',
+    allTags: '모든 태그',
+    noTags: '태그 없음',
+    loading: '논문 불러오는 중...',
+    gridView: '그리드 보기',
+    listView: '리스트 보기',
+    // Sort
+    newestFirst: '최신순',
+    oldestFirst: '오래된순',
+    titleAZ: '제목 A-Z',
+    titleZA: '제목 Z-A',
+    yearNewest: '연도 (최신)',
+    yearOldest: '연도 (오래된)',
+    recentlyAnalyzed: '최근 분석순',
+    // Pagination
+    showing: (from: number, to: number, total: number) =>
+      `전체 ${total}건 중 ${from}-${to}`,
+    prevPage: '이전 페이지',
+    nextPage: '다음 페이지',
+    // Empty
+    noMatch: '필터에 맞는 논문이 없습니다',
+    noPapers: '아직 논문이 없습니다',
+    noMatchDesc: '필터 또는 검색어를 조정해 보세요.',
+    noPapersDesc:
+      'AI 기반 논문 분석을 시작하려면 첫 번째 학술 논문을 업로드하세요.',
+    clearFilters: '필터 초기화',
+    // Delete modal
+    deleteTitle: '논문을 삭제하시겠습니까?',
+    deleteWarning: '이 작업은 되돌릴 수 없습니다.',
+    deleteDetails: '다음 항목이 영구적으로 삭제됩니다:',
+    deleteItem1: 'PDF 파일 및 추출된 모든 그림',
+    deleteItem2: '분석 결과 및 메타데이터',
+    deleteItem3: '라이브러리 폴더의 관련 파일',
+    cancelBtn: '취소',
+    deleteBtn: '영구 삭제',
+    deleting: '삭제 중...',
+    delete: '삭제',
+    paperId: (id: string) => `논문 ID: ${id}`,
+  },
+
+  // ── Settings ──
+  settings: {
+    title: '설정',
+    description: 'API 키, 환경 설정 및 사용량 통계를 관리합니다.',
+    save: '변경사항 저장',
+    saving: '저장 중...',
+    saved: '저장됨',
+    discard: '취소',
+    unsavedChanges: '저장하지 않은 변경사항이 있습니다',
+    loadingSettings: '설정 불러오는 중...',
+    loadFailed: '설정을 불러올 수 없습니다',
+    saveFailed: '설정 저장에 실패했습니다',
+    browseFolder: '폴더 찾기',
+    // API Keys
+    apiKeys: 'API 키',
+    geminiKey: 'Google Gemini API 키',
+    claudeKey: 'Anthropic Claude API 키',
+    geminiHelp: 'Gemini Flash 및 Gemini Pro 모델에 사용됩니다.',
+    claudeHelp: 'Claude Sonnet 고급 분석에 사용됩니다.',
+    getKeyAt: (name: string) => `${name}에서 키를 발급받으세요.`,
+    // Library
+    librarySection: '라이브러리',
+    libraryPath: '라이브러리 저장 경로',
+    libraryPathHelp:
+      '업로드된 PDF와 분석 결과가 저장되는 디렉토리입니다. 변경 후 앱을 다시 시작해야 적용됩니다.',
+    browseFolderTitle: '라이브러리 폴더 선택',
+    autoAnalyze: '업로드 시 자동 분석',
+    autoAnalyzeHelp: '논문 업로드 시 자동으로 분석을 시작합니다.',
+    // Appearance
+    appearance: '테마',
+    dark: '다크',
+    light: '라이트',
+    // Budget
+    budget: '예산',
+    monthlyBudget: '월간 예산 한도',
+    budgetHelp: '한도에 가까워지면 경고를 받습니다.',
+    // Cost
+    usageCosts: '사용량 & 비용',
+    costLoadFailed: '비용 데이터를 불러올 수 없습니다',
+  },
+
+  // ── Cost Dashboard ──
+  cost: {
+    thisMonth: '이번 달 비용',
+    avgPerPaper: '논문당 평균',
+    totalPapers: (n: number) => `총 ${n}개 논문 분석`,
+    budgetStatus: '예산 현황',
+    monthlyTrend: '월별 추이 (최근 6개월)',
+    monthLabel: (mm: string) => `${mm}월`,
+    paperCount: (n: number) => `${n}개 논문`,
+    perPaperCost: '논문별 비용 (상위 10개)',
+  },
+
+  // ── Status badges ──
+  status: {
+    analyzed: '분석 완료',
+    analyzing: '분석 중',
+    pending: '대기',
+    error: '오류',
+    complete: '완료',
+    running: '실행 중',
+  },
+
+  // ── Analysis Panel ──
+  analysis: {
+    noResults: '분석 결과 없음',
+    noResultsDesc:
+      'AI 분석을 시작하면 논문에 대한 그림 추출, 재현 파라미터, 프로세스 다이어그램 등의 인사이트를 확인할 수 있습니다.',
+    progress: '분석 진행',
+    phase1: 'Phase 1: 심층 논문 분석',
+    phase1Desc: '방법론, 결과, 기여도에 대한 종합적 이해',
+    phase2: 'Phase 2: 그림 & 데이터 추출',
+    phase2Desc: '모든 그림, 표, 시각 데이터 추출 및 해석',
+    phase3: 'Phase 3: 재현성 레시피',
+    phase3Desc: '실험 파라미터 및 프로토콜 상세 추출',
+    phase4: 'Phase 4: 시각화 & 종합',
+    phase4Desc: '프로세스 다이어그램 및 시각적 요약 생성',
+    analyzingDots: '분석 중...',
+    loadingResults: '결과 불러오는 중...',
+    // formatPhaseAsMarkdown labels
+    md: {
+      domain: '분야',
+      relevance: '관련도',
+      methodology: '방법론',
+      complexity: '복잡도',
+      experimental: '실험적',
+      hasFigures: '그림 포함',
+      agent: '에이전트',
+      yes: '예',
+      no: '아니오',
+      keyTopics: '핵심 주제',
+      figures: '그림',
+      tables: '표',
+      equations: '수식',
+      diagramTypes: '다이어그램 유형',
+      keyFindings: '핵심 발견',
+      confidence: '신뢰도',
+      reproducibility: '재현성',
+      parameters: '파라미터',
+      paramNum: '#',
+      paramName: '파라미터',
+      paramValue: '값',
+      paramUnit: '단위',
+      paramNotes: '비고',
+      materials: '재료',
+      equipment: '장비',
+      experimentalSteps: '실험 단계',
+      criticalNotes: '핵심 주의사항',
+      missingInfo: '누락된 정보',
+      expectedResults: '예상 결과',
+      safetyNotes: '안전 주의사항',
+      novelty: '신규성',
+      comparisonToPrior: '기존 연구 비교',
+      strengths: '강점',
+      weaknesses: '약점',
+      suggestedImprovements: '개선 제안',
+      practicalApplications: '실용적 적용',
+      followUpQuestions: '후속 질문',
+    },
+  },
+
+  // ── Progress Tracker ──
+  progressTracker: {
+    title: '분석 진행',
+    running: '실행 중',
+    complete: '완료',
+    phase1: 'Phase 1',
+    phase1Desc: '스크리닝',
+    phase2: 'Phase 2',
+    phase2Desc: '시각 검증',
+    phase3: 'Phase 3',
+    phase3Desc: '레시피',
+    phase4: 'Phase 4',
+    phase4Desc: '심층 분석',
+  },
+
+  // ── Figures ──
+  figures: {
+    title: '추출된 그림',
+    noFigures: '이 논문에서 추출된 그림이 없습니다.',
+    expertExplanation: '전문가 상세 설명',
+    explanationFailed: '설명 생성 실패',
+    retry: '다시 시도',
+    explanationLoading: 'AI가 그림을 분석하고 있습니다...',
+    clickForExplanation: '그림을 클릭하면 AI 전문가가 상세한 설명을 생성합니다.',
+    prevFigure: '이전 그림',
+    nextFigure: '다음 그림',
+    close: '닫기',
+    viewDetail: (name: string) => `${name} 상세 보기`,
+    qualityHigh: '고화질',
+    qualityMedium: '보통',
+    qualityLow: '저화질',
+    qualityUnknown: '알 수 없음',
+  },
+
+  // ── Recipe Card ──
+  recipe: {
+    title: '재현성 레시피',
+    noRecipe: '레시피가 아직 생성되지 않았습니다. 분석을 실행하여 파라미터를 추출하세요.',
+    exportCsv: 'CSV',
+    exported: '내보냄',
+    confidence: '신뢰도',
+    reproducibility: '재현성',
+    objective: '목적',
+    materials: '재료',
+    parameters: '파라미터',
+    steps: '실험 단계',
+    criticalNotes: '핵심 주의사항',
+    missingInfo: '누락된 정보',
+    noParams:
+      '파라미터가 추출되지 않았습니다. 논문에 명시적인 실험 세부사항이 부족하거나 Methods 섹션이 완전히 캡처되지 않았을 수 있습니다.',
+    expectedResults: '예상 결과',
+    safetyNotes: '안전 주의사항',
+  },
+
+  // ── Mermaid Renderer ──
+  mermaid: {
+    title: '프로세스 다이어그램',
+    notGenerated: '다이어그램이 아직 생성되지 않았습니다. 분석을 완료하면 프로세스 흐름을 확인할 수 있습니다.',
+    code: '코드',
+    preview: '미리보기',
+    copy: '복사',
+    render: '렌더링',
+    reset: '초기화',
+    mermaidCode: 'Mermaid 코드',
+    renderFailed: '다이어그램 렌더링 실패',
+    emptyCode: '정리 후 빈 다이어그램 코드',
+    visualizations: '시각화',
+    generating: '시각화 생성 중...',
+    generatingTime: '1-2분 소요될 수 있습니다',
+    illustrationFailed: '일러스트 생성에 실패했습니다',
+    generationFailed: '생성 실패',
+  },
+
+  // ── Toast messages ──
+  toast: {
+    uploadSuccess: '논문이 업로드되었습니다',
+    uploadFailed: '논문 업로드에 실패했습니다',
+    analysisStarted: '분석이 시작되었습니다',
+    analysisComplete: '분석이 완료되었습니다',
+    analysisCancelled: '분석이 취소되었습니다',
+    analysisError: '분석 중 오류가 발생했습니다',
+    settingsSaved: '설정이 저장되었습니다',
+    settingsFailed: '설정 저장에 실패했습니다',
+    paperDeleted: '논문이 삭제되었습니다',
+    deleteFailed: '논문 삭제에 실패했습니다',
+    csvExported: 'CSV 파일이 다운로드되었습니다',
+    copied: '클립보드에 복사되었습니다',
+    domainUpdated: '분야가 변경되었습니다',
+  },
+
+  // ── Error / Fallback ──
+  error: {
+    occurred: '오류가 발생했습니다',
+    unknown: '알 수 없는 오류가 발생했습니다.',
+    retry: '다시 시도',
+    goHome: '홈으로 돌아가기',
+    devInfo: '개발자 정보 (Development Only)',
+    networkError: '네트워크 연결을 확인해 주세요.',
+    apiKeyMissing: 'API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해 주세요.',
+    loadPapersFailed: '논문 목록을 불러올 수 없습니다',
+    deletePaperFailed: '논문 삭제에 실패했습니다',
+    updatePaperFailed: '논문 업데이트에 실패했습니다',
+    getStatusFailed: '상태 조회에 실패했습니다',
+    startAnalysisFailed: '분석 시작에 실패했습니다',
+    loadAnalysisFailed: '분석 결과를 불러올 수 없습니다',
+  },
+
+  // ── Agent fallback ──
+  agent: {
+    unknownDomain: '알 수 없는 분야',
+    unknownAgent: '알 수 없는 에이전트',
+    fallbackQuote: '분석 준비 중입니다.',
+  },
+
+  // ── Titlebar ──
+  titlebar: {
+    minimize: '최소화',
+    maximize: '최대화',
+    restore: '이전 크기로',
+    close: '닫기',
+  },
+} as const;

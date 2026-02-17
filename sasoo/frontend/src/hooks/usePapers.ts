@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { S } from '@/lib/strings';
 import {
   type Paper,
   type PaperFilters,
@@ -120,9 +121,8 @@ export function usePapers(initialFilters?: PaperFilters): UsePapersReturn {
       setTotalPages(Math.ceil(response.total / (filters.page_size || 20)));
     } catch (err) {
       if (!mountedRef.current) return;
-      setError(
-        err instanceof Error ? err.message : 'Failed to load papers'
-      );
+      if (err instanceof Error) console.warn('[papers] load error:', err.message);
+      setError(S.error.loadPapersFailed);
     } finally {
       if (mountedRef.current) setLoading(false);
     }
@@ -169,7 +169,7 @@ export function usePapers(initialFilters?: PaperFilters): UsePapersReturn {
       } catch (err) {
         throw err instanceof ApiError
           ? err
-          : new Error('Failed to delete paper');
+          : new Error(S.error.deletePaperFailed);
       }
     },
     []
@@ -188,7 +188,7 @@ export function usePapers(initialFilters?: PaperFilters): UsePapersReturn {
       } catch (err) {
         throw err instanceof ApiError
           ? err
-          : new Error('Failed to update paper');
+          : new Error(S.error.updatePaperFailed);
       }
     },
     []

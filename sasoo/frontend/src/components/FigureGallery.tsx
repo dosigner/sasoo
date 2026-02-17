@@ -12,6 +12,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import type { Figure } from '@/lib/api';
+import { S } from '@/lib/strings';
 import { generateFigureExplanation } from '@/lib/api';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 
@@ -40,13 +41,13 @@ function qualityBadge(quality: string | null): {
 } {
   switch (quality) {
     case 'high':
-      return { label: 'High', classes: 'bg-emerald-500/10 text-emerald-400' };
+      return { label: S.figures.qualityHigh, classes: 'bg-emerald-500/10 text-emerald-400' };
     case 'medium':
-      return { label: 'Medium', classes: 'bg-amber-500/10 text-amber-400' };
+      return { label: S.figures.qualityMedium, classes: 'bg-amber-500/10 text-amber-400' };
     case 'low':
-      return { label: 'Low', classes: 'bg-red-500/10 text-red-400' };
+      return { label: S.figures.qualityLow, classes: 'bg-red-500/10 text-red-400' };
     default:
-      return { label: 'Unknown', classes: 'bg-surface-500/10 text-surface-400' };
+      return { label: S.figures.qualityUnknown, classes: 'bg-surface-500/10 text-surface-400' };
   }
 }
 
@@ -112,7 +113,7 @@ function ExplanationSkeleton() {
       </div>
       <div className="flex items-center gap-2 mt-8 text-surface-500">
         <Loader2 className="w-4 h-4 animate-spin" />
-        <span className="text-xs">AI가 그림을 분석하고 있습니다...</span>
+        <span className="text-xs">{S.figures.explanationLoading}</span>
       </div>
     </div>
   );
@@ -191,7 +192,7 @@ function Lightbox({
       })
       .catch((err) => {
         if (cancelled) return;
-        setError(err.message || '설명을 생성하지 못했습니다.');
+        setError(err.message || S.figures.explanationFailed);
         setLoadingId(null);
       });
 
@@ -314,7 +315,7 @@ function Lightbox({
                 <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
                   <X className="w-6 h-6 text-red-400" />
                 </div>
-                <p className="text-sm text-surface-300 mb-2">설명 생성 실패</p>
+                <p className="text-sm text-surface-300 mb-2">{S.figures.explanationFailed}</p>
                 <p className="text-xs text-surface-500 mb-4">{error}</p>
                 <button
                   onClick={() => {
@@ -333,15 +334,15 @@ function Lightbox({
                           setLoadingId(null);
                         })
                         .catch((err) => {
-                          setError(err.message || '설명을 생성하지 못했습니다.');
+                          setError(err.message || S.figures.explanationFailed);
                           setLoadingId(null);
                         });
                     }
                   }}
                   className="btn-secondary text-xs"
-                  aria-label="다시 시도"
+                  aria-label={S.figures.retry}
                 >
-                  다시 시도
+                  {S.figures.retry}
                 </button>
               </div>
             ) : cached ? (
@@ -349,7 +350,7 @@ function Lightbox({
                 <div className="flex items-center gap-2 mb-5 pb-3 border-b border-surface-700/50">
                   <Sparkles className="w-4 h-4 text-primary-400" />
                   <h3 className="text-sm font-semibold text-surface-200">
-                    전문가 상세 설명
+                    {S.figures.expertExplanation}
                   </h3>
                   {cached.modelUsed && cached.modelUsed !== 'cached' && (
                     <span className="badge text-2xs bg-primary-500/10 text-primary-400 ml-auto">
@@ -367,7 +368,7 @@ function Lightbox({
               <div className="flex flex-col items-center justify-center h-full text-center p-8">
                 <BookOpen className="w-10 h-10 text-surface-600 mb-3" />
                 <p className="text-sm text-surface-400">
-                  그림을 클릭하면 AI 전문가가 상세한 설명을 생성합니다.
+                  {S.figures.clickForExplanation}
                 </p>
               </div>
             )}
@@ -424,7 +425,7 @@ export default function FigureGallery({
       <div>
         <h3 className="text-sm font-semibold text-surface-200 mb-3 flex items-center gap-2">
           <ImageIcon className="w-4 h-4 text-primary-400" />
-          Extracted Figures
+          {S.figures.title}
         </h3>
         <div className="grid grid-cols-3 2xl:grid-cols-4 gap-3">
           <FigureSkeleton />
@@ -440,12 +441,12 @@ export default function FigureGallery({
       <div>
         <h3 className="text-sm font-semibold text-surface-200 mb-3 flex items-center gap-2">
           <ImageIcon className="w-4 h-4 text-primary-400" />
-          Extracted Figures
+          {S.figures.title}
         </h3>
         <div className="card flex flex-col items-center justify-center py-8 text-center">
           <ImageIcon className="w-8 h-8 text-surface-600 mb-2" />
           <p className="text-sm text-surface-400">
-            No figures extracted from this paper.
+            {S.figures.noFigures}
           </p>
         </div>
       </div>
@@ -456,7 +457,7 @@ export default function FigureGallery({
     <div>
       <h3 className="text-sm font-semibold text-surface-200 mb-3 flex items-center gap-2">
         <ImageIcon className="w-4 h-4 text-primary-400" />
-        Extracted Figures
+        {S.figures.title}
         <span className="badge-primary text-2xs ml-1">
           {figures.length}
         </span>

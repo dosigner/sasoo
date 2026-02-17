@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
+import { S } from '@/lib/strings';
 import {
   Upload,
   Microscope,
@@ -14,6 +15,7 @@ import { getApiBase } from '@/lib/api';
 // Components
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { ToastProvider } from '@/components/Toast';
+import Titlebar from '@/components/Titlebar';
 
 // Pages
 import UploadPage from '@/pages/Upload';
@@ -26,25 +28,10 @@ import SettingsPage from '@/pages/Settings';
 // ---------------------------------------------------------------------------
 
 const NAV_ITEMS = [
-  {
-    to: '/',
-    icon: Upload,
-    label: 'Upload',
-    exact: true,
-  },
-  {
-    to: '/library',
-    icon: BookOpen,
-    label: 'Library',
-    exact: false,
-  },
-  {
-    to: '/settings',
-    icon: Settings,
-    label: 'Settings',
-    exact: false,
-  },
-] as const;
+  { to: '/', icon: Upload, label: S.app.upload, exact: true },
+  { to: '/library', icon: BookOpen, label: S.app.library, exact: false },
+  { to: '/settings', icon: Settings, label: S.app.settings, exact: false },
+];
 
 // ---------------------------------------------------------------------------
 // App Component
@@ -101,10 +88,24 @@ function App() {
     });
   }, []);
 
+  // Keyboard shortcut: Ctrl+B to toggle sidebar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault();
+        toggleSidebar();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleSidebar]);
+
   return (
     <ToastProvider>
       <ErrorBoundary>
-        <div className="flex h-screen bg-surface-900 text-surface-200">
+        <div className="flex flex-col h-screen bg-surface-900 text-surface-200">
+      <Titlebar />
+      <div className="flex flex-1 min-h-0">
       {/* Sidebar */}
       <aside
         className={`flex flex-col bg-surface-800/85 backdrop-blur-xl border-r border-surface-700/50 transition-all duration-300 shrink-0 ${
@@ -122,7 +123,7 @@ function App() {
                 Sasoo
               </h1>
               <p className="text-2xs text-surface-500 truncate">
-                Paper Analysis
+                {S.app.subtitle}
               </p>
             </div>
           )}
@@ -166,7 +167,7 @@ function App() {
             >
               <Microscope className="w-4.5 h-4.5 shrink-0" />
               {!sidebarCollapsed && (
-                <span className="text-sm font-medium">Workbench</span>
+                <span className="text-sm font-medium">{S.app.workbench}</span>
               )}
             </div>
           )}
@@ -179,7 +180,7 @@ function App() {
             className={`flex items-center gap-2 w-full rounded-lg px-3 py-2 text-surface-500 hover:text-surface-300 hover:bg-surface-700/50 transition-colors ${
               sidebarCollapsed ? 'justify-center' : ''
             }`}
-            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={sidebarCollapsed ? S.app.expandSidebar : S.app.collapseSidebar}
             aria-label={sidebarCollapsed ? '사이드바 펼치기' : '사이드바 접기'}
           >
             {sidebarCollapsed ? (
@@ -187,7 +188,7 @@ function App() {
             ) : (
               <>
                 <ChevronLeft className="w-4 h-4" />
-                <span className="text-xs">Collapse</span>
+                <span className="text-xs">{S.app.collapse}</span>
               </>
             )}
           </button>
@@ -203,6 +204,7 @@ function App() {
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>
+      </div>
         </div>
       </ErrorBoundary>
     </ToastProvider>

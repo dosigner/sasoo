@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import {
   Play,
   Loader2,
@@ -10,10 +10,13 @@ import {
   Columns2,
   PanelRight,
   Square,
+  ArrowLeft,
 } from 'lucide-react';
 import { getPaper, getPdfUrl, cancelAnalysis, type Paper } from '@/lib/api';
 import { getAgentMeta } from '@/lib/agents';
 import { useAnalysis } from '@/hooks/useAnalysis';
+import { useToast } from '@/components/Toast';
+import { S } from '@/lib/strings';
 import PdfViewer from '@/components/PdfViewer';
 import AnalysisPanel from '@/components/AnalysisPanel';
 
@@ -41,6 +44,7 @@ const PRESETS = [
 
 export default function Workbench() {
   const { id } = useParams<{ id: string }>();
+  const { toast } = useToast();
 
   // Paper data
   const [paper, setPaper] = useState<Paper | null>(null);
@@ -83,9 +87,8 @@ export default function Workbench() {
         if (!cancelled) setPaper(p);
       } catch (err) {
         if (!cancelled) {
-          setPaperError(
-            err instanceof Error ? err.message : 'Failed to load paper'
-          );
+          if (err instanceof Error) console.warn('[workbench] load error:', err.message);
+          setPaperError(S.workbench.loadFailed);
         }
       } finally {
         if (!cancelled) setPaperLoading(false);
@@ -222,7 +225,7 @@ export default function Workbench() {
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-8 h-8 text-primary-400 animate-spin" />
-          <span className="text-sm text-surface-400">Loading paper...</span>
+          <span className="text-sm text-surface-400">{S.workbench.loading}</span>
         </div>
       </div>
     );
@@ -234,10 +237,10 @@ export default function Workbench() {
         <div className="flex flex-col items-center gap-3 text-center px-8">
           <AlertCircle className="w-10 h-10 text-red-400" />
           <h2 className="text-lg font-semibold text-surface-200">
-            Failed to Load Paper
+            {S.workbench.loadFailed}
           </h2>
           <p className="text-sm text-surface-400 max-w-sm">
-            {paperError || 'Paper not found.'}
+            {paperError || S.workbench.notFound}
           </p>
         </div>
       </div>
@@ -253,10 +256,17 @@ export default function Workbench() {
       {/* Top bar: paper info + controls */}
       <div className="flex items-center justify-between px-4 py-2 bg-surface-800/90 backdrop-blur-lg border-b border-surface-700/50 shrink-0">
         <div className="flex items-center gap-3 min-w-0">
+          <Link
+            to="/library"
+            className="btn-ghost p-1.5 rounded-md shrink-0 text-surface-400 hover:text-primary-400"
+            title={S.workbench.backToLibrary}
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Link>
           <button
             onClick={togglePdf}
             className="btn-ghost p-1.5 rounded-md shrink-0"
-            title={pdfCollapsed ? 'Show PDF' : 'Hide PDF'}
+            title={pdfCollapsed ? S.workbench.showPdf : S.workbench.hidePdf}
             aria-label={pdfCollapsed ? 'PDF 표시' : 'PDF 숨기기'}
             aria-expanded={!pdfCollapsed}
           >
@@ -286,7 +296,9 @@ export default function Workbench() {
               <span className="badge-primary text-2xs">{paper.domain}</span>
               {(() => {
                 const agent = getAgentMeta(paper.agent_used);
-                if (!agent) return null;
+                if (!agent) return (
+                  <span className="text-2xs text-surface-500">{S.agent.unknownDomain}</span>
+                );
                 return (
                   <img
                     src={agent.image}
@@ -333,19 +345,20 @@ export default function Workbench() {
               className="btn-primary text-xs py-1.5 px-4"
             >
               <Play className="w-3.5 h-3.5" />
-              {paper.status === 'completed' ? 'Re-analyze' : 'Start Analysis'}
+              {paper.status === 'completed' ? S.workbench.reAnalyze : S.workbench.startAnalysis}
             </button>
           )}
           {isRunning && (
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-2 text-xs text-primary-400">
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Analyzing... {status?.progress_pct ? `${Math.round(status.progress_pct)}%` : ''}</span>
+                <span>{S.workbench.analyzing} {status?.progress_pct ? `${Math.round(status.progress_pct)}%` : ''}</span>
               </div>
               <button
                 onClick={async () => {
                   try {
                     await cancelAnalysis(id!);
+                    toast.info(S.toast.analysisCancelled);
                   } catch {
                     // Cancel may fail if already completed
                   }

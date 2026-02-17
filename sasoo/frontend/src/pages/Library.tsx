@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { usePapers } from '@/hooks/usePapers';
 import { DOMAINS, type Paper, type PaperStatus } from '@/lib/api';
+import { S } from '@/lib/strings';
+import { useToast } from '@/components/Toast';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -31,9 +33,9 @@ type ViewMode = 'grid' | 'list';
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', {
+  return date.toLocaleDateString('ko-KR', {
     year: 'numeric',
-    month: 'short',
+    month: 'long',
     day: 'numeric',
   });
 }
@@ -44,13 +46,13 @@ function statusBadge(status: PaperStatus): {
 } {
   switch (status) {
     case 'completed':
-      return { label: 'Analyzed', classes: 'badge-success' };
+      return { label: S.status.analyzed, classes: 'badge-success' };
     case 'analyzing':
-      return { label: 'Analyzing', classes: 'badge-primary' };
+      return { label: S.status.analyzing, classes: 'badge-primary' };
     case 'pending':
-      return { label: 'Pending', classes: 'badge-warning' };
+      return { label: S.status.pending, classes: 'badge-warning' };
     case 'error':
-      return { label: 'Error', classes: 'badge-error' };
+      return { label: S.status.error, classes: 'badge-error' };
     default:
       return { label: status, classes: 'badge-primary' };
   }
@@ -130,7 +132,7 @@ function PaperCard({ paper, onOpen, onDelete }: PaperCardProps) {
             onDelete(String(paper.id), paper.title);
           }}
           className="p-1 rounded opacity-0 group-hover:opacity-100 text-surface-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
-          title="Delete paper and all associated files"
+          title={S.library.delete}
           aria-label="삭제"
         >
           <Trash2 className="w-3.5 h-3.5" />
@@ -189,7 +191,7 @@ function PaperRow({ paper, onOpen, onDelete }: PaperCardProps) {
         <button
           onClick={() => onDelete(String(paper.id), paper.title)}
           className="p-1.5 rounded opacity-0 group-hover:opacity-100 text-surface-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
-          title="Delete paper and all associated files"
+          title={S.library.delete}
           aria-label="삭제"
         >
           <Trash2 className="w-3.5 h-3.5" />
@@ -205,8 +207,10 @@ function PaperRow({ paper, onOpen, onDelete }: PaperCardProps) {
 
 export default function Library() {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [showFilters, setShowFilters] = useState(false);
+  const [searchValue, setSearchValue] = useState('');
   const [deleteModal, setDeleteModal] = useState<{
     show: boolean;
     paperId: string | null;
@@ -230,6 +234,7 @@ export default function Library() {
     setSearch,
     goToPage,
     deletePaper,
+    availableTags,
   } = usePapers();
 
   const handleOpenPaper = useCallback(
@@ -257,12 +262,13 @@ export default function Library() {
     try {
       await deletePaper(deleteModal.paperId);
       setDeleteModal({ show: false, paperId: null, paperTitle: '' });
+      toast.success(S.toast.paperDeleted);
     } catch {
-      // Error handled in hook
+      toast.error(S.toast.deleteFailed);
     } finally {
       setDeleting(false);
     }
-  }, [deleteModal.paperId, deletePaper]);
+  }, [deleteModal.paperId, deletePaper, toast]);
 
   const cancelDelete = useCallback(() => {
     setDeleteModal({ show: false, paperId: null, paperTitle: '' });
@@ -278,10 +284,14 @@ export default function Library() {
       sort_order: 'desc',
     });
     setSearch('');
+    setSearchValue('');
   }, [setFilters, setSearch]);
 
   const hasActiveFilters =
     filters.domain || filters.year || filters.status || (filters.tags && filters.tags.length > 0);
+
+  const from = (page - 1) * (filters.page_size || 20) + 1;
+  const to = Math.min(page * (filters.page_size || 20), total);
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -290,10 +300,10 @@ export default function Library() {
         <div>
           <h1 className="text-xl font-bold text-surface-100 flex items-center gap-2">
             <BookOpen className="w-5 h-5 text-primary-400" />
-            Paper Library
+            {S.library.title}
           </h1>
           <p className="text-sm text-surface-500 mt-1">
-            {total} paper{total !== 1 ? 's' : ''} in your library
+            {S.library.paperCount(total)}
           </p>
         </div>
 
@@ -333,9 +343,9 @@ export default function Library() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
           <input
             type="text"
-            placeholder="Search by title, author, or keywords..."
-            defaultValue={filters.search}
-            onChange={(e) => setSearch(e.target.value)}
+            placeholder={S.library.searchPlaceholder}
+            value={searchValue}
+            onChange={(e) => { setSearchValue(e.target.value); setSearch(e.target.value); }}
             className="input pl-10"
             aria-label="논문 검색"
           />
@@ -353,7 +363,7 @@ export default function Library() {
           aria-label="필터 열기/닫기"
         >
           <Filter className="w-3.5 h-3.5" />
-          Filters
+          {S.library.filters}
           {hasActiveFilters && (
             <span className="w-1.5 h-1.5 rounded-full bg-primary-400" />
           )}
@@ -376,13 +386,13 @@ export default function Library() {
           }}
           className="input w-auto min-w-[160px]"
         >
-          <option value="created_at:desc">Newest first</option>
-          <option value="created_at:asc">Oldest first</option>
-          <option value="title:asc">Title A-Z</option>
-          <option value="title:desc">Title Z-A</option>
-          <option value="year:desc">Year (newest)</option>
-          <option value="year:asc">Year (oldest)</option>
-          <option value="analyzed_at:desc">Recently analyzed</option>
+          <option value="created_at:desc">{S.library.newestFirst}</option>
+          <option value="created_at:asc">{S.library.oldestFirst}</option>
+          <option value="title:asc">{S.library.titleAZ}</option>
+          <option value="title:desc">{S.library.titleZA}</option>
+          <option value="year:desc">{S.library.yearNewest}</option>
+          <option value="year:asc">{S.library.yearOldest}</option>
+          <option value="analyzed_at:desc">{S.library.recentlyAnalyzed}</option>
         </select>
       </div>
 
@@ -391,14 +401,14 @@ export default function Library() {
         <div className="glass rounded-2xl p-4 mb-4 fade-in-up">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-xs font-semibold text-surface-300 uppercase tracking-wider">
-              Filters
+              {S.library.filters}
             </h3>
             {hasActiveFilters && (
               <button
                 onClick={clearFilters}
                 className="text-2xs text-primary-400 hover:text-primary-300"
               >
-                Clear all
+                {S.library.clearAll}
               </button>
             )}
           </div>
@@ -406,7 +416,7 @@ export default function Library() {
             {/* Domain filter */}
             <div>
               <label className="text-2xs text-surface-500 block mb-1">
-                Domain
+                {S.library.domain}
               </label>
               <select
                 value={filters.domain || ''}
@@ -415,7 +425,7 @@ export default function Library() {
                 }
                 className="input w-auto min-w-[160px]"
               >
-                <option value="">All domains</option>
+                <option value="">{S.library.allDomains}</option>
                 {DOMAINS.map((domain) => (
                   <option key={domain.key} value={domain.key}>
                     {domain.label}
@@ -427,13 +437,13 @@ export default function Library() {
             {/* Year filter */}
             <div>
               <label className="text-2xs text-surface-500 block mb-1">
-                Year
+                {S.library.year}
               </label>
               <input
                 type="number"
                 min={1990}
                 max={new Date().getFullYear()}
-                placeholder="Any year"
+                placeholder={S.library.anyYear}
                 value={filters.year || ''}
                 onChange={(e) =>
                   setFilters({
@@ -449,7 +459,7 @@ export default function Library() {
             {/* Status filter */}
             <div>
               <label className="text-2xs text-surface-500 block mb-1">
-                Status
+                {S.library.status}
               </label>
               <select
                 value={filters.status || ''}
@@ -460,11 +470,32 @@ export default function Library() {
                 }
                 className="input w-auto min-w-[140px]"
               >
-                <option value="">All statuses</option>
-                <option value="pending">Pending</option>
-                <option value="analyzing">Analyzing</option>
-                <option value="completed">Completed</option>
-                <option value="error">Error</option>
+                <option value="">{S.library.allStatuses}</option>
+                <option value="pending">{S.status.pending}</option>
+                <option value="analyzing">{S.status.analyzing}</option>
+                <option value="completed">{S.status.analyzed}</option>
+                <option value="error">{S.status.error}</option>
+              </select>
+            </div>
+
+            {/* Tags filter */}
+            <div>
+              <label className="text-2xs text-surface-500 block mb-1">
+                {S.library.tags}
+              </label>
+              <select
+                value={filters.tags?.[0] || ''}
+                onChange={(e) =>
+                  setFilters({ tags: e.target.value ? [e.target.value] : undefined })
+                }
+                className="input w-auto min-w-[160px]"
+              >
+                <option value="">{S.library.allTags}</option>
+                {availableTags.map((tag) => (
+                  <option key={tag} value={tag}>
+                    {tag}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -484,7 +515,7 @@ export default function Library() {
         <div className="flex items-center justify-center py-16" role="status" aria-busy="true">
           <div className="flex flex-col items-center gap-3">
             <Loader2 className="w-6 h-6 text-primary-400 animate-spin" />
-            <span className="text-sm text-surface-400">Loading papers...</span>
+            <span className="text-sm text-surface-400">{S.library.loading}</span>
           </div>
         </div>
       )}
@@ -494,16 +525,16 @@ export default function Library() {
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <BookOpen className="w-12 h-12 text-surface-600 mb-4" />
           <h3 className="text-lg font-semibold text-surface-300 mb-2">
-            {hasActiveFilters ? 'No papers match your filters' : 'No papers yet'}
+            {hasActiveFilters ? S.library.noMatch : S.library.noPapers}
           </h3>
           <p className="text-sm text-surface-500 max-w-sm mb-4">
             {hasActiveFilters
-              ? 'Try adjusting your filters or search query.'
-              : 'Upload your first academic paper to get started with AI-powered analysis.'}
+              ? S.library.noMatchDesc
+              : S.library.noPapersDesc}
           </p>
           {hasActiveFilters && (
             <button onClick={clearFilters} className="btn-secondary text-sm">
-              Clear filters
+              {S.library.clearFilters}
             </button>
           )}
         </div>
@@ -541,8 +572,7 @@ export default function Library() {
       {!loading && totalPages > 1 && (
         <div className="flex items-center justify-between mt-6 pt-4 border-t border-surface-700">
           <span className="text-xs text-surface-500">
-            Showing {(page - 1) * (filters.page_size || 20) + 1}-
-            {Math.min(page * (filters.page_size || 20), total)} of {total}
+            {S.library.showing(from, to, total)}
           </span>
 
           <div className="flex items-center gap-1">
@@ -611,10 +641,10 @@ export default function Library() {
               </div>
               <div className="flex-1">
                 <h3 className="text-base font-semibold text-surface-100 [.light_&]:text-surface-900 mb-1">
-                  Delete Paper?
+                  {S.library.deleteTitle}
                 </h3>
                 <p className="text-sm text-surface-400 [.light_&]:text-surface-600">
-                  This action cannot be undone.
+                  {S.library.deleteWarning}
                 </p>
               </div>
             </div>
@@ -626,19 +656,19 @@ export default function Library() {
                   {deleteModal.paperTitle}
                 </p>
                 <p className="text-2xs text-surface-500 [.light_&]:text-surface-600">
-                  Paper ID: {deleteModal.paperId}
+                  {S.library.paperId(deleteModal.paperId ?? '')}
                 </p>
               </div>
 
               <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3">
                 <p className="text-xs text-red-400 [.light_&]:text-red-600 leading-relaxed">
-                  <strong>The following will be permanently deleted:</strong>
+                  <strong>{S.library.deleteDetails}</strong>
                   <br />
-                  • PDF file and all extracted figures
+                  • {S.library.deleteItem1}
                   <br />
-                  • Analysis results and metadata
+                  • {S.library.deleteItem2}
                   <br />
-                  • Associated folder in library directory
+                  • {S.library.deleteItem3}
                 </p>
               </div>
             </div>
@@ -650,7 +680,7 @@ export default function Library() {
                 disabled={deleting}
                 className="btn-ghost text-sm"
               >
-                Cancel
+                {S.library.cancelBtn}
               </button>
               <button
                 onClick={confirmDelete}
@@ -660,12 +690,12 @@ export default function Library() {
                 {deleting ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    Deleting...
+                    {S.library.deleting}
                   </>
                 ) : (
                   <>
                     <Trash2 className="w-3.5 h-3.5" />
-                    Delete Permanently
+                    {S.library.deleteBtn}
                   </>
                 )}
               </button>

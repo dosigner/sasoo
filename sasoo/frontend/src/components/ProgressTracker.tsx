@@ -9,6 +9,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import type { PhaseInfo, PhaseStatusValue, AnalysisPhase } from '@/lib/api';
+import { S } from '@/lib/strings';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,23 +31,23 @@ const PHASE_META: Record<AnalysisPhase, {
 }> = {
   screening: {
     icon: FileSearch,
-    label: 'Phase 1',
-    description: 'Screening',
+    label: S.progressTracker.phase1,
+    description: S.progressTracker.phase1Desc,
   },
   visual: {
     icon: ImageIcon,
-    label: 'Phase 2',
-    description: 'Visual',
+    label: S.progressTracker.phase2,
+    description: S.progressTracker.phase2Desc,
   },
   recipe: {
     icon: FlaskConical,
-    label: 'Phase 3',
-    description: 'Recipe',
+    label: S.progressTracker.phase3,
+    description: S.progressTracker.phase3Desc,
   },
   deep_dive: {
     icon: GitBranch,
-    label: 'Phase 4',
-    description: 'Deep Dive',
+    label: S.progressTracker.phase4,
+    description: S.progressTracker.phase4Desc,
   },
 };
 
@@ -115,16 +116,16 @@ export default function ProgressTracker({
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <h3 className="text-sm font-semibold text-surface-200">
-            Analysis Progress
+            {S.progressTracker.title}
           </h3>
           {isActive && (
             <span className="badge-primary text-2xs">
               <span className="w-1.5 h-1.5 rounded-full bg-primary-400 animate-pulse mr-1" />
-              Running
+              {S.status.running}
             </span>
           )}
           {isComplete && (
-            <span className="badge-success text-2xs">Complete</span>
+            <span className="badge-success text-2xs">{S.status.complete}</span>
           )}
         </div>
 

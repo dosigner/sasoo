@@ -26,6 +26,7 @@ import {
   type AnalysisPhase,
 } from '@/lib/api';
 import { getAgentMeta } from '@/lib/agents';
+import { S } from '@/lib/strings';
 import FigureGallery from './FigureGallery';
 import RecipeCard from './RecipeCard';
 import MermaidRenderer from './MermaidRenderer';
@@ -59,26 +60,26 @@ const PHASE_META: Record<string, {
 }> = {
   screening: {
     icon: FileSearch,
-    label: 'Phase 1: Deep Paper Analysis',
-    description: 'Comprehensive understanding of methodology, results, and contributions',
+    label: S.analysis.phase1,
+    description: S.analysis.phase1Desc,
     number: 1,
   },
   visual: {
     icon: ImageIcon,
-    label: 'Phase 2: Figure & Data Extraction',
-    description: 'Extract and interpret all figures, tables, and visual data',
+    label: S.analysis.phase2,
+    description: S.analysis.phase2Desc,
     number: 2,
   },
   recipe: {
     icon: FlaskConical,
-    label: 'Phase 3: Reproducibility Recipe',
-    description: 'Extract experimental parameters and protocol details',
+    label: S.analysis.phase3,
+    description: S.analysis.phase3Desc,
     number: 3,
   },
   deep_dive: {
     icon: GitBranch,
-    label: 'Phase 4: Visualization & Synthesis',
-    description: 'Generate process diagrams and visual summaries',
+    label: S.analysis.phase4,
+    description: S.analysis.phase4Desc,
     number: 4,
   },
 };
@@ -98,26 +99,26 @@ function getPhaseStatusInfo(phaseStatus: PhaseStatusValue): {
     case 'completed':
       return {
         icon: <Check className="w-4 h-4" />,
-        label: 'Complete',
+        label: S.status.complete,
         classes: 'text-emerald-400 bg-emerald-500/10',
       };
     case 'running':
       return {
         icon: <Loader2 className="w-4 h-4 animate-spin" />,
-        label: 'Running',
+        label: S.status.running,
         classes: 'text-primary-400 bg-primary-500/10',
       };
     case 'error':
       return {
         icon: <AlertCircle className="w-4 h-4" />,
-        label: 'Error',
+        label: S.status.error,
         classes: 'text-red-400 bg-red-500/10',
       };
     case 'pending':
     default:
       return {
         icon: <Circle className="w-4 h-4" />,
-        label: 'Pending',
+        label: S.status.pending,
         classes: 'text-surface-500 bg-surface-700/50',
       };
   }
@@ -219,7 +220,7 @@ function PhaseSection({
             <div className="flex items-center gap-3 py-6 justify-center" role="status" aria-busy="true">
               <Loader2 className="w-5 h-5 text-primary-400 animate-spin" />
               <span className="text-sm text-surface-400">
-                Analyzing...
+                {S.analysis.analyzingDots}
               </span>
             </div>
           )}
@@ -229,7 +230,7 @@ function PhaseSection({
             <div className="flex items-center gap-3 py-6 justify-center" role="status" aria-busy="true">
               <Loader2 className="w-5 h-5 text-surface-500 animate-spin" />
               <span className="text-sm text-surface-400">
-                Loading results...
+                {S.analysis.loadingResults}
               </span>
             </div>
           )}
@@ -291,11 +292,11 @@ function tryParseJson(text: string): Record<string, unknown> | null {
 /** Format a single value (string, number, boolean, array, object) into markdown */
 function formatValue(value: unknown, indent = 0): string {
   if (value == null) return '_N/A_';
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'boolean') return value ? S.analysis.md.yes : S.analysis.md.no;
   if (typeof value === 'number') return String(value);
   if (typeof value === 'string') return value;
   if (Array.isArray(value)) {
-    if (value.length === 0) return '_없음_';
+    if (value.length === 0) return '_N/A_';
     return '\n' + value.map((item) => {
       if (typeof item === 'object' && item !== null) {
         // Object in array: show key-value pairs inline
@@ -387,30 +388,32 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
   // Phase-specific enhanced formatting
   const lines: string[] = [];
 
+  const md = S.analysis.md;
+
   if (phase === 'screening') {
     if (data.summary) lines.push(`${data.summary}\n`);
-    if (data.domain) lines.push(`**Domain:** ${data.domain}  `);
-    if (data.relevance_score != null) lines.push(`**Relevance:** ${(Number(data.relevance_score) * 100).toFixed(0)}%  `);
-    if (data.methodology_type) lines.push(`**Methodology:** ${data.methodology_type}  `);
-    if (data.estimated_complexity) lines.push(`**Complexity:** ${data.estimated_complexity}  `);
-    if (data.is_experimental != null) lines.push(`**Experimental:** ${data.is_experimental ? 'Yes' : 'No'}  `);
-    if (data.has_figures != null) lines.push(`**Has Figures:** ${data.has_figures ? 'Yes' : 'No'}  `);
-    if (data.agent_recommended) lines.push(`**Agent:** ${data.agent_recommended}  `);
+    if (data.domain) lines.push(`**${md.domain}:** ${data.domain}  `);
+    if (data.relevance_score != null) lines.push(`**${md.relevance}:** ${(Number(data.relevance_score) * 100).toFixed(0)}%  `);
+    if (data.methodology_type) lines.push(`**${md.methodology}:** ${data.methodology_type}  `);
+    if (data.estimated_complexity) lines.push(`**${md.complexity}:** ${data.estimated_complexity}  `);
+    if (data.is_experimental != null) lines.push(`**${md.experimental}:** ${data.is_experimental ? md.yes : md.no}  `);
+    if (data.has_figures != null) lines.push(`**${md.hasFigures}:** ${data.has_figures ? md.yes : md.no}  `);
+    if (data.agent_recommended) lines.push(`**${md.agent}:** ${data.agent_recommended}  `);
     const topics = data.key_topics as string[] | undefined;
     if (topics?.length) {
-      lines.push('\n**Key Topics:**');
+      lines.push(`\n**${md.keyTopics}:**`);
       topics.forEach(t => lines.push(`- ${t}`));
     }
   } else if (phase === 'visual') {
     if (data.quality_summary) lines.push(`${data.quality_summary}\n`);
-    if (data.figure_count != null) lines.push(`**Figures:** ${data.figure_count}`);
-    if (data.tables_found != null) lines.push(`**Tables:** ${data.tables_found}`);
-    if (data.equations_found != null) lines.push(`**Equations:** ${data.equations_found}`);
+    if (data.figure_count != null) lines.push(`**${md.figures}:** ${data.figure_count}`);
+    if (data.tables_found != null) lines.push(`**${md.tables}:** ${data.tables_found}`);
+    if (data.equations_found != null) lines.push(`**${md.equations}:** ${data.equations_found}`);
     const types = data.diagram_types as string[] | undefined;
-    if (types?.length) lines.push(`**Diagram Types:** ${types.join(', ')}`);
+    if (types?.length) lines.push(`**${md.diagramTypes}:** ${types.join(', ')}`);
     const findings = data.key_findings_from_visuals as string[] | undefined;
     if (findings?.length) {
-      lines.push('\n**Key Findings:**');
+      lines.push(`\n**${md.keyFindings}:**`);
       findings.forEach(f => lines.push(`- ${f}`));
     }
   } else if (phase === 'recipe') {
@@ -419,15 +422,15 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
 
     // Scores as inline badges
     const scoreParts: string[] = [];
-    if (data.confidence != null) scoreParts.push(`**Confidence:** ${(Number(data.confidence) * 100).toFixed(0)}%`);
-    if (data.reproducibility_score != null) scoreParts.push(`**Reproducibility:** ${(Number(data.reproducibility_score) * 100).toFixed(0)}%`);
+    if (data.confidence != null) scoreParts.push(`**${md.confidence}:** ${(Number(data.confidence) * 100).toFixed(0)}%`);
+    if (data.reproducibility_score != null) scoreParts.push(`**${md.reproducibility}:** ${(Number(data.reproducibility_score) * 100).toFixed(0)}%`);
     if (scoreParts.length > 0) lines.push(scoreParts.join(' · ') + '\n');
 
     // ── Parameters as Markdown Table ──
     const params = data.parameters as Array<Record<string, unknown>> | undefined;
     if (params?.length) {
-      lines.push('#### Parameters\n');
-      lines.push('| # | Parameter | Value | Unit | Notes |');
+      lines.push(`#### ${md.parameters}\n`);
+      lines.push(`| ${md.paramNum} | ${md.paramName} | ${md.paramValue} | ${md.paramUnit} | ${md.paramNotes} |`);
       lines.push('|---|-----------|-------|------|-------|');
       params.forEach((p, i) => {
         if (typeof p === 'object' && p !== null) {
@@ -446,7 +449,7 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
     // ── Materials ──
     const materials = data.materials as string[] | undefined;
     if (materials?.length) {
-      lines.push('#### Materials\n');
+      lines.push(`#### ${md.materials}\n`);
       materials.forEach(m => lines.push(`- ${m}`));
       lines.push('');
     }
@@ -454,7 +457,7 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
     // ── Equipment ──
     const equipment = data.equipment as string[] | undefined;
     if (equipment?.length) {
-      lines.push('#### Equipment\n');
+      lines.push(`#### ${md.equipment}\n`);
       equipment.forEach(e => lines.push(`- ${e}`));
       lines.push('');
     }
@@ -462,7 +465,7 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
     // ── Steps ──
     const steps = data.steps as string[] | undefined;
     if (steps?.length) {
-      lines.push('#### Experimental Steps\n');
+      lines.push(`#### ${md.experimentalSteps}\n`);
       steps.forEach((s, i) => lines.push(`${i + 1}. ${s}`));
       lines.push('');
     }
@@ -470,7 +473,7 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
     // ── Critical Notes ──
     const notes = data.critical_notes as string[] | undefined;
     if (notes?.length) {
-      lines.push('#### Critical Notes\n');
+      lines.push(`#### ${md.criticalNotes}\n`);
       notes.forEach(n => lines.push(`- ${n}`));
       lines.push('');
     }
@@ -478,23 +481,23 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
     // ── Missing Info ──
     const missing = data.missing_info as string[] | undefined;
     if (missing?.length) {
-      lines.push('#### Missing Information\n');
+      lines.push(`#### ${md.missingInfo}\n`);
       missing.forEach(m => lines.push(`- ${m}`));
       lines.push('');
     }
 
-    if (data.expected_results) lines.push(`**Expected Results:** ${data.expected_results}\n`);
-    if (data.safety_notes) lines.push(`**Safety Notes:** ${data.safety_notes}\n`);
+    if (data.expected_results) lines.push(`**${md.expectedResults}:** ${data.expected_results}\n`);
+    if (data.safety_notes) lines.push(`**${md.safetyNotes}:** ${data.safety_notes}\n`);
   } else if (phase === 'deep_dive') {
     if (data.detailed_analysis) lines.push(`${data.detailed_analysis}\n`);
-    if (data.novelty_assessment) lines.push(`**Novelty:** ${data.novelty_assessment}\n`);
-    if (data.comparison_to_prior_work) lines.push(`**Comparison to Prior Work:** ${data.comparison_to_prior_work}\n`);
+    if (data.novelty_assessment) lines.push(`**${md.novelty}:** ${data.novelty_assessment}\n`);
+    if (data.comparison_to_prior_work) lines.push(`**${md.comparisonToPrior}:** ${data.comparison_to_prior_work}\n`);
     const sections: [string, string][] = [
-      ['strengths', '✅ Strengths'],
-      ['weaknesses', '⚠️ Weaknesses'],
-      ['suggested_improvements', '💡 Suggested Improvements'],
-      ['practical_applications', '🔧 Practical Applications'],
-      ['follow_up_questions', '❓ Follow-up Questions'],
+      ['strengths', `✅ ${md.strengths}`],
+      ['weaknesses', `⚠️ ${md.weaknesses}`],
+      ['suggested_improvements', `💡 ${md.suggestedImprovements}`],
+      ['practical_applications', `🔧 ${md.practicalApplications}`],
+      ['follow_up_questions', `❓ ${md.followUpQuestions}`],
     ];
     for (const [key, label] of sections) {
       const items = data[key] as string[] | undefined;
@@ -527,7 +530,7 @@ function PaperBananaViewer({ item }: { item: VisualizationItem }) {
     return (
       <div className="flex flex-col items-center justify-center py-6 text-center">
         <AlertCircle className="w-6 h-6 text-red-400 mb-2" />
-        <p className="text-sm text-red-300">Failed to generate illustration</p>
+        <p className="text-sm text-red-300">{S.mermaid.illustrationFailed}</p>
         {item.error_message && (
           <p className="text-2xs text-surface-500 mt-1">{item.error_message}</p>
         )}
@@ -575,7 +578,7 @@ function VisualizationGallery({
         <div className="flex items-center gap-2 mb-2">
           <GitBranch className="w-4 h-4 text-primary-400" />
           <span className="text-sm font-semibold text-surface-200">
-            Visualizations
+            {S.mermaid.visualizations}
           </span>
           <span className="badge text-2xs bg-primary-500/10 text-primary-400">
             {visualizations.items.length}
@@ -614,12 +617,12 @@ function VisualizationGallery({
               <PaperBananaViewer item={item} />
             ) : item.status === 'error' ? (
               <div className="text-sm text-red-400 py-2">
-                {item.error_message || 'Generation failed'}
+                {item.error_message || S.mermaid.generationFailed}
               </div>
             ) : (
               <div className="flex items-center gap-2 py-4 justify-center" role="status" aria-busy="true">
                 <Loader2 className="w-4 h-4 text-primary-400 animate-spin" />
-                <span className="text-xs text-surface-400">Generating...</span>
+                <span className="text-xs text-surface-400">{S.mermaid.generating}</span>
               </div>
             )}
           </div>
@@ -634,15 +637,15 @@ function VisualizationGallery({
       <div>
         <h3 className="text-sm font-semibold text-surface-200 mb-3 flex items-center gap-2">
           <GitBranch className="w-4 h-4 text-primary-400" />
-          Visualizations
+          {S.mermaid.visualizations}
         </h3>
         <div className="card flex flex-col items-center justify-center py-8 text-center">
           <Loader2 className="w-6 h-6 text-primary-400 animate-spin mb-2" />
           <p className="text-sm text-surface-400">
-            Generating visualizations...
+            {S.mermaid.generating}
           </p>
           <p className="text-2xs text-surface-500 mt-1">
-            This may take 1-2 minutes
+            {S.mermaid.generatingTime}
           </p>
         </div>
       </div>
@@ -698,12 +701,10 @@ export default function AnalysisPanel({
           <FileSearch className="w-8 h-8 text-surface-500" />
         </div>
         <h3 className="text-lg font-semibold text-surface-200 mb-2">
-          No Analysis Results
+          {S.analysis.noResults}
         </h3>
         <p className="text-sm text-surface-400 max-w-sm">
-          Start an analysis to see AI-powered insights about this paper,
-          including figure extraction, reproducibility parameters, and
-          process diagrams.
+          {S.analysis.noResultsDesc}
         </p>
       </div>
     );

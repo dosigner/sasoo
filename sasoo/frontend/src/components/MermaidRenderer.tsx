@@ -10,6 +10,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import type { MermaidDiagram } from '@/lib/api';
+import { S } from '@/lib/strings';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -24,15 +25,12 @@ interface MermaidRendererProps {
 // Mermaid initialization
 // ---------------------------------------------------------------------------
 
-let mermaidInitialized = false;
-
-function initMermaid() {
-  if (mermaidInitialized) return;
-
+function initMermaid(isDark = true) {
+  const theme = isDark ? 'dark' : 'default';
   mermaid.initialize({
     startOnLoad: false,
-    theme: 'dark',
-    themeVariables: {
+    theme,
+    themeVariables: isDark ? {
       primaryColor: '#0071e3',
       primaryTextColor: '#e8e8ed',
       primaryBorderColor: '#0a84ff',
@@ -45,18 +43,29 @@ function initMermaid() {
       fontFamily:
         '"SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif',
       fontSize: '12px',
+    } : {
+      primaryColor: '#007aff',
+      primaryTextColor: '#1d1d1f',
+      primaryBorderColor: '#0071e3',
+      lineColor: '#aeaeb2',
+      secondaryColor: '#f5f5f7',
+      tertiaryColor: '#e8e8ed',
+      noteTextColor: '#1d1d1f',
+      noteBkgColor: '#f5f5f7',
+      noteBorderColor: '#d1d1d6',
+      fontFamily:
+        '"SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif',
+      fontSize: '12px',
     },
     flowchart: {
       useMaxWidth: true,
-      htmlLabels: true,
+      htmlLabels: false,
       curve: 'basis',
     },
     sequence: {
       useMaxWidth: true,
     },
   });
-
-  mermaidInitialized = true;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,18 +135,6 @@ export default function MermaidRenderer({
   const containerRef = useRef<HTMLDivElement>(null);
   const renderIdRef = useRef(0);
 
-  // Initialize mermaid on mount
-  useEffect(() => {
-    initMermaid();
-  }, []);
-
-  // Set editable code when diagram changes
-  useEffect(() => {
-    if (diagram?.mermaid_code) {
-      setEditableCode(diagram.mermaid_code);
-    }
-  }, [diagram?.mermaid_code]);
-
   // Render the mermaid diagram
   const renderDiagram = useCallback(
     async (code: string) => {
@@ -152,7 +149,7 @@ export default function MermaidRenderer({
       const sanitized = sanitizeMermaidCode(code);
       if (!sanitized) {
         if (currentRenderId === renderIdRef.current) {
-          setRenderError('Empty diagram code after sanitization');
+          setRenderError(S.mermaid.emptyCode);
           setIsRendering(false);
         }
         return;
@@ -170,7 +167,7 @@ export default function MermaidRenderer({
       } catch (err) {
         if (currentRenderId === renderIdRef.current) {
           setRenderError(
-            err instanceof Error ? err.message : 'Failed to render diagram'
+            err instanceof Error ? err.message : S.mermaid.renderFailed
           );
         }
       } finally {
@@ -182,12 +179,45 @@ export default function MermaidRenderer({
     []
   );
 
-  // Render when code changes
+  // Initialize/reinitialize mermaid when theme changes
   useEffect(() => {
+    const isDark = !document.documentElement.classList.contains('light');
+    initMermaid(isDark);
+    // Re-render if we have content
     if (editableCode) {
       renderDiagram(editableCode);
     }
+  }, []);
+
+  // Watch for theme changes
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      const isDark = !document.documentElement.classList.contains('light');
+      initMermaid(isDark);
+      if (editableCode) {
+        renderDiagram(editableCode);
+      }
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+    return () => observer.disconnect();
   }, [editableCode, renderDiagram]);
+
+  // Set editable code when diagram changes
+  useEffect(() => {
+    if (diagram?.mermaid_code) {
+      setEditableCode(diagram.mermaid_code);
+    }
+  }, [diagram?.mermaid_code]);
+
+  // Render only when the diagram source changes (not on every edit)
+  useEffect(() => {
+    if (diagram?.mermaid_code) {
+      renderDiagram(diagram.mermaid_code);
+    }
+  }, [diagram?.mermaid_code, renderDiagram]);
 
   const handleRerender = useCallback(() => {
     renderDiagram(editableCode);
@@ -215,13 +245,12 @@ export default function MermaidRenderer({
       <div>
         <h3 className="text-sm font-semibold text-surface-200 mb-3 flex items-center gap-2">
           <GitBranch className="w-4 h-4 text-primary-400" />
-          Process Diagram
+          {S.mermaid.title}
         </h3>
         <div className="card flex flex-col items-center justify-center py-8 text-center">
           <GitBranch className="w-8 h-8 text-surface-600 mb-2" />
           <p className="text-sm text-surface-400">
-            Diagram not yet generated. Complete analysis to see the process
-            flow.
+            {S.mermaid.notGenerated}
           </p>
         </div>
       </div>
@@ -234,7 +263,7 @@ export default function MermaidRenderer({
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-surface-200 flex items-center gap-2">
           <GitBranch className="w-4 h-4 text-primary-400" />
-          Process Diagram
+          {S.mermaid.title}
         </h3>
         <div className="flex items-center gap-1">
           <button
@@ -242,24 +271,24 @@ export default function MermaidRenderer({
             className={`btn-ghost text-2xs px-2 py-1 ${
               showCode ? 'bg-surface-700 text-primary-400' : ''
             }`}
-            title={showCode ? 'Hide code' : 'View code'}
+            title={showCode ? S.mermaid.preview : S.mermaid.code}
           >
             {showCode ? (
               <>
                 <Eye className="w-3 h-3" />
-                Preview
+                {S.mermaid.preview}
               </>
             ) : (
               <>
                 <Code2 className="w-3 h-3" />
-                Code
+                {S.mermaid.code}
               </>
             )}
           </button>
           <button
             onClick={handleCopyCode}
             className="btn-ghost text-2xs px-2 py-1"
-            title="Copy code"
+            title={S.mermaid.copy}
           >
             {copied ? (
               <Check className="w-3 h-3 text-emerald-400" />
@@ -282,23 +311,23 @@ export default function MermaidRenderer({
         <div className="mb-3 fade-in-up">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-2xs text-surface-500 uppercase tracking-wider">
-              Mermaid Code
+              {S.mermaid.mermaidCode}
             </span>
             <div className="flex items-center gap-1">
               <button
                 onClick={handleResetCode}
                 className="btn-ghost text-2xs px-2 py-0.5"
-                title="Reset to original"
+                title={S.mermaid.reset}
               >
-                Reset
+                {S.mermaid.reset}
               </button>
               <button
                 onClick={handleRerender}
                 className="btn-ghost text-2xs px-2 py-0.5"
-                title="Re-render diagram"
+                title={S.mermaid.render}
               >
                 <RefreshCw className="w-3 h-3" />
-                Render
+                {S.mermaid.render}
               </button>
             </div>
           </div>
@@ -323,7 +352,7 @@ export default function MermaidRenderer({
           <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
             <AlertCircle className="w-6 h-6 text-red-400 mb-2" />
             <p className="text-sm text-red-300 mb-1">
-              Failed to render diagram
+              {S.mermaid.renderFailed}
             </p>
             <p className="text-2xs text-surface-500 max-w-md">
               {renderError}

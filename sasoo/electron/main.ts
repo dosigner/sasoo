@@ -27,8 +27,10 @@ async function createWindow(): Promise<void> {
     minHeight: 680,
     icon: getIconPath(),
     title: 'Sasoo',
+    frame: false,
     backgroundColor: '#0f172a',
     show: false,
+    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' } : {}),
     webPreferences: {
       preload: getPreloadPath(),
       contextIsolation: true,
@@ -44,6 +46,14 @@ async function createWindow(): Promise<void> {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  mainWindow.on('maximize', () => {
+    mainWindow?.webContents.send('window:maximizeChanged', true);
+  });
+
+  mainWindow.on('unmaximize', () => {
+    mainWindow?.webContents.send('window:maximizeChanged', false);
   });
 
   if (isDev) {
@@ -204,6 +214,27 @@ function registerIpcHandlers(): void {
     } catch {
       return null;
     }
+  });
+
+  // Window control handlers (for custom titlebar)
+  ipcMain.handle('window:minimize', () => {
+    mainWindow?.minimize();
+  });
+
+  ipcMain.handle('window:maximize', () => {
+    if (mainWindow?.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow?.maximize();
+    }
+  });
+
+  ipcMain.handle('window:close', () => {
+    mainWindow?.close();
+  });
+
+  ipcMain.handle('window:isMaximized', () => {
+    return mainWindow?.isMaximized() ?? false;
   });
 }
 

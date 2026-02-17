@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { S } from '@/lib/strings';
 import {
   type AnalysisStatus,
   type AnalysisResults,
@@ -209,7 +210,7 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
             (p: PhaseInfo) => p.status === 'error'
           );
           setError(
-            errorPhase?.error_message || 'Analysis failed'
+            errorPhase?.error_message || S.error.occurred
           );
         }
       }
@@ -219,7 +220,8 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
         // No analysis exists yet, that's fine
         return;
       }
-      setError(err instanceof Error ? err.message : 'Failed to get status');
+      if (err instanceof Error) console.warn('[analysis] status error:', err.message);
+      setError(S.error.getStatusFailed);
     }
   }, [paperId, fetchPhaseResources]);
 
@@ -262,7 +264,8 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
     } catch (err) {
       if (!mountedRef.current) return;
       setIsRunning(false);
-      setError(err instanceof Error ? err.message : 'Failed to start analysis');
+      if (err instanceof Error) console.warn('[analysis] start error:', err.message);
+      setError(S.error.startAnalysisFailed);
     }
   }, [paperId, startPolling]);
 
@@ -318,9 +321,8 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
           // No analysis yet -- normal state
           return;
         }
-        setError(
-          err instanceof Error ? err.message : 'Failed to load analysis'
-        );
+        if (err instanceof Error) console.warn('[analysis] load error:', err.message);
+        setError(S.error.loadAnalysisFailed);
       }
     }
 

@@ -77,6 +77,12 @@ export interface ElectronAPI {
   getAppInfo: () => Promise<AppInfo>;
   getAppPath: (name: string) => Promise<string | null>;
 
+  // Window controls
+  minimizeWindow: () => Promise<void>;
+  maximizeWindow: () => Promise<void>;
+  closeWindow: () => Promise<void>;
+  isMaximized: () => Promise<boolean>;
+
   // Event listeners
   on: (channel: string, callback: (...args: unknown[]) => void) => () => void;
 }
@@ -99,6 +105,12 @@ const electronAPI: ElectronAPI = {
   getAppInfo: () => ipcRenderer.invoke('app:getInfo'),
   getAppPath: (name) => ipcRenderer.invoke('app:getPath', name),
 
+  // Window controls
+  minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
+  maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
+  closeWindow: () => ipcRenderer.invoke('window:close'),
+  isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+
   // Event listeners with cleanup
   on: (channel, callback) => {
     const allowedChannels = [
@@ -107,6 +119,7 @@ const electronAPI: ElectronAPI = {
       'analysis:error',
       'backend:status',
       'app:update-available',
+      'window:maximizeChanged',
     ];
 
     if (!allowedChannels.includes(channel)) {

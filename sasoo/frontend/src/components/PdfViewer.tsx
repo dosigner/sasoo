@@ -7,6 +7,7 @@ import {
   Loader2,
   AlertCircle,
 } from 'lucide-react';
+import { S } from '@/lib/strings';
 
 // Import styles
 import '@react-pdf-viewer/core/lib/styles/index.css';
@@ -64,7 +65,7 @@ export default function PdfViewer({ pdfUrl, title }: PdfViewerProps) {
           <div className="absolute inset-0 flex items-center justify-center bg-surface-900/80 z-10">
             <div className="flex flex-col items-center gap-3">
               <Loader2 className="w-6 h-6 text-primary-400 animate-spin" />
-              <span className="text-sm text-surface-400">Loading PDF...</span>
+              <span className="text-sm text-surface-400">{S.pdf.loading}</span>
             </div>
           </div>
         )}
@@ -75,7 +76,7 @@ export default function PdfViewer({ pdfUrl, title }: PdfViewerProps) {
               <AlertCircle className="w-10 h-10 text-red-400" />
               <div>
                 <p className="text-sm text-surface-300 mb-1">
-                  Unable to load PDF
+                  {S.pdf.loadFailed}
                 </p>
                 <p className="text-xs text-surface-500">{loadError}</p>
               </div>
@@ -86,7 +87,7 @@ export default function PdfViewer({ pdfUrl, title }: PdfViewerProps) {
                 }}
                 className="btn-secondary text-xs mt-2"
               >
-                Retry
+                {S.error.retry}
               </button>
             </div>
           </div>
@@ -102,7 +103,7 @@ export default function PdfViewer({ pdfUrl, title }: PdfViewerProps) {
             }}
             renderError={(error) => {
               setIsLoading(false);
-              setLoadError(error.message || 'Failed to load PDF');
+              setLoadError(error.message || S.pdf.loadFailed);
               return <div />;
             }}
             theme={{

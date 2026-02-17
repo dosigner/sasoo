@@ -7,6 +7,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { getApiBase } from '@/lib/api';
+import { S } from '@/lib/strings';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -82,7 +83,7 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
       try {
         const response = await fetch(`${getApiBase()}/settings/cost`);
         if (!response.ok) {
-          throw new Error('Failed to fetch cost data');
+          throw new Error(S.settings.costLoadFailed);
         }
         const data = await response.json();
         if (!cancelled) {
@@ -91,7 +92,7 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
       } catch (err) {
         if (!cancelled) {
           setError(
-            err instanceof Error ? err.message : 'Failed to load cost data'
+            err instanceof Error ? err.message : S.settings.costLoadFailed
           );
         }
       } finally {
@@ -165,7 +166,7 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
           <div className="flex items-center gap-1.5 mb-2">
             <DollarSign className="w-3.5 h-3.5 text-primary-400" />
             <span className="text-2xs text-surface-400 uppercase tracking-wider">
-              이번 달 비용
+              {S.cost.thisMonth}
             </span>
           </div>
           <div className="text-lg font-bold text-surface-100 font-mono tabular-nums">
@@ -178,14 +179,14 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
           <div className="flex items-center gap-1.5 mb-2">
             <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
             <span className="text-2xs text-surface-400 uppercase tracking-wider">
-              논문당 평균
+              {S.cost.avgPerPaper}
             </span>
           </div>
           <div className="text-lg font-bold text-surface-100 font-mono tabular-nums">
             {formatCurrency(costData.totals.avg_cost_per_paper)}
           </div>
           <div className="text-2xs text-surface-500 mt-1">
-            총 {costData.totals.total_papers}개 논문 분석
+            {S.cost.totalPapers(costData.totals.total_papers)}
           </div>
         </div>
 
@@ -198,7 +199,7 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
               <BarChart3 className="w-3.5 h-3.5 text-surface-400" />
             )}
             <span className="text-2xs text-surface-400 uppercase tracking-wider">
-              예산 현황
+              {S.cost.budgetStatus}
             </span>
           </div>
           <div className="h-2 bg-surface-700 rounded-full overflow-hidden mb-1.5">
@@ -230,7 +231,7 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
       <div className="card">
         <h4 className="text-xs font-semibold text-surface-300 mb-3 flex items-center gap-2">
           <BarChart3 className="w-3.5 h-3.5 text-primary-400" />
-          월별 추이 (최근 6개월)
+          {S.cost.monthlyTrend}
         </h4>
         <div className="flex items-end gap-2 h-32">
           {monthlyChartData.months.map((month) => (
@@ -249,7 +250,7 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
               </div>
               {/* Month label */}
               <div className="text-2xs text-surface-500 mt-1">
-                {month.month.slice(5)}월
+                {S.cost.monthLabel(month.month.slice(5))}
               </div>
               {/* Tooltip */}
               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10">
@@ -258,7 +259,7 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
                     {formatCurrency(month.total_usd)}
                   </div>
                   <div className="text-2xs text-surface-500">
-                    {month.papers_analyzed}개 논문
+                    {S.cost.paperCount(month.papers_analyzed)}
                   </div>
                 </div>
               </div>
@@ -272,7 +273,7 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
         <div className="card">
           <h4 className="text-xs font-semibold text-surface-300 mb-3 flex items-center gap-2">
             <FileText className="w-3.5 h-3.5 text-primary-400" />
-            논문별 비용 (상위 10개)
+            {S.cost.perPaperCost}
           </h4>
           <div className="space-y-2">
             {costData.per_paper_costs.slice(0, 10).map((paper) => (

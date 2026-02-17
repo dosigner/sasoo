@@ -6,6 +6,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import type { Recipe } from '@/lib/api';
+import { S } from '@/lib/strings';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -132,12 +133,12 @@ export default function RecipeCard({
       <div>
         <h3 className="text-sm font-semibold text-surface-200 mb-3 flex items-center gap-2">
           <FlaskConical className="w-4 h-4 text-primary-400" />
-          Reproducibility Recipe
+          {S.recipe.title}
         </h3>
         <div className="card flex flex-col items-center justify-center py-8 text-center">
           <FlaskConical className="w-8 h-8 text-surface-600 mb-2" />
           <p className="text-sm text-surface-400">
-            Recipe not yet generated. Run analysis to extract parameters.
+            {S.recipe.noRecipe}
           </p>
         </div>
       </div>
@@ -190,17 +191,17 @@ export default function RecipeCard({
         <button
           onClick={exportCsv}
           className="btn-ghost text-2xs px-2 py-1"
-          title="Export as CSV"
+          title={S.recipe.exportCsv}
         >
           {exported ? (
             <>
               <Check className="w-3 h-3 text-emerald-400" />
-              Exported
+              {S.recipe.exported}
             </>
           ) : (
             <>
               <Download className="w-3 h-3" />
-              CSV
+              {S.recipe.exportCsv}
             </>
           )}
         </button>
@@ -211,12 +212,12 @@ export default function RecipeCard({
         <div className="card p-3 mb-3 flex items-center gap-4">
           {confidence !== undefined && (
             <div className="text-xs text-surface-400">
-              Confidence: <span className="text-surface-200 font-mono">{(confidence * 100).toFixed(0)}%</span>
+              {S.recipe.confidence} <span className="text-surface-200 font-mono">{(confidence * 100).toFixed(0)}%</span>
             </div>
           )}
           {reproducibilityScore !== undefined && (
             <div className="text-xs text-surface-400">
-              Reproducibility: <span className="text-surface-200 font-mono">{(reproducibilityScore * 100).toFixed(0)}%</span>
+              {S.recipe.reproducibility} <span className="text-surface-200 font-mono">{(reproducibilityScore * 100).toFixed(0)}%</span>
             </div>
           )}
         </div>
@@ -226,7 +227,7 @@ export default function RecipeCard({
       {objective && (
         <div className="card p-3 mb-3">
           <p className="text-xs text-surface-300 leading-relaxed">
-            <span className="font-semibold text-surface-200">Objective: </span>
+            <span className="font-semibold text-surface-200">{S.recipe.objective} </span>
             {objective}
           </p>
         </div>
@@ -235,7 +236,7 @@ export default function RecipeCard({
       {/* Materials */}
       {materials.length > 0 && (
         <div className="card p-3 mb-3">
-          <h4 className="text-xs font-semibold text-surface-200 mb-2">Materials</h4>
+          <h4 className="text-xs font-semibold text-surface-200 mb-2">{S.recipe.materials}</h4>
           <ul className="space-y-1">
             {materials.map((m, i) => (
               <li key={i} className="text-2xs text-surface-400 flex items-start gap-1.5">
@@ -252,7 +253,7 @@ export default function RecipeCard({
         <div className="card p-0 overflow-hidden mb-3">
           <div className="px-3 py-2 border-b border-surface-700 bg-surface-800/70">
             <h4 className="text-xs font-semibold text-surface-200">
-              Parameters ({parameters.length})
+              {S.recipe.parameters} ({parameters.length})
             </h4>
           </div>
           <div className="overflow-x-auto">
@@ -286,8 +287,7 @@ export default function RecipeCard({
       {parameters.length === 0 && (
         <div className="card p-3 mb-3 border-amber-500/20 bg-amber-500/5">
           <p className="text-xs text-amber-300/80">
-            No parameters were extracted. This may indicate the paper lacks explicit experimental details
-            or the Methods section was not fully captured.
+            {S.recipe.noParams}
           </p>
         </div>
       )}
@@ -295,7 +295,7 @@ export default function RecipeCard({
       {/* Steps */}
       {steps.length > 0 && (
         <div className="card p-3 mb-3">
-          <h4 className="text-xs font-semibold text-surface-200 mb-2">Steps</h4>
+          <h4 className="text-xs font-semibold text-surface-200 mb-2">{S.recipe.steps}</h4>
           <ol className="space-y-1.5">
             {steps.map((step, i) => (
               <li key={i} className="text-2xs text-surface-400 leading-relaxed">
@@ -310,7 +310,7 @@ export default function RecipeCard({
       {/* Critical Notes */}
       {criticalNotes.length > 0 && (
         <div className="mb-3">
-          <h4 className="text-xs font-semibold text-surface-200 mb-2">Critical Notes</h4>
+          <h4 className="text-xs font-semibold text-surface-200 mb-2">{S.recipe.criticalNotes}</h4>
           <div className="space-y-1.5">
             {criticalNotes.map((note, index) => (
               <div
@@ -330,7 +330,7 @@ export default function RecipeCard({
       {/* Missing Info */}
       {missingInfo.length > 0 && (
         <div className="card p-3 mb-3 border-red-500/20 [.light_&]:border-red-600/30 bg-red-500/5 [.light_&]:bg-red-500/10">
-          <h4 className="text-xs font-semibold text-red-300 [.light_&]:text-red-700 mb-1.5">Missing Information</h4>
+          <h4 className="text-xs font-semibold text-red-300 [.light_&]:text-red-700 mb-1.5">{S.recipe.missingInfo}</h4>
           <ul className="space-y-1">
             {missingInfo.map((info, index) => (
               <li key={index} className="text-2xs text-red-300/70 [.light_&]:text-red-600 flex items-start gap-1.5">
