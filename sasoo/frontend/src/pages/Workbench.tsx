@@ -12,13 +12,14 @@ import {
   Square,
   ArrowLeft,
 } from 'lucide-react';
-import { getPaper, getPdfUrl, cancelAnalysis, type Paper } from '@/lib/api';
+import { getPaper, getPdfUrl, cancelAnalysis, getSettings, type Paper } from '@/lib/api';
 import { getAgentMeta } from '@/lib/agents';
 import { useAnalysis } from '@/hooks/useAnalysis';
 import { useToast } from '@/components/Toast';
 import { S } from '@/lib/strings';
 import PdfViewer from '@/components/PdfViewer';
 import AnalysisPanel from '@/components/AnalysisPanel';
+import { Modal } from '@/components/ui';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -102,9 +103,10 @@ export default function Workbench() {
   }, [id]);
 
   // -----------------------------------------------------------------------
-  // Auto-start analysis for newly uploaded papers
+  // Auto-start analysis (with optional confirmation dialog)
   // -----------------------------------------------------------------------
   const autoStartedRef = useRef(false);
+  const [showAnalysisConfirm, setShowAnalysisConfirm] = useState(false);
 
   useEffect(() => {
     if (
@@ -115,13 +117,26 @@ export default function Workbench() {
       !autoStartedRef.current
     ) {
       autoStartedRef.current = true;
-      startAnalysis();
+      // Check auto_analyze setting
+      getSettings()
+        .then((settings) => {
+          if (settings.auto_analyze) {
+            startAnalysis();
+          } else {
+            setShowAnalysisConfirm(true);
+          }
+        })
+        .catch(() => {
+          // If settings fetch fails, show dialog as safe default
+          setShowAnalysisConfirm(true);
+        });
     }
   }, [paper, isRunning, status, startAnalysis]);
 
   // Reset auto-start flag when paper id changes
   useEffect(() => {
     autoStartedRef.current = false;
+    setShowAnalysisConfirm(false);
   }, [id]);
 
   // -----------------------------------------------------------------------
@@ -253,6 +268,33 @@ export default function Workbench() {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Analysis confirmation dialog */}
+      <Modal open={showAnalysisConfirm} onClose={() => setShowAnalysisConfirm(false)}>
+        <h3 className="text-lg font-semibold text-surface-100 mb-2">분석을 시작할까요?</h3>
+        <p className="text-sm text-surface-400 mb-4">
+          논문 분석에 Gemini Pro + Claude Sonnet API를 사용합니다.
+          예상 비용: <span className="text-primary-400 font-medium">$0.5 ~ $2.0</span> / 논문
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => {
+              setShowAnalysisConfirm(false);
+              startAnalysis();
+            }}
+            className="btn-primary flex-1 py-2 text-sm"
+          >
+            <Play className="w-4 h-4 mr-1" />
+            전체 분석 시작
+          </button>
+          <button
+            onClick={() => setShowAnalysisConfirm(false)}
+            className="btn-ghost flex-1 py-2 text-sm"
+          >
+            나중에
+          </button>
+        </div>
+      </Modal>
+
       {/* Top bar: paper info + controls */}
       <div className="flex items-center justify-between px-4 py-2 bg-surface-800/90 backdrop-blur-lg border-b border-surface-700/50 shrink-0">
         <div className="flex items-center gap-3 min-w-0">

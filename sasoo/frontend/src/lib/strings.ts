@@ -151,10 +151,10 @@ export const S = {
     appearance: '테마',
     dark: '다크',
     light: '라이트',
-    // Budget
-    budget: '예산',
-    monthlyBudget: '월간 예산 한도',
-    budgetHelp: '한도에 가까워지면 경고를 받습니다.',
+    // API Key status
+    keyConfigured: '설정됨',
+    keyNotConfigured: '미설정',
+    enterNewKey: '새 키를 입력하여 변경...',
     // Cost
     usageCosts: '사용량 & 비용',
     costLoadFailed: '비용 데이터를 불러올 수 없습니다',
@@ -165,11 +165,19 @@ export const S = {
     thisMonth: '이번 달 비용',
     avgPerPaper: '논문당 평균',
     totalPapers: (n: number) => `총 ${n}개 논문 분석`,
-    budgetStatus: '예산 현황',
+    totalTokens: '총 토큰 사용량',
+    tokensIn: '입력',
+    tokensOut: '출력',
     monthlyTrend: '월별 추이 (최근 6개월)',
     monthLabel: (mm: string) => `${mm}월`,
     paperCount: (n: number) => `${n}개 논문`,
     perPaperCost: '논문별 비용 (상위 10개)',
+    modelBreakdown: '모델별 사용량',
+    modelName: '모델',
+    calls: '호출',
+    cost: '비용',
+    noData: '아직 분석 데이터가 없습니다',
+    noDataDesc: '논문을 분석하면 사용량과 비용 통계가 여기에 표시됩니다.',
   },
 
   // ── Status badges ──

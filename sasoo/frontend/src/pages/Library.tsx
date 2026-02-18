@@ -18,8 +18,10 @@ import {
 } from 'lucide-react';
 import { usePapers } from '@/hooks/usePapers';
 import { DOMAINS, type Paper, type PaperStatus } from '@/lib/api';
+import { getAgentMeta } from '@/lib/agents';
 import { S } from '@/lib/strings';
 import { useToast } from '@/components/Toast';
+import { Modal } from '@/components/ui';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,6 +72,7 @@ interface PaperCardProps {
 
 function PaperCard({ paper, onOpen, onDelete }: PaperCardProps) {
   const badge = statusBadge(paper.status);
+  const agent = getAgentMeta(paper.agent_used);
 
   return (
     <div
@@ -101,6 +104,15 @@ function PaperCard({ paper, onOpen, onDelete }: PaperCardProps) {
         {paper.year && <span>{paper.year}</span>}
         {paper.year && <span className="w-1 h-1 rounded-full bg-surface-600" />}
         <span className="badge-primary text-2xs">{paper.domain}</span>
+        {agent && (
+          <>
+            <span className="w-1 h-1 rounded-full bg-surface-600" />
+            <span className={`flex items-center gap-1 ${agent.color}`}>
+              {agent.image && <img src={agent.image} alt={agent.name} className="w-3.5 h-3.5 rounded-full" />}
+              {agent.nameKo}
+            </span>
+          </>
+        )}
       </div>
 
       {/* Tags */}
@@ -148,6 +160,7 @@ function PaperCard({ paper, onOpen, onDelete }: PaperCardProps) {
 
 function PaperRow({ paper, onOpen, onDelete }: PaperCardProps) {
   const badge = statusBadge(paper.status);
+  const agent = getAgentMeta(paper.agent_used);
 
   return (
     <div
@@ -174,6 +187,13 @@ function PaperRow({ paper, onOpen, onDelete }: PaperCardProps) {
           )}
         </div>
       </div>
+
+      {agent && (
+        <span className={`flex items-center gap-1 text-2xs shrink-0 ${agent.color}`}>
+          {agent.image && <img src={agent.image} alt={agent.name} className="w-4 h-4 rounded-full" />}
+          {agent.nameKo}
+        </span>
+      )}
 
       <span className="badge-primary text-2xs shrink-0">{paper.domain}</span>
 
@@ -625,84 +645,74 @@ export default function Library() {
       )}
 
       {/* Delete Confirmation Modal */}
-      {deleteModal.show && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in"
-          onClick={cancelDelete}
-        >
-          <div
-            className="bg-surface-800 [.light_&]:bg-white border border-surface-700 [.light_&]:border-surface-200 rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl animate-slide-up"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-start gap-3 mb-4">
-              <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/20">
-                <AlertCircle className="w-5 h-5 text-red-400" />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-base font-semibold text-surface-100 [.light_&]:text-surface-900 mb-1">
-                  {S.library.deleteTitle}
-                </h3>
-                <p className="text-sm text-surface-400 [.light_&]:text-surface-600">
-                  {S.library.deleteWarning}
-                </p>
-              </div>
-            </div>
-
-            {/* Content */}
-            <div className="mb-6 space-y-3">
-              <div className="bg-surface-700/30 [.light_&]:bg-surface-100 border border-surface-700/50 [.light_&]:border-surface-200 rounded-lg p-3">
-                <p className="text-sm text-surface-300 [.light_&]:text-surface-700 font-medium mb-1">
-                  {deleteModal.paperTitle}
-                </p>
-                <p className="text-2xs text-surface-500 [.light_&]:text-surface-600">
-                  {S.library.paperId(deleteModal.paperId ?? '')}
-                </p>
-              </div>
-
-              <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3">
-                <p className="text-xs text-red-400 [.light_&]:text-red-600 leading-relaxed">
-                  <strong>{S.library.deleteDetails}</strong>
-                  <br />
-                  • {S.library.deleteItem1}
-                  <br />
-                  • {S.library.deleteItem2}
-                  <br />
-                  • {S.library.deleteItem3}
-                </p>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center gap-2 justify-end">
-              <button
-                onClick={cancelDelete}
-                disabled={deleting}
-                className="btn-ghost text-sm"
-              >
-                {S.library.cancelBtn}
-              </button>
-              <button
-                onClick={confirmDelete}
-                disabled={deleting}
-                className="btn-danger text-sm"
-              >
-                {deleting ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    {S.library.deleting}
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-3.5 h-3.5" />
-                    {S.library.deleteBtn}
-                  </>
-                )}
-              </button>
-            </div>
+      <Modal open={deleteModal.show} onClose={cancelDelete}>
+        {/* Header */}
+        <div className="flex items-start gap-3 mb-4">
+          <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/20">
+            <AlertCircle className="w-5 h-5 text-red-400" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-base font-semibold text-surface-100 [.light_&]:text-surface-900 mb-1">
+              {S.library.deleteTitle}
+            </h3>
+            <p className="text-sm text-surface-400 [.light_&]:text-surface-600">
+              {S.library.deleteWarning}
+            </p>
           </div>
         </div>
-      )}
+
+        {/* Content */}
+        <div className="mb-6 space-y-3">
+          <div className="bg-surface-700/30 [.light_&]:bg-surface-100 border border-surface-700/50 [.light_&]:border-surface-200 rounded-lg p-3">
+            <p className="text-sm text-surface-300 [.light_&]:text-surface-700 font-medium mb-1">
+              {deleteModal.paperTitle}
+            </p>
+            <p className="text-2xs text-surface-500 [.light_&]:text-surface-600">
+              {S.library.paperId(deleteModal.paperId ?? '')}
+            </p>
+          </div>
+
+          <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3">
+            <p className="text-xs text-red-400 [.light_&]:text-red-600 leading-relaxed">
+              <strong>{S.library.deleteDetails}</strong>
+              <br />
+              • {S.library.deleteItem1}
+              <br />
+              • {S.library.deleteItem2}
+              <br />
+              • {S.library.deleteItem3}
+            </p>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 justify-end">
+          <button
+            onClick={cancelDelete}
+            disabled={deleting}
+            className="btn-ghost text-sm"
+          >
+            {S.library.cancelBtn}
+          </button>
+          <button
+            onClick={confirmDelete}
+            disabled={deleting}
+            className="btn-danger text-sm"
+          >
+            {deleting ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                {S.library.deleting}
+              </>
+            ) : (
+              <>
+                <Trash2 className="w-3.5 h-3.5" />
+                {S.library.deleteBtn}
+              </>
+            )}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

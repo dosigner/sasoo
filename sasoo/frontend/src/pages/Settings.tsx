@@ -20,6 +20,7 @@ import {
 } from '@/lib/api';
 import CostDashboard from '@/components/CostDashboard';
 import { useToast } from '@/components/Toast';
+import { Toggle } from '@/components/ui';
 import { S } from '@/lib/strings';
 
 // ---------------------------------------------------------------------------
@@ -40,7 +41,10 @@ export default function Settings() {
   const [libraryPath, setLibraryPath] = useState('');
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [autoAnalyze, setAutoAnalyze] = useState(false);
-  const [monthlyBudget, setMonthlyBudget] = useState(50);
+
+  // API key status (masked value from server, for display only)
+  const [geminiKeyStatus, setGeminiKeyStatus] = useState('');
+  const [claudeKeyStatus, setClaudeKeyStatus] = useState('');
 
   // Visibility toggles
   const [showGeminiKey, setShowGeminiKey] = useState(false);
@@ -57,12 +61,15 @@ export default function Settings() {
         const data = await getSettings();
         if (cancelled) return;
         setSettings(data);
-        setGeminiKey(data.gemini_api_key || '');
-        setClaudeKey(data.anthropic_api_key || '');
+        // Store masked keys for status display, but DON'T populate inputs
+        setGeminiKeyStatus(data.gemini_api_key || '');
+        setClaudeKeyStatus(data.anthropic_api_key || '');
+        // Key inputs start empty — user types new key only when they want to change
+        setGeminiKey('');
+        setClaudeKey('');
         setLibraryPath(data.library_path || '');
         setTheme(data.theme || 'dark');
         setAutoAnalyze(data.auto_analyze ?? false);
-        setMonthlyBudget(data.monthly_budget ?? 50);
       } catch (err) {
         if (!cancelled) {
           if (err instanceof Error) console.warn('[settings] load error:', err.message);
@@ -90,7 +97,6 @@ export default function Settings() {
       document.documentElement.classList.add('dark');
       document.documentElement.classList.remove('light');
     }
-    // Sync to localStorage so App.tsx can restore on next load
     localStorage.setItem('sasoo-theme', theme);
   }, [theme]);
 
@@ -103,15 +109,23 @@ export default function Settings() {
     setSaved(false);
 
     try {
-      const updated = await updateSettings({
-        gemini_api_key: geminiKey,
-        anthropic_api_key: claudeKey,
+      // Only include API keys if user actually typed new ones
+      const payload: Partial<SettingsType> = {
         library_path: libraryPath,
         theme,
         auto_analyze: autoAnalyze,
-        monthly_budget: monthlyBudget,
-      });
+      };
+      if (geminiKey.trim()) payload.gemini_api_key = geminiKey.trim();
+      if (claudeKey.trim()) payload.anthropic_api_key = claudeKey.trim();
+
+      const updated = await updateSettings(payload);
       setSettings(updated);
+      // Update status badges with new masked values
+      setGeminiKeyStatus(updated.gemini_api_key || '');
+      setClaudeKeyStatus(updated.anthropic_api_key || '');
+      // Clear key inputs after save
+      setGeminiKey('');
+      setClaudeKey('');
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
       toast.success(S.toast.settingsSaved);
@@ -122,19 +136,18 @@ export default function Settings() {
     } finally {
       setSaving(false);
     }
-  }, [geminiKey, claudeKey, libraryPath, theme, autoAnalyze, monthlyBudget, toast]);
+  }, [geminiKey, claudeKey, libraryPath, theme, autoAnalyze, toast]);
 
   // -----------------------------------------------------------------------
   // Check for unsaved changes
   // -----------------------------------------------------------------------
   const hasChanges =
     settings &&
-    (geminiKey !== (settings.gemini_api_key || '') ||
-      claudeKey !== (settings.anthropic_api_key || '') ||
+    (geminiKey.trim() !== '' ||
+      claudeKey.trim() !== '' ||
       libraryPath !== (settings.library_path || '') ||
       theme !== (settings.theme || 'dark') ||
-      autoAnalyze !== (settings.auto_analyze ?? false) ||
-      monthlyBudget !== (settings.monthly_budget ?? 50));
+      autoAnalyze !== (settings.auto_analyze ?? false));
 
   if (loading) {
     return (
@@ -198,15 +211,26 @@ export default function Settings() {
           <div className="space-y-4">
             {/* Gemini API key */}
             <div>
-              <label className="text-xs text-surface-400 block mb-1.5">
-                {S.settings.geminiKey}
-              </label>
+              <div className="flex items-center gap-2 mb-1.5">
+                <label className="text-xs text-surface-400">
+                  {S.settings.geminiKey}
+                </label>
+                {geminiKeyStatus ? (
+                  <span className="text-2xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
+                    {S.settings.keyConfigured} ({geminiKeyStatus})
+                  </span>
+                ) : (
+                  <span className="text-2xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">
+                    {S.settings.keyNotConfigured}
+                  </span>
+                )}
+              </div>
               <div className="relative">
                 <input
                   type={showGeminiKey ? 'text' : 'password'}
                   value={geminiKey}
                   onChange={(e) => setGeminiKey(e.target.value)}
-                  placeholder="AIza..."
+                  placeholder={S.settings.enterNewKey}
                   className="input pr-10"
                 />
                 <button
@@ -237,15 +261,26 @@ export default function Settings() {
 
             {/* Claude API key */}
             <div>
-              <label className="text-xs text-surface-400 block mb-1.5">
-                {S.settings.claudeKey}
-              </label>
+              <div className="flex items-center gap-2 mb-1.5">
+                <label className="text-xs text-surface-400">
+                  {S.settings.claudeKey}
+                </label>
+                {claudeKeyStatus ? (
+                  <span className="text-2xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
+                    {S.settings.keyConfigured} ({claudeKeyStatus})
+                  </span>
+                ) : (
+                  <span className="text-2xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">
+                    {S.settings.keyNotConfigured}
+                  </span>
+                )}
+              </div>
               <div className="relative">
                 <input
                   type={showClaudeKey ? 'text' : 'password'}
                   value={claudeKey}
                   onChange={(e) => setClaudeKey(e.target.value)}
-                  placeholder="sk-ant-..."
+                  placeholder={S.settings.enterNewKey}
                   className="input pr-10"
                 />
                 <button
@@ -322,31 +357,12 @@ export default function Settings() {
               </p>
             </div>
 
-            <div className="flex items-center justify-between">
-              <div>
-                <label className="text-xs text-surface-300">
-                  {S.settings.autoAnalyze}
-                </label>
-                <p className="text-2xs text-surface-600 mt-0.5">
-                  {S.settings.autoAnalyzeHelp}
-                </p>
-              </div>
-              <button
-                onClick={() => setAutoAnalyze(!autoAnalyze)}
-                className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
-                  autoAnalyze ? 'bg-primary-500' : 'bg-surface-600'
-                }`}
-                type="button"
-                role="switch"
-                aria-checked={autoAnalyze}
-              >
-                <span
-                  className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                    autoAnalyze ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
+            <Toggle
+              checked={autoAnalyze}
+              onChange={setAutoAnalyze}
+              label={S.settings.autoAnalyze}
+              description={S.settings.autoAnalyzeHelp}
+            />
           </div>
         </section>
 
@@ -390,41 +406,7 @@ export default function Settings() {
         </section>
 
         {/* ---------------------------------------------------------------- */}
-        {/* Budget */}
-        {/* ---------------------------------------------------------------- */}
-        <section>
-          <h2 className="text-sm font-semibold text-surface-200 flex items-center gap-2 mb-4">
-            <DollarSign className="w-4 h-4 text-primary-400" />
-            {S.settings.budget}
-          </h2>
-
-          <div>
-            <label className="text-xs text-surface-400 block mb-1.5">
-              {S.settings.monthlyBudget}
-            </label>
-            <div className="relative w-40">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-500">
-                $
-              </span>
-              <input
-                type="number"
-                min={0}
-                step={5}
-                value={monthlyBudget}
-                onChange={(e) =>
-                  setMonthlyBudget(parseFloat(e.target.value) || 0)
-                }
-                className="input pl-7"
-              />
-            </div>
-            <p className="text-2xs text-surface-600 mt-1">
-              {S.settings.budgetHelp}
-            </p>
-          </div>
-        </section>
-
-        {/* ---------------------------------------------------------------- */}
-        {/* Cost Dashboard */}
+        {/* Usage & Cost Dashboard */}
         {/* ---------------------------------------------------------------- */}
         <section>
           <h2 className="text-sm font-semibold text-surface-200 flex items-center gap-2 mb-4">
@@ -445,13 +427,13 @@ export default function Settings() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
+                  // Discard: reset to server values
+                  setGeminiKey('');
+                  setClaudeKey('');
                   if (settings) {
-                    setGeminiKey(settings.gemini_api_key || '');
-                    setClaudeKey(settings.anthropic_api_key || '');
                     setLibraryPath(settings.library_path || '');
                     setTheme(settings.theme || 'dark');
                     setAutoAnalyze(settings.auto_analyze ?? false);
-                    setMonthlyBudget(settings.monthly_budget ?? 50);
                   }
                 }}
                 className="btn-ghost text-sm"

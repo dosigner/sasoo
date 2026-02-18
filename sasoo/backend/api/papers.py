@@ -442,7 +442,9 @@ async def upload_paper(file: UploadFile = File(...)):
             domain=metadata.get("domain"),
             abstract=metadata.get("first_pages_text", "")[:500],
         )
-    except Exception:
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Folder name generation failed, using fallback: %s", exc)
         folder_name = f"{uuid.uuid4().hex[:12]}_{_sanitize_filename(file.filename)}"
 
     paper_dir = get_paper_dir(folder_name)
@@ -460,7 +462,9 @@ async def upload_paper(file: UploadFile = File(...)):
     figures_dir = get_figures_dir(folder_name)
     try:
         figures = extract_figures_from_pdf(str(pdf_path), str(figures_dir))
-    except Exception:
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Figure extraction failed: %s", exc)
         figures = []
 
     # Extract and match figure captions
@@ -470,8 +474,9 @@ async def upload_paper(file: UploadFile = File(...)):
         for fig in figures:
             if fig["figure_num"] in caption_map:
                 fig["caption"] = caption_map[fig["figure_num"]]
-    except Exception:
-        pass  # Caption extraction is best-effort
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Caption extraction failed: %s", exc)
 
     # Generate descriptive figure filenames via Gemini Flash
     try:
@@ -489,8 +494,9 @@ async def upload_paper(file: UploadFile = File(...)):
                     if not new_path.exists():
                         old_path.rename(new_path)
                         fig["file_path"] = str(new_path)
-    except Exception:
-        pass  # Figure renaming is best-effort
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Figure renaming failed: %s", exc)
 
     # Insert paper into DB
     paper_id = await execute_insert(

@@ -192,23 +192,48 @@ export interface Settings {
   max_concurrent_analyses: number;
   gemini_model: string;
   anthropic_model: string;
-  monthly_budget?: number;
+}
+
+export interface ModelStats {
+  model: string;
+  calls: number;
+  cost_usd: number;
+  tokens_in: number;
+  tokens_out: number;
 }
 
 export interface CostSummary {
-  monthly_total: number;
-  monthly_budget: number;
-  paper_count_this_month: number;
-  average_cost_per_paper: number;
-  model_breakdown: {
-    model: string;
-    cost: number;
-    calls: number;
+  monthly_costs: {
+    month: string;
+    total_usd: number;
+    papers_analyzed: number;
+    tokens_in: number;
+    tokens_out: number;
+    by_model: Record<string, number>;
   }[];
-  daily_costs: {
-    date: string;
-    cost: number;
+  per_paper_costs: {
+    paper_id: number;
+    title: string;
+    total_usd: number;
+    tokens_in: number;
+    tokens_out: number;
+    phases: Record<string, number>;
   }[];
+  by_model: ModelStats[];
+  current_month: {
+    month: string;
+    cost_usd: number;
+    tokens_in: number;
+    tokens_out: number;
+    papers_analyzed: number;
+  };
+  totals: {
+    total_papers: number;
+    total_cost_usd: number;
+    avg_cost_per_paper: number;
+    total_tokens_in: number;
+    total_tokens_out: number;
+  };
 }
 
 // ---------------------------------------------------------------------------

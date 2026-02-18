@@ -1,6 +1,6 @@
 {
   "name": "sasoo",
-  "version": "0.2.0",
+  "version": "0.3.1",
   "description": "Sasoo - AI-powered academic paper analysis tool",
   "private": true,
   "main": "dist-electron/main.js",
@@ -57,10 +57,15 @@
     ],
     "mac": {
       "category": "public.app-category.education",
-      "target": ["dmg", "zip"]
+      "target": [
+        "dmg",
+        "zip"
+      ]
     },
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
@@ -70,7 +75,10 @@
       "createStartMenuShortcut": true
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Education"
     }
   }

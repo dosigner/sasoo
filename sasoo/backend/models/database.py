@@ -80,7 +80,7 @@ def _get_library_root() -> Path:
                 if row and row[0]:
                     return Path(row[0])
             except Exception:
-                pass
+                pass  # Expected if library_path setting doesn't exist yet
         return default
     else:
         # Development: Use local library folder
@@ -196,7 +196,23 @@ async def init_db() -> None:
         await _db_connection.execute("ALTER TABLE figures ADD COLUMN detailed_explanation TEXT")
         await _db_connection.commit()
     except Exception:
+        pass  # Column already exists — expected on subsequent startups
+
+    # Migration: Add input_hash column for LLM response caching
+    try:
+        await _db_connection.execute("ALTER TABLE analysis_results ADD COLUMN input_hash TEXT")
+        await _db_connection.commit()
+    except Exception:
         pass  # Column already exists
+
+    # Index for cache lookups
+    try:
+        await _db_connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_analysis_cache ON analysis_results(paper_id, phase, input_hash)"
+        )
+        await _db_connection.commit()
+    except Exception:
+        pass
 
 
 async def get_db() -> aiosqlite.Connection:

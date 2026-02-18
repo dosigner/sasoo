@@ -15,6 +15,7 @@ Pro Image) in parallel.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import time
@@ -27,6 +28,7 @@ from models.database import (
     execute_insert,
     execute_update,
     fetch_all,
+    fetch_one,
     get_paper_dir,
 )
 from models.schemas import AnalysisPhase
@@ -145,11 +147,55 @@ class AnalysisPipeline:
         self._claude = claude_client
         self._agent = base_agent
         self._splitter = section_splitter
+        self._force_refresh = False
 
         # Build sub-components
         self._viz_router = VizRouter(gemini_client=gemini_client)
         self._mermaid_gen = MermaidGenerator(claude_client=claude_client)
         self._pb_bridge = PaperBananaBridge()
+
+    # ------------------------------------------------------------------
+    # LLM Response Cache
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _compute_input_hash(input_text: str) -> str:
+        """Compute a stable hash for cache lookup."""
+        return hashlib.sha256(input_text.encode("utf-8")).hexdigest()[:16]
+
+    async def _check_cache(self, paper_id: int, phase: str, input_text: str) -> Optional[PhaseResult]:
+        """Check if a cached result exists for this (paper, phase, input_hash)."""
+        if self._force_refresh:
+            return None
+        input_hash = self._compute_input_hash(input_text)
+        row = await fetch_one(
+            "SELECT result, model_used, tokens_in, tokens_out, cost_usd "
+            "FROM analysis_results "
+            "WHERE paper_id = ? AND phase = ? AND input_hash = ? "
+            "ORDER BY created_at DESC LIMIT 1",
+            (paper_id, phase, input_hash),
+        )
+        if row and row.get("result"):
+            logger.info("Cache HIT for paper %d phase %s (hash=%s)", paper_id, phase, input_hash)
+            try:
+                result_data = json.loads(row["result"])
+            except json.JSONDecodeError:
+                return None
+            pr = PhaseResult(
+                phase=AnalysisPhase(phase),
+                status="completed",
+                result=result_data,
+                usage=TokenUsage(
+                    tokens_in=row.get("tokens_in") or 0,
+                    tokens_out=row.get("tokens_out") or 0,
+                    cost_usd=row.get("cost_usd") or 0.0,
+                    model=row.get("model_used") or "",
+                ),
+            )
+            pr.started_at = time.time()
+            pr.completed_at = time.time()
+            return pr
+        return None
 
     # ------------------------------------------------------------------
     # Main entry point
@@ -161,6 +207,7 @@ class AnalysisPipeline:
         parsed_paper: Any,
         sections: dict[str, str],
         progress_callback: Optional[ProgressCallback] = None,
+        force_refresh: bool = False,
     ) -> AnalysisReport:
         """
         Run the complete 4-phase analysis pipeline.
@@ -174,6 +221,7 @@ class AnalysisPipeline:
         Returns:
             AnalysisReport with all phase results and visualization outputs.
         """
+        self._force_refresh = force_refresh
         report = AnalysisReport(paper_id=paper_id, status="running")
         report.started_at = time.time()
 
@@ -306,6 +354,11 @@ class AnalysisPipeline:
 
             input_text = "\n\n".join(input_parts)
 
+            # Check cache before calling LLM
+            cached = await self._check_cache(paper_id, "screening", input_text)
+            if cached:
+                return cached
+
             # Get agent system prompt for this phase
             system_prompt = self._agent.get_system_prompt("screening")
 
@@ -355,8 +408,9 @@ class AnalysisPipeline:
 
         phase_result.completed_at = time.time()
 
-        # Persist to DB
-        await self._store_phase_result(paper_id, phase_result)
+        # Persist to DB (with input_hash for cache)
+        input_hash = self._compute_input_hash(input_text) if input_text else None
+        await self._store_phase_result(paper_id, phase_result, input_hash=input_hash)
 
         return phase_result
 
@@ -506,6 +560,12 @@ class AnalysisPipeline:
                     )
 
             input_text = "\n\n".join(input_parts)
+
+            # Check cache before calling LLM
+            cached = await self._check_cache(paper_id, "recipe", input_text)
+            if cached:
+                return cached
+
             system_prompt = self._agent.get_system_prompt("recipe")
 
             response = await self._gemini.generate(
@@ -540,7 +600,8 @@ class AnalysisPipeline:
             phase_result.error_message = str(exc)
 
         phase_result.completed_at = time.time()
-        await self._store_phase_result(paper_id, phase_result)
+        input_hash = self._compute_input_hash(input_text) if input_text else None
+        await self._store_phase_result(paper_id, phase_result, input_hash=input_hash)
 
         return phase_result
 
@@ -589,6 +650,12 @@ class AnalysisPipeline:
                         )
 
             input_text = "\n\n".join(input_parts)
+
+            # Check cache before calling LLM
+            cached = await self._check_cache(paper_id, "deep_dive", input_text)
+            if cached:
+                return cached
+
             system_prompt = self._agent.get_system_prompt("deep_dive")
 
             response = await self._gemini.generate(
@@ -623,7 +690,8 @@ class AnalysisPipeline:
             phase_result.error_message = str(exc)
 
         phase_result.completed_at = time.time()
-        await self._store_phase_result(paper_id, phase_result)
+        input_hash = self._compute_input_hash(input_text) if input_text else None
+        await self._store_phase_result(paper_id, phase_result, input_hash=input_hash)
 
         return phase_result
 
@@ -716,7 +784,9 @@ class AnalysisPipeline:
     # DB persistence
     # ------------------------------------------------------------------
 
-    async def _store_phase_result(self, paper_id: int, phase: PhaseResult) -> None:
+    async def _store_phase_result(
+        self, paper_id: int, phase: PhaseResult, input_hash: Optional[str] = None,
+    ) -> None:
         """Store a single phase result to the analysis_results table."""
         try:
             result_json = json.dumps(
@@ -726,8 +796,8 @@ class AnalysisPipeline:
             await execute_insert(
                 """
                 INSERT INTO analysis_results
-                    (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd, input_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     paper_id,
@@ -737,6 +807,7 @@ class AnalysisPipeline:
                     phase.usage.tokens_in,
                     phase.usage.tokens_out,
                     phase.usage.cost_usd,
+                    input_hash,
                 ),
             )
         except Exception as exc:

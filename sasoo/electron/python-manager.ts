@@ -1,4 +1,5 @@
 import { ChildProcess, spawn } from 'child_process';
+import * as crypto from 'crypto';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -21,6 +22,7 @@ export class PythonManager {
   private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
   private startupResolver: ((value: boolean) => void) | null = null;
   private usesBundledBackend: boolean = false;
+  private shutdownToken: string = '';
 
   constructor(config: PythonManagerConfig) {
     this.config = {
@@ -97,6 +99,7 @@ export class PythonManager {
     }
 
     this.isShuttingDown = false;
+    this.shutdownToken = crypto.randomBytes(32).toString('hex');
 
     console.log('[PythonManager] Config:', JSON.stringify(this.config, null, 2));
     console.log('[PythonManager] Backend path:', this.config.backendPath);
@@ -126,6 +129,7 @@ export class PythonManager {
           PYTHONUNBUFFERED: '1',
           SASOO_PORT: String(this.config.port),
           SASOO_ENV: 'production',
+          SASOO_SHUTDOWN_TOKEN: this.shutdownToken,
         },
       });
     } else {
@@ -154,9 +158,11 @@ export class PythonManager {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: {
           ...process.env,
+          PYTHONUTF8: '1',           // Force UTF-8 encoding (Korean Windows cp949 fix)
           PYTHONUNBUFFERED: '1',
           SASOO_PORT: String(this.config.port),
           SASOO_ENV: this.config.isDev ? 'development' : 'production',
+          SASOO_SHUTDOWN_TOKEN: this.shutdownToken,
         },
       });
     }
@@ -343,6 +349,7 @@ export class PythonManager {
       const timeout = setTimeout(() => controller.abort(), 3000);
       await fetch(`http://127.0.0.1:${this.config.port}/shutdown`, {
         method: 'POST',
+        headers: { 'X-Shutdown-Token': this.shutdownToken },
         signal: controller.signal,
       });
       clearTimeout(timeout);

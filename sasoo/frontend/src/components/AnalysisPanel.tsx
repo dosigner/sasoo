@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, lazy, Suspense } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -29,7 +29,7 @@ import { getAgentMeta } from '@/lib/agents';
 import { S } from '@/lib/strings';
 import FigureGallery from './FigureGallery';
 import RecipeCard from './RecipeCard';
-import MermaidRenderer from './MermaidRenderer';
+const MermaidRenderer = lazy(() => import('./MermaidRenderer'));
 import ProgressTracker from './ProgressTracker';
 
 // ---------------------------------------------------------------------------
@@ -604,15 +604,17 @@ function VisualizationGallery({
               </p>
             )}
             {item.tool === 'mermaid' && item.mermaid_code ? (
-              <MermaidRenderer
-                diagram={{
-                  paper_id: visualizations.paper_id,
-                  mermaid_code: item.mermaid_code,
-                  diagram_type: item.diagram_type,
-                  description: item.description,
-                }}
-                loading={false}
-              />
+              <Suspense fallback={<div className="flex items-center gap-2 py-4 justify-center"><Loader2 className="w-4 h-4 text-primary-400 animate-spin" /></div>}>
+                <MermaidRenderer
+                  diagram={{
+                    paper_id: visualizations.paper_id,
+                    mermaid_code: item.mermaid_code,
+                    diagram_type: item.diagram_type,
+                    description: item.description,
+                  }}
+                  loading={false}
+                />
+              </Suspense>
             ) : item.tool === 'paperbanana' ? (
               <PaperBananaViewer item={item} />
             ) : item.status === 'error' ? (
@@ -654,10 +656,12 @@ function VisualizationGallery({
 
   // Fallback: legacy single mermaid diagram
   return (
-    <MermaidRenderer
-      diagram={legacyMermaid}
-      loading={loading}
-    />
+    <Suspense fallback={<div className="flex items-center gap-2 py-4 justify-center"><Loader2 className="w-4 h-4 text-primary-400 animate-spin" /></div>}>
+      <MermaidRenderer
+        diagram={legacyMermaid}
+        loading={loading}
+      />
+    </Suspense>
   );
 }
 

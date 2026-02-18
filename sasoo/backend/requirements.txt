@@ -28,5 +28,9 @@ Pillow>=11.0.0
 # SSL / Network
 truststore>=0.10.0
 
+# Security / Encryption
+cryptography>=44.0.0
+keyring>=25.0.0
+
 # Environment
 python-dotenv>=1.0.1

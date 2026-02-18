@@ -9,6 +9,7 @@ import os
 import ssl
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Optional
 
 # Use OS certificate store (Windows Certificate Store) instead of bundled certifi.
 # Fixes SSL errors on networks with SSL inspection proxies (self-signed certs).
@@ -19,7 +20,7 @@ except ImportError:
     pass
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -45,21 +46,30 @@ async def lifespan(app: FastAPI):
     """Application lifespan: initialize resources on startup, clean up on shutdown."""
     # --- Startup ---
     await init_db()
+
+    # Set up centralized logging (file + console)
+    from services.log_setup import setup_logging
+    import logging
+    log_level = logging.DEBUG if os.environ.get("SASOO_ENV") != "production" else logging.INFO
+    setup_logging(level=log_level)
     print(f"[Sasoo] App data root: {APP_DATA_ROOT}")
     print(f"[Sasoo] Database: {APP_DATA_ROOT / 'sasoo.db'}")
     print(f"[Sasoo] Library root: {LIBRARY_ROOT}")
 
-    # Load API keys from database into environment variables
+    # Load API keys from database into environment variables (with decryption)
     from models.database import fetch_all
+    from services.crypto import decrypt_value
     try:
         rows = await fetch_all("SELECT key, value FROM settings WHERE key IN ('gemini_api_key', 'anthropic_api_key')")
         for row in rows:
             k, v = row["key"], row["value"]
             if v:
-                if k == "gemini_api_key":
-                    os.environ["GEMINI_API_KEY"] = v
-                elif k == "anthropic_api_key":
-                    os.environ["ANTHROPIC_API_KEY"] = v
+                decrypted = decrypt_value(v)
+                if decrypted:
+                    if k == "gemini_api_key":
+                        os.environ["GEMINI_API_KEY"] = decrypted
+                    elif k == "anthropic_api_key":
+                        os.environ["ANTHROPIC_API_KEY"] = decrypted
         print("[Sasoo] API keys loaded from database into environment.")
     except Exception as exc:
         print(f"[Sasoo] Warning: Could not load API keys from DB: {exc}")
@@ -88,7 +98,7 @@ app = FastAPI(
         "(Screening -> Visual Verification -> Recipe Extraction -> Deep Dive) "
         "powered by Gemini 3.0 + Claude Sonnet 4.5 dual LLM."
     ),
-    version="0.1.0",
+    version="0.3.1",
     lifespan=lifespan,
 )
 
@@ -132,9 +142,9 @@ app.mount(
 # Routers
 # ---------------------------------------------------------------------------
 
-from api.papers import router as papers_router      # noqa: E402
-from api.analysis import router as analysis_router  # noqa: E402
-from api.settings import router as settings_router  # noqa: E402
+from api.papers import router as papers_router              # noqa: E402
+from api.analysis_routes import router as analysis_router   # noqa: E402
+from api.settings import router as settings_router          # noqa: E402
 
 app.include_router(papers_router)
 app.include_router(analysis_router)
@@ -150,7 +160,7 @@ async def root():
     return {
         "service": "sasoo",
         "status": "running",
-        "version": "0.1.0",
+        "version": "0.3.0",
         "library_path": str(LIBRARY_ROOT),
     }
 
@@ -161,8 +171,13 @@ async def health_check():
 
 
 @app.post("/shutdown", tags=["health"])
-async def shutdown():
-    """Graceful shutdown endpoint (called by Electron on app quit)."""
+async def shutdown(x_shutdown_token: Optional[str] = Header(None)):
+    """Graceful shutdown endpoint (called by Electron on app quit).
+    Requires X-Shutdown-Token header matching SASOO_SHUTDOWN_TOKEN env var."""
+    expected_token = os.environ.get("SASOO_SHUTDOWN_TOKEN", "")
+    if expected_token and x_shutdown_token != expected_token:
+        raise HTTPException(status_code=403, detail="Invalid shutdown token")
+
     import signal
 
     os.kill(os.getpid(), signal.SIGINT)

@@ -92,18 +92,53 @@ class UsageTracker:
 # ---------------------------------------------------------------------------
 
 def _load_api_key() -> str:
-    """Load Anthropic API key from library/config.json."""
-    if not CONFIG_PATH.exists():
-        raise FileNotFoundError(
-            f"Config file not found: {CONFIG_PATH}. "
-            "Create it with: {\"anthropic_api_key\": \"YOUR_KEY\"}"
-        )
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        config = json.load(f)
-    key = config.get("anthropic_api_key", "")
-    if not key:
-        raise ValueError("anthropic_api_key is empty in config.json")
-    return key
+    """
+    Load Anthropic API key from multiple sources (priority order):
+    1. Environment variable ANTHROPIC_API_KEY
+    2. SQLite database settings table
+    3. Legacy config.json file
+    """
+    import os
+    import sqlite3
+
+    from models.database import DB_PATH
+
+    # 1. Check environment variable first
+    env_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if env_key:
+        return env_key
+
+    # 2. Check database settings
+    if DB_PATH.exists():
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            cursor = conn.execute(
+                "SELECT value FROM settings WHERE key = 'anthropic_api_key'"
+            )
+            row = cursor.fetchone()
+            conn.close()
+            if row and row[0]:
+                return row[0]
+        except Exception as e:
+            logger.warning(f"Failed to load API key from database: {e}")
+
+    # 3. Fall back to config.json (legacy)
+    if CONFIG_PATH.exists():
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            key = config.get("anthropic_api_key", "")
+            if key:
+                return key
+        except Exception as e:
+            logger.warning(f"Failed to load config.json: {e}")
+
+    raise ValueError(
+        "Anthropic API key not found. Set it via:\n"
+        "  1. Environment variable ANTHROPIC_API_KEY\n"
+        "  2. Settings page in the app\n"
+        "  3. config.json file in library folder"
+    )
 
 
 
