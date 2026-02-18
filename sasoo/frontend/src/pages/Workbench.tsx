@@ -342,12 +342,13 @@ export default function Workbench() {
                   <span className="text-2xs text-surface-500">{S.agent.unknownDomain}</span>
                 );
                 return (
-                  <img
-                    src={agent.image}
-                    alt={agent.name}
-                    className="w-5 h-5 rounded-full object-cover"
+                  <span
+                    className="w-5 h-5 rounded-full flex items-center justify-center text-2xs font-bold shrink-0"
+                    style={{ backgroundColor: agent.color, color: '#fff' }}
                     title={`${agent.name} — ${agent.personality}`}
-                  />
+                  >
+                    {agent.name.charAt(0).toUpperCase()}
+                  </span>
                 );
               })()}
             </div>

@@ -79,6 +79,11 @@ async def lifespan(app: FastAPI):
     if gemini_key:
         os.environ["GOOGLE_API_KEY"] = gemini_key
 
+    # Load .md agent profiles and initialize domain router
+    from services.agents import load_all_agents
+    load_all_agents()
+    print("[Sasoo] Agent profiles loaded from .md files.")
+
     yield
 
     # --- Shutdown ---
@@ -98,7 +103,7 @@ app = FastAPI(
         "(Screening -> Visual Verification -> Recipe Extraction -> Deep Dive) "
         "powered by Gemini 3.0 + Claude Sonnet 4.5 dual LLM."
     ),
-    version="0.3.1",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
@@ -145,10 +150,12 @@ app.mount(
 from api.papers import router as papers_router              # noqa: E402
 from api.analysis_routes import router as analysis_router   # noqa: E402
 from api.settings import router as settings_router          # noqa: E402
+from api.agents import router as agents_router              # noqa: E402
 
 app.include_router(papers_router)
 app.include_router(analysis_router)
 app.include_router(settings_router)
+app.include_router(agents_router)
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +167,7 @@ async def root():
     return {
         "service": "sasoo",
         "status": "running",
-        "version": "0.3.0",
+        "version": "0.4.0",
         "library_path": str(LIBRARY_ROOT),
     }
 

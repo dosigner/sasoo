@@ -495,6 +495,83 @@ export async function getCostSummary(): Promise<CostSummary> {
 }
 
 // ---------------------------------------------------------------------------
+// Agent endpoints
+// ---------------------------------------------------------------------------
+
+export interface AgentDetail {
+  name: string;
+  display_name: string;
+  display_name_ko: string;
+  personality: string;
+  quote: string;
+  color: string;
+  domain: string;
+  domain_display: string;
+  domain_display_ko: string;
+  keywords: string[];
+  weighted_keywords: string[];
+  recipe_parameters: string[];
+  model: string;
+  enabled: boolean;
+  builtin: boolean;
+  prompts: Record<string, string>;
+  raw_md?: string;
+}
+
+export async function getAgents(): Promise<AgentDetail[]> {
+  return request<AgentDetail[]>('/agents');
+}
+
+export async function getAgent(name: string): Promise<AgentDetail> {
+  return request<AgentDetail>(`/agents/${name}`);
+}
+
+export async function createAgent(data: Partial<AgentDetail>): Promise<AgentDetail> {
+  return request<AgentDetail>('/agents', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateAgent(name: string, data: Partial<AgentDetail>): Promise<AgentDetail> {
+  return request<AgentDetail>(`/agents/${name}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteAgent(name: string): Promise<void> {
+  return request<void>(`/agents/${name}`, { method: 'DELETE' });
+}
+
+export async function duplicateAgent(name: string): Promise<AgentDetail> {
+  return request<AgentDetail>(`/agents/${name}/duplicate`, { method: 'POST' });
+}
+
+export async function toggleAgent(name: string, enabled: boolean): Promise<AgentDetail> {
+  return request<AgentDetail>(`/agents/${name}/toggle`, {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function exportAgent(name: string): Promise<string> {
+  const url = `${getApiBase()}/agents/${name}/export`;
+  const res = await fetch(url);
+  if (!res.ok) throw new ApiError(res.status, 'Export failed');
+  return res.text();
+}
+
+export async function importAgent(file: File): Promise<AgentDetail> {
+  const formData = new FormData();
+  formData.append('file', file);
+  return request<AgentDetail>('/agents/import', {
+    method: 'POST',
+    body: formData,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // PDF URL helper
 // ---------------------------------------------------------------------------
 
@@ -519,15 +596,5 @@ export function getStaticUrl(relativeUrl: string | null | undefined): string {
   return relativeUrl;
 }
 
-// ---------------------------------------------------------------------------
-// Domain list helper
-// ---------------------------------------------------------------------------
-
-export const DOMAINS = [
-  { key: 'optics', label: 'Optics & Photonics', labelKo: '광학/포토닉스', agent: 'photon' },
-  { key: 'bio', label: 'Biology & Biochemistry', labelKo: '생물/생화학', agent: 'cell' },
-  { key: 'ai_ml', label: 'AI & Machine Learning', labelKo: '인공지능/머신러닝', agent: 'neural' },
-  { key: 'ee', label: 'Electrical Engineering', labelKo: '전기/전자공학', agent: 'circuit' },
-] as const;
-
-export type Domain = (typeof DOMAINS)[number]['key'];
+// Domain list is now dynamic - fetched from /api/agents
+// Use getAgents() and map agent.domain for domain lists

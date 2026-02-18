@@ -13,12 +13,6 @@ from fastapi import APIRouter, HTTPException, Query
 
 from models.database import LIBRARY_ROOT, fetch_all, fetch_one, get_db
 from models.schemas import SettingsModel, SettingsUpdate
-from services.agents.profile_loader import (
-    list_profiles,
-    load_profile,
-    profile_exists,
-    save_profile,
-)
 from services.crypto import decrypt_value, encrypt_value, is_encrypted
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -518,80 +512,4 @@ async def check_api_keys():
             "configured": bool(anthropic_key),
             "masked": _mask_api_key(anthropic_key),
         },
-    }
-
-
-# ---------------------------------------------------------------------------
-# Agent Profile Endpoints
-# ---------------------------------------------------------------------------
-
-@router.get("/agents")
-async def list_agent_profiles():
-    """
-    List all available agent profiles.
-    Returns a list of agent names that have YAML profile files.
-    """
-    profiles = list_profiles()
-    return {
-        "agents": profiles,
-        "count": len(profiles),
-    }
-
-
-@router.get("/agents/{agent_name}")
-async def get_agent_profile(agent_name: str):
-    """
-    Get a specific agent profile by name.
-    Returns the full YAML profile data.
-    """
-    if not profile_exists(agent_name):
-        raise HTTPException(
-            status_code=404,
-            detail=f"Agent profile '{agent_name}' not found"
-        )
-
-    profile = load_profile(agent_name)
-    if profile is None:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to load agent profile '{agent_name}'"
-        )
-
-    return profile.to_dict()
-
-
-@router.put("/agents/{agent_name}")
-async def update_agent_profile(agent_name: str, profile_data: dict[str, Any]):
-    """
-    Update or create an agent profile.
-    Accepts a full profile dictionary and saves it to YAML.
-    """
-    # Validate required fields
-    required_fields = ["agent_name", "domain", "display_name", "display_name_ko"]
-    for field in required_fields:
-        if field not in profile_data:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Missing required field: {field}"
-            )
-
-    # Ensure agent_name matches path parameter
-    if profile_data.get("agent_name") != agent_name:
-        raise HTTPException(
-            status_code=400,
-            detail="Agent name in URL must match agent_name in profile data"
-        )
-
-    # Save profile
-    success = save_profile(agent_name, profile_data)
-    if not success:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to save agent profile '{agent_name}'"
-        )
-
-    return {
-        "status": "saved",
-        "agent_name": agent_name,
-        "profile": profile_data,
     }

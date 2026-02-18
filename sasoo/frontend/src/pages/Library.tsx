@@ -17,8 +17,8 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { usePapers } from '@/hooks/usePapers';
-import { DOMAINS, type Paper, type PaperStatus } from '@/lib/api';
-import { getAgentMeta } from '@/lib/agents';
+import { type Paper, type PaperStatus } from '@/lib/api';
+import { getAgentMeta, getAllAgents } from '@/lib/agents';
 import { S } from '@/lib/strings';
 import { useToast } from '@/components/Toast';
 import { Modal } from '@/components/ui';
@@ -107,8 +107,7 @@ function PaperCard({ paper, onOpen, onDelete }: PaperCardProps) {
         {agent && (
           <>
             <span className="w-1 h-1 rounded-full bg-surface-600" />
-            <span className={`flex items-center gap-1 ${agent.color}`}>
-              {agent.image && <img src={agent.image} alt={agent.name} className="w-3.5 h-3.5 rounded-full" />}
+            <span className="flex items-center gap-1" style={{ color: agent.color }}>
               {agent.nameKo}
             </span>
           </>
@@ -189,8 +188,7 @@ function PaperRow({ paper, onOpen, onDelete }: PaperCardProps) {
       </div>
 
       {agent && (
-        <span className={`flex items-center gap-1 text-2xs shrink-0 ${agent.color}`}>
-          {agent.image && <img src={agent.image} alt={agent.name} className="w-4 h-4 rounded-full" />}
+        <span className="flex items-center gap-1 text-2xs shrink-0" style={{ color: agent.color }}>
           {agent.nameKo}
         </span>
       )}
@@ -446,9 +444,9 @@ export default function Library() {
                 className="input w-auto min-w-[160px]"
               >
                 <option value="">{S.library.allDomains}</option>
-                {DOMAINS.map((domain) => (
-                  <option key={domain.key} value={domain.key}>
-                    {domain.label}
+                {getAllAgents().map((agent) => (
+                  <option key={agent.domain} value={agent.domain}>
+                    {agent.domain_display}
                   </option>
                 ))}
               </select>

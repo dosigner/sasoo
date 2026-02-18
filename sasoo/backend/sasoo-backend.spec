@@ -16,13 +16,13 @@ from pathlib import Path
 # Get the backend directory
 backend_dir = Path(SPECPATH).resolve()
 
-# Collect agent profile YAML files (bundled with exe)
-agent_profiles_src = backend_dir / "library" / "agent_profiles"
-agent_profiles_data = []
-if agent_profiles_src.exists():
-    for yaml_file in agent_profiles_src.glob("*.yaml"):
-        agent_profiles_data.append(
-            (str(yaml_file), "agent_profiles")
+# Collect agent .md files (bundled with exe)
+agents_src = backend_dir / "agents"
+agents_data = []
+if agents_src.exists():
+    for md_file in agents_src.glob("*.md"):
+        agents_data.append(
+            (str(md_file), "agents")
         )
 
 # ---------------------------------------------------------------------------
@@ -52,7 +52,7 @@ a = Analysis(
     ['main.py'],
     pathex=[str(backend_dir)],
     binaries=[],
-    datas=agent_profiles_data + paperbanana_data,
+    datas=agents_data + paperbanana_data,
     hiddenimports=[
         # FastAPI and dependencies
         'fastapi',

@@ -1,7 +1,4 @@
-import photonImg from '@/assets/agents/photon.png';
-import bioImg from '@/assets/agents/bio.png';
-import neuralImg from '@/assets/agents/neural.png';
-import circuitImg from '@/assets/agents/circuit.png';
+import { getApiBase } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Agent metadata
@@ -10,92 +7,150 @@ import circuitImg from '@/assets/agents/circuit.png';
 export interface AgentMeta {
   key: string;
   name: string;
+  display_name: string;
+  display_name_ko: string;
   nameKo: string;
   personality: string;
   quote: string;
   color: string;
-  bgColor: string;
-  borderColor: string;
-  image: string;
+  domain: string;
+  domain_display: string;
+  domain_display_ko: string;
+  keywords: string[];
+  weighted_keywords: string[];
+  recipe_parameters: string[];
+  model: string;
+  enabled: boolean;
+  builtin: boolean;
+  prompts: Record<string, string>;
 }
 
-const AGENTS: Record<string, AgentMeta> = {
-  photon: {
-    key: 'photon',
-    name: 'Photon',
-    nameKo: '포톤',
-    personality: '직설적인 광학 전문가',
-    quote: '빛은 거짓말을 안 해.',
-    color: 'text-red-400',
-    bgColor: 'bg-red-500/10',
-    borderColor: 'border-red-500/20',
-    image: photonImg,
-  },
-  cell: {
-    key: 'cell',
-    name: 'Cell',
-    nameKo: '셀',
-    personality: '꼼꼼한 바이오 전문가',
-    quote: '세포 하나도 놓치지 마.',
-    color: 'text-emerald-400',
-    bgColor: 'bg-emerald-500/10',
-    borderColor: 'border-emerald-500/20',
-    image: bioImg,
-  },
-  neural: {
-    key: 'neural',
-    name: 'Neural',
-    nameKo: '뉴럴',
-    personality: '분석적인 AI 전문가',
-    quote: '데이터가 답을 알고 있어.',
-    color: 'text-purple-400',
-    bgColor: 'bg-purple-500/10',
-    borderColor: 'border-purple-500/20',
-    image: neuralImg,
-  },
-  circuit: {
-    key: 'circuit',
-    name: 'Circuit',
-    nameKo: '서킷',
-    personality: '실용적인 전자공학 전문가',
-    quote: '회로는 정직하거든.',
-    color: 'text-yellow-400',
-    bgColor: 'bg-yellow-500/10',
-    borderColor: 'border-yellow-500/20',
-    image: circuitImg,
-  },
+// ---------------------------------------------------------------------------
+// Color utilities (inline styles, since hex colors are dynamic)
+// ---------------------------------------------------------------------------
+
+function hexToRgba(hex: string, alpha: number): string {
+  const cleaned = hex.replace('#', '');
+  const r = parseInt(cleaned.substring(0, 2), 16);
+  const g = parseInt(cleaned.substring(2, 4), 16);
+  const b = parseInt(cleaned.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+export function agentBgStyle(color: string, opacity = 0.1): React.CSSProperties {
+  return { backgroundColor: hexToRgba(color, opacity) };
+}
+
+export function agentBorderStyle(color: string, opacity = 0.2): React.CSSProperties {
+  return { borderColor: hexToRgba(color, opacity) };
+}
+
+// ---------------------------------------------------------------------------
+// Module-level cache populated by fetchAllAgents()
+// ---------------------------------------------------------------------------
+
+const _agentCache: Map<string, AgentMeta> = new Map();
+
+/** Fetch all agents from the backend and populate the cache. */
+export async function fetchAllAgents(): Promise<AgentMeta[]> {
+  const url = `${getApiBase()}/agents`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch agents: ${res.statusText}`);
+  }
+  const data: AgentRaw[] = await res.json();
+  _agentCache.clear();
+  const agents = data.map(rawToMeta);
+  for (const agent of agents) {
+    _agentCache.set(agent.key, agent);
+  }
+  return agents;
+}
+
+interface AgentRaw {
+  name: string;
+  display_name: string;
+  display_name_ko: string;
+  personality: string;
+  quote: string;
+  color: string;
+  domain: string;
+  domain_display: string;
+  domain_display_ko: string;
+  keywords: string[];
+  weighted_keywords: string[];
+  recipe_parameters: string[];
+  model: string;
+  enabled: boolean;
+  builtin: boolean;
+  prompts: Record<string, string>;
+}
+
+function rawToMeta(raw: AgentRaw): AgentMeta {
+  return {
+    key: raw.name,
+    name: raw.display_name,
+    display_name: raw.display_name,
+    display_name_ko: raw.display_name_ko,
+    nameKo: raw.display_name_ko,
+    personality: raw.personality,
+    quote: raw.quote,
+    color: raw.color,
+    domain: raw.domain,
+    domain_display: raw.domain_display,
+    domain_display_ko: raw.domain_display_ko,
+    keywords: raw.keywords,
+    weighted_keywords: raw.weighted_keywords,
+    recipe_parameters: raw.recipe_parameters,
+    model: raw.model,
+    enabled: raw.enabled,
+    builtin: raw.builtin,
+    prompts: raw.prompts,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Fallback agent for unknown domains
+// ---------------------------------------------------------------------------
+
+export const FALLBACK_AGENT: AgentMeta = {
+  key: 'unknown',
+  name: '알 수 없는 에이전트',
+  display_name: 'Unknown Agent',
+  display_name_ko: '알 수 없음',
+  nameKo: '알 수 없음',
+  personality: '알 수 없는 분야',
+  quote: '분석 준비 중입니다.',
+  color: '#6b7280',
+  domain: 'unknown',
+  domain_display: 'Unknown',
+  domain_display_ko: '알 수 없음',
+  keywords: [],
+  weighted_keywords: [],
+  recipe_parameters: [],
+  model: '',
+  enabled: false,
+  builtin: false,
+  prompts: {},
 };
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Fallback agent metadata for unknown domains */
-export const FALLBACK_AGENT: AgentMeta = {
-  key: 'unknown',
-  name: '알 수 없는 에이전트',
-  nameKo: '알 수 없음',
-  personality: '알 수 없는 분야',
-  quote: '분석 준비 중입니다.',
-  color: 'text-surface-400',
-  bgColor: 'bg-surface-500/10',
-  borderColor: 'border-surface-500/20',
-  image: '',
-};
-
-/** Get agent metadata by agent name (e.g. 'photon', 'cell') */
+/** Get agent metadata by agent name (e.g. 'photon', 'cell'). Returns null if not in cache. */
 export function getAgentMeta(name?: string): AgentMeta | null {
   if (!name) return null;
-  return AGENTS[name.toLowerCase()] ?? null;
+  return _agentCache.get(name.toLowerCase()) ?? null;
 }
 
-/** Get agent metadata with fallback for unknown agents */
+/** Get agent metadata with fallback for unknown agents. */
 export function getAgentMetaOrFallback(name?: string): AgentMeta {
   if (!name) return FALLBACK_AGENT;
-  return AGENTS[name.toLowerCase()] ?? FALLBACK_AGENT;
+  return _agentCache.get(name.toLowerCase()) ?? FALLBACK_AGENT;
 }
 
-/** Get all agents */
+/** Get all agents from the cache. */
 export function getAllAgents(): AgentMeta[] {
-  return Object.values(AGENTS);
+  return Array.from(_agentCache.values());
 }

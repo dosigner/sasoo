@@ -25,7 +25,7 @@ import {
   type PhaseStatusValue,
   type AnalysisPhase,
 } from '@/lib/api';
-import { getAgentMeta } from '@/lib/agents';
+import { getAgentMeta, agentBgStyle, agentBorderStyle } from '@/lib/agents';
 import { S } from '@/lib/strings';
 import FigureGallery from './FigureGallery';
 import RecipeCard from './RecipeCard';
@@ -721,12 +721,10 @@ export default function AnalysisPanel({
       {/* Agent badge */}
       {agentMeta && (
         <div className="mb-3">
-          <span className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg ${agentMeta.bgColor} ${agentMeta.color} text-xs font-medium border ${agentMeta.borderColor}`}>
-            <img
-              src={agentMeta.image}
-              alt={agentMeta.name}
-              className="w-6 h-6 rounded-md object-cover"
-            />
+          <span
+            className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium border"
+            style={{ ...agentBgStyle(agentMeta.color), ...agentBorderStyle(agentMeta.color), color: agentMeta.color }}
+          >
             <span>{agentMeta.name}</span>
             <span className="text-surface-500 font-normal">{agentMeta.personality}</span>
           </span>

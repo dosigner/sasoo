@@ -11,8 +11,8 @@ import {
   HardDrive,
   Beaker,
 } from 'lucide-react';
-import { uploadPaper, updatePaper, DOMAINS, type UploadResponse } from '@/lib/api';
-import { getAgentMeta } from '@/lib/agents';
+import { uploadPaper, updatePaper, type UploadResponse } from '@/lib/api';
+import { getAgentMeta, getAllAgents, agentBgStyle, agentBorderStyle } from '@/lib/agents';
 import { useToast } from '@/components/Toast';
 import { S } from '@/lib/strings';
 
@@ -327,39 +327,29 @@ export default function Upload() {
                     {/* Agent card */}
                     {(() => {
                       const agent = getAgentMeta(uploadResult.agent_used);
-                      const displayAgent = agent || {
-                        name: S.agent.unknownAgent,
-                        personality: S.agent.unknownDomain,
-                        quote: S.agent.fallbackQuote,
-                        color: 'text-surface-400',
-                        bgColor: 'bg-surface-500/10',
-                        borderColor: 'border-surface-500/20',
-                        image: null as string | null,
-                      };
+                      const displayName = agent ? agent.name : S.agent.unknownAgent;
+                      const displayPersonality = agent ? agent.personality : S.agent.unknownDomain;
+                      const displayQuote = agent ? agent.quote : S.agent.fallbackQuote;
+                      const displayColor = agent ? agent.color : '#6b7280';
                       return (
-                        <div className={`flex items-center gap-3 p-3 rounded-lg ${displayAgent.bgColor} border ${displayAgent.borderColor}`}>
-                          {displayAgent.image ? (
-                            <img
-                              src={displayAgent.image}
-                              alt={displayAgent.name}
-                              className="w-16 h-16 rounded-lg object-cover shrink-0"
-                            />
-                          ) : (
-                            <div className="w-16 h-16 rounded-lg bg-surface-700 flex items-center justify-center shrink-0">
-                              <Beaker className="w-8 h-8 text-surface-500" />
-                            </div>
-                          )}
+                        <div
+                          className="flex items-center gap-3 p-3 rounded-lg border"
+                          style={{ ...agentBgStyle(displayColor), ...agentBorderStyle(displayColor) }}
+                        >
+                          <div className="w-16 h-16 rounded-lg bg-surface-700 flex items-center justify-center shrink-0">
+                            <Beaker className="w-8 h-8 text-surface-500" />
+                          </div>
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className={`text-sm font-semibold ${displayAgent.color}`}>
-                                {displayAgent.name}
+                              <span className="text-sm font-semibold" style={{ color: displayColor }}>
+                                {displayName}
                               </span>
                               <span className="text-2xs text-surface-500">
-                                {displayAgent.personality}
+                                {displayPersonality}
                               </span>
                             </div>
                             <p className="text-xs text-surface-400 mt-0.5 italic">
-                              "{displayAgent.quote}"
+                              "{displayQuote}"
                             </p>
                           </div>
                         </div>
@@ -376,10 +366,10 @@ export default function Upload() {
                         onChange={(e) => setDomainOverride(e.target.value)}
                         className="input mt-1"
                       >
-                        {DOMAINS.map((domain) => (
-                          <option key={domain.key} value={domain.key}>
-                            {domain.label}
-                            {domain.key === uploadResult.domain
+                        {getAllAgents().map((agent) => (
+                          <option key={agent.domain} value={agent.domain}>
+                            {agent.domain_display}
+                            {agent.domain === uploadResult.domain
                               ? ` ${S.upload.detected}`
                               : ''}
                           </option>

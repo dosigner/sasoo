@@ -8,9 +8,11 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  Bot,
 } from 'lucide-react';
 import logoImg from '@/assets/logo.png';
 import { getApiBase } from '@/lib/api';
+import { fetchAllAgents } from '@/lib/agents';
 
 // Components
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -22,6 +24,7 @@ import UploadPage from '@/pages/Upload';
 import Workbench from '@/pages/Workbench';
 import Library from '@/pages/Library';
 import SettingsPage from '@/pages/Settings';
+import Agents from '@/pages/Agents';
 
 // ---------------------------------------------------------------------------
 // Navigation items
@@ -29,6 +32,7 @@ import SettingsPage from '@/pages/Settings';
 
 const NAV_ITEMS = [
   { to: '/', icon: Upload, label: S.app.upload, exact: true },
+  { to: '/agents', icon: Bot, label: S.app.agents, exact: false },
   { to: '/library', icon: BookOpen, label: S.app.library, exact: false },
   { to: '/settings', icon: Settings, label: S.app.settings, exact: false },
 ];
@@ -70,6 +74,9 @@ function App() {
         }
       })
       .catch(() => {});
+
+    // Phase 3: populate agent cache for all pages
+    fetchAllAgents().catch(() => {});
   }, []);
 
   // Load sidebar state from localStorage
@@ -199,6 +206,7 @@ function App() {
       <main className="flex-1 min-w-0 overflow-hidden">
         <Routes>
           <Route path="/" element={<UploadPage />} />
+          <Route path="/agents" element={<Agents />} />
           <Route path="/workbench/:id" element={<Workbench />} />
           <Route path="/library" element={<Library />} />
           <Route path="/settings" element={<SettingsPage />} />
