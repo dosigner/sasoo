@@ -425,7 +425,7 @@ export default function Workbench() {
             className="h-full overflow-hidden relative"
             style={{ width: `${splitPosition}%` }}
           >
-            <PdfViewer pdfUrl={pdfUrl} title={paper.title} />
+            <PdfViewer key={pdfUrl} pdfUrl={pdfUrl} title={paper.title} />
             {/* Transparent overlay to prevent iframe from stealing mouse events during resize */}
             {isResizing && (
               <div className="absolute inset-0 z-10" />

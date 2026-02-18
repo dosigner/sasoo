@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Viewer } from '@react-pdf-viewer/core';
 import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
 import { GlobalWorkerOptions } from 'pdfjs-dist';
@@ -43,11 +43,7 @@ export default function PdfViewer({ pdfUrl, title }: PdfViewerProps) {
     sidebarTabs: (defaultTabs) => [defaultTabs[0]], // Only show thumbnails
   });
 
-  // Reset state when URL changes
-  useEffect(() => {
-    setIsLoading(true);
-    setLoadError(null);
-  }, [pdfUrl]);
+  // State reset handled by key prop in parent (Workbench)
 
   return (
     <div className="flex flex-col h-full bg-surface-900">

@@ -11,7 +11,7 @@ import {
   Bot,
 } from 'lucide-react';
 import logoImg from '@/assets/logo.png';
-import { getApiBase } from '@/lib/api';
+import { getSettings } from '@/lib/api';
 import { fetchAllAgents } from '@/lib/agents';
 
 // Components
@@ -65,8 +65,7 @@ function App() {
     applyTheme(cached || 'dark');
 
     // Phase 2: sync with backend as source of truth
-    fetch(`${getApiBase()}/settings`)
-      .then((res) => (res.ok ? res.json() : null))
+    getSettings()
       .then((data) => {
         if (data?.theme && data.theme !== cached) {
           localStorage.setItem('sasoo-theme', data.theme);

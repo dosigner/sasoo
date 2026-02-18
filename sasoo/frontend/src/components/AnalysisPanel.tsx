@@ -147,15 +147,16 @@ function PhaseSection({
   const meta = PHASE_META[phaseName];
   const statusInfo = getPhaseStatusInfo(phaseStatus);
 
-  if (!meta) return null;
-
-  const Icon = meta.icon;
   // Allow expanding if: there's content, children, currently running, OR already completed
   const hasContent = !!(content) || !!children || phaseStatus === 'running' || phaseStatus === 'completed';
 
   const toggleExpanded = useCallback(() => {
     if (hasContent) setExpanded((e) => !e);
   }, [hasContent]);
+
+  if (!meta) return null;
+
+  const Icon = meta.icon;
 
   return (
     <div

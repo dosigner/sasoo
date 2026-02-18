@@ -7,7 +7,7 @@ import {
   Cpu,
   Zap,
 } from 'lucide-react';
-import { getApiBase, type CostSummary } from '@/lib/api';
+import { getCostSummary, type CostSummary } from '@/lib/api';
 import { S } from '@/lib/strings';
 
 // ---------------------------------------------------------------------------
@@ -60,11 +60,7 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`${getApiBase()}/settings/cost`);
-        if (!response.ok) {
-          throw new Error(S.settings.costLoadFailed);
-        }
-        const data = await response.json();
+        const data = await getCostSummary();
         if (!cancelled) {
           setCostData(data);
         }

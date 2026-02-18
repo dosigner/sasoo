@@ -110,31 +110,6 @@ function rawToMeta(raw: AgentRaw): AgentMeta {
 }
 
 // ---------------------------------------------------------------------------
-// Fallback agent for unknown domains
-// ---------------------------------------------------------------------------
-
-export const FALLBACK_AGENT: AgentMeta = {
-  key: 'unknown',
-  name: '알 수 없는 에이전트',
-  display_name: 'Unknown Agent',
-  display_name_ko: '알 수 없음',
-  nameKo: '알 수 없음',
-  personality: '알 수 없는 분야',
-  quote: '분석 준비 중입니다.',
-  color: '#6b7280',
-  domain: 'unknown',
-  domain_display: 'Unknown',
-  domain_display_ko: '알 수 없음',
-  keywords: [],
-  weighted_keywords: [],
-  recipe_parameters: [],
-  model: '',
-  enabled: false,
-  builtin: false,
-  prompts: {},
-};
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -142,12 +117,6 @@ export const FALLBACK_AGENT: AgentMeta = {
 export function getAgentMeta(name?: string): AgentMeta | null {
   if (!name) return null;
   return _agentCache.get(name.toLowerCase()) ?? null;
-}
-
-/** Get agent metadata with fallback for unknown agents. */
-export function getAgentMetaOrFallback(name?: string): AgentMeta {
-  if (!name) return FALLBACK_AGENT;
-  return _agentCache.get(name.toLowerCase()) ?? FALLBACK_AGENT;
 }
 
 /** Get all agents from the cache. */

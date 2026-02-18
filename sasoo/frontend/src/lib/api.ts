@@ -49,7 +49,7 @@ export interface PaperUpdateData {
   notes?: string;
 }
 
-export interface PaginatedResponse {
+interface PaginatedResponse {
   papers: Paper[];
   total: number;
   page: number;
@@ -138,14 +138,6 @@ export interface MermaidDiagram {
   mermaid_code: string;
   diagram_type: string;
   description: string | null;
-}
-
-// Report types
-export interface Report {
-  paper_id: number;
-  title: string;
-  markdown: string;
-  generated_at: string;
 }
 
 // PaperBanana types (visual summary)
@@ -455,9 +447,6 @@ export async function getMermaid(paperId: string): Promise<MermaidDiagram> {
   return request<MermaidDiagram>(`/analysis/${paperId}/mermaid`);
 }
 
-export async function getReport(paperId: string): Promise<Report> {
-  return request<Report>(`/analysis/${paperId}/report`);
-}
 
 export async function getVisualizations(
   paperId: string
