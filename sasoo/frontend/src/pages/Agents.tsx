@@ -3,19 +3,21 @@ import { S } from '@/lib/strings';
 import {
   getAgents, getAgent, createAgent, updateAgent, deleteAgent,
   duplicateAgent, toggleAgent, exportAgent, importAgent,
+  generateAgent,
   type AgentDetail,
 } from '@/lib/api';
 import AgentAvatar from '@/components/AgentAvatar';
 import {
   Plus, Upload, Download, Copy, Trash2, Edit3, Power, PowerOff,
   ChevronLeft, ChevronRight, Eye, Code, X, Check, AlertTriangle,
+  Sparkles, Loader2, RotateCcw, Settings2,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type PageMode = 'list' | 'create' | 'edit';
+type PageMode = 'list' | 'create' | 'create-advanced' | 'review' | 'edit';
 
 interface AgentFormData {
   name: string;
@@ -505,6 +507,14 @@ export default function Agents() {
   // Submitting
   const [submitting, setSubmitting] = useState(false);
 
+  // AI generation state
+  const [generating, setGenerating] = useState(false);
+  const [generateInput, setGenerateInput] = useState({
+    domain_description: '',
+    personality_hint: '',
+    color: '#6b7280',
+  });
+
   // -------------------------------------------------------------------------
   // Toast helpers
   // -------------------------------------------------------------------------
@@ -748,13 +758,65 @@ export default function Agents() {
   }
 
   // -------------------------------------------------------------------------
+  // AI Generate handler
+  // -------------------------------------------------------------------------
+
+  async function handleGenerate() {
+    if (!generateInput.domain_description.trim()) {
+      showToast(S.agents.domainDescriptionHelp, 'error');
+      return;
+    }
+    setGenerating(true);
+    try {
+      const result = await generateAgent({
+        domain_description: generateInput.domain_description,
+        personality_hint: generateInput.personality_hint || undefined,
+        color: generateInput.color !== '#6b7280' ? generateInput.color : undefined,
+      });
+      setFormData({
+        name: result.name ?? '',
+        display_name: result.display_name ?? '',
+        display_name_ko: result.display_name_ko ?? '',
+        personality: result.personality ?? '',
+        quote: result.quote ?? '',
+        color: result.color ?? generateInput.color,
+        domain: result.domain ?? '',
+        domain_display: result.domain_display ?? '',
+        domain_display_ko: result.domain_display_ko ?? '',
+        keywords: result.keywords ?? [],
+        weighted_keywords: result.weighted_keywords ?? [],
+        recipe_parameters: result.recipe_parameters ?? [],
+        model: result.model ?? 'gemini-pro',
+        enabled: true,
+        prompts: {
+          screening: result.prompts?.screening ?? '',
+          visual: result.prompts?.visual ?? '',
+          recipe: result.prompts?.recipe ?? '',
+          deepdive: result.prompts?.deepdive ?? '',
+        },
+      });
+      setEditPromptTab('screening');
+      setMode('review');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : S.agents.generateFailed, 'error');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Enter Create mode
   // -------------------------------------------------------------------------
 
   function enterCreate() {
+    setGenerateInput({ domain_description: '', personality_hint: '', color: '#6b7280' });
+    setMode('create');
+  }
+
+  function enterCreateAdvanced() {
     setFormData(emptyForm());
     setWizardStep(1);
-    setMode('create');
+    setMode('create-advanced');
   }
 
   // -------------------------------------------------------------------------
@@ -993,21 +1055,112 @@ export default function Agents() {
         )}
 
         {/* ================================================================= */}
-        {/* MODE: CREATE (Wizard) */}
+        {/* MODE: CREATE (AI Generation) */}
         {/* ================================================================= */}
         {mode === 'create' && (
           <>
             {/* Header */}
-            <div className="flex items-center gap-3 mb-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setMode('list')}
+                  className="flex items-center gap-1.5 text-surface-400 hover:text-surface-200 text-sm transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  {S.agents.back}
+                </button>
+                <h1 className="text-xl font-bold text-surface-100">{S.agents.createNew}</h1>
+              </div>
               <button
                 type="button"
-                onClick={() => setMode('list')}
+                onClick={enterCreateAdvanced}
                 className="flex items-center gap-1.5 text-surface-400 hover:text-surface-200 text-sm transition-colors"
               >
-                <ChevronLeft className="w-4 h-4" />
-                {S.agents.back}
+                <Settings2 className="w-4 h-4" />
+                {S.agents.advancedMode}
               </button>
-              <h1 className="text-xl font-bold text-surface-100">{S.agents.createNew}</h1>
+            </div>
+
+            {generating ? (
+              /* Loading state */
+              <div className="bg-surface-800 border border-surface-700/50 rounded-xl p-12 flex flex-col items-center justify-center gap-4">
+                <div className="w-16 h-16 rounded-full bg-primary-500/10 flex items-center justify-center">
+                  <Loader2 className="w-8 h-8 text-primary-400 animate-spin" />
+                </div>
+                <p className="text-surface-100 font-semibold">{S.agents.aiGenerating}</p>
+                <p className="text-surface-500 text-sm">{S.agents.aiGeneratingDesc}</p>
+              </div>
+            ) : (
+              /* Input form */
+              <div className="bg-surface-800 border border-surface-700/50 rounded-xl p-6">
+                <div className="space-y-5">
+                  <Field label={S.agents.domainDescription + ' *'} help={S.agents.domainDescriptionHelp}>
+                    <input
+                      className={inputCls}
+                      value={generateInput.domain_description}
+                      onChange={(e) => setGenerateInput((p) => ({ ...p, domain_description: e.target.value }))}
+                      placeholder={S.agents.domainDescriptionPlaceholder}
+                      autoFocus
+                    />
+                  </Field>
+                  <Field label={S.agents.personalityHint}>
+                    <input
+                      className={inputCls}
+                      value={generateInput.personality_hint}
+                      onChange={(e) => setGenerateInput((p) => ({ ...p, personality_hint: e.target.value }))}
+                      placeholder={S.agents.personalityHintPlaceholder}
+                    />
+                  </Field>
+                  <Field label={S.agents.color}>
+                    <ColorPicker
+                      value={generateInput.color}
+                      onChange={(c) => setGenerateInput((p) => ({ ...p, color: c }))}
+                    />
+                  </Field>
+                </div>
+
+                <div className="mt-8 pt-5 border-t border-surface-700/50">
+                  <button
+                    type="button"
+                    onClick={handleGenerate}
+                    className="w-full flex items-center justify-center gap-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg px-4 py-3 text-sm font-medium transition-colors"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    {S.agents.aiGenerate}
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ================================================================= */}
+        {/* MODE: CREATE-ADVANCED (Legacy Wizard) */}
+        {/* ================================================================= */}
+        {mode === 'create-advanced' && (
+          <>
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setMode('list')}
+                  className="flex items-center gap-1.5 text-surface-400 hover:text-surface-200 text-sm transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  {S.agents.back}
+                </button>
+                <h1 className="text-xl font-bold text-surface-100">{S.agents.createNew}</h1>
+              </div>
+              <button
+                type="button"
+                onClick={enterCreate}
+                className="flex items-center gap-1.5 text-surface-400 hover:text-surface-200 text-sm transition-colors"
+              >
+                <Sparkles className="w-4 h-4" />
+                {S.agents.simpleMode}
+              </button>
             </div>
 
             <div className="bg-surface-800 border border-surface-700/50 rounded-xl p-6">
@@ -1051,6 +1204,164 @@ export default function Agents() {
                     {submitting ? '...' : S.agents.create}
                   </button>
                 )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ================================================================= */}
+        {/* MODE: REVIEW (AI-generated result) */}
+        {/* ================================================================= */}
+        {mode === 'review' && (
+          <>
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={enterCreate}
+                  className="flex items-center gap-1.5 text-surface-400 hover:text-surface-200 text-sm transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  {S.agents.back}
+                </button>
+                <div className="flex items-center gap-2">
+                  <AgentAvatar name={formData.display_name_ko || formData.display_name || formData.name} color={formData.color} size="sm" />
+                  <h1 className="text-xl font-bold text-surface-100">{S.agents.reviewTitle}</h1>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={enterCreate}
+                  className="flex items-center gap-1.5 bg-surface-700 hover:bg-surface-600 text-surface-200 rounded-lg px-3 py-2 text-sm transition-colors"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  {S.agents.regenerate}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreate}
+                  disabled={submitting}
+                  className="flex items-center gap-1.5 bg-primary-500 hover:bg-primary-600 disabled:opacity-60 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+                >
+                  <Check className="w-4 h-4" />
+                  {submitting ? '...' : S.agents.create}
+                </button>
+              </div>
+            </div>
+
+            {/* AI banner */}
+            <div className="flex items-center gap-2 bg-primary-500/10 border border-primary-500/20 text-primary-300 text-sm rounded-lg px-4 py-3 mb-4">
+              <Sparkles className="w-4 h-4 shrink-0" />
+              {S.agents.reviewDesc}
+            </div>
+
+            <div className="bg-surface-800 border border-surface-700/50 rounded-xl p-6">
+              <div className="space-y-6">
+                {/* Identity section */}
+                <div>
+                  <h2 className="text-sm font-semibold text-surface-200 mb-4">{S.agents.stepIdentity}</h2>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-3 gap-4">
+                      <Field label={S.agents.name} help={S.agents.nameHelp}>
+                        <input className={inputCls} value={formData.name} onChange={(e) => setField('name', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} />
+                      </Field>
+                      <Field label={S.agents.displayName}>
+                        <input className={inputCls} value={formData.display_name} onChange={(e) => setField('display_name', e.target.value)} />
+                      </Field>
+                      <Field label={S.agents.displayNameKo}>
+                        <input className={inputCls} value={formData.display_name_ko} onChange={(e) => setField('display_name_ko', e.target.value)} />
+                      </Field>
+                    </div>
+                    <Field label={S.agents.personality}>
+                      <input className={inputCls} value={formData.personality} onChange={(e) => setField('personality', e.target.value)} />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-4">
+                      <Field label={S.agents.quote}>
+                        <input className={inputCls} value={formData.quote} onChange={(e) => setField('quote', e.target.value)} />
+                      </Field>
+                      <Field label={S.agents.color}>
+                        <ColorPicker value={formData.color} onChange={(c) => setField('color', c)} />
+                      </Field>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-surface-700/50" />
+
+                {/* Domain section */}
+                <div>
+                  <h2 className="text-sm font-semibold text-surface-200 mb-4">{S.agents.stepDomain}</h2>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-3 gap-4">
+                      <Field label={S.agents.domain}>
+                        <input className={inputCls} value={formData.domain} onChange={(e) => setField('domain', e.target.value)} />
+                      </Field>
+                      <Field label={S.agents.domainDisplay}>
+                        <input className={inputCls} value={formData.domain_display} onChange={(e) => setField('domain_display', e.target.value)} />
+                      </Field>
+                      <Field label={S.agents.domainDisplayKo}>
+                        <input className={inputCls} value={formData.domain_display_ko} onChange={(e) => setField('domain_display_ko', e.target.value)} />
+                      </Field>
+                    </div>
+                    <Field label={S.agents.keywords} help={S.agents.keywordsHelp}>
+                      <TagInput tags={formData.keywords} onChange={(v) => setField('keywords', v)} />
+                    </Field>
+                    <Field label={S.agents.weightedKeywords} help={S.agents.weightedKeywordsHelp}>
+                      <TagInput tags={formData.weighted_keywords} onChange={(v) => setField('weighted_keywords', v)} />
+                    </Field>
+                  </div>
+                </div>
+
+                <div className="border-t border-surface-700/50" />
+
+                {/* Parameters section */}
+                <div>
+                  <h2 className="text-sm font-semibold text-surface-200 mb-4">{S.agents.stepParameters}</h2>
+                  <div className="space-y-4">
+                    <Field label={S.agents.recipeParameters} help={S.agents.recipeParametersHelp}>
+                      <TagInput tags={formData.recipe_parameters} onChange={(v) => setField('recipe_parameters', v)} />
+                    </Field>
+                    <Field label={S.agents.model}>
+                      <select className={inputCls} value={formData.model} onChange={(e) => setField('model', e.target.value)}>
+                        <option value="gemini-pro">Gemini Pro</option>
+                        <option value="gemini-flash">Gemini Flash</option>
+                      </select>
+                    </Field>
+                  </div>
+                </div>
+
+                <div className="border-t border-surface-700/50" />
+
+                {/* Prompts section */}
+                <div>
+                  <h2 className="text-sm font-semibold text-surface-200 mb-4">{S.agents.stepPrompts}</h2>
+                  <div className="flex gap-1 bg-surface-900 rounded-lg p-1 border border-surface-700 mb-3">
+                    {PROMPT_TABS.map((tab) => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => setEditPromptTab(tab.key)}
+                        className={`flex-1 py-1.5 text-xs rounded-md transition-colors font-medium ${
+                          editPromptTab === tab.key
+                            ? 'bg-primary-500/20 text-primary-400'
+                            : 'text-surface-400 hover:text-surface-200'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                  <textarea
+                    className={`${textareaCls} min-h-[220px]`}
+                    value={formData.prompts[editPromptTab]}
+                    onChange={(e) =>
+                      setField('prompts', { ...formData.prompts, [editPromptTab]: e.target.value })
+                    }
+                    placeholder={`${editPromptTab} prompt...`}
+                  />
+                </div>
               </div>
             </div>
           </>

@@ -249,6 +249,21 @@ export const S = {
     noAgents: '에이전트가 없습니다',
     noAgentsDesc: '새 에이전트를 생성하거나 .md 파일을 가져오세요.',
     papers: (n: number) => `${n}건 분석`,
+    // AI generation
+    aiGenerate: 'AI로 생성',
+    aiGenerating: 'AI가 에이전트를 생성하고 있습니다...',
+    aiGeneratingDesc: '연구 분야에 맞는 프로필과 프롬프트를 작성 중입니다',
+    domainDescription: '연구 분야',
+    domainDescriptionPlaceholder: '예: 유기합성화학 - 촉매 반응 및 합성 경로 설계',
+    domainDescriptionHelp: '에이전트가 전문으로 분석할 연구 분야를 설명하세요',
+    personalityHint: '성격 (선택)',
+    personalityHintPlaceholder: '예: 꼼꼼하고 친절한, 직설적인',
+    advancedMode: '고급 모드',
+    simpleMode: 'AI 생성 모드',
+    reviewTitle: '생성 결과 검토',
+    reviewDesc: 'AI가 생성한 결과입니다. 원하는 부분을 수정한 후 저장하세요.',
+    regenerate: '다시 생성',
+    generateFailed: '에이전트 생성에 실패했습니다. 다시 시도하세요.',
   },
 
   // ── Status badges ──

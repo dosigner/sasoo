@@ -507,6 +507,19 @@ export interface AgentDetail {
   raw_md?: string;
 }
 
+export interface AgentGenerateRequest {
+  domain_description: string;
+  personality_hint?: string;
+  color?: string;
+}
+
+export async function generateAgent(data: AgentGenerateRequest): Promise<AgentDetail> {
+  return request<AgentDetail>('/agents/generate', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 export async function getAgents(): Promise<AgentDetail[]> {
   return request<AgentDetail[]>('/agents');
 }

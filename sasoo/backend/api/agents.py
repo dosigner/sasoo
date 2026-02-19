@@ -57,9 +57,47 @@ class AgentToggleRequest(BaseModel):
     enabled: bool
 
 
+class AgentGenerateRequest(BaseModel):
+    domain_description: str
+    personality_hint: Optional[str] = None
+    color: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+@router.post("/generate")
+async def generate_agent(req: AgentGenerateRequest):
+    """
+    Generate an agent profile using LLM (does NOT save).
+    Frontend reviews the result, then saves via POST /api/agents.
+    """
+    if not req.domain_description.strip():
+        raise HTTPException(status_code=400, detail="domain_description is required")
+
+    from services.llm.gemini_client import GeminiClient
+    from services.agents.generator import AgentGenerator
+
+    try:
+        client = GeminiClient()
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    try:
+        generator = AgentGenerator(client)
+        profile = await generator.generate(
+            domain_description=req.domain_description,
+            personality_hint=req.personality_hint,
+            color=req.color,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=f"Agent generation failed: {exc}")
+
+    result = profile.to_dict()
+    result["_generation_usage"] = client.get_usage_summary()
+    return result
+
 
 @router.get("")
 async def list_agents():
