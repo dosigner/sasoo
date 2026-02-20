@@ -4,8 +4,8 @@ Wraps google-genai SDK for all Gemini model interactions.
 
 Models:
   - gemini-3-flash-preview   : Phase 1 (Screening) + Phase 2 (Visual)
-  - gemini-3-pro-preview     : Phase 3 (Recipe) + Phase 4 (DeepDive)
-  - gemini-3-pro-image-preview : PaperBanana image generation
+  - gemini-3.1-pro-preview     : Phase 3 (Recipe) + Phase 4 (DeepDive)
+  - gemini-3-pro-image-preview   : PaperBanana image generation
 
 Config: <project>/library/config.json  ->  { "gemini_api_key": "..." }
 """
@@ -35,7 +35,7 @@ from models.database import DB_PATH, CONFIG_PATH
 
 # Model identifiers
 MODEL_FLASH = "gemini-3-flash-preview"
-MODEL_PRO = "gemini-3-pro-preview"
+MODEL_PRO = "gemini-3.1-pro-preview"
 MODEL_PRO_IMAGE = "gemini-3-pro-image-preview"
 
 # Thinking budget by level

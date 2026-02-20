@@ -7,10 +7,10 @@ All prices are in USD per 1 million tokens.
 
 # Pricing table (USD per 1M tokens)
 PRICING: dict[str, dict[str, float]] = {
-    # Gemini 3.0 models
-    "gemini-3-flash-preview": {"input": 0.10, "output": 0.40},
-    "gemini-3-pro-preview": {"input": 1.25, "output": 5.00},
-    "gemini-3-pro-image-preview": {"input": 1.25, "output": 5.00},
+    # Gemini 3.x models
+    "gemini-3-flash-preview": {"input": 0.25, "output": 1.50},
+    "gemini-3.1-pro-preview": {"input": 2.00, "output": 12.00},
+    "gemini-3-pro-image-preview": {"input": 2.00, "output": 12.00},
 
     # Gemini 2.0 models
     "gemini-2.0-flash": {"input": 0.10, "output": 0.40},

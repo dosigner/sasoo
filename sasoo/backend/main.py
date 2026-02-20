@@ -101,9 +101,9 @@ app = FastAPI(
         "Backend API for Sasoo, an AI Co-Scientist desktop application "
         "that analyzes research papers using a 4-phase engineering analysis strategy "
         "(Screening -> Visual Verification -> Recipe Extraction -> Deep Dive) "
-        "powered by Gemini 3.0 + Claude Sonnet 4.5 dual LLM."
+        "powered by Gemini 3.1 + Claude Sonnet 4.5 dual LLM."
     ),
-    version="0.4.0",
+    version="0.4.2",
     lifespan=lifespan,
 )
 
@@ -167,7 +167,7 @@ async def root():
     return {
         "service": "sasoo",
         "status": "running",
-        "version": "0.4.0",
+        "version": "0.4.2",
         "library_path": str(LIBRARY_ROOT),
     }
 

@@ -304,7 +304,7 @@ Return ONLY valid JSON. No markdown fences, no explanation.
 
         response = await self._gemini.generate(
             prompt=prompt,
-            model="gemini-3-pro-preview",
+            model="gemini-3.1-pro-preview",
             temperature=0.3,
             response_mime_type="application/json",
         )

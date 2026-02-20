@@ -726,7 +726,7 @@ Return ONLY valid JSON (마크다운 펜스 없이). 아래 구조를 정확히 
 {text[:5000]}
 """
 
-    result = await _call_gemini(prompt, model="gemini-3-pro-preview")
+    result = await _call_gemini(prompt, model="gemini-3.1-pro-preview")
     cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
     status.total_cost_usd += cost
@@ -797,7 +797,7 @@ async def _generate_single_mermaid(paper_id: int, viz_item: dict, text: str, pre
 다이어그램 타입 키워드로 시작하는 유효한 Mermaid 코드만 반환해.
 """
 
-    result = await _call_gemini(prompt, model="gemini-3-pro-preview")
+    result = await _call_gemini(prompt, model="gemini-3.1-pro-preview")
 
     mermaid_code = result["text"].strip()
     # Remove markdown fences
@@ -996,14 +996,14 @@ async def _run_visualizations(
     viz_result = {
         "items": list(generated_items),
         "total_count": len(generated_items),
-        "model_used": "gemini-3-pro-preview",
+        "model_used": "gemini-3.1-pro-preview",
         "planned_at": datetime.utcnow().isoformat(),
     }
     await execute_insert(
         """INSERT INTO analysis_results (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd)
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
         (paper_id, "visualization", json.dumps(viz_result, ensure_ascii=False),
-         "gemini-3-pro-preview", 0, 0, 0.0),
+         "gemini-3.1-pro-preview", 0, 0, 0.0),
     )
 
     # Visualization complete — set progress to 100%

@@ -533,7 +533,7 @@ class AnalysisPipeline:
         """
         phase_result = PhaseResult(phase=AnalysisPhase.RECIPE, status="running")
         phase_result.started_at = time.time()
-        model = "gemini-3-pro-preview"
+        model = "gemini-3.1-pro-preview"
 
         try:
             # Build input from method-related sections
@@ -622,7 +622,7 @@ class AnalysisPipeline:
         """
         phase_result = PhaseResult(phase=AnalysisPhase.DEEP_DIVE, status="running")
         phase_result.started_at = time.time()
-        model = "gemini-3-pro-preview"
+        model = "gemini-3.1-pro-preview"
 
         try:
             input_parts: list[str] = []
