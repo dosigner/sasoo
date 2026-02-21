@@ -127,6 +127,7 @@ interface LightboxProps {
   figures: Figure[];
   paperId: string;
   currentIndex: number;
+  isClosing: boolean;
   onClose: () => void;
   onPrev: () => void;
   onNext: () => void;
@@ -136,6 +137,7 @@ function Lightbox({
   figures,
   paperId,
   currentIndex,
+  isClosing,
   onClose,
   onPrev,
   onNext,
@@ -219,7 +221,9 @@ function Lightbox({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
       {/* Backdrop – click to close */}
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-md"
+        className={`absolute inset-0 bg-black/60 backdrop-blur-md ${
+          isClosing ? 'animate-backdrop-out' : 'animate-backdrop-in'
+        }`}
         onClick={onClose}
         aria-hidden="true"
       />
@@ -230,7 +234,9 @@ function Lightbox({
         role="dialog"
         aria-modal="true"
         aria-label={`그림 상세 보기: ${figure.figure_num || 'Figure'}`}
-        className="figure-modal relative z-10 flex w-full max-w-[90vw] h-[85vh] bg-surface-900 border border-surface-700/60 rounded-2xl shadow-2xl overflow-hidden"
+        className={`figure-modal relative z-10 flex w-full max-w-[90vw] h-[85vh] bg-surface-900 border border-surface-700/60 rounded-2xl shadow-2xl overflow-hidden ${
+          isClosing ? 'animate-modal-out' : 'animate-modal-in'
+        }`}
       >
         {/* Header bar */}
         <div className="figure-modal-header absolute top-0 left-0 right-0 h-12 flex items-center justify-between px-4 bg-surface-900/95 backdrop-blur border-b border-surface-700/50 z-10">
@@ -389,13 +395,22 @@ export default function FigureGallery({
   loading = false,
 }: FigureGalleryProps) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [lightboxVisible, setLightboxVisible] = useState(false);
+  const [lightboxClosing, setLightboxClosing] = useState(false);
 
   const openLightbox = useCallback((index: number) => {
     setLightboxIndex(index);
+    setLightboxVisible(true);
+    setLightboxClosing(false);
   }, []);
 
   const closeLightbox = useCallback(() => {
-    setLightboxIndex(null);
+    setLightboxClosing(true);
+    setTimeout(() => {
+      setLightboxVisible(false);
+      setLightboxClosing(false);
+      setLightboxIndex(null);
+    }, 170);
   }, []);
 
   const prevFigure = useCallback(() => {
@@ -512,11 +527,12 @@ export default function FigureGallery({
         })}
       </div>
 
-      {lightboxIndex !== null && (
+      {lightboxVisible && lightboxIndex !== null && (
         <Lightbox
           figures={figures}
           paperId={paperId}
           currentIndex={lightboxIndex}
+          isClosing={lightboxClosing}
           onClose={closeLightbox}
           onPrev={prevFigure}
           onNext={nextFigure}

@@ -103,7 +103,7 @@
   }
 
   .card-hover {
-    @apply card transition-all duration-300 ease-out hover:border-primary-500/60 hover:shadow-lg hover:shadow-primary-500/10 hover:bg-surface-800/80 hover:backdrop-blur-md;
+    @apply card transition-all duration-300 ease-out hover:border-primary-500/60 hover:shadow-xl hover:shadow-primary-500/10 hover:bg-surface-800/80 hover:backdrop-blur-md hover:scale-[1.02] hover:-translate-y-0.5;
   }
 
   .light .card-hover:hover {
@@ -804,4 +804,113 @@
 
 .titlebar-no-drag {
   -webkit-app-region: no-drag;
+}
+
+/* ── UI Animation keyframes ── */
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes backdropFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes backdropFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes modalFadeOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes sidebarLabelEnter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes filterItemIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-page-enter {
+  animation: pageEnter 0.2s ease-out both;
+}
+
+.animate-backdrop-in {
+  animation: backdropFadeIn 0.2s ease-out both;
+}
+
+.animate-modal-in {
+  animation: modalScaleIn 0.2s ease-out both;
+}
+
+.animate-backdrop-out {
+  animation: backdropFadeOut 0.18s ease-in both;
+}
+
+.animate-modal-out {
+  animation: modalFadeOut 0.18s ease-in both;
+}
+
+.sidebar-label-enter {
+  animation: sidebarLabelEnter 0.15s ease-out 0.1s both;
+}
+
+.filter-stagger > *:nth-child(1) { animation: filterItemIn 0.2s ease-out both; }
+.filter-stagger > *:nth-child(2) { animation: filterItemIn 0.2s ease-out 0.05s both; }
+.filter-stagger > *:nth-child(3) { animation: filterItemIn 0.2s ease-out 0.1s both; }
+.filter-stagger > *:nth-child(4) { animation: filterItemIn 0.2s ease-out 0.15s both; }
+.filter-stagger > *:nth-child(5) { animation: filterItemIn 0.2s ease-out 0.2s both; }
+
+/* ── Accessibility: reduced motion ── */
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-page-enter,
+  .animate-backdrop-in,
+  .animate-modal-in,
+  .animate-backdrop-out,
+  .animate-modal-out,
+  .sidebar-label-enter,
+  .filter-stagger > * {
+    animation: none !important;
+  }
+
+  .card-hover {
+    transform: none !important;
+  }
 }

@@ -430,7 +430,7 @@ export default function Library() {
               </button>
             )}
           </div>
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3 filter-stagger">
             {/* Domain filter */}
             <div>
               <label className="text-2xs text-surface-500 block mb-1">

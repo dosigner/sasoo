@@ -942,8 +942,10 @@ export default function Agents() {
                   return (
                     <div
                       key={agent.name}
-                      className={`bg-surface-800 border border-surface-700/50 rounded-xl p-5 flex flex-col gap-3 transition-opacity ${
-                        !agent.enabled ? 'opacity-50' : ''
+                      className={`bg-surface-800 border border-surface-700/50 rounded-xl p-5 flex flex-col gap-3 transition-all duration-300 ease-out ${
+                        !agent.enabled
+                          ? 'opacity-50 hover:scale-100 hover:translate-y-0'
+                          : 'hover:border-primary-500/40 hover:shadow-xl hover:shadow-primary-500/10 hover:-translate-y-0.5 hover:scale-[1.02]'
                       }`}
                     >
                       {/* Top row */}

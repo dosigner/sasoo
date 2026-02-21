@@ -7,7 +7,6 @@ import {
   BookOpen,
   Settings,
   ChevronLeft,
-  ChevronRight,
   Bot,
 } from 'lucide-react';
 import logoImg from '@/assets/logo.png';
@@ -137,7 +136,7 @@ function App() {
 
         {/* Navigation */}
         <nav className="flex-1 py-3 px-2 space-y-1 overflow-y-auto">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.map((item, index) => {
             const Icon = item.icon;
             return (
               <NavLink
@@ -158,7 +157,12 @@ function App() {
               >
                 <Icon className="w-4.5 h-4.5 shrink-0" />
                 {!sidebarCollapsed && (
-                  <span className="text-sm font-medium">{item.label}</span>
+                  <span
+                    className="text-sm font-medium sidebar-label-enter"
+                    style={{ animationDelay: `${index * 25}ms` }}
+                  >
+                    {item.label}
+                  </span>
                 )}
               </NavLink>
             );
@@ -189,13 +193,13 @@ function App() {
             title={sidebarCollapsed ? S.app.expandSidebar : S.app.collapseSidebar}
             aria-label={sidebarCollapsed ? '사이드바 펼치기' : '사이드바 접기'}
           >
-            {sidebarCollapsed ? (
-              <ChevronRight className="w-4 h-4" />
-            ) : (
-              <>
-                <ChevronLeft className="w-4 h-4" />
-                <span className="text-xs">{S.app.collapse}</span>
-              </>
+            <ChevronLeft
+              className={`w-4 h-4 transition-transform duration-300 ${
+                sidebarCollapsed ? 'rotate-180' : ''
+              }`}
+            />
+            {!sidebarCollapsed && (
+              <span className="text-xs">{S.app.collapse}</span>
             )}
           </button>
         </div>
@@ -203,13 +207,15 @@ function App() {
 
       {/* Main content */}
       <main className="flex-1 min-w-0 overflow-hidden">
-        <Routes>
-          <Route path="/" element={<UploadPage />} />
-          <Route path="/agents" element={<Agents />} />
-          <Route path="/workbench/:id" element={<Workbench />} />
-          <Route path="/library" element={<Library />} />
-          <Route path="/settings" element={<SettingsPage />} />
-        </Routes>
+        <div key={location.pathname} className="h-full w-full overflow-hidden animate-page-enter">
+          <Routes>
+            <Route path="/" element={<UploadPage />} />
+            <Route path="/agents" element={<Agents />} />
+            <Route path="/workbench/:id" element={<Workbench />} />
+            <Route path="/library" element={<Library />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Routes>
+        </div>
       </main>
       </div>
         </div>
