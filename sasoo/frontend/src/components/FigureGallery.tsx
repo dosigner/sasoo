@@ -289,7 +289,7 @@ function Lightbox({
         </div>
 
         {/* Body – two panels below header */}
-        <div className="flex w-full h-full pt-12">
+        <div className="flex w-full h-full pt-12 min-h-0">
           {/* LEFT: Image */}
           <div className="figure-modal-image w-[45%] flex-shrink-0 flex flex-col items-center justify-center p-6 bg-surface-950/50 min-w-0">
             <div className="flex-1 flex items-center justify-center w-full overflow-hidden">
@@ -312,7 +312,7 @@ function Lightbox({
           {/* RIGHT: Explanation */}
           <div
             ref={rightPanelRef}
-            className="flex-1 overflow-y-auto min-w-0 figure-explanation-panel"
+            className="flex-1 overflow-y-auto min-w-0 min-h-0 figure-explanation-panel"
           >
             {isLoading ? (
               <ExplanationSkeleton />

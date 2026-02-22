@@ -600,7 +600,7 @@ function VisualizationGallery({
               </span>
             </div>
             {item.description && (
-              <p className="text-2xs text-surface-500 leading-relaxed">
+              <p className="text-xs text-surface-500 leading-relaxed">
                 {item.description}
               </p>
             )}

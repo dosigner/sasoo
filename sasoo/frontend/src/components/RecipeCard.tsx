@@ -239,7 +239,7 @@ export default function RecipeCard({
           <h4 className="text-xs font-semibold text-surface-200 mb-2">{S.recipe.materials}</h4>
           <ul className="space-y-1">
             {materials.map((m, i) => (
-              <li key={i} className="text-2xs text-surface-400 flex items-start gap-1.5">
+              <li key={i} className="text-xs text-surface-400 flex items-start gap-1.5">
                 <span className="text-primary-400 mt-0.5">-</span>
                 {m}
               </li>
@@ -274,7 +274,7 @@ export default function RecipeCard({
                     <td className="px-3 py-2 font-medium text-surface-200">{param.name || '-'}</td>
                     <td className="px-3 py-2 text-primary-300 font-mono">{param.value || '-'}</td>
                     <td className="px-3 py-2 text-surface-400">{param.unit || '-'}</td>
-                    <td className="px-3 py-2 text-surface-500 text-2xs">{param.notes || '-'}</td>
+                    <td className="px-3 py-2 text-surface-500 text-xs">{param.notes || '-'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -298,7 +298,7 @@ export default function RecipeCard({
           <h4 className="text-xs font-semibold text-surface-200 mb-2">{S.recipe.steps}</h4>
           <ol className="space-y-1.5">
             {steps.map((step, i) => (
-              <li key={i} className="text-2xs text-surface-400 leading-relaxed">
+              <li key={i} className="text-xs text-surface-400 leading-relaxed">
                 <span className="text-primary-400 font-medium mr-1">{i + 1}.</span>
                 {step}
               </li>
@@ -318,7 +318,7 @@ export default function RecipeCard({
                 className="flex items-start gap-2 bg-amber-500/5 [.light_&]:bg-amber-500/10 border border-amber-500/20 [.light_&]:border-amber-600/30 rounded-lg px-3 py-2"
               >
                 <AlertTriangle className="w-3 h-3 text-amber-400 [.light_&]:text-amber-600 mt-0.5 shrink-0" />
-                <p className="text-2xs text-amber-300/80 [.light_&]:text-amber-700 leading-relaxed">
+                <p className="text-xs text-amber-300/80 [.light_&]:text-amber-700 leading-relaxed">
                   {note}
                 </p>
               </div>
@@ -333,7 +333,7 @@ export default function RecipeCard({
           <h4 className="text-xs font-semibold text-red-300 [.light_&]:text-red-700 mb-1.5">{S.recipe.missingInfo}</h4>
           <ul className="space-y-1">
             {missingInfo.map((info, index) => (
-              <li key={index} className="text-2xs text-red-300/70 [.light_&]:text-red-600 flex items-start gap-1.5">
+              <li key={index} className="text-xs text-red-300/70 [.light_&]:text-red-600 flex items-start gap-1.5">
                 <span className="text-red-400 [.light_&]:text-red-600 mt-0.5">?</span>
                 {info}
               </li>
