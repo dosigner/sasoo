@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { S } from '@/lib/strings';
+import { fetchAllAgents } from '@/lib/agents';
 import {
   getAgents, getAgent, createAgent, updateAgent, deleteAgent,
   duplicateAgent, toggleAgent, exportAgent, importAgent,
@@ -534,6 +535,7 @@ export default function Agents() {
     try {
       const data = await getAgents();
       setAgents(data);
+      fetchAllAgents().catch(() => {});  // 공유 캐시 동기화
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to load agents', 'error');
     } finally {
