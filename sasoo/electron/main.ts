@@ -256,6 +256,13 @@ async function initialize(): Promise<void> {
 
   registerIpcHandlers();
   await createWindow();
+
+  // Forward Python backend logs to renderer DevTools console
+  if (pythonManager && mainWindow) {
+    pythonManager.setLogForwarder((level: string, message: string) => {
+      mainWindow?.webContents.send('backend:log', level, message);
+    });
+  }
 }
 
 // App lifecycle

@@ -77,6 +77,21 @@ function App() {
     fetchAllAgents().catch(() => {});
   }, []);
 
+  // Forward Python backend logs to DevTools console
+  useEffect(() => {
+    if (!window.electronAPI?.on) return;
+    const unsub = window.electronAPI.on('backend:log', (...args: unknown[]) => {
+      const level = args[0] as string;
+      const message = args[1] as string;
+      if (level === 'error') {
+        console.error(`[Backend] ${message}`);
+      } else {
+        console.log(`[Backend] ${message}`);
+      }
+    });
+    return unsub;
+  }, []);
+
   // Load sidebar state from localStorage
   useEffect(() => {
     const savedCollapsed = localStorage.getItem('sasoo-sidebar-collapsed');

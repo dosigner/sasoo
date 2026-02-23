@@ -118,6 +118,7 @@ const electronAPI: ElectronAPI = {
       'analysis:complete',
       'analysis:error',
       'backend:status',
+      'backend:log',
       'app:update-available',
       'window:maximizeChanged',
     ];

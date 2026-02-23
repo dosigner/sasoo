@@ -23,6 +23,12 @@ export class PythonManager {
   private startupResolver: ((value: boolean) => void) | null = null;
   private usesBundledBackend: boolean = false;
   private shutdownToken: string = '';
+  private logForwarder: ((level: string, message: string) => void) | null = null;
+
+  /** Set a callback to forward backend logs to the renderer process. */
+  setLogForwarder(fn: (level: string, message: string) => void): void {
+    this.logForwarder = fn;
+  }
 
   constructor(config: PythonManagerConfig) {
     this.config = {
@@ -167,19 +173,21 @@ export class PythonManager {
       });
     }
 
-    // Log stdout
+    // Log stdout — forward to renderer DevTools via IPC
     this.process.stdout?.on('data', (data: Buffer) => {
       const message = data.toString().trim();
       if (message) {
         console.log(`[FastAPI] ${message}`);
+        this.logForwarder?.('info', message);
       }
     });
 
-    // Log stderr
+    // Log stderr — forward to renderer DevTools via IPC
     this.process.stderr?.on('data', (data: Buffer) => {
       const message = data.toString().trim();
       if (message) {
         console.error(`[FastAPI:err] ${message}`);
+        this.logForwarder?.('error', message);
       }
     });
 
