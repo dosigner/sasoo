@@ -8,8 +8,8 @@
 
 ### 논문을 같이 읽어주는 AI 연구실 동료
 
-<a href="https://github.com/dosigner/sasoo/releases/tag/v0.1.0">
-<img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download-Sasoo_v0.1.0_(Windows)-blue?style=for-the-badge&logo=windows&logoColor=white" alt="Download Sasoo" />
+<a href="https://github.com/dosigner/sasoo/releases/tag/v0.4.4">
+<img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download-Sasoo_v0.4.4_(Windows)-blue?style=for-the-badge&logo=windows&logoColor=white" alt="Download Sasoo" />
 </a>
 
 <br/>
@@ -21,7 +21,7 @@ PDF 던져주면 4단계로 쪼개서 분석하고, 레시피 카드까지 뽑�
 <br/>
 
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.1.0-brightgreen?style=flat-square)](https://github.com/dosigner/sasoo/releases/tag/v0.1.0)
+[![Version](https://img.shields.io/badge/version-0.4.4-brightgreen?style=flat-square)](https://github.com/dosigner/sasoo/releases/tag/v0.4.4)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![Node](https://img.shields.io/badge/node-18%2B-339933?style=flat-square&logo=node.js&logoColor=white)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)]()
@@ -31,7 +31,7 @@ PDF 던져주면 4단계로 쪼개서 분석하고, 레시피 카드까지 뽑�
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-3178C6?style=flat-square&logo=typescript&logoColor=white)]()
 [![Electron](https://img.shields.io/badge/Electron-28-47848F?style=flat-square&logo=electron&logoColor=white)]()
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)]()
-[![Gemini](https://img.shields.io/badge/Gemini_3.0-8E75B2?style=flat-square&logo=google&logoColor=white)]()
+[![Gemini](https://img.shields.io/badge/Gemini_3.1-8E75B2?style=flat-square&logo=google&logoColor=white)]()
 [![Claude](https://img.shields.io/badge/Claude_Sonnet_4.5-D97757?style=flat-square&logo=anthropic&logoColor=white)]()
 
 <br/>
@@ -207,6 +207,14 @@ flowchart LR
 <h4>5. Library</h4>
 <sub>분석된 논문<br/>검색 · 관리</sub>
 </td>
+<td align="center" width="40">
+<h3>+</h3>
+</td>
+<td align="center" width="160">
+<h1>🛠️</h1>
+<h4>6. Agents</h4>
+<sub>커스텀 에이전트<br/>생성 · 관리</sub>
+</td>
 </tr>
 </table>
 </div>
@@ -236,7 +244,7 @@ flowchart LR
 <tr>
 <td align="center">🧠</td>
 <td><b>듀얼 LLM</b></td>
-<td>Gemini 3.0 (분석) + Claude Sonnet 4.5 (시각화) 전략적 분업</td>
+<td>Gemini 3.1 (분석) + Claude Sonnet 4.5 (시각화) 전략적 분업</td>
 </tr>
 <tr>
 <td align="center">🖼️</td>
@@ -263,6 +271,11 @@ flowchart LR
 <td><b>로컬 퍼스트</b></td>
 <td>SQLite + 로컬 파일 저장, 인터넷은 API 호출에만 사용</td>
 </tr>
+<tr>
+<td align="center">🛠️</td>
+<td><b>에이전트 생성</b></td>
+<td><code>.md</code> 기반 커스텀 에이전트 생성 + Gemini AI 자동 생성</td>
+</tr>
 </table>
 </div>
 
@@ -288,6 +301,7 @@ graph TB
         Upload["Upload Page"]
         Workbench["Workbench Page"]
         Library["Library Page"]
+        Agents["Agents Page"]
         Settings["Settings Page"]
         Components["AnalysisPanel | PdfViewer<br/>RecipeCard | MermaidRenderer<br/>CostDashboard | FigureGallery"]
     end
@@ -309,7 +323,7 @@ graph TB
         end
 
         subgraph LLM["LLM Clients"]
-            Gemini["Gemini 3.0<br/>Flash + Pro"]
+            Gemini["Gemini 3.1<br/>Flash + Pro"]
             Claude["Claude Sonnet 4.5<br/>Mermaid 생성"]
         end
 
@@ -358,8 +372,8 @@ graph TB
 <td align="center" width="400">
 <br/>
 <h3>🪟 Windows</h3>
-<a href="https://github.com/dosigner/sasoo/releases/tag/v0.1.0">
-<img src="https://img.shields.io/badge/Sasoo_Setup_0.1.0.exe-Download-2ea44f?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
+<a href="https://github.com/dosigner/sasoo/releases/tag/v0.4.4">
+<img src="https://img.shields.io/badge/Sasoo_Setup_0.4.4.exe-Download-2ea44f?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
 </a>
 <br/><br/>
 <sub>Windows 10/11 · 약 144MB · NSIS 인스톨러</sub>
@@ -648,7 +662,7 @@ Introduction과 Results & Discussion을 깊이 분석:
 
 ### 에이전트 프로필
 
-각 에이전트는 `BaseAgent`를 상속하며, 4단계별 **전용 프롬프트**를 가진다.
+각 에이전트는 `.md` 파일(YAML frontmatter + Markdown 프롬프트)로 정의되며, 4단계별 **전용 프롬프트**를 가진다. `MdAgent` 클래스가 모든 에이전트를 통합 로딩한다.
 
 <div align="center">
 <table>
@@ -696,7 +710,7 @@ Sasoo는 **두 개의 LLM을 전략적으로 분업**시킨다:
 <tr>
 <td align="center" width="380">
 <br/>
-<h3>🔷 Gemini 3.0 — 분석 엔진</h3>
+<h3>🔷 Gemini 3.1 — 분석 엔진</h3>
 <sub>Flash (Phase 1-2) + Pro (Phase 3-4)</sub><br/><br/>
 멀티모달 (Figure 직접 분석)<br/>
 구조화 JSON 출력<br/>
@@ -772,7 +786,7 @@ flowchart · sequence · state · class
 <tr>
 <td align="center"><b>AI / LLM</b></td>
 <td>
-<img src="https://img.shields.io/badge/Gemini_3.0-8E75B2?style=flat-square&logo=google&logoColor=white" />
+<img src="https://img.shields.io/badge/Gemini_3.1-8E75B2?style=flat-square&logo=google&logoColor=white" />
 <img src="https://img.shields.io/badge/Claude_4.5-D97757?style=flat-square&logo=anthropic&logoColor=white" />
 </td>
 </tr>
@@ -811,9 +825,20 @@ sasoo/
 ├── 🐍 backend/
 │   ├── main.py                     # FastAPI 엔트리포인트 (:8000)
 │   ├── requirements.txt
+│   ├── agents/                     # .md 기반 에이전트 정의 파일
+│   │   ├── photon.md               # 🔴 광학 에이전트
+│   │   ├── cell.md                 # 🟢 바이오 에이전트
+│   │   ├── neural.md               # 🟣 AI/ML 에이전트
+│   │   └── circuit.md              # 🟡 전자공학 에이전트
 │   ├── api/
 │   │   ├── papers.py               # 논문 업로드·목록·삭제
 │   │   ├── analysis.py             # 분석 실행·결과 조회
+│   │   ├── analysis_routes.py      # WebSocket/스트리밍 진행률
+│   │   ├── analysis_helpers.py     # 분석 유틸리티
+│   │   ├── analysis_state.py       # 분석 상태 관리
+│   │   ├── agents.py               # 에이전트 CRUD API
+│   │   ├── figure_service.py       # Figure 상세 설명 API
+│   │   ├── report_service.py       # 보고서 생성 API
 │   │   └── settings.py             # API 키·테마 설정
 │   ├── models/
 │   │   ├── database.py             # SQLite 비동기 DB
@@ -832,11 +857,9 @@ sasoo/
 │       ├── pricing.py              # API 비용 추적
 │       ├── agents/
 │       │   ├── base_agent.py       # 에이전트 추상 클래스
-│       │   ├── profile_loader.py   # 에이전트 프로필 로더
-│       │   ├── agent_photon.py     # 🔴 광학 전문
-│       │   ├── agent_cell.py       # 🟢 바이오 전문
-│       │   ├── agent_neural.py     # 🟣 AI/ML 전문
-│       │   └── agent_circuit.py   # 🟡 전자공학 전문
+│       │   ├── md_agent.py         # 통합 Markdown 에이전트 클래스
+│       │   ├── md_loader.py        # YAML frontmatter 파서
+│       │   └── generator.py        # AI 에이전트 자동 생성 (Gemini)
 │       ├── llm/
 │       │   ├── gemini_client.py    # Gemini API 래퍼
 │       │   └── claude_client.py    # Claude API 래퍼
@@ -858,6 +881,7 @@ sasoo/
 │       │   ├── Upload.tsx          # PDF 업로드 + 에이전트 카드
 │       │   ├── Workbench.tsx       # 분석 워크벤치
 │       │   ├── Library.tsx         # 논문 라이브러리
+│       │   ├── Agents.tsx          # 에이전트 관리 + 생성
 │       │   └── Settings.tsx        # 설정
 │       ├── components/
 │       │   ├── AnalysisPanel.tsx   # 분석 결과 + 에이전트 배지
@@ -915,7 +939,7 @@ sasoo/
 <td align="center"><b>앱 데이터</b><br/><sub>(고정)</sub></td>
 <td><code>%APPDATA%/Sasoo/</code></td>
 <td><code>backend/library/</code></td>
-<td><code>sasoo.db</code>, <code>config.json</code>, <code>agent_profiles/</code></td>
+<td><code>sasoo.db</code>, <code>config.json</code>, <code>agents/</code> (커스텀)</td>
 </tr>
 <tr>
 <td align="center"><b>논문 라이브러리</b><br/><sub>(사용자 지정 가능)</sub></td>
@@ -992,6 +1016,10 @@ sasoo/
 - [x] 다크/라이트 테마
 - [x] 에이전트 캐릭터 일러스트 + UI 통합
 - [x] Agent Circuit (전자공학)
+- [x] `.md` 기반 에이전트 시스템 마이그레이션
+- [x] 에이전트 생성 탭 + AI 자동 생성
+- [x] Gemini 3.1 Pro 업그레이드
+- [x] CSS-only UI 애니메이션
 - [ ] 논문 간 비교 분석
 - [ ] Zotero 연동
 - [ ] 논문 추천 시스템
@@ -1008,11 +1036,13 @@ sasoo/
 
 기여를 환영합니다! 새로운 도메인 에이전트를 추가하고 싶다면:
 
-> 1. `backend/services/agents/base_agent.py`의 `BaseAgent` 상속
-> 2. `info` 프로퍼티에 성격·도메인·설명 정의
-> 3. 4단계 프롬프트 구현 (`get_screening_prompt` 등)
+> 1. `backend/agents/` 폴더에 `.md` 파일 생성 (예: `quantum.md`)
+> 2. YAML frontmatter에 에이전트 이름·도메인·성격·키워드 정의
+> 3. Markdown 섹션으로 4단계 프롬프트 작성 (screening, visual, recipe, deepdive)
 > 4. `domain_router.py`에 키워드·도메인 매핑 추가
 > 5. PR 제출
+>
+> 또는 앱의 **Agents** 탭에서 AI 자동 생성 기능을 사용하여 `.md` 에이전트를 만들 수 있습니다.
 
 **MIT License** &copy; 2025 [dosigner](https://github.com/dosigner)
 
@@ -1026,7 +1056,7 @@ sasoo/
 
 **Sasoo** — 네 논문, 같이 읽어줄게.
 
-_Built with Gemini 3.0 + Claude Sonnet 4.5_
+_Built with Gemini 3.1 + Claude Sonnet 4.5_
 
 <br/>
 
