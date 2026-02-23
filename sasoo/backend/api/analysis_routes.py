@@ -792,12 +792,19 @@ async def _generate_single_paperbanana(paper_id: int, viz_item: dict, text: str,
     description = viz_item.get("description", "")
     category = viz_item.get("category", "conceptual_illustration")
 
-    # Try using the PaperBanana bridge (fully async — no thread needed)
+    # Try using the PaperBanana bridge.
+    # NOTE: We directly await the bridge's async generate method on the
+    # current event loop. This keeps the google-genai SDK's httpx/gRPC
+    # clients on the same loop they were created on (moving to a worker
+    # thread via asyncio.to_thread caused silent SDK failures → purple
+    # placeholders).
     try:
         from services.viz.paperbanana_bridge import PaperBananaBridge
         bridge = PaperBananaBridge()
         _logger.info("PaperBanana bridge.is_available: %s for '%s'", bridge.is_available, title)
-        if bridge.is_available:
+        if not bridge.is_available:
+            _logger.warning("PaperBanana bridge not available: %s", bridge.last_error)
+        else:
             paper_dir = str(get_paper_dir(folder_name))
 
             path = await asyncio.wait_for(

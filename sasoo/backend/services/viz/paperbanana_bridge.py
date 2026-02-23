@@ -214,6 +214,13 @@ class PaperBananaBridge:
             self._last_api_key = api_key
             print(f"[PaperBanana] Pipeline created OK")
 
+            # --- SDK compat fix: google-genai >= 1.x returns Pydantic Image,
+            #     not PIL Image from part.as_image(). Also, the underlying
+            #     generate_content() call is synchronous and blocks the event
+            #     loop, preventing asyncio.wait_for() timeouts from firing.
+            #     Fix both by wrapping the image gen provider. ---
+            self._patch_image_gen()
+
             # --- PyInstaller fix: patch prompt_dir for frozen executables ---
             if _IS_FROZEN and _MEIPASS is not None:
                 meipass_prompts = _MEIPASS / "prompts"
@@ -276,6 +283,56 @@ class PaperBananaBridge:
             self._pipeline = None
             return False
 
+    def _patch_image_gen(self) -> None:
+        """Patch image gen provider for google-genai SDK >= 1.x compatibility.
+
+        google-genai >= 1.x changed Part.as_image() to return a Pydantic
+        ``google.genai.types.Image`` instead of ``PIL.Image.Image``.
+        PaperBanana's GoogleImagenGen.generate() passes this through, causing
+        downstream ``save_image(image, path)`` to call the wrong ``.save()``
+        and other PIL-specific operations to fail.
+
+        Fix: wrap ``generate()`` so the return value is always PIL Image.
+        """
+        from io import BytesIO
+
+        try:
+            from PIL import Image as PILImage
+        except ImportError:
+            return
+
+        image_gen = getattr(self._pipeline, "_image_gen", None)
+        if image_gen is None or not hasattr(image_gen, "generate"):
+            return
+
+        original_generate = image_gen.generate
+
+        async def _patched_generate(*args, **kwargs):
+            result = await original_generate(*args, **kwargs)
+
+            # Already PIL Image — nothing to do
+            if result is None or isinstance(result, PILImage.Image):
+                return result
+
+            # Convert google.genai.types.Image → PIL Image
+            if hasattr(result, "_pil_image"):
+                try:
+                    pil = result._pil_image
+                    if pil is not None:
+                        print("[PaperBanana] Converted genai.Image → PIL via _pil_image")
+                        return pil
+                except Exception:
+                    pass
+            if hasattr(result, "image_bytes") and result.image_bytes:
+                pil = PILImage.open(BytesIO(result.image_bytes))
+                print("[PaperBanana] Converted genai.Image → PIL via image_bytes")
+                return pil
+
+            return result
+
+        image_gen.generate = _patched_generate
+        print("[PaperBanana] Patched image gen for SDK compat (genai.Image → PIL)")
+
     @property
     def is_available(self) -> bool:
         """Return True if PaperBanana is installed and pipeline can be initialized."""
@@ -326,16 +383,23 @@ class PaperBananaBridge:
             )
 
             print(f"[PaperBanana] Generating '{title}' (type={diagram_type})...")
+            print(f"[PaperBanana]   pipeline type: {type(self._pipeline).__name__}")
+            print(f"[PaperBanana]   image_gen type: {type(getattr(self._pipeline, '_image_gen', None)).__name__}")
             result = await self._pipeline.generate(generation_input)
+            print(f"[PaperBanana]   result type: {type(result).__name__}, attrs: {[a for a in dir(result) if not a.startswith('_')][:10]}")
 
             # Copy result image to paper directory
             save_path = self._save_image(result, title, paper_dir)
-            print(f"[PaperBanana] Generated '{title}' -> {save_path}")
+            if save_path:
+                print(f"[PaperBanana] SUCCESS '{title}' -> {save_path}")
+            else:
+                print(f"[PaperBanana] WARN: _save_image returned empty for '{title}'")
             return save_path
 
         except Exception as exc:
             self.last_error = f"Generation failed: {exc}"
-            print(f"[PaperBanana] {self.last_error}")
+            print(f"[PaperBanana] FAIL '{title}': {exc}")
+            print(f"[PaperBanana] Traceback: {traceback.format_exc()}")
             logger.error(
                 "PaperBananaBridge: Failed to generate '%s': %s\n%s",
                 title, exc, traceback.format_exc(),
