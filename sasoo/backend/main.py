@@ -103,7 +103,7 @@ app = FastAPI(
         "(Screening -> Visual Verification -> Recipe Extraction -> Deep Dive) "
         "powered by Gemini 3.1 + Claude Sonnet 4.5 dual LLM."
     ),
-    version="0.4.2",
+    version="0.4.4",
     lifespan=lifespan,
 )
 
