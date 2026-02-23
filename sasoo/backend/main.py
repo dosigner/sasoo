@@ -11,8 +11,45 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-# Use OS certificate store (Windows Certificate Store) instead of bundled certifi.
-# Fixes SSL errors on networks with SSL inspection proxies (self-signed certs).
+# ---------------------------------------------------------------------------
+# SSL: Use OS certificate store for all outbound HTTPS connections.
+# Fixes SSL errors on corporate/university networks with SSL inspection proxies.
+# Two-layer approach:
+#   1. Export Windows cert store → temp PEM file → SSL_CERT_FILE env var
+#      (covers httpx verify=certifi.where(), requests, urllib3, etc.)
+#   2. truststore.inject_into_ssl() patches ssl.SSLContext directly
+#      (covers ssl.create_default_context() callers)
+# ---------------------------------------------------------------------------
+def _export_os_certs():
+    """Export OS certificate store to PEM file and set SSL env vars."""
+    import sys
+    if sys.platform != "win32":
+        return
+    # Skip if user already set these (e.g., corporate IT policy)
+    if os.environ.get("SSL_CERT_FILE") or os.environ.get("REQUESTS_CA_BUNDLE"):
+        return
+    try:
+        import base64, tempfile, atexit
+        ctx = ssl.create_default_context()          # loads Windows Certificate Store
+        certs = ctx.get_ca_certs(binary_form=True)
+        if not certs:
+            return
+        pem = b""
+        for der in certs:
+            pem += b"-----BEGIN CERTIFICATE-----\n"
+            pem += base64.encodebytes(der)
+            pem += b"-----END CERTIFICATE-----\n"
+        fd, path = tempfile.mkstemp(suffix=".pem", prefix="sasoo_certs_")
+        os.write(fd, pem)
+        os.close(fd)
+        os.environ["SSL_CERT_FILE"] = path
+        os.environ["REQUESTS_CA_BUNDLE"] = path
+        atexit.register(lambda: os.unlink(path) if os.path.exists(path) else None)
+    except Exception:
+        pass  # non-critical — fall back to default cert handling
+
+_export_os_certs()  # BEFORE truststore — get raw Windows certs first
+
 try:
     import truststore
     truststore.inject_into_ssl()
