@@ -1,4 +1,4 @@
-import { ChildProcess, spawn } from 'child_process';
+import { ChildProcess, spawn, exec } from 'child_process';
 import * as crypto from 'crypto';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -367,13 +367,29 @@ export class PythonManager {
     }
 
     return new Promise((resolve) => {
+      const pid = this.process!.pid;
+
       const forceKillTimeout = setTimeout(() => {
         if (this.process) {
           console.warn('[PythonManager] Force killing process');
-          try { this.process.kill('SIGKILL'); } catch { /* already dead */ }
-          this.process = null;
+          if (process.platform === 'win32' && pid) {
+            // Windows: taskkill /T kills entire process tree (prevents zombie children)
+            exec(`taskkill /T /F /PID ${pid}`, (err) => {
+              if (err) {
+                console.warn('[PythonManager] taskkill failed:', err.message);
+                try { this.process?.kill('SIGKILL'); } catch { /* already dead */ }
+              }
+              this.process = null;
+              resolve();
+            });
+          } else {
+            try { this.process.kill('SIGKILL'); } catch { /* already dead */ }
+            this.process = null;
+            resolve();
+          }
+        } else {
+          resolve();
         }
-        resolve();
       }, 5000);
 
       this.process!.on('exit', () => {
