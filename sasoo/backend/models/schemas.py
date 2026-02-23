@@ -26,6 +26,7 @@ class PaperStatus(str, Enum):
 
 class AnalysisPhase(str, Enum):
     SCREENING = "screening"
+    CITATION = "citation"
     VISUAL = "visual"
     RECIPE = "recipe"
     DEEP_DIVE = "deep_dive"
@@ -192,8 +193,39 @@ class ScreeningResult(BaseModel):
     estimated_complexity: Optional[str] = None  # low, medium, high
 
 
+class CitationContext(BaseModel):
+    """A single citation context occurrence."""
+    sentence: str = ""
+    section: str = ""
+
+
+class CitedReference(BaseModel):
+    """A single reference with citation analysis."""
+    ref_id: str = ""
+    authors: str = ""
+    title: str = ""
+    journal: str = ""
+    year: Optional[int] = None
+    cite_count: int = 0
+    cite_contexts: list[CitationContext] = Field(default_factory=list)
+    citation_role: str = ""  # foundational, methodological, comparative, supporting, contrasting
+    why_cited: str = ""
+
+
+class CitationResult(BaseModel):
+    """Phase 2: Citation analysis result."""
+    paper_id: int
+    total_references: int = 0
+    citation_style: str = "numbered"  # numbered or author_year
+    top_cited: list[CitedReference] = Field(default_factory=list)
+    self_citation_count: int = 0
+    self_citation_ratio: float = 0.0
+    citation_distribution: dict[str, int] = Field(default_factory=dict)
+    summary: str = ""
+
+
 class VisualResult(BaseModel):
-    """Phase 2: Visual verification result."""
+    """Phase 3: Visual verification result."""
     paper_id: int
     figures: list[FigureInfo] = Field(default_factory=list)
     figure_count: int = 0
@@ -280,6 +312,7 @@ class FullAnalysisResponse(BaseModel):
     paper_id: int
     status: AnalysisStatus
     screening: Optional[dict] = None
+    citation: Optional[dict] = None
     visual: Optional[dict] = None
     recipe: Optional[dict] = None
     deep_dive: Optional[dict] = None

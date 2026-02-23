@@ -60,7 +60,7 @@ interface PaginatedResponse {
 export type UploadResponse = Paper;
 
 // Analysis types
-export type AnalysisPhase = 'screening' | 'visual' | 'recipe' | 'deep_dive';
+export type AnalysisPhase = 'screening' | 'citation' | 'visual' | 'recipe' | 'deep_dive';
 export type PhaseStatusValue = 'pending' | 'running' | 'completed' | 'error';
 
 export interface PhaseInfo {
@@ -90,6 +90,7 @@ export interface AnalysisResults {
   paper_id: number;
   status: AnalysisStatus;
   screening: Record<string, unknown> | null;
+  citation: Record<string, unknown> | null;
   visual: Record<string, unknown> | null;
   recipe: Record<string, unknown> | null;
   deep_dive: Record<string, unknown> | null;

@@ -4,9 +4,10 @@ Sasoo - Report Generator
 Generates an integrated Markdown report matching PRD Section F6 format:
   - Header: title, authors, journal, year, DOI, agent used, analysis date
   - Phase 1: Screening (relevance, keywords, summary)
-  - Phase 2: Visual Verification (figure gallery, data quality table)
-  - Phase 3: Recipe Card (parameter table, missing param warnings, Mermaid)
-  - Phase 4: Deep Dive (background, prior work, critical analysis, limitations)
+  - Phase 2: Citation Analysis (reference parsing, citation frequency)
+  - Phase 3: Visual Verification (figure gallery, data quality table)
+  - Phase 4: Recipe Card (parameter table, missing param warnings, Mermaid)
+  - Phase 5: Deep Dive (background, prior work, critical analysis, limitations)
   - PaperBanana illustrations
 
 Also generates a separate recipe_card.md file.
@@ -72,6 +73,7 @@ class ReportGenerator:
 
         # Extract phase results
         screening = self._get_phase_result(phases, "screening")
+        citation = self._get_phase_result(phases, "citation")
         visual = self._get_phase_result(phases, "visual")
         recipe = self._get_phase_result(phases, "recipe")
         deep_dive = self._get_phase_result(phases, "deep_dive")
@@ -80,9 +82,10 @@ class ReportGenerator:
         sections: list[str] = []
         sections.append(self._build_header(paper_meta))
         sections.append(self._build_phase1_screening(screening))
-        sections.append(self._build_phase2_visual(visual, paper_dir))
-        sections.append(self._build_phase3_recipe(recipe, mermaid_outputs))
-        sections.append(self._build_phase4_deep_dive(deep_dive))
+        sections.append(self._build_phase2_citation(citation))
+        sections.append(self._build_phase3_visual(visual, paper_dir))
+        sections.append(self._build_phase4_recipe(recipe, mermaid_outputs))
+        sections.append(self._build_phase5_deep_dive(deep_dive))
         sections.append(self._build_paperbanana_section(pb_paths, paper_dir))
         sections.append(self._build_cost_summary(analysis_report))
 
@@ -314,13 +317,90 @@ class ReportGenerator:
 
         return "\n".join(lines)
 
-    def _build_phase2_visual(self, result: Optional[dict], paper_dir: str) -> str:
-        """Build Phase 2: Visual Verification section with figure gallery."""
-        lines = ["## Phase 2: Visual Verification"]
+    def _build_phase2_citation(self, result: Optional[dict]) -> str:
+        """Build Phase 2: Citation Analysis section."""
+        lines = ["## Phase 2: Citation Analysis"]
         lines.append("")
 
         if result is None:
             lines.append("*Phase 2 was not completed.*")
+            return "\n".join(lines)
+
+        # Summary
+        summary = result.get("summary", "")
+        if summary:
+            lines.append(summary)
+            lines.append("")
+
+        # Stats overview
+        total_refs = result.get("total_references", 0)
+        style = result.get("citation_style", "")
+        self_count = result.get("self_citation_count", 0)
+        self_ratio = result.get("self_citation_ratio", 0.0)
+        balance = result.get("citation_balance", "")
+
+        lines.append(f"- **Total References**: {total_refs}")
+        lines.append(f"- **Citation Style**: {style}")
+        lines.append(f"- **Self-Citations**: {self_count} ({self_ratio:.1%})")
+        if balance:
+            lines.append(f"- **Citation Balance**: {balance}")
+        lines.append("")
+
+        # Key influences
+        influences = result.get("key_influences", [])
+        if influences:
+            lines.append("### Key Influences")
+            lines.append("")
+            for inf in influences:
+                lines.append(f"- {inf}")
+            lines.append("")
+
+        # Top cited references table
+        top_cited = result.get("top_cited", [])
+        if top_cited:
+            lines.append("### Most-Cited References")
+            lines.append("")
+            lines.append("| # | Ref | Authors | Year | Citations | Role |")
+            lines.append("|---|-----|---------|------|-----------|------|")
+            for i, ref in enumerate(top_cited[:10], 1):
+                ref_id = ref.get("ref_id", "")
+                authors = ref.get("authors", "")[:30]
+                year = ref.get("year", "")
+                count = ref.get("cite_count", 0)
+                role = ref.get("citation_role", "")
+                lines.append(f"| {i} | {ref_id} | {authors} | {year} | {count} | {role} |")
+            lines.append("")
+
+            # Why cited explanations
+            has_why = any(ref.get("why_cited") for ref in top_cited[:10])
+            if has_why:
+                lines.append("### Citation Role Analysis")
+                lines.append("")
+                for ref in top_cited[:10]:
+                    why = ref.get("why_cited", "")
+                    if why:
+                        ref_id = ref.get("ref_id", "")
+                        lines.append(f"- **{ref_id}**: {why}")
+                lines.append("")
+
+        # Section distribution
+        distribution = result.get("citation_distribution", {})
+        if distribution:
+            lines.append("### Citation Distribution by Section")
+            lines.append("")
+            for sec, count in sorted(distribution.items(), key=lambda x: x[1], reverse=True):
+                lines.append(f"- **{sec}**: {count} citations")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def _build_phase3_visual(self, result: Optional[dict], paper_dir: str) -> str:
+        """Build Phase 3: Visual Verification section with figure gallery."""
+        lines = ["## Phase 3: Visual Verification"]
+        lines.append("")
+
+        if result is None:
+            lines.append("*Phase 3 was not completed.*")
             return "\n".join(lines)
 
         # Figure Gallery
@@ -379,17 +459,17 @@ class ReportGenerator:
 
         return "\n".join(lines)
 
-    def _build_phase3_recipe(
+    def _build_phase4_recipe(
         self,
         result: Optional[dict],
         mermaid_outputs: list,
     ) -> str:
-        """Build Phase 3: Recipe Card section with parameter table and Mermaid."""
-        lines = ["## Phase 3: Recipe Card"]
+        """Build Phase 4: Recipe Card section with parameter table and Mermaid."""
+        lines = ["## Phase 4: Recipe Card"]
         lines.append("")
 
         if result is None:
-            lines.append("*Phase 3 was not completed.*")
+            lines.append("*Phase 4 was not completed.*")
             return "\n".join(lines)
 
         recipe_card = result.get("recipe", result)
@@ -482,13 +562,13 @@ class ReportGenerator:
 
         return "\n".join(lines)
 
-    def _build_phase4_deep_dive(self, result: Optional[dict]) -> str:
-        """Build Phase 4: Deep Dive section."""
-        lines = ["## Phase 4: Deep Dive"]
+    def _build_phase5_deep_dive(self, result: Optional[dict]) -> str:
+        """Build Phase 5: Deep Dive section."""
+        lines = ["## Phase 5: Deep Dive"]
         lines.append("")
 
         if result is None:
-            lines.append("*Phase 4 was not completed.*")
+            lines.append("*Phase 5 was not completed.*")
             return "\n".join(lines)
 
         # Research Background (Why?)

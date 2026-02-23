@@ -133,7 +133,7 @@ Return ONLY valid JSON (마크다운 펜스 없이):
     phase_status.tokens_in = result["tokens_in"]
     phase_status.tokens_out = result["tokens_out"]
     phase_status.cost_usd = cost
-    status.progress_pct = max(status.progress_pct, 20.0)
+    status.progress_pct = max(status.progress_pct, 16.0)
     status.total_cost_usd += cost
     status.total_tokens_in += result["tokens_in"]
     status.total_tokens_out += result["tokens_out"]
@@ -141,8 +141,143 @@ Return ONLY valid JSON (마크다운 펜스 없이):
     return result
 
 
+async def _run_citation(paper_id: int, text: str, paper_authors: str, status: AnalysisStatus) -> dict:
+    """Phase 2: Citation Analysis - parse references, count citation frequency, analyze roles."""
+    phase_status = PhaseStatus(
+        phase=AnalysisPhase.CITATION,
+        status="running",
+        started_at=datetime.utcnow().isoformat(),
+    )
+    status.phases.append(phase_status)
+    status.current_phase = AnalysisPhase.CITATION
+
+    # --- Step 1: Parse references and count citations locally ---
+    from services.citation_analyzer import analyze_citations
+    from services.section_splitter import SectionSplitter
+
+    splitter = SectionSplitter()
+    sections = splitter.split(text)
+    references_text = splitter.get_references_text(sections)
+    body_text = splitter.get_body_text_without_references(sections)
+
+    analysis = analyze_citations(
+        references_text=references_text,
+        body_text=body_text,
+        sections=sections,
+        paper_authors=paper_authors,
+    )
+    local_result = analysis.to_dict()
+
+    # --- Step 2: LLM analysis of top 10 cited references ---
+    top_refs = local_result.get("top_cited", [])[:10]
+    if top_refs:
+        top_refs_text = ""
+        for i, ref in enumerate(top_refs, 1):
+            contexts = ref.get("cite_contexts", [])
+            ctx_str = "; ".join(c.get("sentence", "")[:100] for c in contexts[:3])
+            top_refs_text += (
+                f"{i}. {ref.get('ref_id', '')} {ref.get('authors', '')} "
+                f"({ref.get('year', '?')}): \"{ref.get('title', '')}\" "
+                f"[{ref.get('journal', '')}] — 인용 {ref.get('cite_count', 0)}회\n"
+                f"   인용 맥락: {ctx_str}\n\n"
+            )
+
+        llm_prompt = f"""너는 Sasoo(사수)라는 AI Co-Scientist야. 이 논문의 인용/참고문헌 분석을 해줘.
+
+모든 텍스트 내용은 반드시 한국어로 작성해. JSON key 이름만 영어로 유지해.
+
+이 논문의 총 참고문헌 수: {local_result.get('total_references', 0)}
+인용 스타일: {local_result.get('citation_style', 'numbered')}
+셀프 인용: {local_result.get('self_citation_count', 0)}건 (비율: {local_result.get('self_citation_ratio', 0):.1%})
+
+가장 많이 인용된 상위 10개 참고문헌과 인용 맥락:
+{top_refs_text}
+
+위 데이터를 분석하여 각 참고문헌의 인용 역할을 분류하고,
+이 논문이 선행연구를 어떻게 활용하고 있는지 평가해줘.
+
+Return ONLY valid JSON (마크다운 펜스 없이):
+{{
+  "ref_analyses": [
+    {{
+      "ref_id": "[1]",
+      "citation_role": "foundational|methodological|comparative|supporting|contrasting",
+      "why_cited": "이 참고문헌이 왜 자주 인용되었는지 2-3문장 설명 (한국어)"
+    }}
+  ],
+  "summary": "전체 인용 패턴에 대한 종합 평가 2-3문장 (한국어). 어떤 선행연구에 가장 많이 의존하는지, 인용이 공정한지 등.",
+  "citation_balance": "balanced|heavily_reliant|self_citation_heavy|diverse",
+  "key_influences": ["가장 영향을 많이 준 연구 그룹/논문 1-3개 (한국어)"]
+}}
+
+논문 초반 텍스트 (맥락용):
+{text[:3000]}
+"""
+
+        try:
+            result = await _call_gemini(llm_prompt)
+            cleaned_text = _clean_llm_json(result["text"])
+
+            try:
+                llm_data = json.loads(cleaned_text)
+            except json.JSONDecodeError:
+                llm_data = {}
+
+            # Merge LLM analysis into local_result
+            ref_analyses = llm_data.get("ref_analyses", [])
+            for ra in ref_analyses:
+                ref_id = ra.get("ref_id", "")
+                for tc in local_result.get("top_cited", []):
+                    if tc.get("ref_id") == ref_id:
+                        tc["citation_role"] = ra.get("citation_role", "")
+                        tc["why_cited"] = ra.get("why_cited", "")
+                        break
+
+            local_result["summary"] = llm_data.get("summary", "")
+            local_result["citation_balance"] = llm_data.get("citation_balance", "")
+            local_result["key_influences"] = llm_data.get("key_influences", [])
+
+            cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
+
+            phase_status.model_used = result["model"]
+            phase_status.tokens_in = result["tokens_in"]
+            phase_status.tokens_out = result["tokens_out"]
+            phase_status.cost_usd = cost
+            status.total_cost_usd += cost
+            status.total_tokens_in += result["tokens_in"]
+            status.total_tokens_out += result["tokens_out"]
+
+        except Exception as exc:
+            logger.warning("Citation LLM analysis failed: %s. Using local results only.", exc)
+            local_result["summary"] = f"LLM 분석 실패 ({exc}). 로컬 파싱 결과만 제공됩니다."
+            cost = 0.0
+
+    else:
+        local_result["summary"] = "참고문헌이 파싱되지 않았거나 본문에서 인용을 찾을 수 없습니다."
+        cost = 0.0
+
+    # Store result in DB
+    result_json = json.dumps(local_result, ensure_ascii=False)
+    await execute_insert(
+        """INSERT INTO analysis_results (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (paper_id, "citation", result_json,
+         phase_status.model_used or "local",
+         phase_status.tokens_in or 0,
+         phase_status.tokens_out or 0,
+         cost),
+    )
+
+    phase_status.status = "completed"
+    phase_status.completed_at = datetime.utcnow().isoformat()
+    status.progress_pct = max(status.progress_pct, 16.0)
+
+    return {"text": result_json, "model": phase_status.model_used or "local",
+            "tokens_in": phase_status.tokens_in or 0, "tokens_out": phase_status.tokens_out or 0}
+
+
 async def _run_visual(paper_id: int, text: str, folder_name: str, status: AnalysisStatus) -> dict:
-    """Phase 2: Visual verification - analyze figures, assess quality."""
+    """Phase 3: Visual verification - analyze figures, assess quality."""
     phase_status = PhaseStatus(
         phase=AnalysisPhase.VISUAL,
         status="running",
@@ -208,7 +343,7 @@ Return ONLY valid JSON (마크다운 펜스 없이):
     phase_status.tokens_in = result["tokens_in"]
     phase_status.tokens_out = result["tokens_out"]
     phase_status.cost_usd = cost
-    status.progress_pct = max(status.progress_pct, 40.0)
+    status.progress_pct = max(status.progress_pct, 32.0)
     status.total_cost_usd += cost
     status.total_tokens_in += result["tokens_in"]
     status.total_tokens_out += result["tokens_out"]
@@ -400,7 +535,7 @@ Return ONLY valid JSON (마크다운 펜스 없이, 설명 없이):
     phase_status.tokens_in = result["tokens_in"]
     phase_status.tokens_out = result["tokens_out"]
     phase_status.cost_usd = cost
-    status.progress_pct = max(status.progress_pct, 60.0)
+    status.progress_pct = max(status.progress_pct, 48.0)
     status.total_cost_usd += cost
     status.total_tokens_in += result["tokens_in"]
     status.total_tokens_out += result["tokens_out"]
@@ -476,8 +611,8 @@ Return ONLY valid JSON (마크다운 펜스 없이):
     phase_status.tokens_in = result["tokens_in"]
     phase_status.tokens_out = result["tokens_out"]
     phase_status.cost_usd = cost
-    # 80% — visualization step still needs to run after deep_dive
-    status.progress_pct = max(status.progress_pct, 80.0)
+    # 64% — visualization step still needs to run after deep_dive
+    status.progress_pct = max(status.progress_pct, 64.0)
     status.total_cost_usd += cost
     status.total_tokens_in += result["tokens_in"]
     status.total_tokens_out += result["tokens_out"]
@@ -887,11 +1022,27 @@ async def _run_full_analysis(paper_id: int):
             await execute_update("UPDATE papers SET status = ? WHERE id = ?", ("cancelled", paper_id))
             return
 
-        # Phase 1 + 2: Run Screening and Visual in parallel (independent)
-        r1, r2 = await asyncio.gather(
-            _run_screening(paper_id, full_text, status),
-            _run_visual(paper_id, full_text, folder_name, status),
-        )
+        # Phase 1: Screening
+        r1 = await _run_screening(paper_id, full_text, status)
+
+        # Check for cancellation
+        if cancel_event.is_set():
+            status.overall_status = "cancelled"
+            await execute_update("UPDATE papers SET status = ? WHERE id = ?", ("cancelled", paper_id))
+            return
+
+        # Phase 2: Citation Analysis (after screening, before visual)
+        paper_authors = paper.get("authors", "") or ""
+        r_cit = await _run_citation(paper_id, full_text, paper_authors, status)
+
+        # Check for cancellation
+        if cancel_event.is_set():
+            status.overall_status = "cancelled"
+            await execute_update("UPDATE papers SET status = ? WHERE id = ?", ("cancelled", paper_id))
+            return
+
+        # Phase 3: Visual Verification (independent of citation)
+        r2 = await _run_visual(paper_id, full_text, folder_name, status)
 
         # Check for cancellation
         if cancel_event.is_set():
@@ -903,10 +1054,12 @@ async def _run_full_analysis(paper_id: int):
         previous = []
         if r1.get("text") and not _is_error_result(r1["text"]):
             previous.append(r1["text"])
+        if r_cit.get("text") and not _is_error_result(r_cit["text"]):
+            previous.append(r_cit["text"])
         if r2.get("text") and not _is_error_result(r2["text"]):
             previous.append(r2["text"])
 
-        # Phase 3: Recipe Extraction (depends on text only)
+        # Phase 4: Recipe Extraction (depends on text only)
         r3 = await _run_recipe(paper_id, full_text, status)
 
         # Check for cancellation
@@ -930,11 +1083,13 @@ async def _run_full_analysis(paper_id: int):
         if r4.get("text") and not _is_error_result(r4["text"]):
             previous.append(r4["text"])
 
-        # Phase 5: Visualization Planning & Generation (Gemini Pro 3)
+        # Phase 6: Visualization Planning & Generation (Gemini Pro 3)
         # Gemini Pro 3 decides up to 5 visualizations, each Mermaid or PaperBanana
         all_results = []
         if r1.get("text") and not _is_error_result(r1["text"]):
             all_results.append(r1["text"])
+        if r_cit.get("text") and not _is_error_result(r_cit["text"]):
+            all_results.append(r_cit["text"])
         if r2.get("text") and not _is_error_result(r2["text"]):
             all_results.append(r2["text"])
         if r3.get("text") and not _is_error_result(r3["text"]):
@@ -1115,7 +1270,7 @@ async def get_analysis_status(paper_id: int):
     total_in = 0
     total_out = 0
 
-    phase_order = ["screening", "visual", "recipe", "deep_dive"]
+    phase_order = ["screening", "citation", "visual", "recipe", "deep_dive"]
     completed_phases = {r["phase"] for r in results}
 
     for phase_name in phase_order:
@@ -1144,9 +1299,9 @@ async def get_analysis_status(paper_id: int):
     has_viz = "visualization" in completed_phases or "viz_plan" in completed_phases
     completed_main = len(completed_phases & set(phase_order))
     if has_viz:
-        progress = (completed_main / 4) * 80 + 20  # 80% for phases + 20% for viz
+        progress = (completed_main / 5) * 80 + 20  # 80% for 5 phases + 20% for viz
     else:
-        progress = (completed_main / 4) * 80  # Max 80% without viz
+        progress = (completed_main / 5) * 80  # Max 80% without viz
     progress = min(progress, 100.0)
 
     return AnalysisStatus(
@@ -1178,6 +1333,7 @@ async def get_analysis_results(paper_id: int):
     # Parse results by phase
     phase_data: dict[str, Optional[dict]] = {
         "screening": None,
+        "citation": None,
         "visual": None,
         "recipe": None,
         "deep_dive": None,
@@ -1195,6 +1351,7 @@ async def get_analysis_results(paper_id: int):
         paper_id=paper_id,
         status=status,
         screening=phase_data["screening"],
+        citation=phase_data["citation"],
         visual=phase_data["visual"],
         recipe=phase_data["recipe"],
         deep_dive=phase_data["deep_dive"],
@@ -1392,9 +1549,10 @@ async def get_report(paper_id: int):
 
     phase_titles = {
         "screening": "Phase 1: Screening",
-        "visual": "Phase 2: Visual Verification",
-        "recipe": "Phase 3: Recipe Extraction",
-        "deep_dive": "Phase 4: Deep Dive Analysis",
+        "citation": "Phase 2: Citation Analysis",
+        "visual": "Phase 3: Visual Verification",
+        "recipe": "Phase 4: Recipe Extraction",
+        "deep_dive": "Phase 5: Deep Dive Analysis",
     }
 
     for r in results:

@@ -463,6 +463,46 @@ class SectionSplitter:
                 return sections[name]
         return ""
 
+    def get_references_text(self, sections: dict[str, str]) -> str:
+        """
+        Get References section text for citation parsing.
+
+        Args:
+            sections: Dictionary of section_name -> text
+
+        Returns:
+            References section text, or empty string if not found
+        """
+        return self._get_section(sections, [SectionType.REFERENCES.value])
+
+    def get_body_text_without_references(self, sections: dict[str, str]) -> str:
+        """
+        Get all body text excluding the References section.
+
+        Args:
+            sections: Dictionary of section_name -> text
+
+        Returns:
+            Combined body text without references
+        """
+        parts = []
+        for section_name, text in sections.items():
+            if section_name != SectionType.REFERENCES.value and section_name != "full_text":
+                parts.append(text)
+
+        if not parts:
+            # Fallback: use full_text and try to cut before references
+            full = sections.get("full_text", "")
+            if full:
+                lower = full.lower()
+                for marker in ["references", "bibliography", "citations"]:
+                    idx = lower.rfind(marker)
+                    if idx > len(full) * 0.5:  # Only if in latter half
+                        return full[:idx]
+            return full
+
+        return "\n\n".join(parts)
+
     def get_section_statistics(self, sections: dict[str, str]) -> dict[str, int]:
         """
         Get word count statistics for each section.

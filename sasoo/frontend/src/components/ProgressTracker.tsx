@@ -1,5 +1,6 @@
 import {
   FileSearch,
+  BookOpen,
   ImageIcon,
   FlaskConical,
   GitBranch,
@@ -34,20 +35,25 @@ const PHASE_META: Record<AnalysisPhase, {
     label: S.progressTracker.phase1,
     description: S.progressTracker.phase1Desc,
   },
-  visual: {
-    icon: ImageIcon,
+  citation: {
+    icon: BookOpen,
     label: S.progressTracker.phase2,
     description: S.progressTracker.phase2Desc,
   },
-  recipe: {
-    icon: FlaskConical,
+  visual: {
+    icon: ImageIcon,
     label: S.progressTracker.phase3,
     description: S.progressTracker.phase3Desc,
   },
-  deep_dive: {
-    icon: GitBranch,
+  recipe: {
+    icon: FlaskConical,
     label: S.progressTracker.phase4,
     description: S.progressTracker.phase4Desc,
+  },
+  deep_dive: {
+    icon: GitBranch,
+    label: S.progressTracker.phase5,
+    description: S.progressTracker.phase5Desc,
   },
 };
 

@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   FileSearch,
+  BookOpen,
   ImageIcon,
   FlaskConical,
   GitBranch,
@@ -64,23 +65,29 @@ const PHASE_META: Record<string, {
     description: S.analysis.phase1Desc,
     number: 1,
   },
-  visual: {
-    icon: ImageIcon,
+  citation: {
+    icon: BookOpen,
     label: S.analysis.phase2,
     description: S.analysis.phase2Desc,
     number: 2,
   },
-  recipe: {
-    icon: FlaskConical,
+  visual: {
+    icon: ImageIcon,
     label: S.analysis.phase3,
     description: S.analysis.phase3Desc,
     number: 3,
   },
-  deep_dive: {
-    icon: GitBranch,
+  recipe: {
+    icon: FlaskConical,
     label: S.analysis.phase4,
     description: S.analysis.phase4Desc,
     number: 4,
+  },
+  deep_dive: {
+    icon: GitBranch,
+    label: S.analysis.phase5,
+    description: S.analysis.phase5Desc,
+    number: 5,
   },
 };
 
@@ -404,6 +411,48 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
     if (topics?.length) {
       lines.push(`\n**${md.keyTopics}:**`);
       topics.forEach(t => lines.push(`- ${t}`));
+    }
+  } else if (phase === 'citation') {
+    if (data.summary) lines.push(`${data.summary}\n`);
+    if (data.total_references != null) lines.push(`**참고문헌 수:** ${data.total_references}`);
+    if (data.citation_style) lines.push(`**인용 스타일:** ${data.citation_style}`);
+    if (data.self_citation_count != null) {
+      const ratio = data.self_citation_ratio != null ? ` (${(Number(data.self_citation_ratio) * 100).toFixed(1)}%)` : '';
+      lines.push(`**자기 인용:** ${data.self_citation_count}건${ratio}`);
+    }
+    const topCited = data.top_cited as Array<Record<string, unknown>> | undefined;
+    if (topCited?.length) {
+      lines.push(`\n#### 가장 많이 인용된 참고문헌\n`);
+      lines.push('| # | Ref | 저자 | 연도 | 인용 수 | 역할 |');
+      lines.push('|---|-----|------|------|---------|------|');
+      topCited.slice(0, 10).forEach((ref, i) => {
+        const refId = String(ref.ref_id || '');
+        const authors = String(ref.authors || '').slice(0, 30);
+        const year = ref.year != null ? String(ref.year) : '';
+        const count = ref.cite_count != null ? String(ref.cite_count) : '0';
+        const role = String(ref.citation_role || '');
+        lines.push(`| ${i + 1} | ${refId} | ${authors} | ${year} | ${count} | ${role} |`);
+      });
+      lines.push('');
+      // Why cited
+      const hasWhy = topCited.slice(0, 10).some(r => r.why_cited);
+      if (hasWhy) {
+        lines.push('#### 인용 역할 분석\n');
+        topCited.slice(0, 10).forEach(ref => {
+          if (ref.why_cited) {
+            lines.push(`- **${ref.ref_id}**: ${ref.why_cited}`);
+          }
+        });
+        lines.push('');
+      }
+    }
+    const dist = data.citation_distribution as Record<string, number> | undefined;
+    if (dist && Object.keys(dist).length > 0) {
+      lines.push('#### 섹션별 인용 분포\n');
+      Object.entries(dist)
+        .sort(([, a], [, b]) => (b as number) - (a as number))
+        .forEach(([sec, count]) => lines.push(`- **${sec}**: ${count}건`));
+      lines.push('');
     }
   } else if (phase === 'visual') {
     if (data.quality_summary) lines.push(`${data.quality_summary}\n`);
@@ -748,7 +797,15 @@ export default function AnalysisPanel({
         defaultExpanded={true}
       />
 
-      {/* Phase 2: Visual */}
+      {/* Phase 2: Citation Analysis */}
+      <PhaseSection
+        phaseName="citation"
+        phaseStatus={getPhaseStatus('citation')}
+        content={getPhaseContent('citation')}
+        defaultExpanded={getPhaseStatus('citation') === 'completed'}
+      />
+
+      {/* Phase 3: Visual */}
       <PhaseSection
         phaseName="visual"
         phaseStatus={getPhaseStatus('visual')}
@@ -762,7 +819,7 @@ export default function AnalysisPanel({
         />
       </PhaseSection>
 
-      {/* Phase 3: Recipe (rendered by RecipeCard, no markdown content) */}
+      {/* Phase 4: Recipe (rendered by RecipeCard, no markdown content) */}
       <PhaseSection
         phaseName="recipe"
         phaseStatus={getPhaseStatus('recipe')}
@@ -775,7 +832,7 @@ export default function AnalysisPanel({
         />
       </PhaseSection>
 
-      {/* Phase 4: Deep Dive + Visualizations */}
+      {/* Phase 5: Deep Dive + Visualizations */}
       <PhaseSection
         phaseName="deep_dive"
         phaseStatus={getPhaseStatus('deep_dive')}

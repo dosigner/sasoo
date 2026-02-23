@@ -468,7 +468,7 @@ class AnalysisPipeline:
             if figure_paths:
                 response = await self._gemini.generate_multimodal(
                     prompt=input_text,
-                    image_paths=figure_paths[:10],  # Limit to 10 figures
+                    image_paths=figure_paths[:20],  # Limit to 20 figures (Nature/Cell Extended Data support)
                     model=model,
                     system_prompt=system_prompt,
                     temperature=0.4,
