@@ -50,7 +50,11 @@ jobs:
           pip install pyinstaller
 
       # ── Node dependencies ────────────────────────
-      - run: pnpm install --frozen-lockfile
+      - name: Install root dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: sasoo/frontend
 
       # ── Build ────────────────────────────────────
       - name: Build (${{ runner.os }})
