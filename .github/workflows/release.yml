@@ -11,6 +11,7 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -50,11 +51,8 @@ jobs:
           pip install pyinstaller
 
       # ── Node dependencies ────────────────────────
-      - name: Install root dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
-        working-directory: sasoo/frontend
+      - name: Install dependencies
+        run: pnpm install
 
       # ── Build ────────────────────────────────────
       - name: Build (${{ runner.os }})
