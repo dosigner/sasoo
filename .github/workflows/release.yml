@@ -15,12 +15,13 @@ jobs:
         include:
           - os: windows-latest
             build_cmd: build:win
-            artifact_glob: "dist/*.exe"
           - os: macos-latest  # Apple Silicon (arm64)
             build_cmd: build:mac
-            artifact_glob: "dist/*.{dmg,zip}"
 
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: sasoo
 
     steps:
       - uses: actions/checkout@v4
@@ -34,14 +35,14 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
+          cache-dependency-path: sasoo/pnpm-lock.yaml
 
       # ── Python ───────────────────────────────────
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: sasoo/backend/requirements.txt
 
       - name: Install Python dependencies
         run: |
@@ -61,9 +62,9 @@ jobs:
         with:
           name: sasoo-${{ runner.os }}
           path: |
-            dist/*.exe
-            dist/*.dmg
-            dist/*.zip
+            sasoo/dist/*.exe
+            sasoo/dist/*.dmg
+            sasoo/dist/*.zip
           if-no-files-found: error
 
   release:
