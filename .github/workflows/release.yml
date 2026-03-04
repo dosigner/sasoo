@@ -52,7 +52,9 @@ jobs:
 
       # ── Node dependencies ────────────────────────
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
+        env:
+          npm_config_frozen_lockfile: "false"
 
       # ── Build ────────────────────────────────────
       - name: Build (${{ runner.os }})
