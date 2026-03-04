@@ -8,8 +8,12 @@
 
 ### 논문을 같이 읽어주는 AI 연구실 동료
 
-<a href="https://github.com/dosigner/sasoo/releases/tag/v0.5.1">
-<img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download-Sasoo_v0.5.1_(Windows)-blue?style=for-the-badge&logo=windows&logoColor=white" alt="Download Sasoo" />
+<a href="https://github.com/dosigner/sasoo/releases/tag/v0.5.2">
+<img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
+</a>
+&nbsp;
+<a href="https://github.com/dosigner/sasoo/releases/tag/v0.5.2">
+<img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download-macOS_(Apple_Silicon)-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS" />
 </a>
 
 <br/>
@@ -21,7 +25,7 @@ PDF 던져주면 4단계로 쪼개서 분석하고, 레시피 카드까지 뽑�
 <br/>
 
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.5.1-brightgreen?style=flat-square)](https://github.com/dosigner/sasoo/releases/tag/v0.5.1)
+[![Version](https://img.shields.io/badge/version-0.5.2-brightgreen?style=flat-square)](https://github.com/dosigner/sasoo/releases/tag/v0.5.2)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![Node](https://img.shields.io/badge/node-18%2B-339933?style=flat-square&logo=node.js&logoColor=white)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)]()
@@ -369,20 +373,30 @@ graph TB
 
 <table>
 <tr>
-<td align="center" width="400">
+<td align="center" width="300">
 <br/>
 <h3>🪟 Windows</h3>
-<a href="https://github.com/dosigner/sasoo/releases/tag/v0.5.1">
-<img src="https://img.shields.io/badge/Sasoo_Setup_0.5.1.exe-Download-2ea44f?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
+<a href="https://github.com/dosigner/sasoo/releases/tag/v0.5.2">
+<img src="https://img.shields.io/badge/Sasoo_Setup_0.5.2.exe-Download-2ea44f?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
 </a>
 <br/><br/>
-<sub>Windows 10/11 · 약 144MB · NSIS 인스톨러</sub>
+<sub>Windows 10/11 · NSIS 인스톨러</sub>
+<br/><br/>
+</td>
+<td align="center" width="300">
+<br/>
+<h3>🍎 macOS</h3>
+<a href="https://github.com/dosigner/sasoo/releases/tag/v0.5.2">
+<img src="https://img.shields.io/badge/Sasoo_0.5.2.dmg-Download-2ea44f?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS" />
+</a>
+<br/><br/>
+<sub>macOS (Apple Silicon) · DMG</sub>
 <br/><br/>
 </td>
 </tr>
 </table>
 
-<sub>macOS / Linux 빌드는 <a href="#-빌드--배포">빌드 & 배포</a> 섹션 참고</sub>
+<sub>Linux 빌드는 <a href="#-빌드--배포">빌드 & 배포</a> 섹션 참고</sub>
 
 </div>
 
