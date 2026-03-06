@@ -11,8 +11,11 @@ PRICING: dict[str, dict[str, float]] = {
     "gemini-3-flash-preview": {"input": 0.25, "output": 1.50},
     "gemini-3.1-pro-preview": {"input": 2.00, "output": 12.00},
     "gemini-3-pro-image-preview": {"input": 2.00, "output": 12.00},
+    "gemini-3.1-flash-lite-preview": {"input": 0.02, "output": 0.30},
+    "gemini-3.1-flash-image-preview": {"input": 0.10, "output": 0.40},
 
-    # Gemini 2.0 models
+    # Gemini 2.x models
+    "gemini-2.5-flash-preview-05-20": {"input": 0.15, "output": 0.60},
     "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
 
     # Claude models

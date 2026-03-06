@@ -145,6 +145,18 @@ CREATE INDEX IF NOT EXISTS idx_analysis_phase ON analysis_results(phase);
 CREATE INDEX IF NOT EXISTS idx_analysis_created_at ON analysis_results(created_at);
 CREATE INDEX IF NOT EXISTS idx_analysis_cost ON analysis_results(cost_usd);
 CREATE INDEX IF NOT EXISTS idx_figures_paper_id ON figures(paper_id);
+
+CREATE TABLE IF NOT EXISTS experiment_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    paper_id INTEGER REFERENCES papers(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    model_used TEXT,
+    tokens_in INTEGER,
+    tokens_out INTEGER,
+    cost_usd REAL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_experiment_plans_paper_id ON experiment_plans(paper_id);
 """
 
 # ---------------------------------------------------------------------------

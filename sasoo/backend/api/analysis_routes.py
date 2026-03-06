@@ -17,7 +17,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,8 @@ from api.analysis_helpers import (
     _call_anthropic,
     _clean_llm_json,
     _is_error_result,
+    _get_gemini_client,
+    _SYSTEM_INSTRUCTION_KO,
 )
 from api.report_service import (
     _format_phase_data,
@@ -104,7 +107,7 @@ Return ONLY valid JSON (마크다운 펜스 없이):
 {text[:8000]}
 """
 
-    result = await _call_gemini(prompt)
+    result = await _call_gemini(prompt, model="gemini-3.1-flash-lite-preview")
     # Clean markdown fences from JSON response
     cleaned_text = _clean_llm_json(result["text"])
 
@@ -253,7 +256,7 @@ Return ONLY valid JSON (마크다운 펜스 없이):
             cost = 0.0
 
     else:
-        local_result["summary"] = "참고문헌이 파싱되지 않았거나 본문에서 인용을 찾을 수 없습니다."
+        local_result["summary"] = ""
         cost = 0.0
 
     # Store result in DB
@@ -1666,4 +1669,302 @@ async def generate_paperbanana(paper_id: int, request: PaperBananaRequest):
         image_url=image_url,
         width=width,
         height=height,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Experiment Planner
+# ---------------------------------------------------------------------------
+
+@router.post("/{paper_id}/experiment-plan")
+async def generate_experiment_plan(paper_id: int):
+    """Generate an experiment reproduction guide from the Recipe Card."""
+    try:
+        return await _generate_experiment_plan_impl(paper_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Experiment plan generation failed for paper %s", paper_id)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+async def _generate_experiment_plan_impl(paper_id: int):
+    from services.agents import get_agent_for_domain
+    from services.pricing import calc_cost
+
+    # 1. Load paper info
+    paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
+    if not paper:
+        raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
+
+    # 2. Load recipe result (Phase 3 must be complete)
+    recipe_row = await fetch_one(
+        "SELECT result FROM analysis_results WHERE paper_id = ? AND phase = 'recipe' ORDER BY created_at DESC LIMIT 1",
+        (paper_id,),
+    )
+    if not recipe_row:
+        raise HTTPException(
+            status_code=400,
+            detail="Recipe not found. Run analysis first (Phase 3 required).",
+        )
+
+    recipe_text = recipe_row["result"]
+
+    # 3. Load visual result for [MISSING] context
+    visual_row = await fetch_one(
+        "SELECT result FROM analysis_results WHERE paper_id = ? AND phase = 'visual' ORDER BY created_at DESC LIMIT 1",
+        (paper_id,),
+    )
+    visual_context = ""
+    if visual_row:
+        visual_context = f"\n\n시각 검증 결과:\n{visual_row['result'][:2000]}"
+
+    # 4. Get agent persona
+    agent = get_agent_for_domain(paper["domain"] or "general")
+    agent_persona = f"너는 {agent.profile.display_name_ko}({agent.profile.display_name}) 에이전트야. 성격: {agent.profile.personality}."
+
+    # 5. Build prompt
+    prompt = f"""{agent_persona}
+
+너는 Sasoo(사수)라는 AI Co-Scientist의 실험 계획 도우미야.
+아래 Recipe Card를 기반으로, 이 실험을 **재현하기 위한 실험 계획서**를 작성해줘.
+
+모든 내용은 한국어로 작성해. JSON key만 영어로 유지.
+
+Recipe Card:
+{recipe_text[:8000]}
+{visual_context}
+
+Return ONLY valid JSON (마크다운 펜스 없이):
+{{
+  "title": "실험 계획서 제목 (논문 기반)",
+  "objective": "이 실험의 목표 (1-2문장)",
+  "equipment_checklist": [
+    {{"name": "장비명", "specification": "필요 사양", "essential": true/false}}
+  ],
+  "materials_checklist": [
+    {{"name": "재료/시약명", "purity": "순도 (있으면)", "supplier": "공급처 (있으면)", "quantity": "필요량", "essential": true/false}}
+  ],
+  "procedure_steps": [
+    {{"step": 1, "title": "단계 제목", "description": "구체적 절차 설명", "duration": "예상 소요 시간", "critical_params": ["핵심 파라미터1", "파라미터2"]}}
+  ],
+  "warnings": [
+    {{"type": "missing_param | safety | calibration | environment", "severity": "high | medium | low", "message": "구체적 경고 메시지"}}
+  ],
+  "estimated_total_time": "전체 예상 소요 시간",
+  "estimated_difficulty": "easy | moderate | hard",
+  "mentor_comments": [
+    "사수로서의 실전 팁이나 주의사항 (에이전트 성격 반영)"
+  ]
+}}
+"""
+
+    result = await _call_gemini(prompt)
+    cleaned_text = _clean_llm_json(result["text"])
+
+    # Validate JSON
+    try:
+        json.loads(cleaned_text)
+        result["text"] = cleaned_text
+    except json.JSONDecodeError as exc:
+        logger.warning("Experiment plan JSON validation failed: %s", exc)
+        result["text"] = json.dumps({"_raw": cleaned_text, "_parse_error": str(exc)})
+
+    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
+
+    # 6. Save to DB
+    plan_id = await execute_insert(
+        """INSERT INTO experiment_plans (paper_id, content, model_used, tokens_in, tokens_out, cost_usd)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (paper_id, result["text"], result["model"],
+         result["tokens_in"], result["tokens_out"], cost),
+    )
+
+    return {
+        "id": plan_id,
+        "paper_id": paper_id,
+        "content": json.loads(result["text"]) if result["text"].strip().startswith("{") else {"raw": result["text"]},
+        "model_used": result["model"],
+        "tokens_in": result["tokens_in"],
+        "tokens_out": result["tokens_out"],
+        "cost_usd": cost,
+    }
+
+
+@router.get("/{paper_id}/experiment-plan")
+async def get_experiment_plan(paper_id: int):
+    """Get the most recent experiment plan for a paper."""
+    row = await fetch_one(
+        "SELECT * FROM experiment_plans WHERE paper_id = ? ORDER BY created_at DESC LIMIT 1",
+        (paper_id,),
+    )
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No experiment plan found for paper {paper_id}. Generate one first.",
+        )
+
+    try:
+        content = json.loads(row["content"])
+    except (json.JSONDecodeError, TypeError):
+        content = {"raw": row["content"]}
+
+    return {
+        "id": row["id"],
+        "paper_id": row["paper_id"],
+        "content": content,
+        "model_used": row["model_used"],
+        "tokens_in": row["tokens_in"],
+        "tokens_out": row["tokens_out"],
+        "cost_usd": row["cost_usd"],
+        "created_at": row["created_at"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Agent Chat (SSE streaming)
+# ---------------------------------------------------------------------------
+
+_CHAT_MODEL = "gemini-3-flash-preview"
+
+
+@router.post("/{paper_id}/chat")
+async def chat_with_agent(paper_id: int, request: Request):
+    """Stream a chat response from the agent about this paper via SSE."""
+    try:
+        return await _chat_with_agent_impl(paper_id, request)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Chat endpoint failed for paper %s", paper_id)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+async def _chat_with_agent_impl(paper_id: int, request: Request):
+    from services.agents import get_agent_for_domain
+
+    body = await request.json()
+    message = body.get("message", "").strip()
+    history = body.get("history", [])
+
+    if not message:
+        raise HTTPException(status_code=400, detail="Message is required.")
+
+    # 1. Load paper
+    paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
+    if not paper:
+        raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
+
+    # 2. Load analysis results for context (truncated)
+    phases_data: dict[str, str] = {}
+    for phase in ["screening", "visual", "recipe", "deep_dive"]:
+        row = await fetch_one(
+            "SELECT result FROM analysis_results WHERE paper_id = ? AND phase = ? "
+            "ORDER BY created_at DESC LIMIT 1",
+            (paper_id, phase),
+        )
+        if row:
+            phases_data[phase] = row["result"][:3000]
+
+    # 3. Get agent persona
+    agent = get_agent_for_domain(paper["domain"] or "general")
+    agent_persona = (
+        f"너는 {agent.profile.display_name_ko}({agent.profile.display_name}) 에이전트야. "
+        f"성격: {agent.profile.personality}."
+    )
+
+    # 4. Build system prompt
+    paper_info = f"논문: {paper['title']}"
+    if paper.get("authors"):
+        paper_info += f"\n저자: {paper['authors']}"
+    if paper.get("year"):
+        paper_info += f"\n연도: {paper['year']}"
+    if paper.get("journal"):
+        paper_info += f"\n저널: {paper['journal']}"
+
+    phase_labels = {
+        "screening": "스크리닝 결과",
+        "visual": "시각 분석 결과",
+        "recipe": "레시피 추출 결과",
+        "deep_dive": "심층 분석 결과",
+    }
+    context_parts = [paper_info]
+    for phase, label in phase_labels.items():
+        if phase in phases_data:
+            context_parts.append(f"\n--- {label} ---\n{phases_data[phase]}")
+
+    system_prompt = (
+        f"{_SYSTEM_INSTRUCTION_KO}\n\n"
+        f"{agent_persona}\n\n"
+        f"아래는 이 논문의 분석 결과야. 사용자의 질문에 분석 결과를 바탕으로 답변해줘. "
+        f"모르는 내용은 솔직히 모른다고 하고, 추측할 때는 추측임을 밝혀.\n\n"
+        + "\n".join(context_parts)
+    )
+
+    # 5. Build Gemini contents from history
+    from google.genai import types as _gtypes
+
+    contents = []
+    for msg in history[-20:]:  # limit history to last 20 messages
+        role = "user" if msg.get("role") == "user" else "model"
+        contents.append(
+            _gtypes.Content(role=role, parts=[_gtypes.Part.from_text(text=msg.get("content", ""))])
+        )
+    contents.append(
+        _gtypes.Content(role="user", parts=[_gtypes.Part.from_text(text=message)])
+    )
+
+    # 6. Stream via SSE
+    q: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+
+    def _sync_stream():
+        try:
+            client = _get_gemini_client()
+            config = _gtypes.GenerateContentConfig(system_instruction=system_prompt)
+            response_stream = client.models.generate_content_stream(
+                model=_CHAT_MODEL,
+                contents=contents,
+                config=config,
+            )
+            tokens_in = 0
+            tokens_out = 0
+            for chunk in response_stream:
+                text = chunk.text or ""
+                if text:
+                    asyncio.run_coroutine_threadsafe(q.put(("token", text)), loop)
+                usage = getattr(chunk, "usage_metadata", None)
+                if usage:
+                    t_in = getattr(usage, "prompt_token_count", 0)
+                    t_out = getattr(usage, "candidates_token_count", 0)
+                    if t_in:
+                        tokens_in = t_in
+                    if t_out:
+                        tokens_out = t_out
+            asyncio.run_coroutine_threadsafe(
+                q.put(("done", {"tokens_in": tokens_in, "tokens_out": tokens_out})), loop
+            )
+        except Exception as exc:
+            logger.error("Chat stream error: %s", exc)
+            asyncio.run_coroutine_threadsafe(q.put(("error", str(exc))), loop)
+
+    loop.run_in_executor(None, _sync_stream)
+
+    async def event_generator():
+        while True:
+            msg_type, data = await q.get()
+            if msg_type == "token":
+                yield f"data: {json.dumps({'type': 'token', 'content': data}, ensure_ascii=False)}\n\n"
+            elif msg_type == "done":
+                cost = calc_cost(_CHAT_MODEL, data["tokens_in"], data["tokens_out"])
+                yield f"data: {json.dumps({'type': 'done', 'tokens_in': data['tokens_in'], 'tokens_out': data['tokens_out'], 'cost_usd': cost}, ensure_ascii=False)}\n\n"
+                break
+            elif msg_type == "error":
+                yield f"data: {json.dumps({'type': 'error', 'message': data}, ensure_ascii=False)}\n\n"
+                break
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

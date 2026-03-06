@@ -339,6 +339,16 @@ async def _run_visual(paper_id: int, text: str, folder_name: str, status: Analys
 모든 텍스트 내용(quality_summary, key_findings_from_visuals 등)은 반드시 한국어로 작성해.
 JSON key 이름만 영어로 유지하고, value는 전부 한국어로 써줘.
 
+추가로, 각 Figure/Table에 대해 아래 **통계적 Red Flag 체크리스트**를 적용해서 의심스러운 항목을 찾아줘:
+1. 오차막대(error bar)가 없는 정량 그래프 → "no_error_bars"
+2. 데이터 포인트 수가 부족해 보이는 경우 (n < 3 또는 반복 실험 미표기) → "insufficient_n"
+3. Y축이 0부터 시작하지 않거나 비균등 간격으로 축 스케일을 조작한 의심 → "axis_manipulation"
+4. Cherry-picking 의심 (대표 데이터만 선별적으로 표시) → "cherry_picking"
+5. 통계적 유의성(p-value, confidence interval) 미언급 → "no_statistical_significance"
+6. Log 스케일 사용으로 차이를 과장한 의심 → "misleading_scale"
+
+Red flag이 하나도 없으면 빈 배열을 반환해.
+
 Return ONLY valid JSON (마크다운 펜스 없이):
 {{
   "figure_count": <int>,
@@ -346,7 +356,15 @@ Return ONLY valid JSON (마크다운 펜스 없이):
   "equations_found": <int>,
   "diagram_types": ["SEM", "TEM", "spectrum", "graph", "photograph", "schematic", ...],
   "quality_summary": "그림 품질에 대한 전체 평가 (한국어)",
-  "key_findings_from_visuals": ["시각자료에서 발견한 핵심 사항1", "핵심 사항2", ...]
+  "key_findings_from_visuals": ["시각자료에서 발견한 핵심 사항1", "핵심 사항2", ...],
+  "statistical_red_flags": [
+    {{
+      "flag_type": "no_error_bars | insufficient_n | axis_manipulation | cherry_picking | no_statistical_significance | misleading_scale",
+      "target": "어떤 Figure/Table에서 발견했는지 (예: Figure 3)",
+      "description": "구체적으로 무엇이 의심되는지 한국어로 설명",
+      "severity": "high | medium | low"
+    }}
+  ]
 }}
 
 논문 텍스트:

@@ -183,7 +183,11 @@ class PaperBananaBridge:
             # NOTE: Settings.google_api_key has alias="GOOGLE_API_KEY" and
             # model_config has extra="ignore" without populate_by_name=True,
             # so we MUST use the alias name in the constructor.
-            settings_kwargs: dict[str, Any] = {"GOOGLE_API_KEY": api_key}
+            settings_kwargs: dict[str, Any] = {
+                "GOOGLE_API_KEY": api_key,
+                "vlm_model": "gemini-3-flash-preview",
+                "image_model": "gemini-3.1-flash-image-preview",
+            }
 
             if _IS_FROZEN and _MEIPASS is not None:
                 meipass_str = str(_MEIPASS)

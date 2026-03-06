@@ -13,6 +13,7 @@ import {
   Loader2,
   Circle,
   AlertCircle,
+  MessageSquare,
 } from 'lucide-react';
 import {
   getStaticUrl,
@@ -30,6 +31,8 @@ import { getAgentMeta, agentBgStyle, agentBorderStyle } from '@/lib/agents';
 import { S } from '@/lib/strings';
 import FigureGallery from './FigureGallery';
 import RecipeCard from './RecipeCard';
+import ExperimentPlanTab from './ExperimentPlanTab';
+import ChatPanel from './ChatPanel';
 const MermaidRenderer = lazy(() => import('./MermaidRenderer'));
 import ProgressTracker from './ProgressTracker';
 
@@ -413,46 +416,51 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
       topics.forEach(t => lines.push(`- ${t}`));
     }
   } else if (phase === 'citation') {
-    if (data.summary) lines.push(`${data.summary}\n`);
-    if (data.total_references != null) lines.push(`**참고문헌 수:** ${data.total_references}`);
-    if (data.citation_style) lines.push(`**인용 스타일:** ${data.citation_style}`);
-    if (data.self_citation_count != null) {
-      const ratio = data.self_citation_ratio != null ? ` (${(Number(data.self_citation_ratio) * 100).toFixed(1)}%)` : '';
-      lines.push(`**자기 인용:** ${data.self_citation_count}건${ratio}`);
-    }
-    const topCited = data.top_cited as Array<Record<string, unknown>> | undefined;
-    if (topCited?.length) {
-      lines.push(`\n#### 가장 많이 인용된 참고문헌\n`);
-      lines.push('| # | Ref | 저자 | 연도 | 인용 수 | 역할 |');
-      lines.push('|---|-----|------|------|---------|------|');
-      topCited.slice(0, 10).forEach((ref, i) => {
-        const refId = String(ref.ref_id || '');
-        const authors = String(ref.authors || '').slice(0, 30);
-        const year = ref.year != null ? String(ref.year) : '';
-        const count = ref.cite_count != null ? String(ref.cite_count) : '0';
-        const role = String(ref.citation_role || '');
-        lines.push(`| ${i + 1} | ${refId} | ${authors} | ${year} | ${count} | ${role} |`);
-      });
-      lines.push('');
-      // Why cited
-      const hasWhy = topCited.slice(0, 10).some(r => r.why_cited);
-      if (hasWhy) {
-        lines.push('#### 인용 역할 분석\n');
-        topCited.slice(0, 10).forEach(ref => {
-          if (ref.why_cited) {
-            lines.push(`- **${ref.ref_id}**: ${ref.why_cited}`);
-          }
+    const totalRefs = Number(data.total_references ?? 0);
+    if (totalRefs === 0) {
+      lines.push('PDF에서 참고문헌 섹션을 찾을 수 없습니다.');
+    } else {
+      if (data.summary) lines.push(`${data.summary}\n`);
+      lines.push(`**참고문헌 수:** ${totalRefs}`);
+      if (data.citation_style) lines.push(`**인용 스타일:** ${data.citation_style}`);
+      if (data.self_citation_count != null) {
+        const ratio = data.self_citation_ratio != null ? ` (${(Number(data.self_citation_ratio) * 100).toFixed(1)}%)` : '';
+        lines.push(`**자기 인용:** ${data.self_citation_count}건${ratio}`);
+      }
+      const topCited = data.top_cited as Array<Record<string, unknown>> | undefined;
+      if (topCited?.length) {
+        lines.push(`\n#### 가장 많이 인용된 참고문헌\n`);
+        lines.push('| # | Ref | 저자 | 연도 | 인용 수 | 역할 |');
+        lines.push('|---|-----|------|------|---------|------|');
+        topCited.slice(0, 10).forEach((ref, i) => {
+          const refId = String(ref.ref_id || '');
+          const authors = String(ref.authors || '').slice(0, 30);
+          const year = ref.year != null ? String(ref.year) : '';
+          const count = ref.cite_count != null ? String(ref.cite_count) : '0';
+          const role = String(ref.citation_role || '');
+          lines.push(`| ${i + 1} | ${refId} | ${authors} | ${year} | ${count} | ${role} |`);
         });
         lines.push('');
+        // Why cited
+        const hasWhy = topCited.slice(0, 10).some(r => r.why_cited);
+        if (hasWhy) {
+          lines.push('#### 인용 역할 분석\n');
+          topCited.slice(0, 10).forEach(ref => {
+            if (ref.why_cited) {
+              lines.push(`- **${ref.ref_id}**: ${ref.why_cited}`);
+            }
+          });
+          lines.push('');
+        }
       }
-    }
-    const dist = data.citation_distribution as Record<string, number> | undefined;
-    if (dist && Object.keys(dist).length > 0) {
-      lines.push('#### 섹션별 인용 분포\n');
-      Object.entries(dist)
-        .sort(([, a], [, b]) => (b as number) - (a as number))
-        .forEach(([sec, count]) => lines.push(`- **${sec}**: ${count}건`));
-      lines.push('');
+      const dist = data.citation_distribution as Record<string, number> | undefined;
+      if (dist && Object.keys(dist).length > 0) {
+        lines.push('#### 섹션별 인용 분포\n');
+        Object.entries(dist)
+          .sort(([, a], [, b]) => (b as number) - (a as number))
+          .forEach(([sec, count]) => lines.push(`- **${sec}**: ${count}건`));
+        lines.push('');
+      }
     }
   } else if (phase === 'visual') {
     if (data.quality_summary) lines.push(`${data.quality_summary}\n`);
@@ -465,6 +473,24 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
     if (findings?.length) {
       lines.push(`\n**${md.keyFindings}:**`);
       findings.forEach(f => lines.push(`- ${f}`));
+    }
+
+    // Statistical Red Flags
+    const redFlags = data.statistical_red_flags as Array<Record<string, string>> | undefined;
+    if (redFlags?.length) {
+      const severityEmoji: Record<string, string> = { high: '🔴', medium: '🟡', low: '🟢' };
+      const severityLabel = md.redFlagSeverity as unknown as Record<string, string>;
+      const flagTypeLabel = md.redFlagTypes as unknown as Record<string, string>;
+      lines.push(`\n---\n\n**${md.statisticalRedFlags}:**\n`);
+      lines.push(`| ${severityEmoji['high']} | 대상 | 유형 | 설명 |`);
+      lines.push('|---|------|------|------|');
+      redFlags.forEach((flag) => {
+        const emoji = severityEmoji[flag.severity] || '🟡';
+        const sLabel = severityLabel?.[flag.severity] || flag.severity;
+        const tLabel = flagTypeLabel?.[flag.flag_type] || flag.flag_type;
+        lines.push(`| ${emoji} ${sLabel} | ${flag.target || '-'} | ${tLabel} | ${flag.description || '-'} |`);
+      });
+      lines.push('');
     }
   } else if (phase === 'recipe') {
     if (data.title) lines.push(`### ${data.title}\n`);
@@ -832,6 +858,25 @@ export default function AnalysisPanel({
         />
       </PhaseSection>
 
+      {/* Experiment Planner (available after Recipe phase) */}
+      {getPhaseStatus('recipe') === 'completed' && paperId && (
+        <div className="border rounded-xl overflow-hidden border-surface-700 bg-surface-800/50">
+          <div className="px-4 py-3 flex items-center gap-3 border-b border-surface-700/50">
+            <FlaskConical className="w-4 h-4 text-emerald-400" />
+            <span className="text-sm font-medium text-surface-200">
+              실험 계획서
+            </span>
+            <span className="badge text-2xs bg-emerald-500/10 text-emerald-400">NEW</span>
+          </div>
+          <div className="px-4 pb-4">
+            <ExperimentPlanTab
+              paperId={paperId}
+              recipeAvailable={getPhaseStatus('recipe') === 'completed'}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Phase 5: Deep Dive + Visualizations */}
       <PhaseSection
         phaseName="deep_dive"
@@ -845,6 +890,22 @@ export default function AnalysisPanel({
           loading={getPhaseStatus('deep_dive') === 'running'}
         />
       </PhaseSection>
+
+      {/* Agent Chat (available after at least screening is completed) */}
+      {getPhaseStatus('screening') === 'completed' && paperId && (
+        <div className="border rounded-xl overflow-hidden border-surface-700 bg-surface-800/50">
+          <div className="px-4 py-3 flex items-center gap-3 border-b border-surface-700/50">
+            <MessageSquare className="w-4 h-4 text-primary-400" />
+            <span className="text-sm font-medium text-surface-200">
+              에이전트 채팅
+            </span>
+            <span className="badge text-2xs bg-primary-500/10 text-primary-400">NEW</span>
+          </div>
+          <div className="px-4 pb-4">
+            <ChatPanel paperId={paperId} agentName={agentName} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

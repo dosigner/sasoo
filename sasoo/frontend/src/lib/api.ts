@@ -464,6 +464,114 @@ export async function generatePaperBanana(
 }
 
 // ---------------------------------------------------------------------------
+// Experiment Planner endpoints
+// ---------------------------------------------------------------------------
+
+export interface ExperimentPlan {
+  id: number;
+  paper_id: number;
+  content: Record<string, unknown>;
+  model_used: string;
+  tokens_in: number;
+  tokens_out: number;
+  cost_usd: number;
+  created_at?: string;
+}
+
+export async function getExperimentPlan(
+  paperId: string
+): Promise<ExperimentPlan> {
+  return request<ExperimentPlan>(`/analysis/${paperId}/experiment-plan`);
+}
+
+export async function generateExperimentPlan(
+  paperId: string
+): Promise<ExperimentPlan> {
+  return request<ExperimentPlan>(`/analysis/${paperId}/experiment-plan`, {
+    method: 'POST',
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Agent Chat (SSE streaming)
+// ---------------------------------------------------------------------------
+
+export interface ChatMessage {
+  role: 'user' | 'agent';
+  content: string;
+}
+
+export interface ChatDoneMeta {
+  tokens_in: number;
+  tokens_out: number;
+  cost_usd: number;
+}
+
+export async function chatWithAgent(
+  paperId: string,
+  message: string,
+  history: ChatMessage[],
+  onToken: (text: string) => void,
+  onDone: (meta: ChatDoneMeta) => void,
+  onError: (error: string) => void,
+): Promise<void> {
+  const url = `${getApiBase()}/analysis/${paperId}/chat`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message,
+      history: history.map((m) => ({
+        role: m.role === 'agent' ? 'model' : 'user',
+        content: m.content,
+      })),
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ detail: 'Chat failed' }));
+    throw new ApiError(response.status, err.detail || 'Chat failed');
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('No response body');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        try {
+          const data = JSON.parse(line.slice(6));
+          if (data.type === 'token') {
+            onToken(data.content);
+          } else if (data.type === 'done') {
+            onDone({
+              tokens_in: data.tokens_in,
+              tokens_out: data.tokens_out,
+              cost_usd: data.cost_usd,
+            });
+          } else if (data.type === 'error') {
+            onError(data.message);
+          }
+        } catch {
+          // ignore SSE parse errors
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Settings endpoints
 // ---------------------------------------------------------------------------
 
