@@ -20,7 +20,8 @@
 
 연구실에 들어왔는데 사수가 없다고?<br/>
 **Sasoo가 네 사수가 되어줄게.**<br/>
-PDF 던져주면 4단계로 쪼개서 분석하고, 레시피 카드까지 뽑아줌.
+PDF 던져주면 4단계로 쪼개서 분석하고, 레시피 카드까지 뽑아줌.<br/>
+궁금한 거 있으면 **에이전트한테 직접 물어봐.** 실험 계획서도 뽑아줌.
 
 <br/>
 
@@ -220,6 +221,25 @@ flowchart LR
 <sub>커스텀 에이전트<br/>생성 · 관리</sub>
 </td>
 </tr>
+<tr>
+<td colspan="13" align="center"><br/><b>분석 완료 후</b></td>
+</tr>
+<tr>
+<td align="center" width="160">
+<h1>💬</h1>
+<h4>7. Chat</h4>
+<sub>에이전트에게<br/>논문 내용 질문</sub>
+</td>
+<td align="center" width="40">
+<h3>+</h3>
+</td>
+<td align="center" width="160">
+<h1>📋</h1>
+<h4>8. Experiment Plan</h4>
+<sub>Recipe Card 기반<br/>실험 재현 가이드</sub>
+</td>
+<td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
 </table>
 </div>
 
@@ -279,6 +299,16 @@ flowchart LR
 <td align="center">🛠️</td>
 <td><b>에이전트 생성</b></td>
 <td><code>.md</code> 기반 커스텀 에이전트 생성 + Gemini AI 자동 생성</td>
+</tr>
+<tr>
+<td align="center">💬</td>
+<td><b>에이전트 채팅</b></td>
+<td>분석 완료 후 에이전트에게 논문 내용 직접 질문 — SSE 실시간 스트리밍</td>
+</tr>
+<tr>
+<td align="center">📋</td>
+<td><b>실험 계획서</b></td>
+<td>Recipe Card 기반 실험 재현 가이드 자동 생성 (재료·장비·프로토콜)</td>
 </tr>
 </table>
 </div>
@@ -899,6 +929,8 @@ sasoo/
 │       │   └── Settings.tsx        # 설정
 │       ├── components/
 │       │   ├── AnalysisPanel.tsx   # 분석 결과 + 에이전트 배지
+│       │   ├── ChatPanel.tsx       # 에이전트 채팅 (SSE 스트리밍)
+│       │   ├── ExperimentPlanTab.tsx # 실험 계획서 탭
 │       │   ├── PdfViewer.tsx       # PDF 뷰어
 │       │   ├── RecipeCard.tsx      # 레시피 카드
 │       │   ├── FigureGallery.tsx   # Figure 갤러리
@@ -1034,6 +1066,8 @@ sasoo/
 - [x] 에이전트 생성 탭 + AI 자동 생성
 - [x] Gemini 3.1 Pro 업그레이드
 - [x] CSS-only UI 애니메이션
+- [x] 에이전트 채팅 (SSE 실시간 스트리밍)
+- [x] 실험 계획서 자동 생성 (Recipe Card 기반)
 - [ ] 논문 간 비교 분석
 - [ ] Zotero 연동
 - [ ] 논문 추천 시스템
@@ -1068,7 +1102,7 @@ sasoo/
 
 <br/>
 
-**Sasoo** — 네 논문, 같이 읽어줄게.
+**Sasoo** — 네 논문, 같이 읽어줄게. 궁금하면 물어봐.
 
 _Built with Gemini 3.1 + Claude Sonnet 4.5_
 
