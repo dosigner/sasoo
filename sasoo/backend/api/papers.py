@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 import fitz  # PyMuPDF
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
@@ -654,16 +655,36 @@ async def get_paper_pdf(paper_id: int):
 
     folder_name = paper["folder_name"]
     paper_dir = get_paper_dir(folder_name)
+
+    if not paper_dir.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Paper directory not found: {paper_dir}",
+        )
+
     pdf_files = list(paper_dir.glob("*.pdf"))
 
     if not pdf_files:
         raise HTTPException(status_code=404, detail="PDF file not found on disk.")
 
     pdf_path = pdf_files[0]
+
+    if not pdf_path.is_file():
+        raise HTTPException(status_code=404, detail="PDF path is not a valid file.")
+
+    # Use RFC 5987 encoding for non-ASCII filenames (e.g. Korean)
+    # to avoid Content-Disposition header encoding errors on macOS
+    ascii_name = pdf_path.name.encode("ascii", errors="replace").decode("ascii")
+    utf8_name = quote(pdf_path.name)
     return FileResponse(
         path=str(pdf_path),
         media_type="application/pdf",
-        headers={"Content-Disposition": f"inline; filename=\"{pdf_path.name}\""},
+        headers={
+            "Content-Disposition": (
+                f"inline; filename=\"{ascii_name}\"; "
+                f"filename*=UTF-8''{utf8_name}"
+            )
+        },
     )
 
 

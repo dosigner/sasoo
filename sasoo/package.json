@@ -23,7 +23,8 @@
     "postinstall": "cd frontend && pnpm install"
   },
   "dependencies": {
-    "electron-store": "^8.2.0"
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.8.3"
   },
   "devDependencies": {
     "@types/node": "^20.11.16",
@@ -80,6 +81,13 @@
         "deb"
       ],
       "category": "Education"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "dosigner",
+        "repo": "sasoo"
+      }
+    ]
   }
 }

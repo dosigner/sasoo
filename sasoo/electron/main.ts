@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { PythonManager } from './python-manager';
 import { BACKEND_PORT, FRONTEND_DEV_URL } from './config';
+import { initAutoUpdater } from './updater';
 
 const isDev = !app.isPackaged;
 
@@ -262,6 +263,11 @@ async function initialize(): Promise<void> {
     pythonManager.setLogForwarder((level: string, message: string) => {
       mainWindow?.webContents.send('backend:log', level, message);
     });
+  }
+
+  // Auto-updater (production only)
+  if (!isDev && mainWindow) {
+    initAutoUpdater(mainWindow);
   }
 }
 

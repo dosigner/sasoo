@@ -69,6 +69,8 @@ jobs:
             sasoo/dist/*.exe
             sasoo/dist/*.dmg
             sasoo/dist/*.zip
+            sasoo/dist/*.yml
+            sasoo/dist/*.yaml
           if-no-files-found: error
 
   release:
@@ -93,3 +95,5 @@ jobs:
             artifacts/*.exe
             artifacts/*.dmg
             artifacts/*.zip
+            artifacts/*.yml
+            artifacts/*.yaml

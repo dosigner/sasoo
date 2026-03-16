@@ -17,6 +17,7 @@ import { fetchAllAgents } from '@/lib/agents';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { ToastProvider } from '@/components/Toast';
 import Titlebar from '@/components/Titlebar';
+import UpdateBanner from '@/components/UpdateBanner';
 
 // Pages
 import UploadPage from '@/pages/Upload';
@@ -125,6 +126,7 @@ function App() {
       <ErrorBoundary>
         <div className="flex flex-col h-screen bg-surface-900 text-surface-200">
       <Titlebar />
+      <UpdateBanner />
       <div className="flex flex-1 min-h-0">
       {/* Sidebar */}
       <aside

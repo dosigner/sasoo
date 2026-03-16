@@ -83,6 +83,11 @@ export interface ElectronAPI {
   closeWindow: () => Promise<void>;
   isMaximized: () => Promise<boolean>;
 
+  // Updater
+  checkForUpdate: () => Promise<{ updateAvailable: boolean }>;
+  downloadUpdate: () => Promise<{ success?: boolean; opened?: boolean; error?: string }>;
+  installUpdate: () => Promise<void>;
+
   // Event listeners
   on: (channel: string, callback: (...args: unknown[]) => void) => () => void;
 }
@@ -111,6 +116,11 @@ const electronAPI: ElectronAPI = {
   closeWindow: () => ipcRenderer.invoke('window:close'),
   isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
 
+  // Updater
+  checkForUpdate: () => ipcRenderer.invoke('updater:check'),
+  downloadUpdate: () => ipcRenderer.invoke('updater:download'),
+  installUpdate: () => ipcRenderer.invoke('updater:install'),
+
   // Event listeners with cleanup
   on: (channel, callback) => {
     const allowedChannels = [
@@ -120,6 +130,8 @@ const electronAPI: ElectronAPI = {
       'backend:status',
       'backend:log',
       'app:update-available',
+      'app:update-progress',
+      'app:update-downloaded',
       'window:maximizeChanged',
     ];
 
