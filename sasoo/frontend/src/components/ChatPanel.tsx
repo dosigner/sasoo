@@ -8,8 +8,16 @@ import {
   Bot,
   Trash2,
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import { chatWithAgent, type ChatMessage, type ChatDoneMeta } from '@/lib/api';
 import { getAgentMeta } from '@/lib/agents';
+
+const REMARK_PLUGINS = [remarkGfm, remarkMath];
+const REHYPE_PLUGINS = [rehypeKatex];
 
 // ---------------------------------------------------------------------------
 // Props
@@ -159,20 +167,33 @@ export default function ChatPanel({ paperId, agentName }: ChatPanelProps) {
               </div>
             )}
             <div
-              className={`max-w-[85%] px-3 py-2 rounded-xl text-xs leading-relaxed whitespace-pre-wrap ${
+              className={`max-w-[85%] px-3 py-2 rounded-xl text-xs leading-relaxed ${
                 msg.role === 'user'
-                  ? 'bg-primary-500/20 text-surface-100 rounded-br-sm'
-                  : 'bg-surface-700/50 text-surface-200 rounded-bl-sm'
+                  ? 'bg-primary-500/20 text-surface-100 rounded-br-sm whitespace-pre-wrap'
+                  : 'bg-surface-700/50 text-surface-200 rounded-bl-sm chat-markdown'
               }`}
             >
-              {msg.content}
-              {msg.role === 'agent' &&
-                streaming &&
-                i === messages.length - 1 && (
-                  <span className="inline-block w-1.5 h-3.5 bg-primary-400 animate-pulse ml-0.5 align-middle" />
-                )}
-              {msg.role === 'agent' && !msg.content && !streaming && (
-                <span className="text-surface-500 italic">응답 없음</span>
+              {msg.role === 'agent' ? (
+                <>
+                  {streaming && i === messages.length - 1 ? (
+                    <span className="whitespace-pre-wrap">{msg.content}</span>
+                  ) : (
+                    <ReactMarkdown
+                      remarkPlugins={REMARK_PLUGINS}
+                      rehypePlugins={REHYPE_PLUGINS}
+                    >
+                      {msg.content}
+                    </ReactMarkdown>
+                  )}
+                  {streaming && i === messages.length - 1 && (
+                    <span className="inline-block w-1.5 h-3.5 bg-primary-400 animate-pulse ml-0.5 align-middle" />
+                  )}
+                  {!msg.content && !streaming && (
+                    <span className="text-surface-500 italic">응답 없음</span>
+                  )}
+                </>
+              ) : (
+                msg.content
               )}
             </div>
             {msg.role === 'user' && (

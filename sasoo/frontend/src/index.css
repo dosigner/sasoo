@@ -488,6 +488,82 @@
     @apply text-surface-300 border-b border-surface-700/50 py-2 pr-4;
   }
 
+  /* ── Chat markdown (agent messages) ── */
+
+  .chat-markdown p {
+    @apply mb-2 last:mb-0;
+  }
+
+  .chat-markdown h1,
+  .chat-markdown h2,
+  .chat-markdown h3 {
+    @apply font-semibold text-surface-100 mt-3 mb-1 first:mt-0;
+  }
+
+  .chat-markdown h1 { @apply text-sm; }
+  .chat-markdown h2 { @apply text-xs; }
+  .chat-markdown h3 { @apply text-xs text-surface-200; }
+
+  .chat-markdown ul {
+    @apply list-disc list-outside ml-4 mb-2 space-y-0.5;
+  }
+
+  .chat-markdown ol {
+    @apply list-decimal list-outside ml-4 mb-2 space-y-0.5;
+  }
+
+  .chat-markdown li > p {
+    @apply mb-0;
+  }
+
+  .chat-markdown strong {
+    @apply text-surface-100 font-semibold;
+  }
+
+  .chat-markdown em {
+    @apply italic text-surface-300;
+  }
+
+  .chat-markdown code {
+    @apply text-[11px] bg-surface-700 text-primary-300 rounded px-1 py-0.5;
+  }
+
+  .chat-markdown pre {
+    @apply bg-surface-800 border border-surface-700 rounded-lg p-2 overflow-x-auto my-2;
+  }
+
+  .chat-markdown pre code {
+    @apply bg-transparent p-0;
+  }
+
+  .chat-markdown blockquote {
+    @apply border-l-2 border-primary-500/50 pl-2 italic text-surface-400 my-2;
+  }
+
+  .chat-markdown table {
+    @apply w-full border-collapse my-2;
+  }
+
+  .chat-markdown th {
+    @apply text-left font-semibold text-surface-200 border-b border-surface-600 pb-1 pr-3 text-xs;
+  }
+
+  .chat-markdown td {
+    @apply text-surface-300 border-b border-surface-700/50 py-1 pr-3;
+  }
+
+  .chat-markdown a {
+    @apply text-primary-400 underline underline-offset-2;
+  }
+
+  .chat-markdown .katex {
+    @apply text-[11px];
+  }
+
+  .chat-markdown .katex-display {
+    @apply my-2 overflow-x-auto;
+  }
+
   /* ── Figure modal: Light theme ── */
 
   .light .figure-modal {
