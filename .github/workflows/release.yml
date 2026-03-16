@@ -58,7 +58,7 @@ jobs:
 
       # ── Build ────────────────────────────────────
       - name: Build (${{ runner.os }})
-        run: pnpm ${{ matrix.build_cmd }}
+        run: pnpm ${{ matrix.build_cmd }} -- --publish never
 
       # ── Upload artifacts ─────────────────────────
       - name: Upload build artifacts
