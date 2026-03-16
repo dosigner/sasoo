@@ -15,9 +15,9 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            build_cmd: build:win
+            builder_flag: --win
           - os: macos-latest  # Apple Silicon (arm64)
-            build_cmd: build:mac
+            builder_flag: --mac
 
     runs-on: ${{ matrix.os }}
     defaults:
@@ -58,7 +58,7 @@ jobs:
 
       # ── Build ────────────────────────────────────
       - name: Build (${{ runner.os }})
-        run: pnpm ${{ matrix.build_cmd }} -- --publish never
+        run: pnpm build:backend && pnpm build:frontend && pnpm build:electron && npx electron-builder ${{ matrix.builder_flag }} --publish never
 
       # ── Upload artifacts ─────────────────────────
       - name: Upload build artifacts
