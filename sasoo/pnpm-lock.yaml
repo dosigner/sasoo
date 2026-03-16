@@ -14,6 +14,9 @@ importers:
       electron-updater:
         specifier: ^6.8.3
         version: 6.8.3
+      fs-extra:
+        specifier: ^10.1.0
+        version: 10.1.0
     devDependencies:
       '@types/node':
         specifier: ^20.11.16
