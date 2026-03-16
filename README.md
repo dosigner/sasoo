@@ -8,11 +8,11 @@
 
 ### 논문을 같이 읽어주는 AI 연구실 동료
 
-<a href="https://github.com/dosigner/sasoo/releases/tag/v0.6.0">
+<a href="https://github.com/dosigner/sasoo/releases/tag/v0.6.2">
 <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
 </a>
 &nbsp;
-<a href="https://github.com/dosigner/sasoo/releases/tag/v0.6.0">
+<a href="https://github.com/dosigner/sasoo/releases/tag/v0.6.2">
 <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download-macOS_(Apple_Silicon)-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS" />
 </a>
 
@@ -26,7 +26,7 @@ PDF 던져주면 4단계로 쪼개서 분석하고, 레시피 카드까지 뽑�
 <br/>
 
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.6.0-brightgreen?style=flat-square)](https://github.com/dosigner/sasoo/releases/tag/v0.6.0)
+[![Version](https://img.shields.io/badge/version-0.6.2-brightgreen?style=flat-square)](https://github.com/dosigner/sasoo/releases/tag/v0.6.2)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![Node](https://img.shields.io/badge/node-18%2B-339933?style=flat-square&logo=node.js&logoColor=white)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)]()
@@ -303,7 +303,7 @@ flowchart LR
 <tr>
 <td align="center">💬</td>
 <td><b>에이전트 채팅</b></td>
-<td>분석 완료 후 에이전트에게 논문 내용 직접 질문 — SSE 실시간 스트리밍</td>
+<td>분석 완료 후 에이전트에게 논문 내용 직접 질문 — SSE 실시간 스트리밍, Markdown·GFM·KaTeX 수식 렌더링</td>
 </tr>
 <tr>
 <td align="center">📋</td>
@@ -406,8 +406,8 @@ graph TB
 <td align="center" width="300">
 <br/>
 <h3>🪟 Windows</h3>
-<a href="https://github.com/dosigner/sasoo/releases/tag/v0.6.0">
-<img src="https://img.shields.io/badge/Sasoo_Setup_0.6.0.exe-Download-2ea44f?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
+<a href="https://github.com/dosigner/sasoo/releases/tag/v0.6.2">
+<img src="https://img.shields.io/badge/Sasoo_Setup_0.6.2.exe-Download-2ea44f?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
 </a>
 <br/><br/>
 <sub>Windows 10/11 · NSIS 인스톨러</sub>
@@ -416,8 +416,8 @@ graph TB
 <td align="center" width="300">
 <br/>
 <h3>🍎 macOS</h3>
-<a href="https://github.com/dosigner/sasoo/releases/tag/v0.6.0">
-<img src="https://img.shields.io/badge/Sasoo_0.6.0.dmg-Download-2ea44f?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS" />
+<a href="https://github.com/dosigner/sasoo/releases/tag/v0.6.2">
+<img src="https://img.shields.io/badge/Sasoo_0.6.2.dmg-Download-2ea44f?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS" />
 </a>
 <br/><br/>
 <sub>macOS (Apple Silicon) · DMG</sub>
@@ -1068,6 +1068,7 @@ sasoo/
 - [x] CSS-only UI 애니메이션
 - [x] 에이전트 채팅 (SSE 실시간 스트리밍)
 - [x] 실험 계획서 자동 생성 (Recipe Card 기반)
+- [x] 채팅 Markdown/GFM/KaTeX 수식 렌더링
 - [ ] 논문 간 비교 분석
 - [ ] Zotero 연동
 - [ ] 논문 추천 시스템
