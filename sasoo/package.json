@@ -43,6 +43,7 @@
     },
     "files": [
       "package.json",
+      "node_modules/**/*",
       "dist-electron",
       "dist-electron/**/*",
       "frontend/dist",

@@ -7,9 +7,11 @@ const INITIAL_DELAY_MS = 5000; // 5 seconds after launch
 const isMac = process.platform === 'darwin';
 
 let mainWin: BrowserWindow | null = null;
+let cleanupBeforeQuit: (() => Promise<void>) | null = null;
 
-export function initAutoUpdater(win: BrowserWindow): void {
+export function initAutoUpdater(win: BrowserWindow, onBeforeQuit?: () => Promise<void>): void {
   mainWin = win;
+  cleanupBeforeQuit = onBeforeQuit ?? null;
 
   // Don't auto-download — let user decide
   autoUpdater.autoDownload = false;
@@ -69,8 +71,17 @@ export function initAutoUpdater(win: BrowserWindow): void {
     }
   });
 
-  ipcMain.handle('updater:install', () => {
-    autoUpdater.quitAndInstall(false, true);
+  ipcMain.handle('updater:install', async () => {
+    // Stop Python backend before quit to prevent NSIS "cannot be closed" error
+    if (cleanupBeforeQuit) {
+      try {
+        await cleanupBeforeQuit();
+      } catch (err) {
+        console.log('[Updater] Cleanup before quit error (continuing):', err);
+      }
+    }
+    // Silent install (isSilent=true) avoids the NSIS "close app manually" dialog
+    autoUpdater.quitAndInstall(true, true);
   });
 
   // --- Scheduled checks -----------------------------------------------------

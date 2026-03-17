@@ -267,7 +267,11 @@ async function initialize(): Promise<void> {
 
   // Auto-updater (production only)
   if (!isDev && mainWindow) {
-    initAutoUpdater(mainWindow);
+    initAutoUpdater(mainWindow, async () => {
+      if (pythonManager) {
+        await pythonManager.stop();
+      }
+    });
   }
 }
 
