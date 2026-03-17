@@ -42,12 +42,14 @@
       "buildResources": "build"
     },
     "files": [
-      "package.json",
-      "node_modules/**/*",
-      "dist-electron",
-      "dist-electron/**/*",
-      "frontend/dist",
-      "frontend/dist/**/*"
+      "!backend",
+      "!electron",
+      "!frontend/src",
+      "!frontend/node_modules",
+      "!frontend/package.json",
+      "!scripts",
+      "!**/*.ts",
+      "!**/*.map"
     ],
     "extraResources": [
       {
