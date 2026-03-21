@@ -67,7 +67,7 @@ function parseLatestMacYaml(filePath) {
   return parsed;
 }
 
-function verifyUpdateManifest(zipFiles, dmgFiles) {
+function verifyUpdateManifest(zipFiles) {
   if (!fs.existsSync(UPDATE_FILE)) {
     fail(`latest-mac.yml not found at ${UPDATE_FILE}`);
   }
@@ -75,7 +75,7 @@ function verifyUpdateManifest(zipFiles, dmgFiles) {
   const manifest = parseLatestMacYaml(UPDATE_FILE);
   const knownFiles = new Map();
 
-  for (const filePath of [...zipFiles, ...dmgFiles]) {
+  for (const filePath of zipFiles) {
     const stat = fs.statSync(filePath);
     knownFiles.set(path.basename(filePath), {
       path: filePath,
@@ -85,7 +85,7 @@ function verifyUpdateManifest(zipFiles, dmgFiles) {
   }
 
   if (manifest.files.length !== knownFiles.size) {
-    fail(`latest-mac.yml lists ${manifest.files.length} files, but dist has ${knownFiles.size} mac artifacts.`);
+    fail(`latest-mac.yml lists ${manifest.files.length} files, but dist has ${knownFiles.size} mac ZIP artifacts.`);
   }
 
   for (const entry of manifest.files) {
@@ -117,25 +117,20 @@ function verifyZip(zipPath) {
   run('unzip', ['-t', zipPath]);
 
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sasoo-mac-zip-'));
-  run('ditto', ['-x', '-k', zipPath, tempDir]);
+  try {
+    run('ditto', ['-x', '-k', zipPath, tempDir]);
 
-  const appCandidates = fs
-    .readdirSync(tempDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name.endsWith('.app'))
-    .map((entry) => path.join(tempDir, entry.name));
+    const appCandidates = fs
+      .readdirSync(tempDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && entry.name.endsWith('.app'))
+      .map((entry) => path.join(tempDir, entry.name));
 
-  if (appCandidates.length !== 1) {
-    fail(`Expected exactly one .app in ${zipPath}, found ${appCandidates.length}`);
+    if (appCandidates.length !== 1) {
+      fail(`Expected exactly one .app in ${zipPath}, found ${appCandidates.length}`);
+    }
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
   }
-
-  const appPath = appCandidates[0];
-  run('codesign', ['--verify', '--deep', '--strict', '--verbose=4', appPath]);
-  run('spctl', ['-a', '-vv', '--type', 'exec', appPath]);
-}
-
-function verifyDmg(dmgPath) {
-  log(`Checking DMG archive ${path.basename(dmgPath)}`);
-  run('hdiutil', ['verify', dmgPath]);
 }
 
 if (process.platform !== 'darwin') {
@@ -151,23 +146,14 @@ const zipFiles = fs
   .filter((name) => name.endsWith('-mac.zip'))
   .map((name) => path.join(DIST_DIR, name));
 
-const dmgFiles = fs
-  .readdirSync(DIST_DIR)
-  .filter((name) => name.endsWith('.dmg'))
-  .map((name) => path.join(DIST_DIR, name));
-
-if (zipFiles.length === 0 || dmgFiles.length === 0) {
-  fail('Expected both .dmg and -mac.zip artifacts in dist/.');
+if (zipFiles.length !== 1) {
+  fail(`Expected exactly one -mac.zip artifact in dist/, found ${zipFiles.length}.`);
 }
 
-verifyUpdateManifest(zipFiles, dmgFiles);
+verifyUpdateManifest(zipFiles);
 
 for (const zipPath of zipFiles) {
   verifyZip(zipPath);
 }
 
-for (const dmgPath of dmgFiles) {
-  verifyDmg(dmgPath);
-}
-
-log('macOS artifacts passed archive, signature, Gatekeeper, and manifest checks.');
+log('macOS ZIP artifacts passed archive extraction and update manifest checks.');

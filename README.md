@@ -8,11 +8,11 @@
 
 ### 논문을 같이 읽어주는 AI 연구실 동료
 
-<a href="https://github.com/dosigner/sasoo/releases/tag/v0.6.4">
+<a href="https://github.com/dosigner/sasoo/releases/latest">
 <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
 </a>
 &nbsp;
-<a href="https://github.com/dosigner/sasoo/releases/tag/v0.6.4">
+<a href="https://github.com/dosigner/sasoo/releases/latest">
 <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download-macOS_(Apple_Silicon)-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS" />
 </a>
 
@@ -407,7 +407,7 @@ graph TB
 <br/>
 <h3>🪟 Windows</h3>
 <a href="https://github.com/dosigner/sasoo/releases/tag/v0.6.4">
-<img src="https://img.shields.io/badge/Sasoo_Setup_0.6.4.exe-Download-2ea44f?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
+<img src="https://img.shields.io/badge/Sasoo_Setup_0.6.3.exe-Download-2ea44f?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
 </a>
 <br/><br/>
 <sub>Windows 10/11 · NSIS 인스톨러</sub>
@@ -416,11 +416,11 @@ graph TB
 <td align="center" width="300">
 <br/>
 <h3>🍎 macOS</h3>
-<a href="https://github.com/dosigner/sasoo/releases/tag/v0.6.4">
-<img src="https://img.shields.io/badge/Sasoo_0.6.4.dmg-Download-2ea44f?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS" />
+<a href="https://github.com/dosigner/sasoo/releases/latest">
+<img src="https://img.shields.io/badge/Sasoo_macOS_Apple_Silicon.zip-Download-2ea44f?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS" />
 </a>
 <br/><br/>
-<sub>macOS (Apple Silicon) · DMG</sub>
+<sub>macOS (Apple Silicon) · unsigned ZIP</sub>
 <br/><br/>
 </td>
 </tr>
@@ -434,6 +434,9 @@ graph TB
 
 > **API 키 필요**: 설치 후 Settings에서 Gemini API Key를 입력해야 분석 기능을 사용할 수 있습니다.
 > 키 발급: [aistudio.google.com](https://aistudio.google.com)
+>
+> **macOS 설치 안내**: ZIP을 풀고 `Sasoo.app`를 `Applications`로 옮긴 뒤, 첫 실행은 우클릭 → 열기를 사용하세요.
+> 무료 계정 기준 macOS 배포는 현재 unsigned ZIP-only입니다.
 
 <br/>
 
@@ -1024,12 +1027,7 @@ sasoo/
 <tr>
 <td align="center">🍎 macOS</td>
 <td><code>pnpm build:mac</code></td>
-<td><code>.dmg</code> + <code>.zip</code></td>
-</tr>
-<tr>
-<td align="center">🍎 macOS Release</td>
-<td><code>pnpm build:mac:release</code></td>
-<td>서명 · notarization · stapling · 검증</td>
+<td><code>.zip</code> + <code>latest-mac.yml</code> + <code>.blockmap</code></td>
 </tr>
 <tr>
 <td align="center">🐧 Linux</td>
@@ -1050,20 +1048,14 @@ sasoo/
 
 - `pnpm clean:mac`: 이전 mac 산출물과 플랫폼 오염 파일 정리
 - `pnpm build:mac`: 로컬 mac 산출물 생성
-- `pnpm verify:mac-artifact`: ZIP, DMG, `codesign`, `spctl`, `latest-mac.yml` 검증
-- `pnpm build:mac:release`: Apple 자격증명 확인 후 build → notarization → staple → verify 실행
+- `pnpm verify:mac-artifact`: ZIP, `latest-mac.yml`, 압축 해제 결과 검증
+- `pnpm build:mac:release`: unsigned ZIP-only mac release build + verify 실행
 
-### macOS signing / notarization secrets
+### macOS 배포 메모
 
-GitHub Actions에서 mac 릴리스를 성공시키려면 아래 Secrets가 필요하다.
+무료 계정 기준 macOS 릴리스는 Apple signing / notarization 없이 ZIP-only로 배포한다.
 
-- `CSC_LINK`
-- `CSC_KEY_PASSWORD`
-- `APPLE_API_KEY`
-- `APPLE_API_KEY_ID`
-- `APPLE_API_ISSUER`
-
-이 값들이 없으면 mac release job은 실패하도록 설정되어 있다. 자세한 운영 메모는 [`doc/macos-release.md`](doc/macos-release.md) 참고.
+GitHub Actions는 mac ZIP, `.blockmap`, `latest-mac.yml`만 업로드한다. 자세한 운영 메모는 [`doc/macos-release.md`](doc/macos-release.md) 참고.
 
 <br/>
 

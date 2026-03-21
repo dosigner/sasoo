@@ -1,29 +1,44 @@
 # macOS Release Pipeline
 
-This project now treats macOS release builds as a signed-and-notarized pipeline instead of a best-effort archive export.
+This project distributes macOS builds as a single unsigned Apple Silicon ZIP archive.
+DMG packaging, Apple code signing, and notarization are intentionally out of scope for the current release flow.
 
-## Required secrets
+## Release target
 
-- `CSC_LINK`: Developer ID Application certificate for electron-builder
-- `CSC_KEY_PASSWORD`: password for the certificate referenced by `CSC_LINK`
-- `APPLE_API_KEY`: App Store Connect API private key contents
-- `APPLE_API_KEY_ID`: App Store Connect API key ID
-- `APPLE_API_ISSUER`: App Store Connect API issuer ID
-
-In CI, `APPLE_API_KEY` is written to a temporary `.p8` file before the build starts, and the resulting file path is passed to electron-builder.
+- Platform: macOS on Apple Silicon
+- Artifact: `dist/*-mac.zip`
+- Metadata: `dist/latest-mac.yml`
+- Differential update data: `dist/*.blockmap`
 
 ## Local commands
 
 - `pnpm clean:mac`: remove mac build outputs before rebuilding
-- `pnpm build:mac`: clean and build mac artifacts without publishing
-- `pnpm build:mac:release`: require Apple credentials, build, staple, and verify release artifacts
-- `pnpm verify:mac-artifact`: verify archive integrity, `codesign`, `spctl`, and `latest-mac.yml`
+- `pnpm build:mac`: clean and build the unsigned macOS ZIP artifacts
+- `pnpm build:mac:release`: run `build:mac` and verify the generated ZIP release artifacts
+- `pnpm verify:mac-artifact`: verify `latest-mac.yml`, `unzip -t`, and ZIP extraction into a single `.app`
 
-## CI behavior
+## Verification scope
 
-The GitHub Actions workflow at `.github/workflows/release.yml` runs on tag pushes.
+`pnpm verify:mac-artifact` checks the release shape that we actually ship:
 
-- Release jobs fail before packaging if Apple credentials are missing.
-- Artifacts are built on `macos-14`.
-- The workflow runs notarization through electron-builder, staples the app and DMG, then verifies the generated ZIP, DMG, signatures, Gatekeeper acceptance, and `latest-mac.yml`.
-- Release assets are uploaded only after verification succeeds.
+- exactly one `*-mac.zip` exists in `dist/`
+- `latest-mac.yml` points to that ZIP and matches its size and sha512
+- `unzip -t` succeeds
+- `ditto -x -k` extracts exactly one `.app` bundle
+
+It does not require `codesign`, `spctl`, notarization, or DMG validation.
+
+## GitHub Actions behavior
+
+The workflow at `.github/workflows/release.yml` runs on tag pushes that match `v*` and on manual dispatch.
+
+- No Apple Developer secrets are required.
+- The macOS build runs on `macos-14`.
+- Release assets include only the ZIP archive, `latest-mac.yml`, and any generated `.blockmap` files.
+
+## User install flow
+
+1. Download the macOS ZIP asset from GitHub Releases.
+2. Extract the ZIP with Archive Utility or Finder.
+3. Move `Sasoo.app` into `/Applications`.
+4. On first launch, use right-click `Open` to bypass the unsigned app warning.
