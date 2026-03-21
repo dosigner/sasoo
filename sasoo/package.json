@@ -1,6 +1,6 @@
 {
   "name": "sasoo",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "Sasoo - AI-powered academic paper analysis tool",
   "private": true,
   "main": "dist-electron/main.js",
@@ -16,8 +16,11 @@
     "build:backend": "node scripts/build-backend.js",
     "build": "pnpm build:frontend && pnpm build:electron && electron-builder",
     "build:win": "pnpm build:backend && pnpm build:frontend && pnpm build:electron && electron-builder --win",
-    "build:mac": "pnpm build:backend && pnpm build:frontend && pnpm build:electron && electron-builder --mac",
+    "clean:mac": "node scripts/prepare-mac-build.js",
+    "build:mac": "pnpm clean:mac && pnpm build:backend && pnpm build:frontend && pnpm build:electron && electron-builder --mac --publish never",
+    "build:mac:release": "node scripts/check-apple-credentials.js --require-release && pnpm build:mac && node scripts/staple-mac-artifacts.js && pnpm verify:mac-artifact",
     "build:linux": "pnpm build:backend && pnpm build:frontend && pnpm build:electron && electron-builder --linux",
+    "verify:mac-artifact": "node scripts/verify-mac-artifacts.js",
     "start": "electron . --no-sandbox",
     "clean": "rm -rf dist dist-electron frontend/dist backend/dist backend/build",
     "postinstall": "cd frontend && pnpm install"
@@ -41,6 +44,7 @@
       "output": "dist",
       "buildResources": "build"
     },
+    "afterSign": "scripts/after-sign.js",
     "files": [
       "!backend",
       "!electron",
@@ -62,6 +66,11 @@
     ],
     "mac": {
       "category": "public.app-category.education",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "gatekeeperAssess": false,
+      "notarize": true,
       "target": [
         "dmg",
         "zip"

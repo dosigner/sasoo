@@ -16,7 +16,7 @@ jobs:
         include:
           - os: windows-latest
             builder_flag: --win
-          - os: macos-latest  # Apple Silicon (arm64)
+          - os: macos-14
             builder_flag: --mac
 
     runs-on: ${{ matrix.os }}
@@ -45,10 +45,34 @@ jobs:
           cache: pip
           cache-dependency-path: sasoo/backend/requirements.txt
 
-      - name: Install Python dependencies
+      - name: Materialize App Store Connect API key
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_API_KEY_RAW: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
         run: |
-          pip install -r backend/requirements.txt
-          pip install pyinstaller
+          if [[ -z "${APPLE_API_KEY_RAW}" ]]; then
+            echo "APPLE_API_KEY secret is required for macOS notarization." >&2
+            exit 1
+          fi
+
+          key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+          printf '%s' "$APPLE_API_KEY_RAW" > "$key_path"
+          echo "APPLE_API_KEY=$key_path" >> "$GITHUB_ENV"
+
+      - name: Install Python dependencies
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            python -m venv backend/.venv
+            source backend/.venv/bin/activate
+            python -m pip install --upgrade pip
+            python -m pip install -r backend/requirements.txt pyinstaller
+          else
+            pip install -r backend/requirements.txt
+            pip install pyinstaller
+          fi
 
       # ── Node dependencies ────────────────────────
       - name: Install dependencies
@@ -56,9 +80,34 @@ jobs:
         env:
           npm_config_frozen_lockfile: "false"
 
+      - name: Validate Apple release credentials
+        if: runner.os == 'macOS'
+        env:
+          APPLE_API_KEY: ${{ env.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: node scripts/check-apple-credentials.js --require-release
+
       # ── Build ────────────────────────────────────
       - name: Build (${{ runner.os }})
-        run: pnpm build:backend && pnpm build:frontend && pnpm build:electron && npx electron-builder ${{ matrix.builder_flag }} --publish never
+        shell: bash
+        env:
+          CI_RELEASE: ${{ runner.os == 'macOS' && 'true' || '' }}
+          APPLE_API_KEY: ${{ env.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH"
+
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            pnpm build:mac:release
+          else
+            pnpm build:backend && pnpm build:frontend && pnpm build:electron && npx electron-builder ${{ matrix.builder_flag }} --publish never
+          fi
 
       # ── Upload artifacts ─────────────────────────
       - name: Upload build artifacts
@@ -69,6 +118,7 @@ jobs:
             sasoo/dist/*.exe
             sasoo/dist/*.dmg
             sasoo/dist/*.zip
+            sasoo/dist/*.blockmap
             sasoo/dist/*.yml
             sasoo/dist/*.yaml
           if-no-files-found: error
@@ -95,5 +145,6 @@ jobs:
             artifacts/*.exe
             artifacts/*.dmg
             artifacts/*.zip
+            artifacts/*.blockmap
             artifacts/*.yml
             artifacts/*.yaml

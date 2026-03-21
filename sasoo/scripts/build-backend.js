@@ -93,8 +93,47 @@ function checkPyInstaller(pythonPath) {
     // PyInstaller not found
   }
 
-  error('PyInstaller not found. Install it with: pip install pyinstaller');
+  error(`PyInstaller not found for Python: ${pythonPath}`);
+  if (pythonPath.includes('.venv')) {
+    error(`Install it in the backend virtual environment: "${pythonPath}" -m pip install pyinstaller`);
+  } else {
+    error('Install it with: python3 -m pip install pyinstaller');
+    warn('Tip: create backend/.venv first so macOS builds use a predictable interpreter.');
+  }
   return false;
+}
+
+/**
+ * Detect platform-specific files that should never ship in the current build.
+ */
+function findForeignArtifacts(rootDir) {
+  const markersByPlatform = {
+    darwin: [/\.exe$/i, /\.dll$/i, /\.pyd$/i, /win_amd64/i, /win32/i],
+    linux: [/\.exe$/i, /\.dll$/i, /\.pyd$/i, /win_amd64/i, /\.dylib$/i, /darwin/i],
+    win32: [/\.so$/i, /\.dylib$/i, /darwin/i],
+  };
+
+  const markers = markersByPlatform[process.platform] ?? [];
+  const matches = [];
+
+  function walkDir(dir) {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walkDir(fullPath);
+        continue;
+      }
+
+      const relativePath = path.relative(rootDir, fullPath);
+      if (markers.some((pattern) => pattern.test(relativePath))) {
+        matches.push(relativePath);
+      }
+    }
+  }
+
+  walkDir(rootDir);
+  return matches;
 }
 
 /**
@@ -167,6 +206,19 @@ function verifyBuild() {
 
   success(`Executable created: ${exePath}`);
   info(`Size: ${sizeMB} MB`);
+
+  const foreignArtifacts = findForeignArtifacts(OUTPUT_DIR);
+  if (foreignArtifacts.length > 0) {
+    error('Platform-mismatched backend artifacts detected in build output:');
+    for (const artifact of foreignArtifacts.slice(0, 10)) {
+      console.log(`  - ${artifact}`);
+    }
+    if (foreignArtifacts.length > 10) {
+      console.log(`  ... and ${foreignArtifacts.length - 10} more`);
+    }
+    error('Clean the backend build output and rebuild on the target platform.');
+    return false;
+  }
 
   // List the output directory contents
   info('Output directory contents:');
