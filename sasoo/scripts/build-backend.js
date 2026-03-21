@@ -109,8 +109,8 @@ function checkPyInstaller(pythonPath) {
 function findForeignArtifacts(rootDir) {
   const markersByPlatform = {
     darwin: [/\.exe$/i, /\.dll$/i, /\.pyd$/i, /win_amd64/i, /win32/i],
-    linux: [/\.exe$/i, /\.dll$/i, /\.pyd$/i, /win_amd64/i, /\.dylib$/i, /darwin/i],
-    win32: [/\.so$/i, /\.dylib$/i, /darwin/i],
+    linux: [/\.exe$/i, /\.dll$/i, /\.pyd$/i, /win_amd64/i, /\.dylib$/i, /cpython-\d+.*-darwin/i],
+    win32: [/\.so$/i, /\.dylib$/i, /cpython-\d+.*-darwin/i],
   };
 
   const markers = markersByPlatform[process.platform] ?? [];
