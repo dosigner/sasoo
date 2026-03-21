@@ -1027,6 +1027,11 @@ sasoo/
 <td><code>.dmg</code> + <code>.zip</code></td>
 </tr>
 <tr>
+<td align="center">🍎 macOS Release</td>
+<td><code>pnpm build:mac:release</code></td>
+<td>서명 · notarization · stapling · 검증</td>
+</tr>
+<tr>
 <td align="center">🐧 Linux</td>
 <td><code>pnpm build:linux</code></td>
 <td><code>.AppImage</code> + <code>.deb</code></td>
@@ -1040,6 +1045,25 @@ sasoo/
 </div>
 
 > 빌드 시 백엔드는 PyInstaller로 단일 바이너리로 패키징되어 `extraResources`에 포함됨.
+
+### macOS 릴리스 체크리스트
+
+- `pnpm clean:mac`: 이전 mac 산출물과 플랫폼 오염 파일 정리
+- `pnpm build:mac`: 로컬 mac 산출물 생성
+- `pnpm verify:mac-artifact`: ZIP, DMG, `codesign`, `spctl`, `latest-mac.yml` 검증
+- `pnpm build:mac:release`: Apple 자격증명 확인 후 build → notarization → staple → verify 실행
+
+### macOS signing / notarization secrets
+
+GitHub Actions에서 mac 릴리스를 성공시키려면 아래 Secrets가 필요하다.
+
+- `CSC_LINK`
+- `CSC_KEY_PASSWORD`
+- `APPLE_API_KEY`
+- `APPLE_API_KEY_ID`
+- `APPLE_API_ISSUER`
+
+이 값들이 없으면 mac release job은 실패하도록 설정되어 있다. 자세한 운영 메모는 [`doc/macos-release.md`](doc/macos-release.md) 참고.
 
 <br/>
 
