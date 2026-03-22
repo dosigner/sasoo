@@ -435,7 +435,10 @@ graph TB
 > **API 키 필요**: 설치 후 Settings에서 Gemini API Key를 입력해야 분석 기능을 사용할 수 있습니다.
 > 키 발급: [aistudio.google.com](https://aistudio.google.com)
 >
-> **macOS 설치 안내**: ZIP을 풀고 `Sasoo.app`를 `Applications`로 옮긴 뒤, 첫 실행은 우클릭 → 열기를 사용하세요.
+> **macOS 설치 안내**: ZIP을 풀고 `Sasoo.app`를 `Applications`로 옮기세요.
+> macOS에서 "`Sasoo`은(는) 손상되었기 때문에 열 수 없습니다" 경고가 나오면 터미널에서 아래 명령을 실행한 뒤 다시 열어야 합니다.
+> `xattr -dr com.apple.quarantine /Applications/Sasoo.app`
+> 그 다음에도 바로 실행이 막히면 Finder에서 `Sasoo.app` 우클릭 → 열기를 사용하세요.
 > 무료 계정 기준 macOS 배포는 현재 unsigned ZIP-only입니다.
 
 <br/>
@@ -1056,6 +1059,12 @@ sasoo/
 무료 계정 기준 macOS 릴리스는 Apple signing / notarization 없이 ZIP-only로 배포한다.
 
 GitHub Actions는 mac ZIP, `.blockmap`, `latest-mac.yml`만 업로드한다. 자세한 운영 메모는 [`doc/macos-release.md`](doc/macos-release.md) 참고.
+
+사용자 설치 안내에도 아래 내용을 반드시 포함한다.
+
+- ZIP 압축 해제 후 `Sasoo.app`를 `Applications`로 이동
+- "`Sasoo`은(는) 손상되었기 때문에 열 수 없습니다" 경고가 나오면 `xattr -dr com.apple.quarantine /Applications/Sasoo.app` 실행
+- 그래도 막히면 Finder에서 `Sasoo.app` 우클릭 → 열기
 
 <br/>
 

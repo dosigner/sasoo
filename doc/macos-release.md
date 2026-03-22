@@ -41,4 +41,18 @@ The workflow at `.github/workflows/release.yml` runs on tag pushes that match `v
 1. Download the macOS ZIP asset from GitHub Releases.
 2. Extract the ZIP with Archive Utility or Finder.
 3. Move `Sasoo.app` into `/Applications`.
-4. On first launch, use right-click `Open` to bypass the unsigned app warning.
+4. If macOS shows "`Sasoo` is damaged and can't be opened", run:
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/Sasoo.app
+   ```
+
+5. If launch is still blocked, use right-click `Open` on `Sasoo.app`.
+
+## Release note reminder
+
+Every macOS release note should include the install workaround below because unsigned ZIP builds can trigger Gatekeeper quarantine warnings:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Sasoo.app
+```
