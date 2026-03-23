@@ -21,6 +21,10 @@ function sha512Base64(filePath) {
   return hash.digest('base64');
 }
 
+function normalizeArtifactName(name) {
+  return decodeURIComponent(name).replace(/\s+/g, '-');
+}
+
 function parseLatestYaml(filePath) {
   const text = fs.readFileSync(filePath, 'utf8');
   const parsed = { files: [], path: null, sha512: null };
@@ -78,15 +82,18 @@ function verifyUpdateManifest(installerPaths) {
 
   for (const filePath of installerPaths) {
     const stat = fs.statSync(filePath);
-    knownFiles.set(path.basename(filePath), {
+    const basename = path.basename(filePath);
+    const record = {
       path: filePath,
       size: stat.size,
       sha512: sha512Base64(filePath),
-    });
+    };
+    knownFiles.set(basename, record);
+    knownFiles.set(normalizeArtifactName(basename), record);
   }
 
-  if (manifest.files.length !== knownFiles.size) {
-    fail(`latest.yml lists ${manifest.files.length} files, but dist has ${knownFiles.size} installer artifacts.`);
+  if (manifest.files.length !== installerPaths.length) {
+    fail(`latest.yml lists ${manifest.files.length} files, but dist has ${installerPaths.length} installer artifacts.`);
   }
 
   for (const entry of manifest.files) {
@@ -102,7 +109,7 @@ function verifyUpdateManifest(installerPaths) {
     }
   }
 
-  const defaultFile = knownFiles.get(manifest.path);
+  const defaultFile = knownFiles.get(manifest.path) || knownFiles.get(normalizeArtifactName(manifest.path));
   if (!defaultFile) {
     fail(`latest.yml default path does not exist: ${manifest.path}`);
   }
