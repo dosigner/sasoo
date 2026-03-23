@@ -129,6 +129,14 @@ function findForeignArtifacts(rootDir) {
       }
 
       const relativePath = path.relative(rootDir, fullPath);
+      const normalizedRelativePath = relativePath.replace(/\\/g, '/');
+      // Ignore IANA timezone names like ".../tzdata/.../Darwin" on non-mac builds.
+      if (
+        /(^|\/)tzdata(\/|$)/i.test(normalizedRelativePath) &&
+        /\/Darwin$/i.test(normalizedRelativePath)
+      ) {
+        continue;
+      }
       if (markers.some((pattern) => pattern.test(relativePath))) {
         matches.push(relativePath);
       }
