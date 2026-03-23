@@ -62,6 +62,11 @@ export type UploadResponse = Paper;
 // Analysis types
 export type AnalysisPhase = 'screening' | 'citation' | 'visual' | 'recipe' | 'deep_dive';
 export type PhaseStatusValue = 'pending' | 'running' | 'completed' | 'error';
+export type PaperBananaProfile = 'fast' | 'balanced' | 'quality';
+
+export interface AnalysisRunRequest {
+  paperbanana_profile?: PaperBananaProfile;
+}
 
 export interface PhaseInfo {
   phase: AnalysisPhase;
@@ -101,11 +106,18 @@ export interface Figure {
   id: number | null;
   paper_id: number;
   figure_num: string | null;
+  page_number?: number | null;
   caption: string | null;
   file_path: string | null;
   ai_analysis: string | null;
   quality: string | null;
   detailed_explanation: string | null;
+}
+
+export interface PdfNavigationRequest {
+  page: number;
+  requestId: string;
+  source: 'figure' | 'citation' | 'recipe';
 }
 
 export interface FigureListResponse {
@@ -150,6 +162,14 @@ export interface PaperBanana {
   height: number;
 }
 
+export interface GeneratePaperBananaRequest {
+  style?: 'default' | 'minimal' | 'detailed';
+  language?: 'ko' | 'en';
+  include_recipe?: boolean;
+  include_figures?: boolean;
+  paperbanana_profile?: PaperBananaProfile;
+}
+
 // Visualization plan types (Gemini Pro 3 → up to 5 items)
 export interface VisualizationItem {
   id: number;
@@ -185,6 +205,7 @@ export interface Settings {
   max_concurrent_analyses: number;
   gemini_model: string;
   anthropic_model: string;
+  paperbanana_profile: PaperBananaProfile;
 }
 
 export interface ModelStats {
@@ -398,9 +419,13 @@ export async function updatePaper(
 // Analysis endpoints
 // ---------------------------------------------------------------------------
 
-export async function runAnalysis(paperId: string): Promise<AnalysisStatus> {
+export async function runAnalysis(
+  paperId: string,
+  data: AnalysisRunRequest = {}
+): Promise<AnalysisStatus> {
   return request<AnalysisStatus>(`/analysis/${paperId}/run`, {
     method: 'POST',
+    body: JSON.stringify(data),
   });
 }
 
@@ -456,10 +481,17 @@ export async function getVisualizations(
 }
 
 export async function generatePaperBanana(
-  paperId: string
+  paperId: string,
+  data: GeneratePaperBananaRequest = {}
 ): Promise<PaperBanana> {
+  const payload: GeneratePaperBananaRequest = {
+    paperbanana_profile: 'fast',
+    ...data,
+  };
+
   return request<PaperBanana>(`/analysis/${paperId}/paperbanana`, {
     method: 'POST',
+    body: JSON.stringify(payload),
   });
 }
 

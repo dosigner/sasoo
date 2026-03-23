@@ -24,6 +24,7 @@ interface FigureGalleryProps {
   figures: Figure[];
   paperId: string;
   loading?: boolean;
+  onJumpToFigurePage?: (figure: Figure) => void;
 }
 
 interface CachedExplanation {

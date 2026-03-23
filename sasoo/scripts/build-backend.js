@@ -20,6 +20,9 @@ const ROOT_DIR = path.resolve(__dirname, '..');
 const BACKEND_DIR = path.join(ROOT_DIR, 'backend');
 const SPEC_FILE = path.join(BACKEND_DIR, 'sasoo-backend.spec');
 const OUTPUT_DIR = path.join(BACKEND_DIR, 'dist', 'sasoo-backend');
+const BUILD_CACHE_DIR = path.join(BACKEND_DIR, '.build-cache');
+const PYINSTALLER_CACHE_DIR = path.join(BUILD_CACHE_DIR, 'pyinstaller');
+const MPLCONFIGDIR = path.join(BUILD_CACHE_DIR, 'matplotlib');
 
 // Colors for console output
 const colors = {
@@ -109,8 +112,8 @@ function checkPyInstaller(pythonPath) {
 function findForeignArtifacts(rootDir) {
   const markersByPlatform = {
     darwin: [/\.exe$/i, /\.dll$/i, /\.pyd$/i, /win_amd64/i, /win32/i],
-    linux: [/\.exe$/i, /\.dll$/i, /\.pyd$/i, /win_amd64/i, /\.dylib$/i, /cpython-\d+.*-darwin/i],
-    win32: [/\.so$/i, /\.dylib$/i, /cpython-\d+.*-darwin/i],
+    linux: [/\.exe$/i, /\.dll$/i, /\.pyd$/i, /win_amd64/i, /\.dylib$/i, /darwin/i],
+    win32: [/\.so$/i, /\.dylib$/i, /darwin/i],
   };
 
   const markers = markersByPlatform[process.platform] ?? [];
@@ -145,6 +148,7 @@ function cleanBuild() {
   const dirsToClean = [
     path.join(BACKEND_DIR, 'dist'),
     path.join(BACKEND_DIR, 'build'),
+    BUILD_CACHE_DIR,
   ];
 
   for (const dir of dirsToClean) {
@@ -162,6 +166,9 @@ function runPyInstaller(pythonPath) {
   info('Running PyInstaller...');
   info(`Spec file: ${SPEC_FILE}`);
 
+  fs.mkdirSync(PYINSTALLER_CACHE_DIR, { recursive: true });
+  fs.mkdirSync(MPLCONFIGDIR, { recursive: true });
+
   const args = [
     '-m', 'PyInstaller',
     '--clean',
@@ -178,6 +185,8 @@ function runPyInstaller(pythonPath) {
       env: {
         ...process.env,
         PYTHONUNBUFFERED: '1',
+        PYINSTALLER_CONFIG_DIR: PYINSTALLER_CACHE_DIR,
+        MPLCONFIGDIR,
       },
     });
 

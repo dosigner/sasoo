@@ -1,73 +1,115 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
+  Bot,
+  ChevronDown,
   MessageSquare,
   Send,
-  Loader2,
-  AlertCircle,
-  User,
-  Bot,
+  Sparkles,
   Trash2,
+  User,
+  X,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import { chatWithAgent, type ChatMessage, type ChatDoneMeta } from '@/lib/api';
+import { chatWithAgent, type ChatDoneMeta, type ChatMessage } from '@/lib/api';
 import { getAgentMeta } from '@/lib/agents';
 
 const REMARK_PLUGINS = [remarkGfm, remarkMath];
 const REHYPE_PLUGINS = [rehypeKatex];
 
-// ---------------------------------------------------------------------------
-// Props
-// ---------------------------------------------------------------------------
-
 interface ChatPanelProps {
   paperId: string;
   agentName?: string;
+  open: boolean;
+  minimized: boolean;
+  draft: string;
+  starters: string[];
+  onClose: () => void;
+  onToggleMinimized: () => void;
+  onDraftChange: (value: string) => void;
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
-export default function ChatPanel({ paperId, agentName }: ChatPanelProps) {
+export default function ChatPanel({
+  paperId,
+  agentName,
+  open,
+  minimized,
+  draft,
+  starters,
+  onClose,
+  onToggleMinimized,
+  onDraftChange,
+}: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [totalCost, setTotalCost] = useState(0);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [activeActionsIndex, setActiveActionsIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const sheetRef = useRef<HTMLElement>(null);
 
   const agent = agentName ? getAgentMeta(agentName) : null;
-  const agentColor = agent?.color || '#6366f1';
+  const agentColor = agent?.color || '#0a84ff';
+  const hasMessages = messages.length > 0;
 
-  // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, open, minimized]);
 
-  // Auto-resize textarea
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
-    const el = e.target;
+  useEffect(() => {
+    if (!open || minimized) return;
+    const frame = window.requestAnimationFrame(() => inputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, minimized]);
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 80) + 'px';
-  }, []);
+    el.style.height = `${Math.min(el.scrollHeight, 112)}px`;
+  }, [draft, open]);
 
-  const handleSend = useCallback(async () => {
-    const text = input.trim();
+  useEffect(() => {
+    if (!open || minimized) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!sheetRef.current) return;
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest('[data-chat-launcher="true"]')
+      ) {
+        return;
+      }
+      if (target instanceof Node && !sheetRef.current.contains(target)) {
+        onClose();
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [minimized, onClose, open]);
+
+  const lastUserMessage = useMemo(
+    () => [...messages].reverse().find((msg) => msg.role === 'user')?.content ?? '',
+    [messages],
+  );
+
+  const sendText = useCallback(async (rawText: string) => {
+    const text = rawText.trim();
     if (!text || streaming) return;
 
-    setInput('');
+    onDraftChange('');
     setError(null);
+    setActiveActionsIndex(null);
     if (inputRef.current) inputRef.current.style.height = 'auto';
 
-    // Add user message
     const userMsg: ChatMessage = { role: 'user', content: text };
-    // Add empty agent message placeholder for streaming
     const agentMsg: ChatMessage = { role: 'agent', content: '' };
     setMessages((prev) => [...prev, userMsg, agentMsg]);
     setStreaming(true);
@@ -79,12 +121,11 @@ export default function ChatPanel({ paperId, agentName }: ChatPanelProps) {
         paperId,
         text,
         history,
-        // onToken
         (token) => {
           setMessages((prev) => {
             const updated = [...prev];
             const last = updated[updated.length - 1];
-            if (last.role === 'agent') {
+            if (last?.role === 'agent') {
               updated[updated.length - 1] = {
                 ...last,
                 content: last.content + token,
@@ -93,173 +134,255 @@ export default function ChatPanel({ paperId, agentName }: ChatPanelProps) {
             return updated;
           });
         },
-        // onDone
         (meta: ChatDoneMeta) => {
           setTotalCost((prev) => prev + meta.cost_usd);
+          setActiveActionsIndex((current) => current ?? messages.length + 1);
         },
-        // onError
         (errMsg) => {
           setError(errMsg);
         },
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Chat failed');
-      // Remove empty agent message on error
       setMessages((prev) => {
         const last = prev[prev.length - 1];
-        if (last.role === 'agent' && !last.content) {
-          return prev.slice(0, -1);
-        }
+        if (last?.role === 'agent' && !last.content) return prev.slice(0, -1);
         return prev;
       });
     } finally {
       setStreaming(false);
     }
-  }, [input, streaming, messages, paperId]);
+  }, [draft, messages, onDraftChange, paperId, streaming]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleSend = useCallback(async () => {
+    await sendText(draft);
+  }, [draft, sendText]);
+
+  const handleStarter = useCallback((prompt: string) => {
+    onDraftChange(prompt);
+    inputRef.current?.focus();
+  }, [onDraftChange]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      void handleSend();
     }
-  };
+  }, [handleSend]);
 
-  const handleClear = () => {
+  const clearConversation = useCallback(() => {
     if (streaming) return;
     setMessages([]);
-    setTotalCost(0);
     setError(null);
-  };
+    setTotalCost(0);
+    setActiveActionsIndex(null);
+  }, [streaming]);
 
-  return (
-    <div className="flex flex-col">
-      {/* Messages area */}
-      <div className="space-y-2.5 py-2 min-h-[120px] max-h-[400px] overflow-y-auto">
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-8 text-center">
-            <MessageSquare className="w-8 h-8 text-surface-500 mb-2" />
-            <p className="text-xs text-surface-400">
-              논문에 대해 궁금한 점을 물어보세요.
-            </p>
-            <p className="text-xs text-surface-500 mt-1">
-              분석 결과를 바탕으로{' '}
-              <span style={{ color: agentColor }}>
-                {agent?.display_name_ko || '에이전트'}
+  if (!open || typeof document === 'undefined') {
+    return null;
+  }
+
+  return createPortal(
+    <div className={`chat-sheet-shell ${open ? 'chat-sheet-shell-open' : ''}`}>
+      <div className={`chat-sheet-scrim ${open ? 'chat-sheet-scrim-open' : ''}`} aria-hidden="true" />
+      <div className={`chat-sheet-backdrop ${open ? 'chat-sheet-backdrop-open' : ''}`} aria-hidden="true" />
+      <aside
+        ref={sheetRef}
+        className={`chat-sheet ${open ? 'chat-sheet-open' : ''} ${minimized ? 'chat-sheet-minimized' : ''}`}
+      >
+        <div className="chat-sheet-header">
+          <div className="min-w-0">
+            <div className="mb-1 flex items-center gap-2">
+              <span
+                className="h-2 w-2 rounded-full shrink-0"
+                style={{ backgroundColor: agentColor }}
+              />
+              <span className="truncate text-sm font-semibold text-surface-100">
+                {agent?.display_name_ko || '에이전트 질의'}
               </span>
-              가 답변합니다.
+            </div>
+            <p className="truncate text-2xs text-surface-500">
+              현재 논문 맥락을 유지한 채 오른쪽에서 빠르게 질문할 수 있습니다.
             </p>
           </div>
-        )}
-
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`flex gap-2 ${
-              msg.role === 'user' ? 'justify-end' : 'justify-start'
-            }`}
-          >
-            {msg.role === 'agent' && (
-              <div
-                className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5"
-                style={{ backgroundColor: `${agentColor}30` }}
-              >
-                <Bot className="w-3.5 h-3.5" style={{ color: agentColor }} />
-              </div>
-            )}
-            <div
-              className={`max-w-[85%] px-3 py-2 rounded-xl text-xs leading-relaxed ${
-                msg.role === 'user'
-                  ? 'bg-primary-500/20 text-surface-100 rounded-br-sm whitespace-pre-wrap'
-                  : 'bg-surface-700/50 text-surface-200 rounded-bl-sm chat-markdown'
-              }`}
-            >
-              {msg.role === 'agent' ? (
-                <>
-                  {streaming && i === messages.length - 1 ? (
-                    <span className="whitespace-pre-wrap">{msg.content}</span>
-                  ) : (
-                    <ReactMarkdown
-                      remarkPlugins={REMARK_PLUGINS}
-                      rehypePlugins={REHYPE_PLUGINS}
-                    >
-                      {msg.content}
-                    </ReactMarkdown>
-                  )}
-                  {streaming && i === messages.length - 1 && (
-                    <span className="inline-block w-1.5 h-3.5 bg-primary-400 animate-pulse ml-0.5 align-middle" />
-                  )}
-                  {!msg.content && !streaming && (
-                    <span className="text-surface-500 italic">응답 없음</span>
-                  )}
-                </>
-              ) : (
-                msg.content
-              )}
-            </div>
-            {msg.role === 'user' && (
-              <div className="w-6 h-6 rounded-full bg-surface-600 flex items-center justify-center shrink-0 mt-0.5">
-                <User className="w-3.5 h-3.5 text-surface-300" />
-              </div>
-            )}
+          <div className="flex items-center gap-1.5">
+            <button type="button" onClick={onToggleMinimized} className="btn-icon-subtle" aria-label="최소화">
+              <ChevronDown className={`h-4 w-4 transition-transform ${minimized ? '-rotate-90' : ''}`} />
+            </button>
+            <button type="button" onClick={onClose} className="btn-icon-subtle" aria-label="닫기">
+              <X className="h-4 w-4" />
+            </button>
           </div>
-        ))}
-
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div className="flex items-center gap-1.5 text-xs text-red-400 px-1 py-1">
-          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-          {error}
         </div>
-      )}
 
-      {/* Footer: cost + clear */}
-      {messages.length > 0 && (
-        <div className="flex items-center justify-between px-1 py-1">
-          {totalCost > 0 ? (
-            <span className="text-2xs text-surface-500">
-              누적 비용: ${totalCost.toFixed(4)}
-            </span>
-          ) : (
-            <span />
-          )}
-          <button
-            onClick={handleClear}
-            disabled={streaming}
-            className="text-2xs text-surface-500 hover:text-surface-300 flex items-center gap-1 disabled:opacity-40"
-          >
-            <Trash2 className="w-3 h-3" />
-            대화 초기화
-          </button>
-        </div>
-      )}
+        {!minimized && (
+          <>
+            <div className="border-b border-surface-700/45 px-4 py-3">
+              <div className="mb-2 flex items-center gap-2 text-2xs uppercase tracking-[0.16em] text-surface-500">
+                <Sparkles className="h-3 w-3" />
+                Suggested prompts
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {starters.slice(0, 3).map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    onClick={() => handleStarter(prompt)}
+                    className="chat-starter-chip"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-      {/* Input area */}
-      <div className="flex items-end gap-2 pt-2 border-t border-surface-700/50">
-        <textarea
-          ref={inputRef}
-          value={input}
-          onChange={handleInputChange}
-          onKeyDown={handleKeyDown}
-          placeholder="질문을 입력하세요... (Shift+Enter로 줄바꿈)"
-          rows={1}
-          className="flex-1 resize-none bg-surface-700/50 border border-surface-600 rounded-lg px-3 py-2 text-xs text-surface-100 placeholder:text-surface-500 focus:outline-none focus:border-primary-500/50 max-h-[80px]"
-          disabled={streaming}
-        />
-        <button
-          onClick={handleSend}
-          disabled={!input.trim() || streaming}
-          className="shrink-0 w-8 h-8 rounded-lg bg-primary-500/20 text-primary-400 flex items-center justify-center hover:bg-primary-500/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          {streaming ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <Send className="w-3.5 h-3.5" />
-          )}
-        </button>
-      </div>
-    </div>
+            <div className="flex-1 overflow-y-auto px-4 py-4">
+              {!hasMessages && (
+                <div className="chat-empty-state">
+                  <div className="chat-empty-icon">
+                    <MessageSquare className="h-4 w-4 text-surface-500" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-surface-300">논문을 읽으면서 바로 질문해 보세요.</p>
+                    <p className="mt-1 text-2xs text-surface-500">
+                      핵심 기여, figure 해석, 재현 리스크처럼 작업형 질문에 최적화되어 있습니다.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                {messages.map((msg, index) => {
+                  const isLatestAgentMessage = msg.role === 'agent' && index === messages.length - 1 && !streaming;
+                  const showActions = isLatestAgentMessage && (activeActionsIndex === null || activeActionsIndex === index);
+
+                  return (
+                    <div
+                      key={`${msg.role}-${index}`}
+                      className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div className={`chat-bubble-wrap ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                        <div className="mb-1 flex items-center gap-1.5 px-1 text-2xs text-surface-500">
+                          {msg.role === 'agent' ? (
+                            <>
+                              <span
+                                className="flex h-5 w-5 items-center justify-center rounded-full border border-surface-700/55"
+                                style={{ backgroundColor: `${agentColor}20` }}
+                              >
+                                <Bot className="h-3 w-3" style={{ color: agentColor }} />
+                              </span>
+                              <span>{agent?.display_name_ko || '에이전트'}</span>
+                            </>
+                          ) : (
+                            <>
+                              <span>나</span>
+                              <span className="flex h-5 w-5 items-center justify-center rounded-full border border-surface-700/55 bg-surface-800/90">
+                                <User className="h-3 w-3 text-surface-400" />
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        <div className={`chat-bubble ${msg.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-agent'}`}>
+                          {msg.role === 'agent' ? (
+                            <>
+                              {streaming && index === messages.length - 1 ? (
+                                <span className="whitespace-pre-wrap">{msg.content}</span>
+                              ) : (
+                                <ReactMarkdown
+                                  className="chat-markdown"
+                                  remarkPlugins={REMARK_PLUGINS}
+                                  rehypePlugins={REHYPE_PLUGINS}
+                                >
+                                  {msg.content}
+                                </ReactMarkdown>
+                              )}
+                              {streaming && index === messages.length - 1 && (
+                                <span className="ml-1 inline-block h-3.5 w-1.5 animate-pulse bg-primary-400 align-middle" />
+                              )}
+                            </>
+                          ) : (
+                            <span className="whitespace-pre-wrap">{msg.content}</span>
+                          )}
+                        </div>
+
+                        {showActions && (
+                          <div className="chat-follow-actions">
+                            <button
+                              type="button"
+                              onClick={() => void sendText('방금 답변을 핵심만 3줄로 요약해줘.')}
+                              className="chat-follow-chip"
+                            >
+                              요약해서 보기
+                            </button>
+                            {lastUserMessage && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onDraftChange(lastUserMessage);
+                                  inputRef.current?.focus();
+                                }}
+                                className="chat-follow-chip"
+                              >
+                                다시 물어보기
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div ref={messagesEndRef} />
+            </div>
+
+            {error && (
+              <div className="border-t border-surface-700/45 px-4 py-2 text-2xs text-red-400">
+                {error}
+              </div>
+            )}
+
+            <div className="border-t border-surface-700/45 px-4 py-3">
+              <div className="mb-2 flex items-center justify-between text-2xs text-surface-500">
+                <span>{totalCost > 0 ? `누적 비용 $${totalCost.toFixed(4)}` : '대화 비용은 응답 후 집계됩니다.'}</span>
+                {hasMessages && (
+                  <button
+                    type="button"
+                    onClick={clearConversation}
+                    disabled={streaming}
+                    className="inline-flex items-center gap-1 text-surface-500 transition-colors hover:text-surface-300 disabled:opacity-40"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    대화 초기화
+                  </button>
+                )}
+              </div>
+              <div className="chat-composer">
+                <textarea
+                  ref={inputRef}
+                  value={draft}
+                  onChange={(e) => onDraftChange(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  rows={1}
+                  disabled={streaming}
+                  placeholder="질문을 입력하세요... (Shift+Enter 줄바꿈)"
+                  className="chat-composer-input"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleSend()}
+                  disabled={!draft.trim() || streaming}
+                  className="chat-send-button"
+                  aria-label="질문 보내기"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </aside>
+    </div>,
+    document.body,
   );
 }

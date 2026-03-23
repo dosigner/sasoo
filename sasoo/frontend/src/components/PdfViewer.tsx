@@ -1,112 +1,89 @@
-import { useState } from 'react';
-import { Viewer } from '@react-pdf-viewer/core';
-import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout';
-import { GlobalWorkerOptions } from 'pdfjs-dist';
-import {
-  FileText,
-  Loader2,
-  AlertCircle,
-} from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { BookOpen } from 'lucide-react';
+import { type PdfNavigationRequest } from '@/lib/api';
 import { S } from '@/lib/strings';
-
-// Import styles
-import '@react-pdf-viewer/core/lib/styles/index.css';
-import '@react-pdf-viewer/default-layout/lib/styles/index.css';
-
-// Import worker as URL for bundling
-import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
-
-// Set worker globally
-GlobalWorkerOptions.workerSrc = PdfWorker;
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import { ContentState } from '@/components/ui';
 
 interface PdfViewerProps {
-  /** URL to serve the PDF */
   pdfUrl: string;
-  /** Paper title for display */
   title?: string;
+  navigationRequest?: PdfNavigationRequest | null;
+  onPageChange?: (page: number) => void;
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+type FitMode = 'width' | 'page';
 
-export default function PdfViewer({ pdfUrl, title }: PdfViewerProps) {
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+function buildPdfSrc(pdfUrl: string, page: number, fitMode: FitMode, reloadNonce: number): string {
+  const baseUrl = pdfUrl.split('#')[0];
+  const zoom = fitMode === 'width' ? 'page-width' : 'page-fit';
+  return `${baseUrl}#page=${Math.max(page, 1)}&zoom=${zoom}&view=FitH&toolbar=1&navpanes=0&_reload=${reloadNonce}`;
+}
 
-  // Create plugin instance
-  const defaultLayoutPluginInstance = defaultLayoutPlugin({
-    sidebarTabs: (defaultTabs) => [defaultTabs[0]], // Only show thumbnails
-  });
+export default function PdfViewer({
+  pdfUrl,
+  title,
+  navigationRequest,
+  onPageChange,
+}: PdfViewerProps) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const lastNavigationId = useRef<string | null>(null);
 
-  // State reset handled by key prop in parent (Workbench)
+  useEffect(() => {
+    setCurrentPage(1);
+    setIsLoaded(false);
+    lastNavigationId.current = null;
+  }, [pdfUrl]);
+
+  useEffect(() => {
+    if (!navigationRequest) return;
+    if (lastNavigationId.current === navigationRequest.requestId) return;
+    lastNavigationId.current = navigationRequest.requestId;
+    setCurrentPage(Math.max(navigationRequest.page, 1));
+  }, [navigationRequest]);
+
+  useEffect(() => {
+    onPageChange?.(currentPage);
+  }, [currentPage, onPageChange]);
+
+  const viewerSrc = useMemo(
+    () => buildPdfSrc(pdfUrl, currentPage, 'width', 0),
+    [currentPage, pdfUrl],
+  );
 
   return (
-    <div className="flex flex-col h-full bg-surface-900">
-      {/* Header */}
-      {title && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-surface-800 border-b border-surface-700 shrink-0">
-          <FileText className="w-4 h-4 text-surface-400 shrink-0" />
-          <span className="text-xs text-surface-300 truncate">{title}</span>
-        </div>
-      )}
-
-      {/* PDF Viewer */}
-      <div className="flex-1 relative overflow-hidden">
-        {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-surface-900/80 z-10">
-            <div className="flex flex-col items-center gap-3">
-              <Loader2 className="w-6 h-6 text-primary-400 animate-spin" />
-              <span className="text-sm text-surface-400">{S.pdf.loading}</span>
-            </div>
+    <div className="flex h-full flex-col bg-surface-950">
+      <div className="relative min-h-0 flex-1 bg-[#09090b]">
+        {!isLoaded && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center p-6">
+            <ContentState
+              icon={BookOpen}
+              title={S.pdf.loading}
+              description="문서 뷰어를 준비하고 있습니다."
+              loading
+              tone="muted"
+            />
           </div>
         )}
 
-        {loadError && (
-          <div className="absolute inset-0 flex items-center justify-center bg-surface-900 z-10">
-            <div className="flex flex-col items-center gap-3 text-center px-8">
-              <AlertCircle className="w-10 h-10 text-red-400" />
-              <div>
-                <p className="text-sm text-surface-300 mb-1">
-                  {S.pdf.loadFailed}
-                </p>
-                <p className="text-xs text-surface-500">{loadError}</p>
-              </div>
-              <button
-                onClick={() => {
-                  setLoadError(null);
-                  setIsLoading(true);
-                }}
-                className="btn-secondary text-xs mt-2"
-              >
-                {S.error.retry}
-              </button>
-            </div>
-          </div>
-        )}
+        <iframe
+          key={viewerSrc}
+          title={title || 'PDF viewer'}
+          src={viewerSrc}
+          className="h-full w-full border-0 bg-[#09090b]"
+          onLoad={() => setIsLoaded(true)}
+        />
 
-        <div className="h-full [&_.rpv-core__viewer]:h-full">
-          <Viewer
-            fileUrl={pdfUrl}
-            plugins={[defaultLayoutPluginInstance]}
-            onDocumentLoad={() => {
-              setIsLoading(false);
-              setLoadError(null);
-            }}
-            renderError={(error) => {
-              setIsLoading(false);
-              setLoadError(error.message || S.pdf.loadFailed);
-              return <div />;
-            }}
-            theme={{
-              theme: 'dark',
-            }}
-          />
-        </div>
+        <noscript>
+          <div className="flex h-full items-center justify-center p-6">
+            <ContentState
+              icon={BookOpen}
+              title={S.pdf.loadFailed}
+              description="PDF 보기를 위해 JavaScript가 필요합니다."
+              tone="error"
+            />
+          </div>
+        </noscript>
       </div>
     </div>
   );

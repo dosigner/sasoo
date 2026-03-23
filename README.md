@@ -26,7 +26,7 @@ PDF 던져주면 4단계로 쪼개서 분석하고, 레시피 카드까지 뽑�
 <br/>
 
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.6.3-brightgreen?style=flat-square)](https://github.com/dosigner/sasoo/releases/tag/v0.6.3)
+[![Version](https://img.shields.io/badge/version-0.6.4-brightgreen?style=flat-square)](https://github.com/dosigner/sasoo/releases/tag/v0.6.4)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![Node](https://img.shields.io/badge/node-18%2B-339933?style=flat-square&logo=node.js&logoColor=white)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)]()
@@ -406,8 +406,8 @@ graph TB
 <td align="center" width="300">
 <br/>
 <h3>🪟 Windows</h3>
-<a href="https://github.com/dosigner/sasoo/releases/tag/v0.6.3">
-<img src="https://img.shields.io/badge/Sasoo_Setup_0.6.3.exe-Download-2ea44f?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
+<a href="https://github.com/dosigner/sasoo/releases/latest">
+<img src="https://img.shields.io/badge/Sasoo_Setup_0.6.4.exe-Download-2ea44f?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
 </a>
 <br/><br/>
 <sub>Windows 10/11 · NSIS 인스톨러</sub>
@@ -432,13 +432,13 @@ graph TB
 
 <br/>
 
+> **현재 최신 태그**: [`v0.6.4`](https://github.com/dosigner/sasoo/releases/tag/v0.6.4)
+> macOS Apple Silicon ZIP과 Windows NSIS 인스톨러 기준으로 배포됩니다.
+>
 > **API 키 필요**: 설치 후 Settings에서 Gemini API Key를 입력해야 분석 기능을 사용할 수 있습니다.
 > 키 발급: [aistudio.google.com](https://aistudio.google.com)
 >
-> **macOS 설치 안내**: ZIP을 풀고 `Sasoo.app`를 `Applications`로 옮기세요.
-> macOS에서 "`Sasoo`은(는) 손상되었기 때문에 열 수 없습니다" 경고가 나오면 터미널에서 아래 명령을 실행한 뒤 다시 열어야 합니다.
-> `xattr -dr com.apple.quarantine /Applications/Sasoo.app`
-> 그 다음에도 바로 실행이 막히면 Finder에서 `Sasoo.app` 우클릭 → 열기를 사용하세요.
+> **macOS 설치 안내**: ZIP을 풀고 `Sasoo.app`를 `Applications`로 옮긴 뒤, 첫 실행은 우클릭 → 열기를 사용하세요.
 > 무료 계정 기준 macOS 배포는 현재 unsigned ZIP-only입니다.
 
 <br/>
@@ -1024,12 +1024,12 @@ sasoo/
 </tr>
 <tr>
 <td align="center">🪟 Windows</td>
-<td><code>pnpm build:win</code></td>
-<td><code>.exe</code> (NSIS 인스톨러)</td>
+<td><code>pnpm build:win:release</code></td>
+<td><code>.exe</code> + <code>latest.yml</code> + <code>.blockmap</code></td>
 </tr>
 <tr>
 <td align="center">🍎 macOS</td>
-<td><code>pnpm build:mac</code></td>
+<td><code>pnpm build:mac:release</code></td>
 <td><code>.zip</code> + <code>latest-mac.yml</code> + <code>.blockmap</code></td>
 </tr>
 <tr>
@@ -1046,25 +1046,12 @@ sasoo/
 </div>
 
 > 빌드 시 백엔드는 PyInstaller로 단일 바이너리로 패키징되어 `extraResources`에 포함됨.
-
-### macOS 릴리스 체크리스트
-
-- `pnpm clean:mac`: 이전 mac 산출물과 플랫폼 오염 파일 정리
-- `pnpm build:mac`: 로컬 mac 산출물 생성
-- `pnpm verify:mac-artifact`: ZIP, `latest-mac.yml`, 압축 해제 결과 검증
-- `pnpm build:mac:release`: unsigned ZIP-only mac release build + verify 실행
-
-### macOS 배포 메모
-
-무료 계정 기준 macOS 릴리스는 Apple signing / notarization 없이 ZIP-only로 배포한다.
-
-GitHub Actions는 mac ZIP, `.blockmap`, `latest-mac.yml`만 업로드한다. 자세한 운영 메모는 [`doc/macos-release.md`](doc/macos-release.md) 참고.
-
-사용자 설치 안내에도 아래 내용을 반드시 포함한다.
-
-- ZIP 압축 해제 후 `Sasoo.app`를 `Applications`로 이동
-- "`Sasoo`은(는) 손상되었기 때문에 열 수 없습니다" 경고가 나오면 `xattr -dr com.apple.quarantine /Applications/Sasoo.app` 실행
-- 그래도 막히면 Finder에서 `Sasoo.app` 우클릭 → 열기
+>
+> GitHub 배포 자동화:
+> [release.yml](.github/workflows/release.yml)
+>
+> 릴리스 체크리스트:
+> [docs/03-release/release-checklist.md](sasoo/docs/03-release/release-checklist.md)
 
 <br/>
 

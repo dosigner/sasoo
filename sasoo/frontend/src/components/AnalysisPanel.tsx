@@ -13,7 +13,6 @@ import {
   Loader2,
   Circle,
   AlertCircle,
-  MessageSquare,
 } from 'lucide-react';
 import {
   getStaticUrl,
@@ -26,13 +25,15 @@ import {
   type VisualizationItem,
   type PhaseStatusValue,
   type AnalysisPhase,
+  type Figure,
 } from '@/lib/api';
-import { getAgentMeta, agentBgStyle, agentBorderStyle } from '@/lib/agents';
+import { getAgentMeta } from '@/lib/agents';
+import { buildPhaseSummary, statusMeta } from '@/lib/workbenchSummaries';
 import { S } from '@/lib/strings';
 import FigureGallery from './FigureGallery';
 import RecipeCard from './RecipeCard';
 import ExperimentPlanTab from './ExperimentPlanTab';
-import ChatPanel from './ChatPanel';
+import { ContentState } from '@/components/ui';
 const MermaidRenderer = lazy(() => import('./MermaidRenderer'));
 import ProgressTracker from './ProgressTracker';
 
@@ -50,6 +51,7 @@ interface AnalysisPanelProps {
   isRunning: boolean;
   agentName?: string;
   paperId?: string;
+  onJumpToFigurePage?: (figure: Figure) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,14 +124,14 @@ function getPhaseStatusInfo(phaseStatus: PhaseStatusValue): {
       return {
         icon: <AlertCircle className="w-4 h-4" />,
         label: S.status.error,
-        classes: 'text-red-400 bg-red-500/10',
+        classes: 'text-red-400 bg-red-500/8 border border-red-500/10',
       };
     case 'pending':
     default:
       return {
         icon: <Circle className="w-4 h-4" />,
         label: S.status.pending,
-        classes: 'text-surface-500 bg-surface-700/50',
+        classes: 'text-surface-500 bg-surface-800/80 border border-surface-700/45',
       };
   }
 }
@@ -143,7 +145,31 @@ interface PhaseSectionProps {
   phaseStatus: PhaseStatusValue;
   content: string | null;
   defaultExpanded: boolean;
+  summaryLine?: string | null;
+  collapsedMeta?: string[];
+  expandedMeta?: string[];
+  tone?: 'primary' | 'muted' | 'practical';
+  accentColor?: string;
   children?: React.ReactNode;
+}
+
+function rgbaFromHex(color: string, alpha: number): string {
+  const cleaned = color.replace('#', '');
+  if (cleaned.length !== 6) return color;
+  const r = parseInt(cleaned.slice(0, 2), 16);
+  const g = parseInt(cleaned.slice(2, 4), 16);
+  const b = parseInt(cleaned.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function buildMetaPillStyle(color?: string, variant: 'default' | 'soft' = 'default'): React.CSSProperties | undefined {
+  if (!color) return undefined;
+
+  return {
+    color,
+    borderColor: rgbaFromHex(color, variant === 'soft' ? 0.24 : 0.28),
+    backgroundColor: rgbaFromHex(color, variant === 'soft' ? 0.08 : 0.13),
+  };
 }
 
 function PhaseSection({
@@ -151,11 +177,17 @@ function PhaseSection({
   phaseStatus,
   content,
   defaultExpanded,
+  summaryLine,
+  collapsedMeta = [],
+  expandedMeta = [],
+  tone = 'muted',
+  accentColor,
   children,
 }: PhaseSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const meta = PHASE_META[phaseName];
   const statusInfo = getPhaseStatusInfo(phaseStatus);
+  const isActive = phaseStatus === 'running';
 
   // Allow expanding if: there's content, children, currently running, OR already completed
   const hasContent = !!(content) || !!children || phaseStatus === 'running' || phaseStatus === 'completed';
@@ -167,32 +199,91 @@ function PhaseSection({
   if (!meta) return null;
 
   const Icon = meta.icon;
+  const toneClasses =
+    tone === 'primary'
+      ? 'text-surface-100'
+      : tone === 'practical'
+        ? 'text-surface-200'
+        : 'text-surface-300';
 
   return (
     <div
-      className={`border rounded-xl overflow-hidden transition-all duration-300 ${
+      className={`phase-section border-b last:border-b-0 ${
         phaseStatus === 'running'
-          ? 'border-primary-500/30 bg-primary-500/5'
+          ? 'border-primary-500/16'
           : phaseStatus === 'completed'
-            ? 'border-surface-700 bg-surface-800/50'
+            ? 'border-surface-700/38'
             : phaseStatus === 'error'
-              ? 'border-red-500/20 bg-red-500/5'
-              : 'border-surface-700/50 bg-surface-800/30'
+              ? 'border-red-500/16'
+              : 'border-surface-700/32'
       }`}
     >
-      {/* Header */}
       <button
         onClick={toggleExpanded}
-        className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+        className={`w-full flex items-center gap-3 px-0 py-3 text-left transition-colors ${
           hasContent
-            ? 'hover:bg-surface-700/30 cursor-pointer'
+            ? 'hover:text-surface-100 cursor-pointer'
             : 'cursor-default opacity-60'
         }`}
         disabled={!hasContent}
         aria-expanded={expanded}
         aria-label={`${meta.label} ${expanded ? '닫기' : '열기'}`}
       >
-        {/* Expand/collapse chevron */}
+        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${
+          isActive
+            ? 'border-primary-500/18 bg-primary-500/8'
+            : phaseStatus === 'error'
+              ? 'border-red-500/18 bg-red-500/8'
+              : 'border-surface-700/45 bg-surface-900/75'
+        }`}>
+          <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-primary-400' : phaseStatus === 'error' ? 'text-red-400' : 'text-surface-500'}`} />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className={`text-sm font-medium ${toneClasses}`}>
+            {meta.label}
+          </div>
+          <div className="mt-1 text-2xs text-surface-500">
+            {expanded ? meta.description : statusInfo.label}
+          </div>
+          {!expanded && collapsedMeta.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {collapsedMeta.map((item) => (
+                <span
+                  key={item}
+                  className="phase-meta-pill"
+                  style={buildMetaPillStyle(accentColor)}
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+          )}
+          {expanded && expandedMeta.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {expandedMeta.map((item) => (
+                <span
+                  key={item}
+                  className="phase-meta-pill phase-meta-pill-soft"
+                  style={buildMetaPillStyle(accentColor, 'soft')}
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+          )}
+          {!expanded && summaryLine && (
+            <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-surface-400">
+              {summaryLine}
+            </div>
+          )}
+        </div>
+
+        <span className={`badge text-2xs shrink-0 ${statusInfo.classes}`}>
+          {statusInfo.icon}
+          <span className="ml-1 hidden sm:inline">{statusInfo.label}</span>
+        </span>
+
         <span className="text-surface-500 shrink-0">
           {expanded ? (
             <ChevronDown className="w-4 h-4" />
@@ -200,64 +291,38 @@ function PhaseSection({
             <ChevronRight className="w-4 h-4" />
           )}
         </span>
-
-        {/* Phase icon */}
-        <Icon className="w-4 h-4 text-primary-400 shrink-0" />
-
-        {/* Phase info */}
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-surface-200">
-            {meta.label}
-          </div>
-          <div className="text-2xs text-surface-500 mt-0.5">
-            {meta.description}
-          </div>
-        </div>
-
-        {/* Status badge */}
-        <span
-          className={`badge text-2xs shrink-0 ${statusInfo.classes}`}
-        >
-          {statusInfo.icon}
-          <span className="ml-1">{statusInfo.label}</span>
-        </span>
       </button>
 
-      {/* Content */}
       {expanded && hasContent && (
-        <div className="px-4 pb-4 border-t border-surface-700/50">
-          {/* Running state */}
+        <div className="pb-5">
           {phaseStatus === 'running' && !content && (
-            <div className="flex items-center gap-3 py-6 justify-center" role="status" aria-busy="true">
-              <Loader2 className="w-5 h-5 text-primary-400 animate-spin" />
-              <span className="text-sm text-surface-400">
+            <div className="flex items-center gap-2 py-4" role="status" aria-busy="true">
+              <Loader2 className="w-4 h-4 text-primary-400 animate-spin" />
+              <span className="text-xs text-surface-400">
                 {S.analysis.analyzingDots}
               </span>
             </div>
           )}
 
-          {/* Completed but content not yet loaded */}
           {phaseStatus === 'completed' && !content && !children && (
-            <div className="flex items-center gap-3 py-6 justify-center" role="status" aria-busy="true">
-              <Loader2 className="w-5 h-5 text-surface-500 animate-spin" />
-              <span className="text-sm text-surface-400">
+            <div className="flex items-center gap-2 py-4" role="status" aria-busy="true">
+              <Loader2 className="w-4 h-4 text-surface-500 animate-spin" />
+              <span className="text-xs text-surface-400">
                 {S.analysis.loadingResults}
               </span>
             </div>
           )}
 
-          {/* Markdown content */}
           {content && (
-            <div className="analysis-content mt-4 fade-in-up">
+            <div className="analysis-content mt-2 fade-in-up">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {content}
               </ReactMarkdown>
             </div>
           )}
 
-          {/* Embedded sub-components (figures, recipe, mermaid) */}
           {children && (
-            <div className="mt-4 space-y-6 fade-in-up">
+            <div className="mt-4 space-y-5 fade-in-up">
               {children}
             </div>
           )}
@@ -755,6 +820,7 @@ export default function AnalysisPanel({
   isRunning,
   agentName,
   paperId,
+  onJumpToFigurePage,
 }: AnalysisPanelProps) {
   // Determine phase statuses
   const getPhaseStatus = (phaseName: AnalysisPhase): PhaseStatusValue => {
@@ -776,136 +842,150 @@ export default function AnalysisPanel({
   // No analysis yet
   if (!status && !isRunning) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-center px-8">
-        <div className="w-16 h-16 rounded-2xl bg-surface-800 border border-surface-700 flex items-center justify-center mb-4">
-          <FileSearch className="w-8 h-8 text-surface-500" />
-        </div>
-        <h3 className="text-lg font-semibold text-surface-200 mb-2">
-          {S.analysis.noResults}
-        </h3>
-        <p className="text-sm text-surface-400 max-w-sm">
-          {S.analysis.noResultsDesc}
-        </p>
+      <div className="px-5 py-6">
+        <ContentState
+          icon={FileSearch}
+          title={S.analysis.noResults}
+          description={S.analysis.noResultsDesc}
+          tone="muted"
+        />
       </div>
     );
   }
 
   const agentMeta = getAgentMeta(agentName);
+  const phaseAccentColor = agentMeta?.color;
+  const figureList = figures?.figures ?? [];
+  const screeningSummary = buildPhaseSummary('screening', results, recipe, figureList, visualizations);
+  const citationSummary = buildPhaseSummary('citation', results, recipe, figureList, visualizations);
+  const visualSummary = buildPhaseSummary('visual', results, recipe, figureList, visualizations);
+  const recipeSummary = buildPhaseSummary('recipe', results, recipe, figureList, visualizations);
+  const deepDiveSummary = buildPhaseSummary('deep_dive', results, recipe, figureList, visualizations);
 
   return (
-    <div className="space-y-3 py-4 px-4 overflow-y-auto flex-1 min-h-0">
-      {/* Agent badge */}
+    <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
       {agentMeta && (
-        <div className="mb-3">
-          <span
-            className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium border"
-            style={{ ...agentBgStyle(agentMeta.color), ...agentBorderStyle(agentMeta.color), color: agentMeta.color }}
-          >
-            <span>{agentMeta.name}</span>
-            <span className="text-surface-500 font-normal">{agentMeta.personality}</span>
-          </span>
+        <div className="mb-4 rounded-2xl border border-surface-700/45 bg-surface-900/35 px-4 py-3">
+          <div className="flex items-center gap-2 text-2xs uppercase tracking-[0.16em] text-surface-500">
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ backgroundColor: agentMeta.color }}
+            />
+            <span className="font-medium" style={{ color: agentMeta.color }}>
+              {agentMeta.name}
+            </span>
+          </div>
+          {statusMeta(status) && (
+            <p className="mt-2 text-xs text-surface-400">{statusMeta(status)}</p>
+          )}
         </div>
       )}
 
-      {/* Progress tracker (scrolls with content) */}
       {status && status.overall_status !== 'pending' && (
-        <ProgressTracker
-          phases={status.phases}
-          overallProgress={status.progress_pct}
-        />
+        <div className="mb-5">
+          <ProgressTracker
+            phases={status.phases}
+            overallProgress={status.progress_pct}
+            variant="minimal"
+          />
+        </div>
       )}
 
-      {/* Phase 1: Screening */}
-      <PhaseSection
-        phaseName="screening"
-        phaseStatus={getPhaseStatus('screening')}
-        content={getPhaseContent('screening')}
-        defaultExpanded={true}
-      />
-
-      {/* Phase 2: Citation Analysis */}
-      <PhaseSection
-        phaseName="citation"
-        phaseStatus={getPhaseStatus('citation')}
-        content={getPhaseContent('citation')}
-        defaultExpanded={getPhaseStatus('citation') === 'completed'}
-      />
-
-      {/* Phase 3: Visual */}
-      <PhaseSection
-        phaseName="visual"
-        phaseStatus={getPhaseStatus('visual')}
-        content={getPhaseContent('visual')}
-        defaultExpanded={getPhaseStatus('visual') === 'completed'}
-      >
-        <FigureGallery
-          figures={figures?.figures ?? []}
-          paperId={paperId ?? ''}
-          loading={getPhaseStatus('visual') === 'running'}
+      <div className="space-y-0">
+        <PhaseSection
+          phaseName="screening"
+          phaseStatus={getPhaseStatus('screening')}
+          content={getPhaseContent('screening')}
+          defaultExpanded={true}
+          summaryLine={screeningSummary.summaryLine}
+          collapsedMeta={screeningSummary.collapsedMeta}
+          expandedMeta={screeningSummary.expandedMeta}
+          tone={screeningSummary.tone}
+          accentColor={phaseAccentColor}
         />
-      </PhaseSection>
 
-      {/* Phase 4: Recipe (rendered by RecipeCard, no markdown content) */}
-      <PhaseSection
-        phaseName="recipe"
-        phaseStatus={getPhaseStatus('recipe')}
-        content={null}
-        defaultExpanded={getPhaseStatus('recipe') === 'completed'}
-      >
-        <RecipeCard
-          recipe={recipe}
-          loading={getPhaseStatus('recipe') === 'running'}
+        <PhaseSection
+          phaseName="citation"
+          phaseStatus={getPhaseStatus('citation')}
+          content={getPhaseContent('citation')}
+          defaultExpanded={false}
+          summaryLine={citationSummary.summaryLine}
+          collapsedMeta={citationSummary.collapsedMeta}
+          expandedMeta={citationSummary.expandedMeta}
+          tone={citationSummary.tone}
+          accentColor={phaseAccentColor}
         />
-      </PhaseSection>
 
-      {/* Experiment Planner (available after Recipe phase) */}
-      {getPhaseStatus('recipe') === 'completed' && paperId && (
-        <div className="border rounded-xl overflow-hidden border-surface-700 bg-surface-800/50">
-          <div className="px-4 py-3 flex items-center gap-3 border-b border-surface-700/50">
-            <FlaskConical className="w-4 h-4 text-emerald-400" />
-            <span className="text-sm font-medium text-surface-200">
-              실험 계획서
-            </span>
-            <span className="badge text-2xs bg-emerald-500/10 text-emerald-400">NEW</span>
-          </div>
-          <div className="px-4 pb-4">
+        <PhaseSection
+          phaseName="visual"
+          phaseStatus={getPhaseStatus('visual')}
+          content={getPhaseContent('visual')}
+          defaultExpanded={false}
+          summaryLine={visualSummary.summaryLine}
+          collapsedMeta={visualSummary.collapsedMeta}
+          expandedMeta={visualSummary.expandedMeta}
+          tone={visualSummary.tone}
+          accentColor={phaseAccentColor}
+        >
+          <FigureGallery
+            figures={figureList}
+            paperId={paperId ?? ''}
+            loading={getPhaseStatus('visual') === 'running'}
+            onJumpToFigurePage={onJumpToFigurePage}
+          />
+        </PhaseSection>
+
+        <PhaseSection
+          phaseName="recipe"
+          phaseStatus={getPhaseStatus('recipe')}
+          content={null}
+          defaultExpanded={false}
+          summaryLine={recipeSummary.summaryLine}
+          collapsedMeta={recipeSummary.collapsedMeta}
+          expandedMeta={recipeSummary.expandedMeta}
+          tone={recipeSummary.tone}
+          accentColor={phaseAccentColor}
+        >
+          <RecipeCard
+            recipe={recipe}
+            loading={getPhaseStatus('recipe') === 'running'}
+          />
+        </PhaseSection>
+
+        {getPhaseStatus('recipe') === 'completed' && paperId && (
+          <div className="border-b border-surface-700/35 py-4">
+            <div className="mb-3 flex items-center gap-2">
+              <FlaskConical className="w-4 h-4 text-emerald-400" />
+              <span className="text-sm font-medium text-surface-200">
+                실험 계획서
+              </span>
+            </div>
             <ExperimentPlanTab
               paperId={paperId}
               recipeAvailable={getPhaseStatus('recipe') === 'completed'}
             />
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Phase 5: Deep Dive + Visualizations */}
-      <PhaseSection
-        phaseName="deep_dive"
-        phaseStatus={getPhaseStatus('deep_dive')}
-        content={getPhaseContent('deep_dive')}
-        defaultExpanded={getPhaseStatus('deep_dive') === 'completed'}
-      >
-        <VisualizationGallery
-          visualizations={visualizations}
-          legacyMermaid={mermaidDiagram}
-          loading={getPhaseStatus('deep_dive') === 'running'}
-        />
-      </PhaseSection>
+        <PhaseSection
+          phaseName="deep_dive"
+          phaseStatus={getPhaseStatus('deep_dive')}
+          content={getPhaseContent('deep_dive')}
+          defaultExpanded={false}
+          summaryLine={deepDiveSummary.summaryLine}
+          collapsedMeta={deepDiveSummary.collapsedMeta}
+          expandedMeta={deepDiveSummary.expandedMeta}
+          tone={deepDiveSummary.tone}
+          accentColor={phaseAccentColor}
+        >
+          <VisualizationGallery
+            visualizations={visualizations}
+            legacyMermaid={mermaidDiagram}
+            loading={getPhaseStatus('deep_dive') === 'running'}
+          />
+        </PhaseSection>
 
-      {/* Agent Chat (available after at least screening is completed) */}
-      {getPhaseStatus('screening') === 'completed' && paperId && (
-        <div className="border rounded-xl overflow-hidden border-surface-700 bg-surface-800/50">
-          <div className="px-4 py-3 flex items-center gap-3 border-b border-surface-700/50">
-            <MessageSquare className="w-4 h-4 text-primary-400" />
-            <span className="text-sm font-medium text-surface-200">
-              에이전트 채팅
-            </span>
-            <span className="badge text-2xs bg-primary-500/10 text-primary-400">NEW</span>
-          </div>
-          <div className="px-4 pb-4">
-            <ChatPanel paperId={paperId} agentName={agentName} />
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }

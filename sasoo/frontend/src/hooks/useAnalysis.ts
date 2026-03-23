@@ -8,6 +8,7 @@ import {
   type MermaidDiagram,
   type VisualizationPlan,
   type PhaseInfo,
+  type AnalysisRunRequest,
   runAnalysis as apiRunAnalysis,
   getAnalysisStatus,
   getAnalysisResults,
@@ -42,7 +43,7 @@ interface UseAnalysisReturn {
   /** Error from the last operation */
   error: string | null;
   /** Start analysis for the given paper */
-  startAnalysis: () => Promise<void>;
+  startAnalysis: (request?: AnalysisRunRequest) => Promise<void>;
   /** Manually refresh status & results */
   refresh: () => Promise<void>;
   /** Reset state (e.g., when navigating away) */
@@ -241,7 +242,7 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
   // Public methods
   // -----------------------------------------------------------------------
 
-  const startAnalysis = useCallback(async () => {
+  const startAnalysis = useCallback(async (request: AnalysisRunRequest = {}) => {
     if (!paperId) return;
 
     setError(null);
@@ -255,7 +256,7 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
     fetchedPhases.current.clear();
 
     try {
-      await apiRunAnalysis(paperId);
+      await apiRunAnalysis(paperId, request);
       if (!mountedRef.current) return;
       // Don't set the /run response as status (it's not an AnalysisStatus).
       // Instead, poll immediately to get the real status.

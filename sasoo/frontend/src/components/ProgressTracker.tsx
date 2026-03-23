@@ -19,6 +19,7 @@ import { S } from '@/lib/strings';
 interface ProgressTrackerProps {
   phases: PhaseInfo[];
   overallProgress: number;
+  variant?: 'default' | 'minimal';
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +113,7 @@ function getConnectorClasses(
 export default function ProgressTracker({
   phases,
   overallProgress,
+  variant: _variant,
 }: ProgressTrackerProps) {
   const isActive = phases.some((p) => p.status === 'running');
   const isComplete = phases.every((p) => p.status === 'completed');

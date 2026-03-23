@@ -1,25 +1,32 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Play,
   Loader2,
   AlertCircle,
   PanelLeftClose,
   PanelLeftOpen,
-  PanelLeft,
-  Columns2,
-  PanelRight,
   Square,
   ArrowLeft,
 } from 'lucide-react';
-import { getPaper, getPdfUrl, cancelAnalysis, getSettings, type Paper } from '@/lib/api';
-import { getAgentMeta } from '@/lib/agents';
+import {
+  getPaper,
+  getPdfUrl,
+  cancelAnalysis,
+  getSettings,
+  type Paper,
+  type PaperBananaProfile,
+  type PdfNavigationRequest,
+} from '@/lib/api';
 import { useAnalysis } from '@/hooks/useAnalysis';
 import { useToast } from '@/components/Toast';
 import { S } from '@/lib/strings';
+import { buildChatStarterPrompts } from '@/lib/workbenchSummaries';
 import PdfViewer from '@/components/PdfViewer';
 import AnalysisPanel from '@/components/AnalysisPanel';
-import { Modal } from '@/components/ui';
+import ChatPanel from '@/components/ChatPanel';
+import ChatComposerFab from '@/components/ChatComposerFab';
+import { ContentState, Modal } from '@/components/ui';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -32,12 +39,9 @@ const DEFAULT_SPLIT = 50; // percent
 const SNAP_POINTS = [25, 33, 50, 67, 75]; // percent
 const SNAP_THRESHOLD = 2; // percent - magnetic snap distance
 const KEYBOARD_STEP = 5; // percent per arrow key press
+const ANALYSIS_PROFILE_OPTIONS: PaperBananaProfile[] = ['fast', 'balanced', 'quality'];
 
-const PRESETS = [
-  { label: 'PDF 중심', icon: PanelLeft, value: 70 },
-  { label: '균등', icon: Columns2, value: 50 },
-  { label: '분석 중심', icon: PanelRight, value: 30 },
-] as const;
+type AnalysisProfileSelection = 'default' | PaperBananaProfile;
 
 // ---------------------------------------------------------------------------
 // Component
@@ -45,6 +49,7 @@ const PRESETS = [
 
 export default function Workbench() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { toast } = useToast();
 
   // Paper data
@@ -71,6 +76,10 @@ export default function Workbench() {
   const [pdfCollapsed, setPdfCollapsed] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isSnapping, setIsSnapping] = useState(false);
+  const [navigationRequest, setNavigationRequest] = useState<PdfNavigationRequest | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMinimized, setChatMinimized] = useState(false);
+  const [chatDraft, setChatDraft] = useState('');
 
   // -----------------------------------------------------------------------
   // Load paper data
@@ -107,6 +116,28 @@ export default function Workbench() {
   // -----------------------------------------------------------------------
   const autoStartedRef = useRef(false);
   const [showAnalysisConfirm, setShowAnalysisConfirm] = useState(false);
+  const [defaultPaperBananaProfile, setDefaultPaperBananaProfile] = useState<PaperBananaProfile>('fast');
+  const [analysisProfileSelection, setAnalysisProfileSelection] = useState<AnalysisProfileSelection>('default');
+
+  const getProfileLabel = useCallback((profile: PaperBananaProfile) => {
+    if (profile === 'fast') return S.settings.profileFast;
+    if (profile === 'balanced') return S.settings.profileBalanced;
+    return S.settings.profileQuality;
+  }, []);
+
+  const openAnalysisConfirm = useCallback(() => {
+    setAnalysisProfileSelection('default');
+    setShowAnalysisConfirm(true);
+  }, []);
+
+  const handleStartAnalysis = useCallback(async (
+    selection: AnalysisProfileSelection = analysisProfileSelection
+  ) => {
+    const effectiveProfile =
+      selection === 'default' ? defaultPaperBananaProfile : selection;
+    setShowAnalysisConfirm(false);
+    await startAnalysis({ paperbanana_profile: effectiveProfile });
+  }, [analysisProfileSelection, defaultPaperBananaProfile, startAnalysis]);
 
   useEffect(() => {
     if (
@@ -120,23 +151,42 @@ export default function Workbench() {
       // Check auto_analyze setting
       getSettings()
         .then((settings) => {
+          setDefaultPaperBananaProfile(settings.paperbanana_profile || 'fast');
           if (settings.auto_analyze) {
-            startAnalysis();
+            startAnalysis({
+              paperbanana_profile: settings.paperbanana_profile || 'fast',
+            });
           } else {
-            setShowAnalysisConfirm(true);
+            openAnalysisConfirm();
           }
         })
         .catch(() => {
           // If settings fetch fails, show dialog as safe default
-          setShowAnalysisConfirm(true);
+          openAnalysisConfirm();
         });
     }
-  }, [paper, isRunning, status, startAnalysis]);
+  }, [paper, isRunning, openAnalysisConfirm, startAnalysis, status]);
 
   // Reset auto-start flag when paper id changes
   useEffect(() => {
     autoStartedRef.current = false;
     setShowAnalysisConfirm(false);
+  }, [id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getSettings()
+      .then((settings) => {
+        if (!cancelled) {
+          setDefaultPaperBananaProfile(settings.paperbanana_profile || 'fast');
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   // -----------------------------------------------------------------------
@@ -226,38 +276,32 @@ export default function Workbench() {
     },
     [splitPosition, snapToNearest]
   );
-
-  // Find closest preset for highlighting
-  const activePreset = PRESETS.find(
-    (p) => Math.abs(p.value - splitPosition) < 3
-  );
-
   // -----------------------------------------------------------------------
   // Loading / error states
   // -----------------------------------------------------------------------
   if (paperLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 text-primary-400 animate-spin" />
-          <span className="text-sm text-surface-400">{S.workbench.loading}</span>
-        </div>
+      <div className="flex h-full items-center justify-center p-6">
+        <ContentState
+          icon={Loader2}
+          title={S.workbench.loading}
+          description="논문 메타데이터와 분석 워크벤치를 준비하고 있습니다."
+          loading
+          tone="muted"
+        />
       </div>
     );
   }
 
   if (paperError || !paper) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="flex flex-col items-center gap-3 text-center px-8">
-          <AlertCircle className="w-10 h-10 text-red-400" />
-          <h2 className="text-lg font-semibold text-surface-200">
-            {S.workbench.loadFailed}
-          </h2>
-          <p className="text-sm text-surface-400 max-w-sm">
-            {paperError || S.workbench.notFound}
-          </p>
-        </div>
+      <div className="flex h-full items-center justify-center p-6">
+        <ContentState
+          icon={AlertCircle}
+          title={S.workbench.loadFailed}
+          description={paperError || S.workbench.notFound}
+          tone="error"
+        />
       </div>
     );
   }
@@ -265,6 +309,12 @@ export default function Workbench() {
   const pdfUrl = getPdfUrl(String(paper.id));
   const canStartAnalysis =
     !isRunning && (paper.status === 'pending' || paper.status === 'completed' || paper.status === 'error');
+  const screeningCompleted = status?.phases.some((phase) => phase.phase === 'screening' && phase.status === 'completed') ?? false;
+  const chatStarters = buildChatStarterPrompts({
+    results,
+    figures: figures?.figures ?? [],
+    recipe,
+  });
 
   return (
     <div className="flex flex-col h-full">
@@ -275,12 +325,31 @@ export default function Workbench() {
           논문 분석에 Gemini Pro + Claude Sonnet API를 사용합니다.
           예상 비용: <span className="text-primary-400 font-medium">$0.5 ~ $2.0</span> / 논문
         </p>
+        <div className="mb-4">
+          <label className="text-xs text-surface-400 block mb-1.5">
+            {S.workbench.paperbananaProfile}
+          </label>
+          <select
+            value={analysisProfileSelection}
+            onChange={(e) => setAnalysisProfileSelection(e.target.value as AnalysisProfileSelection)}
+            className="input w-full"
+          >
+            <option value="default">
+              {S.workbench.useDefaultProfile(getProfileLabel(defaultPaperBananaProfile))}
+            </option>
+            {ANALYSIS_PROFILE_OPTIONS.map((profile) => (
+              <option key={profile} value={profile}>
+                {getProfileLabel(profile)}
+              </option>
+            ))}
+          </select>
+          <p className="text-2xs text-surface-500 mt-1">
+            {S.workbench.paperbananaProfileHelp}
+          </p>
+        </div>
         <div className="flex gap-2">
           <button
-            onClick={() => {
-              setShowAnalysisConfirm(false);
-              startAnalysis();
-            }}
+            onClick={() => void handleStartAnalysis()}
             className="btn-primary flex-1 py-2 text-sm"
           >
             <Play className="w-4 h-4 mr-1" />
@@ -296,21 +365,24 @@ export default function Workbench() {
       </Modal>
 
       {/* Top bar: paper info + controls */}
-      <div className="flex items-center justify-between px-4 py-2 bg-surface-800/90 backdrop-blur-lg border-b border-surface-700/50 shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
-          <Link
-            to="/library"
-            className="btn-ghost p-1.5 rounded-md shrink-0 text-surface-400 hover:text-primary-400"
+      <div className="shrink-0 border-b border-surface-700/45 bg-surface-900 px-4 py-2 [.light_&]:bg-white">
+        <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => navigate('/library')}
             title={S.workbench.backToLibrary}
+            aria-label={S.workbench.backToLibrary}
+            className="btn-icon-subtle"
           >
             <ArrowLeft className="w-4 h-4" />
-          </Link>
+          </button>
           <button
+            type="button"
             onClick={togglePdf}
-            className="btn-ghost p-1.5 rounded-md shrink-0"
             title={pdfCollapsed ? S.workbench.showPdf : S.workbench.hidePdf}
-            aria-label={pdfCollapsed ? 'PDF 표시' : 'PDF 숨기기'}
-            aria-expanded={!pdfCollapsed}
+            aria-label={pdfCollapsed ? S.workbench.showPdf : S.workbench.hidePdf}
+            className="btn-icon-subtle"
           >
             {pdfCollapsed ? (
               <PanelLeftOpen className="w-4 h-4" />
@@ -319,63 +391,18 @@ export default function Workbench() {
             )}
           </button>
           <div className="min-w-0">
-            <h1 className="text-sm font-semibold text-surface-200 truncate">
+            <h1 className="truncate text-sm font-semibold text-surface-100 tracking-apple-body">
               {paper.title}
             </h1>
-            <div className="flex items-center gap-2 text-2xs text-surface-500">
-              {paper.authors && (
-                <span className="truncate max-w-[300px]">
-                  {paper.authors}
-                </span>
-              )}
-              {paper.year && (
-                <>
-                  <span className="w-1 h-1 rounded-full bg-surface-600" />
-                  <span>{paper.year}</span>
-                </>
-              )}
-              <span className="w-1 h-1 rounded-full bg-surface-600" />
-              <span className="badge-primary text-2xs">{paper.domain}</span>
-              {(() => {
-                const agent = getAgentMeta(paper.agent_used);
-                if (!agent) return (
-                  <span className="text-2xs text-surface-500">{S.agent.unknownDomain}</span>
-                );
-                return (
-                  <span
-                    className="w-5 h-5 rounded-full flex items-center justify-center text-2xs font-bold shrink-0"
-                    style={{ backgroundColor: agent.color, color: '#fff' }}
-                    title={`${agent.name} — ${agent.personality}`}
-                  >
-                    {agent.name.charAt(0).toUpperCase()}
-                  </span>
-                );
-              })()}
+            <div className="mt-0.5 flex items-center gap-2 text-2xs text-surface-500">
+              {paper.year && <span>{paper.year}</span>}
+              {paper.year && paper.domain && <span className="h-1 w-1 rounded-full bg-surface-600" />}
+              {paper.domain && <span className="truncate">{paper.domain}</span>}
             </div>
           </div>
         </div>
 
-        {/* Preset buttons + Analysis button */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Split presets (only when PDF visible) */}
-          {!pdfCollapsed && (
-            <div className="flex items-center gap-0.5 mr-2">
-              {PRESETS.map((preset) => (
-                <button
-                  key={preset.value}
-                  onClick={() => setSplitPosition(preset.value)}
-                  className={`p-1.5 rounded-md transition-colors duration-150 ${
-                    activePreset?.value === preset.value
-                      ? 'bg-primary-500/20 text-primary-400'
-                      : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'
-                  }`}
-                  title={`${preset.label} (${preset.value}:${100 - preset.value})`}
-                >
-                  <preset.icon className="w-3.5 h-3.5" />
-                </button>
-              ))}
-            </div>
-          )}
           {analysisError && (
             <span className="text-2xs text-red-400 flex items-center gap-1">
               <AlertCircle className="w-3 h-3" />
@@ -384,8 +411,8 @@ export default function Workbench() {
           )}
           {canStartAnalysis && (
             <button
-              onClick={startAnalysis}
-              className="btn-primary text-xs py-1.5 px-4"
+              onClick={openAnalysisConfirm}
+              className="btn-primary text-xs py-1.5 px-4 shadow-none"
             >
               <Play className="w-3.5 h-3.5" />
               {paper.status === 'completed' ? S.workbench.reAnalyze : S.workbench.startAnalysis}
@@ -415,6 +442,7 @@ export default function Workbench() {
             </div>
           )}
         </div>
+        </div>
       </div>
 
       {/* Split view */}
@@ -425,7 +453,12 @@ export default function Workbench() {
             className="h-full overflow-hidden relative"
             style={{ width: `${splitPosition}%` }}
           >
-            <PdfViewer key={pdfUrl} pdfUrl={pdfUrl} title={paper.title} />
+            <PdfViewer
+              key={pdfUrl}
+              pdfUrl={pdfUrl}
+              title={paper.title}
+              navigationRequest={navigationRequest}
+            />
             {/* Transparent overlay to prevent iframe from stealing mouse events during resize */}
             {isResizing && (
               <div className="absolute inset-0 z-10" />
@@ -458,17 +491,49 @@ export default function Workbench() {
             width: pdfCollapsed ? '100%' : `${100 - splitPosition}%`,
           }}
         >
-          <AnalysisPanel
-            status={status}
-            results={results}
-            figures={figures}
-            recipe={recipe}
-            mermaid={mermaid}
-            visualizations={visualizations}
-            isRunning={isRunning}
-            agentName={paper?.agent_used}
-            paperId={id}
-          />
+          <div className="relative flex h-full flex-col">
+            <AnalysisPanel
+              status={status}
+              results={results}
+              figures={figures}
+              recipe={recipe}
+              mermaid={mermaid}
+              visualizations={visualizations}
+              isRunning={isRunning}
+              agentName={paper?.agent_used}
+              paperId={id}
+              onJumpToFigurePage={(figure) => {
+                if (typeof figure.page_number !== 'number') return;
+                setNavigationRequest({
+                  page: figure.page_number,
+                  requestId: `${figure.id ?? figure.figure_num ?? 'figure'}-${Date.now()}`,
+                  source: 'figure',
+                });
+              }}
+            />
+            {screeningCompleted && id && (
+              <>
+                <ChatComposerFab
+                  open={chatOpen}
+                  onClick={() => {
+                    setChatOpen((prev) => !prev);
+                    setChatMinimized(false);
+                  }}
+                />
+                <ChatPanel
+                  paperId={id}
+                  agentName={paper.agent_used}
+                  open={chatOpen}
+                  minimized={chatMinimized}
+                  draft={chatDraft}
+                  starters={chatStarters}
+                  onClose={() => setChatOpen(false)}
+                  onToggleMinimized={() => setChatMinimized((prev) => !prev)}
+                  onDraftChange={setChatDraft}
+                />
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>

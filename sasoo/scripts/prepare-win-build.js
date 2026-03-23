@@ -12,16 +12,16 @@ const OUTPUT_DIRS = [
 ];
 
 function fail(message) {
-  console.error(`[prepare-mac-build] ${message}`);
+  console.error(`[prepare-win-build] ${message}`);
   process.exit(1);
 }
 
 function log(message) {
-  console.log(`[prepare-mac-build] ${message}`);
+  console.log(`[prepare-win-build] ${message}`);
 }
 
-if (process.platform !== 'darwin') {
-  fail(`macOS builds must run on macOS. Current platform: ${process.platform}`);
+if (process.platform !== 'win32') {
+  fail(`Windows builds must run on Windows. Current platform: ${process.platform}`);
 }
 
 for (const dir of OUTPUT_DIRS) {
@@ -31,4 +31,4 @@ for (const dir of OUTPUT_DIRS) {
   }
 }
 
-log('macOS build directories are clean.');
+log('Windows build directories are clean.');

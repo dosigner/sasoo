@@ -34,6 +34,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG_NAME }}
+          fetch-depth: 0
 
       # ── Node + pnpm ──────────────────────────────
       - uses: pnpm/action-setup@v4
@@ -81,7 +84,7 @@ jobs:
           if [[ "$RUNNER_OS" == "macOS" ]]; then
             pnpm build:mac:release
           else
-            pnpm build:backend && pnpm build:frontend && pnpm build:electron && npx electron-builder ${{ matrix.builder_flag }} --publish never
+            pnpm build:win:release
           fi
 
       # ── Upload artifacts ─────────────────────────
@@ -93,6 +96,7 @@ jobs:
             sasoo/dist/*.exe
             sasoo/dist/*-mac.zip
             sasoo/dist/*.blockmap
+            sasoo/dist/latest.yml
             sasoo/dist/latest-mac.yml
           if-no-files-found: error
 
@@ -133,4 +137,5 @@ jobs:
             artifacts/*.exe
             artifacts/*-mac.zip
             artifacts/*.blockmap
+            artifacts/latest.yml
             artifacts/latest-mac.yml

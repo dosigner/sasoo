@@ -59,6 +59,9 @@ export const S = {
     cancel: '취소',
     panelResize: '패널 크기 조절',
     backToLibrary: '라이브러리',
+    paperbananaProfile: '분석 프로필',
+    useDefaultProfile: (label: string) => `기본값 사용 (${label})`,
+    paperbananaProfileHelp: 'Figure/시각화 품질과 속도 균형을 선택합니다.',
   },
 
   // ── PDF Viewer ──
@@ -148,6 +151,9 @@ export const S = {
     browseFolderTitle: '라이브러리 폴더 선택',
     autoAnalyze: '업로드 시 자동 분석',
     autoAnalyzeHelp: '논문 업로드 시 자동으로 분석을 시작합니다.',
+    profileFast: '빠름',
+    profileBalanced: '균형',
+    profileQuality: '고품질',
     // Appearance
     appearance: '테마',
     dark: '다크',
