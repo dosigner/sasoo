@@ -19,6 +19,15 @@
   --sidebar-collapsed-width: 4rem;
   --header-height: 3rem;
   --transition-speed: 300ms;
+  --icon-stroke: 1.7;
+  --icon-highlight-opacity: 0.24;
+  --icon-surface-radius: 18px;
+  --icon-surface-border: rgba(255, 255, 255, 0.08);
+  --icon-surface-tint: rgba(255, 255, 255, 0.05);
+  --icon-surface-shadow: 0 8px 22px rgba(0, 0, 0, 0.16);
+  --radius-control: 12px;
+  --radius-surface: 16px;
+  --radius-pill: 999px;
 }
 
 .light {
@@ -34,6 +43,9 @@
   --color-success: #34c759;
   --color-warning: #ff9f0a;
   --color-error: #ff3b30;
+  --icon-surface-border: rgba(15, 23, 42, 0.08);
+  --icon-surface-tint: rgba(255, 255, 255, 0.78);
+  --icon-surface-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
 }
 
 @layer base {
@@ -95,7 +107,8 @@
 @layer components {
   /* Reusable card component */
   .card {
-    @apply bg-surface-800 border border-surface-700/60 rounded-2xl p-4;
+    @apply bg-surface-800 border border-surface-700/60 p-4;
+    border-radius: var(--radius-surface);
   }
 
   .light .card {
@@ -114,7 +127,8 @@
 
   /* Button variants */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all duration-300 ease-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface-900 disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium transition-all duration-300 ease-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-surface-900 disabled:opacity-50 disabled:pointer-events-none;
+    border-radius: var(--radius-control);
   }
 
   .light .btn {
@@ -122,11 +136,12 @@
   }
 
   .btn-primary {
-    @apply btn bg-primary-600 text-white rounded-full hover:bg-primary-500 focus:ring-primary-500 font-semibold;
+    @apply btn bg-primary-600 text-white hover:bg-primary-500 focus:ring-primary-500 font-semibold;
+    border-radius: var(--radius-pill);
   }
 
   .btn-secondary {
-    @apply btn bg-surface-700 text-surface-200 rounded-xl hover:bg-surface-600 hover:border-surface-500/70 focus:ring-surface-500 border border-surface-600/50;
+    @apply btn bg-surface-700 text-surface-200 hover:bg-surface-600 hover:border-surface-500/70 focus:ring-surface-500 border border-surface-600/50;
   }
 
   .light .btn-secondary {
@@ -142,11 +157,13 @@
   }
 
   .btn-danger {
-    @apply btn bg-red-600 text-white hover:bg-red-500 focus:ring-red-500 rounded-full;
+    @apply btn bg-red-600 text-white hover:bg-red-500 focus:ring-red-500;
+    border-radius: var(--radius-pill);
   }
 
   .btn-icon-subtle {
-    @apply inline-flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-surface-400 transition-all duration-200 ease-out hover:border-surface-600/70 hover:bg-surface-700/60 hover:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500/40;
+    @apply inline-flex h-8 w-8 items-center justify-center border border-transparent text-surface-400 transition-all duration-200 ease-out hover:border-surface-600/70 hover:bg-surface-700/60 hover:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500/40;
+    border-radius: var(--radius-control);
   }
 
   .light .btn-icon-subtle {
@@ -155,7 +172,8 @@
 
   /* Input styles */
   .input {
-    @apply w-full rounded-xl border border-surface-600/60 bg-surface-800 px-3 py-2 text-sm text-surface-200 placeholder-surface-500 transition-colors duration-300 ease-out focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500;
+    @apply w-full border border-surface-600/60 bg-surface-800 px-3 py-2 text-sm text-surface-200 placeholder-surface-500 transition-colors duration-300 ease-out focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500;
+    border-radius: var(--radius-control);
   }
 
   .light .input {
@@ -164,7 +182,8 @@
 
   /* Badge */
   .badge {
-    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center px-2 py-0.5 text-xs font-medium;
+    border-radius: var(--radius-pill);
   }
 
   .badge-primary {
@@ -184,7 +203,8 @@
   }
 
   .toolbar-shell {
-    @apply rounded-2xl border border-surface-700/50 bg-surface-800/70 backdrop-blur-xl shadow-[0_12px_32px_rgba(0,0,0,0.18)];
+    @apply border border-surface-700/50 bg-surface-800/70 backdrop-blur-xl shadow-[0_12px_32px_rgba(0,0,0,0.18)];
+    border-radius: var(--radius-surface);
   }
 
   .light .toolbar-shell {
@@ -192,7 +212,8 @@
   }
 
   .toolbar-group {
-    @apply inline-flex items-center gap-1 rounded-xl border border-surface-700/50 bg-surface-900/40 px-1.5 py-1;
+    @apply inline-flex items-center gap-1 border border-surface-700/50 bg-surface-900/40 px-1.5 py-1;
+    border-radius: var(--radius-control);
   }
 
   .light .toolbar-group {
@@ -200,7 +221,8 @@
   }
 
   .panel-section {
-    @apply rounded-2xl border border-surface-700/50 bg-surface-800/40 backdrop-blur-sm transition-all duration-200;
+    @apply border border-surface-700/50 bg-surface-800/40 backdrop-blur-sm transition-all duration-200;
+    border-radius: var(--radius-surface);
   }
 
   .light .panel-section {
@@ -235,6 +257,252 @@
 
   .phase-dot-error {
     @apply phase-dot border-red-500 bg-red-500;
+  }
+
+  .icon-surface {
+    border-radius: var(--radius-control);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.04);
+    @apply inline-flex items-center justify-center;
+  }
+
+  .light .icon-surface {
+    border-color: rgba(15, 23, 42, 0.08);
+    background: rgba(15, 23, 42, 0.03);
+  }
+
+  .segmented-control {
+    @apply flex items-center gap-1 overflow-x-auto border-b border-surface-700/50 pb-1;
+  }
+
+  .light .segmented-control {
+    @apply border-surface-200 bg-transparent;
+  }
+
+  .segmented-control__item {
+    @apply inline-flex min-h-[2.25rem] items-center justify-center gap-2 border-b-2 border-transparent px-2.5 py-2 text-xs font-medium text-surface-500 transition-colors duration-200 ease-out;
+    border-radius: var(--radius-control);
+  }
+
+  .segmented-control__item:hover {
+    @apply text-surface-200;
+  }
+
+  .segmented-control__item-active {
+    @apply rounded-none border-primary-500 text-primary-400;
+  }
+
+  .light .segmented-control__item-active {
+    @apply text-primary-600;
+  }
+
+  .segmented-control__item-disabled {
+    @apply cursor-not-allowed text-surface-600 opacity-50;
+  }
+
+  .status-pill {
+    @apply inline-flex items-center gap-1.5 border px-2.5 py-1 text-[11px] font-medium;
+    border-radius: var(--radius-pill);
+  }
+
+  .library-archive-header {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.025) 0%, rgba(255, 255, 255, 0) 100%);
+  }
+
+  .light .library-archive-header {
+    background:
+      linear-gradient(180deg, rgba(15, 23, 42, 0.03) 0%, rgba(255, 255, 255, 0) 100%);
+  }
+
+  .library-controlbar {
+    @apply grid gap-3 pt-4;
+  }
+
+  .library-filter-panel {
+    @apply rounded-[24px] bg-surface-900/55 p-4;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
+
+  .light .library-filter-panel {
+    @apply bg-white;
+    background-color: rgba(255, 255, 255, 0.88);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  }
+
+  .library-shelf {
+    @apply overflow-hidden rounded-[28px] bg-surface-800/55;
+  }
+
+  .light .library-shelf {
+    @apply bg-white;
+    background-color: rgba(255, 255, 255, 0.88);
+  }
+
+  .library-shelf-row {
+    position: relative;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.015);
+  }
+
+  .library-shelf-row::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 180ms ease;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.035), transparent 22%);
+  }
+
+  .library-shelf-row:hover::after {
+    opacity: 1;
+  }
+
+  .library-shelf-row--completed {
+    background:
+      linear-gradient(90deg, rgba(52, 211, 153, 0.08) 0%, rgba(52, 211, 153, 0.02) 16%, transparent 40%);
+  }
+
+  .library-shelf-row--analyzing {
+    background:
+      linear-gradient(90deg, rgba(56, 189, 248, 0.1) 0%, rgba(56, 189, 248, 0.03) 16%, transparent 40%);
+  }
+
+  .library-shelf-row--pending {
+    background:
+      linear-gradient(90deg, rgba(251, 191, 36, 0.08) 0%, rgba(251, 191, 36, 0.025) 14%, transparent 38%);
+  }
+
+  .library-shelf-row--error {
+    background:
+      linear-gradient(90deg, rgba(248, 113, 113, 0.11) 0%, rgba(248, 113, 113, 0.03) 16%, transparent 40%);
+  }
+
+  .library-shelf-row--completed .library-status-badge {
+    @apply border-emerald-500/20 bg-emerald-500/10 text-emerald-300;
+  }
+
+  .library-shelf-row--analyzing .library-status-badge {
+    @apply border-sky-500/20 bg-sky-500/10 text-sky-300;
+  }
+
+  .library-shelf-row--pending .library-status-badge {
+    @apply border-amber-500/20 bg-amber-500/10 text-amber-300;
+  }
+
+  .library-shelf-row--error .library-status-badge {
+    @apply border-red-500/20 bg-red-500/10 text-red-300;
+  }
+
+  .library-status-badge {
+    @apply inline-flex items-center gap-1 rounded-full border px-2 py-1 text-2xs;
+  }
+
+  .library-status-dot {
+    @apply h-1.5 w-1.5 rounded-full;
+  }
+
+  .library-shelf-row--completed .library-status-dot {
+    @apply bg-emerald-400;
+  }
+
+  .library-shelf-row--analyzing .library-status-dot {
+    @apply bg-sky-400;
+    box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.08);
+  }
+
+  .library-shelf-row--pending .library-status-dot {
+    @apply bg-amber-300;
+  }
+
+  .library-shelf-row--error .library-status-dot {
+    @apply bg-red-400;
+    box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.07);
+  }
+
+  .library-record-title {
+    @apply text-[15px] font-medium leading-snug tracking-normal text-surface-100;
+  }
+
+  .light .library-record-title {
+    @apply text-surface-900;
+  }
+
+  .library-record-meta {
+    @apply mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-surface-400;
+  }
+
+  .light .library-record-meta {
+    @apply text-surface-600;
+  }
+
+  .library-meta-label {
+    @apply text-2xs font-medium text-surface-500;
+  }
+
+  .light .library-meta-label {
+    @apply text-surface-600;
+  }
+
+  .library-meta-value {
+    @apply text-sm text-surface-200;
+  }
+
+  .light .library-meta-value {
+    @apply text-surface-800;
+  }
+
+  .library-agent-label {
+    @apply inline-flex items-center gap-2 text-sm text-surface-300;
+  }
+
+  .light .library-agent-label {
+    @apply text-surface-700;
+  }
+
+  .library-archive-card {
+    @apply relative overflow-hidden rounded-[24px] bg-surface-800/80 p-4 transition-colors;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  }
+
+  .library-archive-card:hover {
+    @apply bg-surface-800;
+  }
+
+  .light .library-archive-card {
+    @apply bg-white;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  }
+
+  .library-archive-card--completed {
+    background:
+      linear-gradient(180deg, rgba(52, 211, 153, 0.08) 0%, rgba(52, 211, 153, 0.02) 18%, transparent 48%),
+      rgba(30, 41, 59, 0.45);
+  }
+
+  .library-archive-card--analyzing {
+    background:
+      linear-gradient(180deg, rgba(56, 189, 248, 0.1) 0%, rgba(56, 189, 248, 0.025) 20%, transparent 52%),
+      rgba(30, 41, 59, 0.45);
+  }
+
+  .library-archive-card--pending {
+    background:
+      linear-gradient(180deg, rgba(251, 191, 36, 0.08) 0%, rgba(251, 191, 36, 0.02) 18%, transparent 48%),
+      rgba(30, 41, 59, 0.45);
+  }
+
+  .library-archive-card--error {
+    background:
+      linear-gradient(180deg, rgba(248, 113, 113, 0.11) 0%, rgba(248, 113, 113, 0.03) 20%, transparent 52%),
+      rgba(30, 41, 59, 0.45);
+  }
+
+  .light .library-archive-card--completed,
+  .light .library-archive-card--analyzing,
+  .light .library-archive-card--pending,
+  .light .library-archive-card--error {
+    background-color: rgba(255, 255, 255, 0.94);
   }
 }
 
@@ -601,7 +869,8 @@
   }
 
   .phase-meta-pill {
-    @apply inline-flex items-center rounded-full border border-surface-700/45 bg-surface-900/55 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-surface-500;
+    @apply inline-flex items-center border border-surface-700/45 bg-surface-900/55 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-surface-500;
+    border-radius: var(--radius-pill);
   }
 
   .phase-meta-pill-soft {
@@ -609,7 +878,8 @@
   }
 
   .pdf-toolbar-btn {
-    @apply inline-flex h-8 min-w-[2rem] items-center justify-center rounded-xl border border-transparent bg-transparent px-2 text-surface-400 transition-all duration-200 hover:border-surface-600/70 hover:bg-surface-800/70 hover:text-surface-100 disabled:pointer-events-none disabled:opacity-35;
+    @apply inline-flex h-8 min-w-[2rem] items-center justify-center border border-transparent bg-transparent px-2 text-surface-400 transition-all duration-200 hover:border-surface-600/70 hover:bg-surface-800/70 hover:text-surface-100 disabled:pointer-events-none disabled:opacity-35;
+    border-radius: var(--radius-control);
   }
 
   .pdf-toolbar-btn-active {
@@ -621,7 +891,8 @@
   }
 
   .pdf-thumb-item {
-    @apply mb-3 flex w-full flex-col items-center gap-1 rounded-2xl border border-transparent px-2 py-2 transition-all duration-200 hover:border-surface-700/60 hover:bg-surface-900/75;
+    @apply mb-3 flex w-full flex-col items-center gap-1 border border-transparent px-2 py-2 transition-all duration-200 hover:border-surface-700/60 hover:bg-surface-900/75;
+    border-radius: var(--radius-surface);
   }
 
   .pdf-thumb-item-active {
@@ -633,93 +904,17 @@
   }
 
   .pdf-thumb-canvas {
-    @apply overflow-hidden rounded-xl border border-surface-700/45 bg-surface-900/70 p-1;
+    @apply overflow-hidden border border-surface-700/45 bg-surface-900/70 p-1;
+    border-radius: var(--radius-control);
   }
 
   .pdf-viewer-shell {
     @apply h-full [&_.rpv-core__viewer]:h-full [&_.rpv-core__viewer]:bg-[#09090b] [&_.rpv-core__inner-pages]:bg-[#09090b] [&_.rpv-core__page-layer]:shadow-none [&_.rpv-core__page-layer]:mx-auto [&_.rpv-core__page-layer]:my-3 [&_.rpv-core__canvas-layer]:rounded-lg;
   }
 
-  .chat-launcher {
-    @apply fixed bottom-5 right-5 z-30 inline-flex items-center gap-2 rounded-full border border-surface-700/55 bg-surface-900/90 px-4 py-2 text-surface-200 shadow-[0_12px_32px_rgba(0,0,0,0.24)] backdrop-blur-xl transition-all duration-200 hover:border-primary-500/30 hover:bg-surface-900;
-  }
-
-  .chat-launcher-open {
-    @apply border-primary-500/30 bg-primary-500/10 text-primary-200;
-  }
-
-  .light .chat-launcher {
-    @apply border-surface-200 bg-white/90 text-surface-700 shadow-[0_16px_36px_rgba(15,23,42,0.14)];
-  }
-
-  .light .chat-launcher:hover {
-    @apply border-primary-500/20 bg-white text-surface-900;
-  }
-
-  .light .chat-launcher-open {
-    @apply border-primary-500/20 bg-primary-50 text-primary-700;
-  }
-
-  .chat-sheet-shell {
-    @apply pointer-events-none fixed inset-0 z-40;
-  }
-
-  .chat-sheet-shell-open {
-    @apply pointer-events-auto;
-  }
-
-  .chat-sheet-scrim {
-    @apply absolute inset-0 opacity-0 transition-opacity duration-200;
-    background: radial-gradient(circle at bottom right, rgba(10, 132, 255, 0.08), transparent 18rem);
-  }
-
-  .chat-sheet-scrim-open {
-    @apply opacity-100;
-  }
-
-  .light .chat-sheet-scrim {
-    background: radial-gradient(circle at bottom right, rgba(0, 122, 255, 0.06), transparent 18rem);
-  }
-
-  .chat-sheet-backdrop {
-    @apply absolute bottom-4 right-4 h-[38rem] w-[26rem] max-w-[calc(100vw-2rem)] rounded-[32px] opacity-0 blur-3xl transition-opacity duration-300;
-    background: linear-gradient(180deg, rgba(10, 132, 255, 0.12), rgba(10, 132, 255, 0.03));
-  }
-
-  .chat-sheet-backdrop-open {
-    @apply opacity-100;
-  }
-
-  .light .chat-sheet-backdrop {
-    background: linear-gradient(180deg, rgba(0, 122, 255, 0.10), rgba(255, 255, 255, 0.58));
-  }
-
-  .chat-sheet {
-    @apply absolute bottom-20 right-5 flex h-[min(42rem,calc(100vh-7.5rem))] w-[25rem] max-w-[calc(100vw-2rem)] translate-y-6 scale-[0.98] flex-col overflow-hidden rounded-[28px] border border-surface-700/55 bg-surface-900/95 shadow-[0_28px_80px_rgba(0,0,0,0.32)] backdrop-blur-2xl transition-all duration-300 ease-out;
-  }
-
-  .chat-sheet-open {
-    transform: translateY(0) scale(1);
-  }
-
-  .chat-sheet-minimized {
-    @apply h-[5rem];
-  }
-
-  .light .chat-sheet {
-    @apply border-surface-200/90 bg-white/95 shadow-[0_24px_64px_rgba(15,23,42,0.16)];
-  }
-
-  .chat-sheet-header {
-    @apply flex items-start justify-between gap-3 border-b border-surface-700/45 px-4 py-4;
-  }
-
-  .light .chat-sheet-header {
-    @apply border-surface-200/90;
-  }
-
   .chat-starter-chip {
-    @apply rounded-full border border-surface-700/50 bg-surface-800/70 px-3 py-1.5 text-xs text-surface-300 transition-colors duration-200 hover:border-primary-500/20 hover:bg-surface-800 hover:text-surface-100;
+    @apply border border-surface-700/50 bg-surface-800/70 px-3 py-1.5 text-xs text-surface-300 transition-colors duration-200 hover:border-primary-500/20 hover:bg-surface-800 hover:text-surface-100;
+    border-radius: var(--radius-pill);
   }
 
   .light .chat-starter-chip {
@@ -727,7 +922,8 @@
   }
 
   .chat-empty-state {
-    @apply mb-4 flex items-start gap-3 rounded-2xl border border-surface-700/45 bg-surface-900/35 px-4 py-4 text-left;
+    @apply mb-4 flex items-start gap-3 border border-surface-700/45 bg-surface-900/35 px-4 py-4 text-left;
+    border-radius: var(--radius-surface);
   }
 
   .light .chat-empty-state {
@@ -735,7 +931,8 @@
   }
 
   .chat-empty-icon {
-    @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-surface-700/55 bg-surface-800/80;
+    @apply flex h-8 w-8 shrink-0 items-center justify-center border border-surface-700/55 bg-surface-800/80;
+    border-radius: var(--radius-pill);
   }
 
   .light .chat-empty-icon {
@@ -747,7 +944,8 @@
   }
 
   .chat-bubble {
-    @apply rounded-[22px] border px-4 py-3 text-[13px];
+    @apply border px-4 py-3 text-[13px];
+    border-radius: var(--radius-surface);
   }
 
   .chat-bubble-user {
@@ -772,6 +970,11 @@
 
   .chat-follow-chip {
     @apply rounded-full border border-surface-700/50 bg-surface-900/45 px-3 py-1 text-2xs text-surface-400 transition-colors duration-200 hover:border-primary-500/20 hover:text-surface-200;
+  }
+
+  .app-icon {
+    stroke-width: var(--icon-stroke);
+    vector-effect: non-scaling-stroke;
   }
 
   .light .chat-follow-chip {
@@ -800,6 +1003,44 @@
 
   .light .chat-send-button {
     @apply border-primary-500/15 bg-primary-50 text-primary-600 hover:bg-primary-100;
+  }
+
+  .chat-floating-backdrop {
+    @apply absolute inset-0 bg-transparent;
+  }
+
+  .chat-launcher {
+    @apply flex min-h-[4rem] items-center gap-3 rounded-[28px] border border-surface-700/60 bg-surface-950/90 px-3.5 py-2.5 shadow-[0_18px_48px_rgba(0,0,0,0.3)] backdrop-blur-xl transition-all duration-200 hover:-translate-y-0.5 hover:border-surface-600/70;
+    width: min(20rem, calc(100vw - 1.5rem));
+  }
+
+  .chat-launcher-ready {
+    @apply hover:bg-surface-900/95;
+  }
+
+  .chat-launcher-pending {
+    @apply hover:bg-surface-950/95;
+  }
+
+  .chat-launcher-badge {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium;
+  }
+
+  .chat-launcher-badge-ready {
+    @apply bg-emerald-500/10 text-emerald-300;
+  }
+
+  .chat-launcher-badge-pending {
+    @apply bg-surface-800 text-surface-400;
+  }
+
+  .chat-floating-card {
+    @apply flex max-h-[min(42rem,calc(100vh-2rem))] flex-col overflow-hidden rounded-[28px] border border-surface-700/60 bg-surface-900/95 shadow-[0_22px_64px_rgba(0,0,0,0.34)] backdrop-blur-xl;
+    width: min(26rem, calc(100vw - 1.5rem));
+  }
+
+  .chat-floating-header {
+    @apply flex items-start justify-between gap-3 border-b border-surface-700/45 px-4 py-4;
   }
 
   .light .chat-markdown h1,
@@ -837,20 +1078,30 @@
   }
 
   @media (max-width: 960px) {
-    .chat-launcher {
-      @apply bottom-4 right-4;
-    }
-
-    .chat-sheet-backdrop {
-      @apply bottom-3 right-3 left-3 h-[30rem] w-auto;
-    }
-
-    .chat-sheet {
-      @apply left-4 right-4 bottom-[4.75rem] h-[min(36rem,calc(100vh-7rem))] w-auto max-w-none;
-    }
-
     .pdf-thumb-panel {
       width: 6.25rem;
+    }
+
+    .chat-floating-card {
+      width: min(28rem, calc(100vw - 1rem));
+      max-height: min(38rem, calc(100vh - 1rem));
+    }
+
+    .chat-launcher {
+      width: min(18rem, calc(100vw - 1rem));
+    }
+  }
+
+  @media (max-width: 640px) {
+    .chat-floating-card {
+      width: calc(100vw - 1rem);
+      max-height: min(36rem, calc(100vh - 1rem));
+      border-radius: 24px;
+    }
+
+    .chat-launcher {
+      width: min(16rem, calc(100vw - 1rem));
+      border-radius: 24px;
     }
   }
 
@@ -866,6 +1117,26 @@
 
   .light .figure-modal-header h4 {
     @apply text-surface-800;
+  }
+
+  .light .chat-launcher {
+    @apply border-surface-200 bg-white/95 shadow-[0_18px_40px_rgba(15,23,42,0.14)];
+  }
+
+  .light .chat-floating-card {
+    @apply border-surface-200 bg-white/95 shadow-[0_20px_44px_rgba(15,23,42,0.16)];
+  }
+
+  .light .chat-launcher-ready {
+    @apply hover:bg-white;
+  }
+
+  .light .chat-launcher-pending {
+    @apply hover:bg-surface-50;
+  }
+
+  .light .chat-floating-header {
+    @apply border-surface-200;
   }
 
   .light .figure-modal-header button {

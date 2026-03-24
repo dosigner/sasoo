@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Minus, Square, X, Maximize2 } from 'lucide-react';
 import logoImg from '@/assets/logo.png';
+import { AppIcon } from '@/components/icons';
 import { S } from '@/lib/strings';
 
 export default function Titlebar() {
@@ -68,7 +68,7 @@ export default function Titlebar() {
             title={S.titlebar.minimize}
             aria-label={S.titlebar.minimize}
           >
-            <Minus className="w-3.5 h-3.5" />
+            <AppIcon name="minimize" className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={handleMaximize}
@@ -77,9 +77,9 @@ export default function Titlebar() {
             aria-label={isMaximized ? S.titlebar.restore : S.titlebar.maximize}
           >
             {isMaximized ? (
-              <Maximize2 className="w-3 h-3" />
+              <AppIcon name="restore" className="w-3.5 h-3.5" />
             ) : (
-              <Square className="w-3 h-3" />
+              <AppIcon name="maximize" className="w-3.5 h-3.5" />
             )}
           </button>
           <button
@@ -88,7 +88,7 @@ export default function Titlebar() {
             title={S.titlebar.close}
             aria-label={S.titlebar.close}
           >
-            <X className="w-3.5 h-3.5" />
+            <AppIcon name="close" className="w-3.5 h-3.5" />
           </button>
         </div>
       )}

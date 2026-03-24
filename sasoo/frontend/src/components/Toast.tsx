@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
+import { AppIcon } from '@/components/icons';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -85,22 +85,22 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
   // Icon and color configuration
   const config = {
     success: {
-      icon: CheckCircle,
+      icon: 'success' as const,
       iconColor: 'text-emerald-500',
       progressBg: 'bg-emerald-500',
     },
     error: {
-      icon: XCircle,
+      icon: 'error' as const,
       iconColor: 'text-red-500',
       progressBg: 'bg-red-500',
     },
     warning: {
-      icon: AlertTriangle,
+      icon: 'warning' as const,
       iconColor: 'text-amber-500',
       progressBg: 'bg-amber-500',
     },
     info: {
-      icon: Info,
+      icon: 'info' as const,
       iconColor: 'text-primary-500',
       progressBg: 'bg-primary-500',
     },
@@ -122,7 +122,9 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
       <div className="p-4 pr-10">
         <div className="flex items-start gap-3">
           {/* Icon */}
-          <Icon className={`w-5 h-5 shrink-0 mt-0.5 ${iconColor}`} />
+          <span className="icon-surface mt-0.5 h-9 w-9 shrink-0">
+            <AppIcon name={Icon} className={`h-4.5 w-4.5 ${iconColor}`} />
+          </span>
 
           {/* Text */}
           <div className="flex-1 min-w-0">
@@ -146,7 +148,7 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
           dark:text-surface-400 dark:hover:text-surface-200 dark:hover:bg-surface-700/50"
         aria-label="Close notification"
       >
-        <X className="w-4 h-4" />
+        <AppIcon name="close" className="w-4 h-4" />
       </button>
 
       {/* Progress bar */}

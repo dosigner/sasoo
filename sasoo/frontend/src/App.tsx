@@ -1,23 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import { S } from '@/lib/strings';
-import {
-  Upload,
-  Microscope,
-  BookOpen,
-  Settings,
-  ChevronLeft,
-  Bot,
-} from 'lucide-react';
 import logoImg from '@/assets/logo.png';
 import { getSettings } from '@/lib/api';
 import { fetchAllAgents } from '@/lib/agents';
+import { AppIcon, type AppIconName } from '@/components/icons';
 
 // Components
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { ToastProvider } from '@/components/Toast';
 import Titlebar from '@/components/Titlebar';
 import UpdateBanner from '@/components/UpdateBanner';
+import PageScaffold from '@/components/layout/PageScaffold';
+import WorkbenchScaffold from '@/components/layout/WorkbenchScaffold';
 
 // Pages
 import UploadPage from '@/pages/Upload';
@@ -31,10 +26,10 @@ import Agents from '@/pages/Agents';
 // ---------------------------------------------------------------------------
 
 const NAV_ITEMS = [
-  { to: '/', icon: Upload, label: S.app.upload, exact: true },
-  { to: '/agents', icon: Bot, label: S.app.agents, exact: false },
-  { to: '/library', icon: BookOpen, label: S.app.library, exact: false },
-  { to: '/settings', icon: Settings, label: S.app.settings, exact: false },
+  { to: '/', icon: 'upload' as AppIconName, label: S.app.upload, exact: true },
+  { to: '/library', icon: 'library' as AppIconName, label: S.app.library, exact: false },
+  { to: '/agents', icon: 'agents' as AppIconName, label: S.app.agents, exact: false },
+  { to: '/settings', icon: 'settings' as AppIconName, label: S.app.settings, exact: false },
 ];
 
 // ---------------------------------------------------------------------------
@@ -154,7 +149,6 @@ function App() {
         {/* Navigation */}
         <nav className="flex-1 py-3 px-2 space-y-1 overflow-y-auto">
           {NAV_ITEMS.map((item, index) => {
-            const Icon = item.icon;
             return (
               <NavLink
                 key={item.to}
@@ -172,7 +166,7 @@ function App() {
                 title={sidebarCollapsed ? item.label : undefined}
                 aria-label={item.label}
               >
-                <Icon className="w-4.5 h-4.5 shrink-0" />
+                <AppIcon name={item.icon} className="w-4.5 h-4.5 shrink-0" />
                 {!sidebarCollapsed && (
                   <span
                     className="text-sm font-medium sidebar-label-enter"
@@ -192,7 +186,7 @@ function App() {
                 sidebarCollapsed ? 'justify-center' : ''
               }`}
             >
-              <Microscope className="w-4.5 h-4.5 shrink-0" />
+              <AppIcon name="workbench" className="w-4.5 h-4.5 shrink-0" />
               {!sidebarCollapsed && (
                 <span className="text-sm font-medium">{S.app.workbench}</span>
               )}
@@ -210,7 +204,8 @@ function App() {
             title={sidebarCollapsed ? S.app.expandSidebar : S.app.collapseSidebar}
             aria-label={sidebarCollapsed ? '사이드바 펼치기' : '사이드바 접기'}
           >
-            <ChevronLeft
+            <AppIcon
+              name="chevron-left"
               className={`w-4 h-4 transition-transform duration-300 ${
                 sidebarCollapsed ? 'rotate-180' : ''
               }`}
@@ -226,11 +221,11 @@ function App() {
       <main className="flex-1 min-w-0 overflow-hidden">
         <div key={location.pathname} className="h-full w-full overflow-hidden animate-page-enter">
           <Routes>
-            <Route path="/" element={<UploadPage />} />
-            <Route path="/agents" element={<Agents />} />
-            <Route path="/workbench/:id" element={<Workbench />} />
-            <Route path="/library" element={<Library />} />
-            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/" element={<PageScaffold><UploadPage /></PageScaffold>} />
+            <Route path="/agents" element={<PageScaffold><Agents /></PageScaffold>} />
+            <Route path="/workbench/:id" element={<WorkbenchScaffold><Workbench /></WorkbenchScaffold>} />
+            <Route path="/library" element={<PageScaffold><Library /></PageScaffold>} />
+            <Route path="/settings" element={<PageScaffold><SettingsPage /></PageScaffold>} />
           </Routes>
         </div>
       </main>

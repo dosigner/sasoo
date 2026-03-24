@@ -79,7 +79,8 @@ export default function Modal({ open, onClose, children, maxWidth = 'max-w-md' }
     >
       <div
         ref={modalRef}
-        className={`bg-surface-800 [.light_&]:bg-white border border-surface-700 [.light_&]:border-surface-200 rounded-2xl p-6 ${maxWidth} w-full mx-4 shadow-2xl animate-slide-up`}
+        className={`bg-surface-800 [.light_&]:bg-white border border-surface-700 [.light_&]:border-surface-200 p-6 ${maxWidth} w-full mx-4 shadow-2xl animate-slide-up`}
+        style={{ borderRadius: 'var(--radius-surface)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {children}

@@ -1,20 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Search,
-  LayoutGrid,
-  List,
-  Filter,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  FileText,
-  Trash2,
-  Clock,
-  Tag,
   Loader2,
   AlertCircle,
-  BookOpen,
 } from 'lucide-react';
 import { usePapers } from '@/hooks/usePapers';
 import { type Paper, type PaperStatus } from '@/lib/api';
@@ -22,16 +12,9 @@ import { getAgentMeta, getAllAgents } from '@/lib/agents';
 import { S } from '@/lib/strings';
 import { useToast } from '@/components/Toast';
 import { Modal } from '@/components/ui';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+import { AppIcon } from '@/components/icons';
 
 type ViewMode = 'grid' | 'list';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
@@ -42,193 +25,314 @@ function formatDate(dateStr: string): string {
   });
 }
 
-function statusBadge(status: PaperStatus): {
-  label: string;
-  classes: string;
-} {
+function statusLabel(status: PaperStatus): string {
   switch (status) {
     case 'completed':
-      return { label: S.status.analyzed, classes: 'badge-success' };
+      return S.status.analyzed;
     case 'analyzing':
-      return { label: S.status.analyzing, classes: 'badge-primary' };
+      return S.status.analyzing;
     case 'pending':
-      return { label: S.status.pending, classes: 'badge-warning' };
+      return S.status.pending;
     case 'error':
-      return { label: S.status.error, classes: 'badge-error' };
+      return S.status.error;
     default:
-      return { label: status, classes: 'badge-primary' };
+      return status;
   }
 }
 
-// ---------------------------------------------------------------------------
-// Paper Card (Grid View)
-// ---------------------------------------------------------------------------
+function statusTone(status: PaperStatus): {
+  line: string;
+  panel: string;
+  badge: string;
+  dot: string;
+} {
+  switch (status) {
+    case 'completed':
+      return {
+        line: 'bg-emerald-400',
+        panel: 'bg-emerald-500/[0.05]',
+        badge: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300',
+        dot: 'bg-emerald-400',
+      };
+    case 'analyzing':
+      return {
+        line: 'bg-sky-400',
+        panel: 'bg-sky-500/[0.05]',
+        badge: 'border-sky-500/20 bg-sky-500/10 text-sky-300',
+        dot: 'bg-sky-400',
+      };
+    case 'error':
+      return {
+        line: 'bg-red-400',
+        panel: 'bg-red-500/[0.05]',
+        badge: 'border-red-500/20 bg-red-500/10 text-red-300',
+        dot: 'bg-red-400',
+      };
+    case 'pending':
+    default:
+      return {
+        line: 'bg-amber-300',
+        panel: 'bg-amber-500/[0.05]',
+        badge: 'border-amber-500/20 bg-amber-500/10 text-amber-300',
+        dot: 'bg-amber-300',
+      };
+  }
+}
 
-interface PaperCardProps {
+function primaryActionLabel(status: PaperStatus): string {
+  if (status === 'analyzing') return S.library.continueAnalysis;
+  if (status === 'error') return S.library.reviewError;
+  return S.library.openedFromLibrary;
+}
+
+function activityLabel(paper: Paper): string {
+  const date = paper.analyzed_at || paper.created_at;
+  return date ? formatDate(date) : '-';
+}
+
+function tagsForPaper(paper: Paper): string[] {
+  return (paper.tags ?? '')
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+}
+
+function statusMetaCount(papers: Paper[], status: PaperStatus): number {
+  return papers.filter((paper) => paper.status === status).length;
+}
+
+interface PaperItemProps {
   paper: Paper;
   onOpen: (id: string) => void;
   onDelete: (id: string, title: string) => void;
+  menuOpen: boolean;
+  onToggleMenu: (id: string) => void;
 }
 
-function PaperCard({ paper, onOpen, onDelete }: PaperCardProps) {
-  const badge = statusBadge(paper.status);
-  const agent = getAgentMeta(paper.agent_used);
+function RowMenu({ paper, onOpen, onDelete, menuOpen, onToggleMenu }: PaperItemProps) {
+  const actionLabel = primaryActionLabel(paper.status);
 
   return (
-    <div
-      className="card-hover cursor-pointer group"
-      onClick={() => onOpen(String(paper.id))}
-    >
-      {/* Header */}
-      <div className="flex items-start justify-between gap-2 mb-3">
-        <div className="flex items-center gap-2">
-          <FileText className="w-4 h-4 text-primary-400 shrink-0 mt-0.5" />
-          <h3 className="text-sm font-medium text-surface-200 line-clamp-2 leading-snug">
-            {paper.title}
-          </h3>
-        </div>
-        <span className={`shrink-0 text-2xs ${badge.classes}`}>
-          {badge.label}
-        </span>
-      </div>
-
-      {/* Authors */}
-      {paper.authors && (
-        <p className="text-2xs text-surface-500 mb-2 truncate">
-          {paper.authors}
-        </p>
-      )}
-
-      {/* Meta */}
-      <div className="flex items-center gap-2 text-2xs text-surface-500 mb-3">
-        {paper.year && <span>{paper.year}</span>}
-        {paper.year && <span className="w-1 h-1 rounded-full bg-surface-600" />}
-        <span className="badge-primary text-2xs">{paper.domain}</span>
-        {agent && (
-          <>
-            <span className="w-1 h-1 rounded-full bg-surface-600" />
-            <span className="flex items-center gap-1" style={{ color: agent.color }}>
-              {agent.nameKo}
-            </span>
-          </>
-        )}
-      </div>
-
-      {/* Tags */}
-      {paper.tags && (
-        <div className="flex flex-wrap gap-1 mb-3">
-          {paper.tags.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 3).map((tag) => (
-            <span
-              key={tag}
-              className="badge bg-surface-700/50 text-surface-400 text-2xs"
-            >
-              <Tag className="w-2.5 h-2.5 mr-0.5" />
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Footer */}
-      <div className="flex items-center justify-between pt-2 border-t border-surface-700/50">
-        <div className="flex items-center gap-1 text-2xs text-surface-500">
-          <Clock className="w-3 h-3" />
-          {paper.created_at ? formatDate(paper.created_at) : '-'}
-        </div>
-
-        {/* Delete */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete(String(paper.id), paper.title);
-          }}
-          className="p-1 rounded opacity-0 group-hover:opacity-100 text-surface-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
-          title={S.library.delete}
-          aria-label="삭제"
+    <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => onToggleMenu(String(paper.id))}
+        className="flex h-9 w-9 items-center justify-center rounded-full text-surface-500 transition-colors hover:bg-surface-800 hover:text-surface-200 [.light_&]:text-surface-600 [.light_&]:hover:bg-surface-100 [.light_&]:hover:text-surface-900"
+        title={S.library.more}
+        aria-label={S.library.more}
+      >
+        <AppIcon name="more" className="w-4 h-4" />
+      </button>
+      {menuOpen && (
+        <div
+          className="absolute right-0 top-11 z-20 min-w-[10rem] border border-surface-700/60 bg-surface-900/95 p-1.5 shadow-2xl backdrop-blur"
+          style={{ borderRadius: 'var(--radius-surface)' }}
         >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
-      </div>
+          <button
+            onClick={() => onOpen(String(paper.id))}
+            className="flex w-full items-center px-3 py-2 text-left text-xs text-surface-200 transition-colors hover:bg-surface-800 [.light_&]:text-surface-800 [.light_&]:hover:bg-surface-100"
+            style={{ borderRadius: 'var(--radius-control)' }}
+          >
+            {actionLabel}
+          </button>
+          <button
+            onClick={() => onDelete(String(paper.id), paper.title)}
+            className="flex w-full items-center px-3 py-2 text-left text-xs text-red-300 transition-colors hover:bg-red-500/10"
+            style={{ borderRadius: 'var(--radius-control)' }}
+          >
+            {S.library.delete}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Paper Row (List View)
-// ---------------------------------------------------------------------------
-
-function PaperRow({ paper, onOpen, onDelete }: PaperCardProps) {
-  const badge = statusBadge(paper.status);
+function PaperShelfRow({ paper, onOpen, onDelete, menuOpen, onToggleMenu }: PaperItemProps) {
+  const tone = statusTone(paper.status);
   const agent = getAgentMeta(paper.agent_used);
+  const actionLabel = primaryActionLabel(paper.status);
+  const tags = tagsForPaper(paper);
+  const rowToneClass = `library-shelf-row--${paper.status}`;
 
   return (
-    <div
-      className="flex items-center gap-4 px-4 py-3 bg-surface-800 border border-surface-700 rounded-lg hover:border-primary-500/30 transition-colors cursor-pointer group"
+    <article
+      className={`library-shelf-row ${rowToneClass} group relative grid gap-3 border-b border-surface-700/40 px-4 py-3 transition-colors hover:bg-surface-900/35 md:grid-cols-[10px_minmax(0,1.8fr)_minmax(9rem,0.85fr)_minmax(9rem,0.72fr)_auto] md:items-center md:px-6`}
       onClick={() => onOpen(String(paper.id))}
     >
-      <FileText className="w-5 h-5 text-primary-400 shrink-0" />
+      <div className={`h-full min-h-[64px] w-[3px] rounded-full ${tone.line} md:w-[4px]`} />
 
-      <div className="flex-1 min-w-0">
-        <h3 className="text-sm font-medium text-surface-200 truncate">
+      <div className="min-w-0">
+        <div className="mb-1.5 flex flex-wrap items-center gap-2">
+          <span className="library-status-badge">
+            <span className="library-status-dot" />
+            {statusLabel(paper.status)}
+          </span>
+          {paper.year && (
+            <span className="text-2xs text-surface-400">{paper.year}</span>
+          )}
+        </div>
+        <h3 className="library-record-title transition-colors group-hover:text-white">
           {paper.title}
         </h3>
-        <div className="flex items-center gap-2 text-2xs text-surface-500 mt-0.5">
-          {paper.authors && (
-            <span className="truncate max-w-[300px]">
-              {paper.authors}
-            </span>
-          )}
-          {paper.year && (
+        <div className="library-record-meta">
+          {paper.authors && <span className="truncate">{paper.authors}</span>}
+          {paper.journal && (
             <>
-              <span className="w-1 h-1 rounded-full bg-surface-600" />
-              <span>{paper.year}</span>
+              <span className="h-1 w-1 rounded-full bg-surface-700" />
+              <span className="truncate">{paper.journal}</span>
             </>
           )}
         </div>
+        {tags.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {tags.map((tag) => (
+              <span
+                key={tag}
+                className="rounded-full border border-surface-700/60 px-2 py-1 text-2xs text-surface-400"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
-      {agent && (
-        <span className="flex items-center gap-1 text-2xs shrink-0" style={{ color: agent.color }}>
-          {agent.nameKo}
-        </span>
-      )}
-
-      <span className="badge-primary text-2xs shrink-0">{paper.domain}</span>
-
-      <span className={`shrink-0 text-2xs ${badge.classes}`}>
-        {badge.label}
-      </span>
-
-      <div className="flex items-center gap-1 text-2xs text-surface-500 shrink-0 w-24">
-        <Clock className="w-3 h-3" />
-        {paper.created_at ? formatDate(paper.created_at) : '-'}
+      <div className="grid gap-1.5 text-xs text-surface-400">
+        <div>
+          <div className="library-meta-label mb-1">분류</div>
+          <div className="library-meta-value">{paper.domain}</div>
+        </div>
+        {agent && (
+          <div>
+            <div className="library-meta-label mb-1">담당 에이전트</div>
+            <div className="library-agent-label">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: agent.color }} />
+              {agent.nameKo}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Delete */}
-      <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+      <div className="grid gap-1.5 text-xs text-surface-400">
+        <div>
+          <div className="library-meta-label mb-1">최근 활동</div>
+          <div className="library-meta-value">{activityLabel(paper)}</div>
+        </div>
+        {paper.doi && (
+          <div className="truncate text-2xs text-surface-500">
+            DOI {paper.doi}
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-end gap-2">
         <button
-          onClick={() => onDelete(String(paper.id), paper.title)}
-          className="p-1.5 rounded opacity-0 group-hover:opacity-100 text-surface-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
-          title={S.library.delete}
-          aria-label="삭제"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen(String(paper.id));
+          }}
+          className="rounded-full border border-surface-700 px-3 py-1.5 text-xs text-surface-200 transition-colors hover:border-surface-500 hover:bg-surface-800 [.light_&]:text-surface-800 [.light_&]:hover:bg-surface-100"
         >
-          <Trash2 className="w-3.5 h-3.5" />
+          {actionLabel}
         </button>
+        <RowMenu
+          paper={paper}
+          onOpen={onOpen}
+          onDelete={onDelete}
+          menuOpen={menuOpen}
+          onToggleMenu={onToggleMenu}
+        />
       </div>
-    </div>
+    </article>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main Component
-// ---------------------------------------------------------------------------
+function PaperArchiveCard({ paper, onOpen, onDelete, menuOpen, onToggleMenu }: PaperItemProps) {
+  const tone = statusTone(paper.status);
+  const agent = getAgentMeta(paper.agent_used);
+  const tags = tagsForPaper(paper);
+  const actionLabel = primaryActionLabel(paper.status);
+  const cardToneClass = `library-archive-card--${paper.status}`;
+
+  return (
+    <article
+      className={`library-archive-card ${cardToneClass} group`}
+      onClick={() => onOpen(String(paper.id))}
+    >
+      <div className={`absolute inset-x-4 top-0 h-1 rounded-b-full ${tone.line}`} />
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <div className="text-2xs text-surface-400">
+            {paper.year || '연도 미상'} · {paper.domain}
+          </div>
+          <div className="mt-2 line-clamp-3 text-[15px] font-semibold leading-snug text-surface-100 group-hover:text-white [.light_&]:text-surface-900 [.light_&]:group-hover:text-surface-900">
+            {paper.title}
+          </div>
+        </div>
+        <span className={`shrink-0 rounded-full border px-2 py-1 text-2xs ${tone.badge}`}>
+          {statusLabel(paper.status)}
+        </span>
+      </div>
+
+      <div className="space-y-2.5 text-xs text-surface-400">
+        {paper.authors && <div className="line-clamp-2">{paper.authors}</div>}
+        <div className="flex items-center justify-between gap-3">
+          <span>최근 활동</span>
+          <span className="text-surface-200 [.light_&]:text-surface-800">{activityLabel(paper)}</span>
+        </div>
+        {agent && (
+          <div className="flex items-center justify-between gap-3">
+            <span>담당 에이전트</span>
+            <span className="inline-flex items-center gap-2 text-surface-200 [.light_&]:text-surface-800">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: agent.color }} />
+              {agent.nameKo}
+            </span>
+          </div>
+        )}
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {tags.map((tag) => (
+              <span
+                key={tag}
+                className="rounded-full border border-surface-700/60 px-2 py-1 text-2xs text-surface-400"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-surface-700/50 pt-3">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen(String(paper.id));
+          }}
+          className="rounded-full border border-surface-700 px-3 py-1.5 text-xs text-surface-200 transition-colors hover:border-surface-500 hover:bg-surface-700 [.light_&]:text-surface-800 [.light_&]:hover:bg-surface-100"
+        >
+          {actionLabel}
+        </button>
+        <RowMenu
+          paper={paper}
+          onOpen={onOpen}
+          onDelete={onDelete}
+          menuOpen={menuOpen}
+          onToggleMenu={onToggleMenu}
+        />
+      </div>
+    </article>
+  );
+}
 
 export default function Library() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [showFilters, setShowFilters] = useState(false);
   const [searchValue, setSearchValue] = useState('');
+  const [menuPaperId, setMenuPaperId] = useState<string | null>(null);
   const [deleteModal, setDeleteModal] = useState<{
     show: boolean;
     paperId: string | null;
@@ -255,23 +359,27 @@ export default function Library() {
     availableTags,
   } = usePapers();
 
+  const activityCount = useMemo(
+    () => papers.filter((paper) => Boolean(paper.analyzed_at || paper.created_at)).length,
+    [papers]
+  );
+
   const handleOpenPaper = useCallback(
     (id: string) => {
+      setMenuPaperId(null);
       navigate(`/workbench/${id}`);
     },
     [navigate]
   );
 
-  const handleDeletePaper = useCallback(
-    async (id: string, title: string) => {
-      setDeleteModal({
-        show: true,
-        paperId: id,
-        paperTitle: title,
-      });
-    },
-    []
-  );
+  const handleDeletePaper = useCallback(async (id: string, title: string) => {
+    setMenuPaperId(null);
+    setDeleteModal({
+      show: true,
+      paperId: id,
+      paperTitle: title,
+    });
+  }, []);
 
   const confirmDelete = useCallback(async () => {
     if (!deleteModal.paperId) return;
@@ -312,225 +420,250 @@ export default function Library() {
   const to = Math.min(page * (filters.page_size || 20), total);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-surface-100 flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-primary-400" />
-            {S.library.title}
-          </h1>
-          <p className="text-sm text-surface-500 mt-1">
-            {S.library.paperCount(total)}
-          </p>
+    <div className="mx-auto max-w-7xl p-6">
+      <section className="library-archive-header mb-6 pb-6">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-6">
+          <div className="max-w-2xl">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-surface-900/50 px-3 py-1 text-2xs text-surface-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary-400" />
+              Research Archive
+            </div>
+            <h1 className="text-3xl font-semibold tracking-[-0.03em] text-surface-100 [.light_&]:text-surface-900">
+              {S.library.title}
+            </h1>
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-surface-400 [.light_&]:text-surface-600">
+              최근 분석한 논문부터 다시 살펴보고, 분야별로 정리된 기록을 빠르게 찾아볼 수 있는 보관함입니다.
+            </p>
+          </div>
+          <div className="grid min-w-[15rem] gap-3 sm:grid-cols-3 sm:gap-4">
+            <div className="pl-3">
+              <div className="text-2xs text-surface-500">전체 보관</div>
+              <div className="mt-2 text-2xl font-semibold text-surface-100 [.light_&]:text-surface-900">{total}</div>
+            </div>
+            <div className="pl-3">
+              <div className="text-2xs text-surface-500">분석 완료</div>
+              <div className="mt-2 text-2xl font-semibold text-surface-100 [.light_&]:text-surface-900">
+                {statusMetaCount(papers, 'completed')}
+              </div>
+            </div>
+            <div className="pl-3">
+              <div className="text-2xs text-surface-500">최근 활동</div>
+              <div className="mt-2 text-2xl font-semibold text-surface-100 [.light_&]:text-surface-900">{activityCount}</div>
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* View mode toggle */}
-          <div className="flex items-center bg-surface-800 rounded-lg border border-surface-700 p-0.5">
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`p-1.5 rounded transition-colors ${
-                viewMode === 'grid'
-                  ? 'bg-surface-700 text-surface-200'
-                  : 'text-surface-500 hover:text-surface-300'
-              }`}
-              aria-label="그리드 보기"
-            >
-              <LayoutGrid className="w-4 h-4" />
-            </button>
+        <div className="library-controlbar mt-5 lg:grid-cols-[minmax(0,1fr)_auto_auto_auto] lg:items-center">
+          <div className="relative" role="search">
+            <AppIcon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
+            <input
+              type="text"
+              placeholder={S.library.searchPlaceholder}
+              value={searchValue}
+              onChange={(e) => {
+                setSearchValue(e.target.value);
+                setSearch(e.target.value);
+              }}
+              className="w-full rounded-full border border-surface-700 bg-surface-900 px-10 py-3 text-sm text-surface-200 outline-none transition-colors placeholder:text-surface-600 focus:border-surface-500 [.light_&]:bg-white [.light_&]:text-surface-900 [.light_&]:placeholder:text-surface-500"
+              aria-label="논문 검색"
+            />
+          </div>
+
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`inline-flex items-center justify-center gap-2 rounded-full border px-4 py-3 text-xs transition-colors ${
+              showFilters || hasActiveFilters
+                ? 'border-primary-500/30 bg-primary-500/10 text-primary-300'
+                : 'border-surface-700 bg-surface-900 text-surface-300 hover:border-surface-500'
+            }`}
+            aria-expanded={showFilters}
+            aria-label="필터 열기/닫기"
+          >
+            <AppIcon name="filter" className="w-3.5 h-3.5" />
+            {S.library.filters}
+            {hasActiveFilters && <span className="h-1.5 w-1.5 rounded-full bg-primary-400" />}
+            <AppIcon
+              name="chevron-down"
+              className={`w-3 h-3 transition-transform ${showFilters ? 'rotate-180' : ''}`}
+            />
+          </button>
+
+          <select
+            value={`${filters.sort_by}:${filters.sort_order}`}
+            onChange={(e) => {
+              const [sort_by, sort_order] = e.target.value.split(':') as [
+                'created_at' | 'title' | 'year' | 'analyzed_at',
+                'asc' | 'desc',
+              ];
+              setFilters({ sort_by, sort_order });
+            }}
+            className="rounded-full border border-surface-700 bg-surface-900 px-4 py-3 text-sm text-surface-200 outline-none transition-colors focus:border-surface-500 [.light_&]:bg-white [.light_&]:text-surface-900"
+          >
+            <option value="created_at:desc">{S.library.newestFirst}</option>
+            <option value="created_at:asc">{S.library.oldestFirst}</option>
+            <option value="title:asc">{S.library.titleAZ}</option>
+            <option value="title:desc">{S.library.titleZA}</option>
+            <option value="year:desc">{S.library.yearNewest}</option>
+            <option value="year:asc">{S.library.yearOldest}</option>
+            <option value="analyzed_at:desc">{S.library.recentlyAnalyzed}</option>
+          </select>
+
+          <div className="inline-flex items-center rounded-full border border-surface-700 bg-surface-900 p-1">
             <button
               onClick={() => setViewMode('list')}
-              className={`p-1.5 rounded transition-colors ${
+              className={`rounded-full px-3 py-2 text-xs transition-colors ${
                 viewMode === 'list'
-                  ? 'bg-surface-700 text-surface-200'
-                  : 'text-surface-500 hover:text-surface-300'
+                  ? 'bg-surface-700 text-surface-100 [.light_&]:bg-surface-100 [.light_&]:text-surface-900'
+                  : 'text-surface-500 hover:text-surface-300 [.light_&]:text-surface-600 [.light_&]:hover:text-surface-900'
               }`}
-              aria-label="리스트 보기"
+              aria-label={S.library.listView}
             >
-              <List className="w-4 h-4" />
+              {S.library.listView}
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`rounded-full px-3 py-2 text-xs transition-colors ${
+                viewMode === 'grid'
+                  ? 'bg-surface-700 text-surface-100 [.light_&]:bg-surface-100 [.light_&]:text-surface-900'
+                  : 'text-surface-500 hover:text-surface-300 [.light_&]:text-surface-600 [.light_&]:hover:text-surface-900'
+              }`}
+              aria-label={S.library.gridView}
+            >
+              {S.library.gridView}
             </button>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Search and filter bar */}
-      <div className="flex items-center gap-3 mb-4">
-        {/* Search */}
-        <div className="relative flex-1 max-w-md" role="search">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
-          <input
-            type="text"
-            placeholder={S.library.searchPlaceholder}
-            value={searchValue}
-            onChange={(e) => { setSearchValue(e.target.value); setSearch(e.target.value); }}
-            className="input pl-10"
-            aria-label="논문 검색"
-          />
-        </div>
-
-        {/* Filter toggle */}
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          className={`btn-ghost text-xs ${
-            showFilters || hasActiveFilters
-              ? 'bg-surface-700 text-primary-400'
-              : ''
-          }`}
-          aria-expanded={showFilters}
-          aria-label="필터 열기/닫기"
-        >
-          <Filter className="w-3.5 h-3.5" />
-          {S.library.filters}
-          {hasActiveFilters && (
-            <span className="w-1.5 h-1.5 rounded-full bg-primary-400" />
-          )}
-          <ChevronDown
-            className={`w-3 h-3 transition-transform ${
-              showFilters ? 'rotate-180' : ''
-            }`}
-          />
-        </button>
-
-        {/* Sort */}
-        <select
-          value={`${filters.sort_by}:${filters.sort_order}`}
-          onChange={(e) => {
-            const [sort_by, sort_order] = e.target.value.split(':') as [
-              'created_at' | 'title' | 'year' | 'analyzed_at',
-              'asc' | 'desc',
-            ];
-            setFilters({ sort_by, sort_order });
-          }}
-          className="input w-auto min-w-[160px]"
-        >
-          <option value="created_at:desc">{S.library.newestFirst}</option>
-          <option value="created_at:asc">{S.library.oldestFirst}</option>
-          <option value="title:asc">{S.library.titleAZ}</option>
-          <option value="title:desc">{S.library.titleZA}</option>
-          <option value="year:desc">{S.library.yearNewest}</option>
-          <option value="year:asc">{S.library.yearOldest}</option>
-          <option value="analyzed_at:desc">{S.library.recentlyAnalyzed}</option>
-        </select>
-      </div>
-
-      {/* Filter panel */}
       {showFilters && (
-        <div className="glass rounded-2xl p-4 mb-4 fade-in-up">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-semibold text-surface-300 uppercase tracking-wider">
-              {S.library.filters}
-            </h3>
+        <section className="library-filter-panel mb-6">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-2xs text-surface-400">분류 기준</div>
+              <div className="mt-1 text-sm text-surface-300">분야와 상태로 먼저 좁히고, 연도와 태그는 보조 기준으로 사용하세요.</div>
+            </div>
             {hasActiveFilters && (
               <button
                 onClick={clearFilters}
-                className="text-2xs text-primary-400 hover:text-primary-300"
+                className="rounded-full border border-surface-700 px-3 py-2 text-xs text-surface-300 transition-colors hover:border-surface-500 hover:text-surface-100"
               >
                 {S.library.clearAll}
               </button>
             )}
           </div>
-          <div className="flex flex-wrap gap-3 filter-stagger">
-            {/* Domain filter */}
-            <div>
-              <label className="text-2xs text-surface-500 block mb-1">
-                {S.library.domain}
-              </label>
-              <select
-                value={filters.domain || ''}
-                onChange={(e) =>
-                  setFilters({ domain: e.target.value || undefined })
-                }
-                className="input w-auto min-w-[160px]"
-              >
-                <option value="">{S.library.allDomains}</option>
-                {getAllAgents().map((agent) => (
-                  <option key={agent.domain} value={agent.domain}>
-                    {agent.domain_display}
-                  </option>
-                ))}
-              </select>
-            </div>
 
-            {/* Year filter */}
-            <div>
-              <label className="text-2xs text-surface-500 block mb-1">
-                {S.library.year}
-              </label>
-              <input
-                type="number"
-                min={1990}
-                max={new Date().getFullYear()}
-                placeholder={S.library.anyYear}
-                value={filters.year || ''}
-                onChange={(e) =>
-                  setFilters({
-                    year: e.target.value
-                      ? parseInt(e.target.value, 10)
-                      : undefined,
-                  })
-                }
-                className="input w-auto min-w-[120px]"
-              />
-            </div>
-
-            {/* Status filter */}
-            <div>
-              <label className="text-2xs text-surface-500 block mb-1">
-                {S.library.status}
-              </label>
-              <select
-                value={filters.status || ''}
-                onChange={(e) =>
-                  setFilters({
-                    status: (e.target.value as PaperStatus) || undefined,
-                  })
-                }
-                className="input w-auto min-w-[140px]"
+          <div className="mb-4">
+            <div className="mb-2 text-2xs text-surface-500">{S.library.domain}</div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setFilters({ domain: undefined })}
+                className={`rounded-full px-3 py-2 text-xs transition-colors ${
+                  !filters.domain
+                    ? 'bg-surface-700 text-surface-100'
+                    : 'border border-surface-700 text-surface-400 hover:border-surface-500 hover:text-surface-200'
+                }`}
               >
-                <option value="">{S.library.allStatuses}</option>
-                <option value="pending">{S.status.pending}</option>
-                <option value="analyzing">{S.status.analyzing}</option>
-                <option value="completed">{S.status.analyzed}</option>
-                <option value="error">{S.status.error}</option>
-              </select>
-            </div>
-
-            {/* Tags filter */}
-            <div>
-              <label className="text-2xs text-surface-500 block mb-1">
-                {S.library.tags}
-              </label>
-              <select
-                value={filters.tags?.[0] || ''}
-                onChange={(e) =>
-                  setFilters({ tags: e.target.value ? [e.target.value] : undefined })
-                }
-                className="input w-auto min-w-[160px]"
-              >
-                <option value="">{S.library.allTags}</option>
-                {availableTags.map((tag) => (
-                  <option key={tag} value={tag}>
-                    {tag}
-                  </option>
-                ))}
-              </select>
+                {S.library.allDomains}
+              </button>
+              {getAllAgents().map((agent) => (
+                <button
+                  key={agent.domain}
+                  type="button"
+                  onClick={() => setFilters({ domain: agent.domain })}
+                  className={`rounded-full px-3 py-2 text-xs transition-colors ${
+                    filters.domain === agent.domain
+                      ? 'bg-surface-700 text-surface-100'
+                      : 'border border-surface-700 text-surface-400 hover:border-surface-500 hover:text-surface-200'
+                  }`}
+                >
+                  {agent.domain_display}
+                </button>
+              ))}
             </div>
           </div>
-        </div>
+
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+            <div>
+              <div className="mb-2 text-2xs text-surface-500">{S.library.status}</div>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { value: '', label: S.library.allStatuses },
+                  { value: 'pending', label: S.status.pending },
+                  { value: 'analyzing', label: S.status.analyzing },
+                  { value: 'completed', label: S.status.analyzed },
+                  { value: 'error', label: S.status.error },
+                ].map((option) => (
+                  <button
+                    key={option.value || 'all'}
+                    type="button"
+                    onClick={() => setFilters({ status: (option.value as PaperStatus) || undefined })}
+                    className={`rounded-full px-3 py-2 text-xs transition-colors ${
+                      (filters.status || '') === option.value
+                        ? 'bg-surface-700 text-surface-100'
+                        : 'border border-surface-700 text-surface-400 hover:border-surface-500 hover:text-surface-200'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-2xs text-surface-500">
+                  {S.library.year}
+                </label>
+                <input
+                  type="number"
+                  min={1990}
+                  max={new Date().getFullYear()}
+                  placeholder={S.library.anyYear}
+                  value={filters.year || ''}
+                  onChange={(e) =>
+                    setFilters({
+                      year: e.target.value ? parseInt(e.target.value, 10) : undefined,
+                    })
+                  }
+                  className="w-full rounded-full border border-surface-700 bg-surface-950 px-4 py-3 text-sm text-surface-200 outline-none transition-colors placeholder:text-surface-600 focus:border-surface-500"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-2xs text-surface-500">
+                  {S.library.tags}
+                </label>
+                <select
+                  value={filters.tags?.[0] || ''}
+                  onChange={(e) => setFilters({ tags: e.target.value ? [e.target.value] : undefined })}
+                  className="w-full rounded-full border border-surface-700 bg-surface-950 px-4 py-3 text-sm text-surface-200 outline-none transition-colors focus:border-surface-500"
+                >
+                  <option value="">{S.library.allTags}</option>
+                  {availableTags.map((tag) => (
+                    <option key={tag} value={tag}>
+                      {tag}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        </section>
       )}
 
-      {/* Error state */}
       {error && (
-        <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 mb-4">
+        <div
+          className="mb-4 flex items-center gap-2 border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400"
+          style={{ borderRadius: 'var(--radius-control)' }}
+        >
           <AlertCircle className="w-4 h-4 shrink-0" />
           {error}
         </div>
       )}
 
-      {/* Loading state */}
       {loading && (
-        <div className="flex items-center justify-center py-16" role="status" aria-busy="true">
+        <div className="flex items-center justify-center py-20" role="status" aria-busy="true">
           <div className="flex flex-col items-center gap-3">
             <Loader2 className="w-6 h-6 text-primary-400 animate-spin" />
             <span className="text-sm text-surface-400">{S.library.loading}</span>
@@ -538,57 +671,69 @@ export default function Library() {
         </div>
       )}
 
-      {/* Empty state */}
       {!loading && papers.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <BookOpen className="w-12 h-12 text-surface-600 mb-4" />
+        <div className="rounded-[28px] border border-surface-700/50 bg-surface-800/70 px-6 py-16 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-surface-700 bg-surface-900">
+            <AppIcon name="library" className="w-6 h-6 text-surface-500" />
+          </div>
           <h3 className="text-lg font-semibold text-surface-300 mb-2">
             {hasActiveFilters ? S.library.noMatch : S.library.noPapers}
           </h3>
-          <p className="text-sm text-surface-500 max-w-sm mb-4">
+          <p className="mx-auto max-w-md text-sm leading-relaxed text-surface-500 mb-4">
             {hasActiveFilters
               ? S.library.noMatchDesc
-              : S.library.noPapersDesc}
+              : '첫 논문을 서가에 추가하면, 최근 분석한 논문부터 다시 살펴볼 수 있습니다.'}
           </p>
           {hasActiveFilters && (
-            <button onClick={clearFilters} className="btn-secondary text-sm">
+            <button
+              onClick={clearFilters}
+              className="rounded-full border border-surface-700 px-4 py-2 text-sm text-surface-200 transition-colors hover:border-surface-500"
+            >
               {S.library.clearFilters}
             </button>
           )}
         </div>
       )}
 
-      {/* Paper grid */}
-      {!loading && papers.length > 0 && viewMode === 'grid' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {papers.map((paper) => (
-            <PaperCard
-              key={paper.id}
-              paper={paper}
-              onOpen={handleOpenPaper}
-              onDelete={handleDeletePaper}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Paper list */}
       {!loading && papers.length > 0 && viewMode === 'list' && (
-        <div className="space-y-2">
+        <section className="library-shelf">
+          <div className="grid gap-4 px-4 py-2 text-2xs text-surface-400 md:grid-cols-[10px_minmax(0,1.8fr)_minmax(9rem,0.85fr)_minmax(9rem,0.72fr)_auto] md:px-6">
+            <div />
+            <div>서지 기록</div>
+            <div>분류</div>
+            <div>활동</div>
+            <div className="text-right">작업</div>
+          </div>
           {papers.map((paper) => (
-            <PaperRow
+            <PaperShelfRow
               key={paper.id}
               paper={paper}
               onOpen={handleOpenPaper}
               onDelete={handleDeletePaper}
+              menuOpen={menuPaperId === String(paper.id)}
+              onToggleMenu={(id) => setMenuPaperId((prev) => (prev === id ? null : id))}
             />
           ))}
-        </div>
+        </section>
       )}
 
-      {/* Pagination */}
+      {!loading && papers.length > 0 && viewMode === 'grid' && (
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {papers.map((paper) => (
+            <PaperArchiveCard
+              key={paper.id}
+              paper={paper}
+              onOpen={handleOpenPaper}
+              onDelete={handleDeletePaper}
+              menuOpen={menuPaperId === String(paper.id)}
+              onToggleMenu={(id) => setMenuPaperId((prev) => (prev === id ? null : id))}
+            />
+          ))}
+        </section>
+      )}
+
       {!loading && totalPages > 1 && (
-        <div className="flex items-center justify-between mt-6 pt-4 border-t border-surface-700">
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-surface-700/50 pt-5">
           <span className="text-xs text-surface-500">
             {S.library.showing(from, to, total)}
           </span>
@@ -597,8 +742,8 @@ export default function Library() {
             <button
               onClick={() => goToPage(page - 1)}
               disabled={page <= 1}
-              className="btn-ghost p-1.5 rounded-md"
-              aria-label="이전 페이지"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200 disabled:opacity-40"
+              aria-label={S.library.prevPage}
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -619,10 +764,10 @@ export default function Library() {
                 <button
                   key={pageNum}
                   onClick={() => goToPage(pageNum)}
-                  className={`w-8 h-8 rounded text-xs transition-colors ${
+                  className={`flex h-9 w-9 items-center justify-center rounded-full text-xs transition-colors ${
                     pageNum === page
-                      ? 'bg-primary-600 text-white'
-                      : 'text-surface-400 hover:bg-surface-700 hover:text-surface-200'
+                      ? 'bg-surface-700 text-white'
+                      : 'text-surface-400 hover:bg-surface-800 hover:text-surface-200'
                   }`}
                 >
                   {pageNum}
@@ -633,8 +778,8 @@ export default function Library() {
             <button
               onClick={() => goToPage(page + 1)}
               disabled={page >= totalPages}
-              className="btn-ghost p-1.5 rounded-md"
-              aria-label="다음 페이지"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-surface-400 transition-colors hover:bg-surface-800 hover:text-surface-200 disabled:opacity-40"
+              aria-label={S.library.nextPage}
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -642,15 +787,16 @@ export default function Library() {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
       <Modal open={deleteModal.show} onClose={cancelDelete}>
-        {/* Header */}
-        <div className="flex items-start gap-3 mb-4">
-          <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/20">
+        <div className="mb-4 flex items-start gap-3">
+          <div
+            className="border border-red-500/20 bg-red-500/10 p-2"
+            style={{ borderRadius: 'var(--radius-control)' }}
+          >
             <AlertCircle className="w-5 h-5 text-red-400" />
           </div>
           <div className="flex-1">
-            <h3 className="text-base font-semibold text-surface-100 [.light_&]:text-surface-900 mb-1">
+            <h3 className="mb-1 text-base font-semibold text-surface-100 [.light_&]:text-surface-900">
               {S.library.deleteTitle}
             </h3>
             <p className="text-sm text-surface-400 [.light_&]:text-surface-600">
@@ -659,10 +805,12 @@ export default function Library() {
           </div>
         </div>
 
-        {/* Content */}
         <div className="mb-6 space-y-3">
-          <div className="bg-surface-700/30 [.light_&]:bg-surface-100 border border-surface-700/50 [.light_&]:border-surface-200 rounded-lg p-3">
-            <p className="text-sm text-surface-300 [.light_&]:text-surface-700 font-medium mb-1">
+          <div
+            className="border border-surface-700/50 bg-surface-700/30 p-3 [.light_&]:border-surface-200 [.light_&]:bg-surface-100"
+            style={{ borderRadius: 'var(--radius-control)' }}
+          >
+            <p className="mb-1 text-sm font-medium text-surface-300 [.light_&]:text-surface-700">
               {deleteModal.paperTitle}
             </p>
             <p className="text-2xs text-surface-500 [.light_&]:text-surface-600">
@@ -670,8 +818,11 @@ export default function Library() {
             </p>
           </div>
 
-          <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3">
-            <p className="text-xs text-red-400 [.light_&]:text-red-600 leading-relaxed">
+          <div
+            className="border border-red-500/20 bg-red-500/5 p-3"
+            style={{ borderRadius: 'var(--radius-control)' }}
+          >
+            <p className="text-xs leading-relaxed text-red-400 [.light_&]:text-red-600">
               <strong>{S.library.deleteDetails}</strong>
               <br />
               • {S.library.deleteItem1}
@@ -683,8 +834,7 @@ export default function Library() {
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-2 justify-end">
+        <div className="flex items-center justify-end gap-2">
           <button
             onClick={cancelDelete}
             disabled={deleting}
@@ -704,7 +854,7 @@ export default function Library() {
               </>
             ) : (
               <>
-                <Trash2 className="w-3.5 h-3.5" />
+                <AppIcon name="delete" className="w-3.5 h-3.5" />
                 {S.library.deleteBtn}
               </>
             )}

@@ -1,13 +1,8 @@
-import { useState, useCallback, lazy, Suspense } from 'react';
+import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  ChevronDown,
-  ChevronRight,
-  FileSearch,
   BookOpen,
-  ImageIcon,
-  FlaskConical,
   GitBranch,
   Check,
   Loader2,
@@ -28,12 +23,13 @@ import {
   type Figure,
 } from '@/lib/api';
 import { getAgentMeta } from '@/lib/agents';
-import { buildPhaseSummary, statusMeta } from '@/lib/workbenchSummaries';
+import { buildPhaseSummary, buildWorkbenchStatusSummary } from '@/lib/workbenchSummaries';
 import { S } from '@/lib/strings';
 import FigureGallery from './FigureGallery';
 import RecipeCard from './RecipeCard';
 import ExperimentPlanTab from './ExperimentPlanTab';
 import { ContentState } from '@/components/ui';
+import { AppIcon } from '@/components/icons';
 const MermaidRenderer = lazy(() => import('./MermaidRenderer'));
 import ProgressTracker from './ProgressTracker';
 
@@ -52,6 +48,7 @@ interface AnalysisPanelProps {
   agentName?: string;
   paperId?: string;
   onJumpToFigurePage?: (figure: Figure) => void;
+  terminalState?: 'cancelled' | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -65,7 +62,7 @@ const PHASE_META: Record<string, {
   number: number;
 }> = {
   screening: {
-    icon: FileSearch,
+    icon: (props) => <AppIcon name="summary" {...props} />,
     label: S.analysis.phase1,
     description: S.analysis.phase1Desc,
     number: 1,
@@ -77,13 +74,13 @@ const PHASE_META: Record<string, {
     number: 2,
   },
   visual: {
-    icon: ImageIcon,
+    icon: (props) => <AppIcon name="figures" {...props} />,
     label: S.analysis.phase3,
     description: S.analysis.phase3Desc,
     number: 3,
   },
   recipe: {
-    icon: FlaskConical,
+    icon: (props) => <AppIcon name="recipe" {...props} />,
     label: S.analysis.phase4,
     description: S.analysis.phase4Desc,
     number: 4,
@@ -286,9 +283,9 @@ function PhaseSection({
 
         <span className="text-surface-500 shrink-0">
           {expanded ? (
-            <ChevronDown className="w-4 h-4" />
+            <AppIcon name="chevron-down" className="w-4 h-4" />
           ) : (
-            <ChevronRight className="w-4 h-4" />
+            <AppIcon name="chevron-right" className="w-4 h-4" />
           )}
         </span>
       </button>
@@ -717,7 +714,7 @@ function VisualizationGallery({
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2 mb-2">
-          <GitBranch className="w-4 h-4 text-primary-400" />
+          <AppIcon name="experiment" className="w-4 h-4 text-primary-400" />
           <span className="text-sm font-semibold text-surface-200">
             {S.mermaid.visualizations}
           </span>
@@ -779,7 +776,7 @@ function VisualizationGallery({
     return (
       <div>
         <h3 className="text-sm font-semibold text-surface-200 mb-3 flex items-center gap-2">
-          <GitBranch className="w-4 h-4 text-primary-400" />
+          <AppIcon name="experiment" className="w-4 h-4 text-primary-400" />
           {S.mermaid.visualizations}
         </h3>
         <div className="card flex flex-col items-center justify-center py-8 text-center">
@@ -821,7 +818,14 @@ export default function AnalysisPanel({
   agentName,
   paperId,
   onJumpToFigurePage,
+  terminalState,
 }: AnalysisPanelProps) {
+  const [activeTab, setActiveTab] = useState<'summary' | 'figures' | 'recipe' | 'experiment'>('summary');
+
+  useEffect(() => {
+    setActiveTab('summary');
+  }, [paperId]);
+
   // Determine phase statuses
   const getPhaseStatus = (phaseName: AnalysisPhase): PhaseStatusValue => {
     if (!status) return 'pending';
@@ -844,7 +848,7 @@ export default function AnalysisPanel({
     return (
       <div className="px-5 py-6">
         <ContentState
-          icon={FileSearch}
+          icon={(props) => <AppIcon name="summary" {...props} />}
           title={S.analysis.noResults}
           description={S.analysis.noResultsDesc}
           tone="muted"
@@ -861,130 +865,204 @@ export default function AnalysisPanel({
   const visualSummary = buildPhaseSummary('visual', results, recipe, figureList, visualizations);
   const recipeSummary = buildPhaseSummary('recipe', results, recipe, figureList, visualizations);
   const deepDiveSummary = buildPhaseSummary('deep_dive', results, recipe, figureList, visualizations);
+  const recipeReady = getPhaseStatus('recipe') === 'completed' && Boolean(paperId);
+  const workbenchStatus = buildWorkbenchStatusSummary({
+    status,
+    figures: figureList,
+    recipe,
+    visualizations,
+    terminalState,
+  });
+
+  const visibleTab = activeTab === 'experiment' && !recipeReady ? 'summary' : activeTab;
+
+  const tabs: Array<{ key: 'summary' | 'figures' | 'recipe' | 'experiment'; label: string; icon: 'summary' | 'figures' | 'recipe' | 'experiment'; disabled?: boolean }> = [
+    { key: 'summary', label: S.workbench.summaryTab, icon: 'summary' },
+    { key: 'figures', label: S.workbench.figuresTab, icon: 'figures' },
+    { key: 'recipe', label: S.workbench.recipeTab, icon: 'recipe' },
+    { key: 'experiment', label: S.workbench.experimentTab, icon: 'experiment', disabled: !recipeReady },
+  ];
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
-      {agentMeta && (
-        <div className="mb-4 rounded-2xl border border-surface-700/45 bg-surface-900/35 px-4 py-3">
-          <div className="flex items-center gap-2 text-2xs uppercase tracking-[0.16em] text-surface-500">
-            <span
-              className="h-1.5 w-1.5 rounded-full"
-              style={{ backgroundColor: agentMeta.color }}
-            />
-            <span className="font-medium" style={{ color: agentMeta.color }}>
-              {agentMeta.name}
-            </span>
-          </div>
-          {statusMeta(status) && (
-            <p className="mt-2 text-xs text-surface-400">{statusMeta(status)}</p>
-          )}
-        </div>
-      )}
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="sticky top-0 z-20 border-b border-surface-700/45 bg-surface-900/95 backdrop-blur [.light_&]:bg-white/95">
+        <div className="px-5 py-4">
+          <div className="border border-surface-700/45 bg-surface-900/50 px-4 py-3 [.light_&]:bg-surface-50" style={{ borderRadius: 'var(--radius-surface)' }}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="mb-1 flex items-center gap-2 text-[11px] tracking-[0.08em] text-surface-500">
+                  <AppIcon name="summary" className="h-3.5 w-3.5 text-primary-400" />
+                  <span>{S.workbench.statusRailTitle}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-semibold text-surface-100">
+                    {workbenchStatus.runStateLabel}
+                  </h3>
+                  <span className="status-pill border-surface-700/50 bg-surface-800/80 text-surface-300">
+                    {workbenchStatus.currentPhaseLabel}
+                  </span>
+                  <span className="status-pill border-surface-700/50 bg-surface-800/80 text-surface-300">
+                    {workbenchStatus.completedCount}/{workbenchStatus.totalCount} 완료
+                  </span>
+                  <span className="status-pill border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
+                    {workbenchStatus.trustStateLabel}
+                  </span>
+                </div>
+              </div>
 
-      {status && status.overall_status !== 'pending' && (
-        <div className="mb-5">
-          <ProgressTracker
-            phases={status.phases}
-            overallProgress={status.progress_pct}
-            variant="minimal"
-          />
-        </div>
-      )}
-
-      <div className="space-y-0">
-        <PhaseSection
-          phaseName="screening"
-          phaseStatus={getPhaseStatus('screening')}
-          content={getPhaseContent('screening')}
-          defaultExpanded={true}
-          summaryLine={screeningSummary.summaryLine}
-          collapsedMeta={screeningSummary.collapsedMeta}
-          expandedMeta={screeningSummary.expandedMeta}
-          tone={screeningSummary.tone}
-          accentColor={phaseAccentColor}
-        />
-
-        <PhaseSection
-          phaseName="citation"
-          phaseStatus={getPhaseStatus('citation')}
-          content={getPhaseContent('citation')}
-          defaultExpanded={false}
-          summaryLine={citationSummary.summaryLine}
-          collapsedMeta={citationSummary.collapsedMeta}
-          expandedMeta={citationSummary.expandedMeta}
-          tone={citationSummary.tone}
-          accentColor={phaseAccentColor}
-        />
-
-        <PhaseSection
-          phaseName="visual"
-          phaseStatus={getPhaseStatus('visual')}
-          content={getPhaseContent('visual')}
-          defaultExpanded={false}
-          summaryLine={visualSummary.summaryLine}
-          collapsedMeta={visualSummary.collapsedMeta}
-          expandedMeta={visualSummary.expandedMeta}
-          tone={visualSummary.tone}
-          accentColor={phaseAccentColor}
-        >
-          <FigureGallery
-            figures={figureList}
-            paperId={paperId ?? ''}
-            loading={getPhaseStatus('visual') === 'running'}
-            onJumpToFigurePage={onJumpToFigurePage}
-          />
-        </PhaseSection>
-
-        <PhaseSection
-          phaseName="recipe"
-          phaseStatus={getPhaseStatus('recipe')}
-          content={null}
-          defaultExpanded={false}
-          summaryLine={recipeSummary.summaryLine}
-          collapsedMeta={recipeSummary.collapsedMeta}
-          expandedMeta={recipeSummary.expandedMeta}
-          tone={recipeSummary.tone}
-          accentColor={phaseAccentColor}
-        >
-          <RecipeCard
-            recipe={recipe}
-            loading={getPhaseStatus('recipe') === 'running'}
-          />
-        </PhaseSection>
-
-        {getPhaseStatus('recipe') === 'completed' && paperId && (
-          <div className="border-b border-surface-700/35 py-4">
-            <div className="mb-3 flex items-center gap-2">
-              <FlaskConical className="w-4 h-4 text-emerald-400" />
-              <span className="text-sm font-medium text-surface-200">
-                실험 계획서
-              </span>
+              <p className="max-w-md text-xs leading-relaxed text-surface-400">
+                {workbenchStatus.nextActionLabel}
+              </p>
             </div>
-            <ExperimentPlanTab
-              paperId={paperId}
-              recipeAvailable={getPhaseStatus('recipe') === 'completed'}
+          </div>
+
+          <div className="mt-4">
+            <div className="segmented-control">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => !tab.disabled && setActiveTab(tab.key)}
+                disabled={tab.disabled}
+                className={`segmented-control__item ${
+                  visibleTab === tab.key ? 'segmented-control__item-active' : ''
+                } ${tab.disabled ? 'segmented-control__item-disabled' : ''}`}
+              >
+                <AppIcon name={tab.icon} className="h-4 w-4" />
+                {tab.label}
+              </button>
+            ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        {visibleTab === 'summary' && (
+          <div className="space-y-5">
+            {status && status.overall_status !== 'pending' && (
+              <ProgressTracker
+                phases={status.phases}
+                overallProgress={status.progress_pct}
+                variant="minimal"
+              />
+            )}
+
+            <div className="space-y-0">
+              <PhaseSection
+                phaseName="screening"
+                phaseStatus={getPhaseStatus('screening')}
+                content={getPhaseContent('screening')}
+                defaultExpanded={true}
+                summaryLine={screeningSummary.summaryLine}
+                collapsedMeta={screeningSummary.collapsedMeta}
+                expandedMeta={screeningSummary.expandedMeta}
+                tone={screeningSummary.tone}
+                accentColor={phaseAccentColor}
+              />
+
+              <PhaseSection
+                phaseName="citation"
+                phaseStatus={getPhaseStatus('citation')}
+                content={getPhaseContent('citation')}
+                defaultExpanded={false}
+                summaryLine={citationSummary.summaryLine}
+                collapsedMeta={citationSummary.collapsedMeta}
+                expandedMeta={citationSummary.expandedMeta}
+                tone={citationSummary.tone}
+                accentColor={phaseAccentColor}
+              />
+
+              <PhaseSection
+                phaseName="deep_dive"
+                phaseStatus={getPhaseStatus('deep_dive')}
+                content={getPhaseContent('deep_dive')}
+                defaultExpanded={false}
+                summaryLine={deepDiveSummary.summaryLine}
+                collapsedMeta={deepDiveSummary.collapsedMeta}
+                expandedMeta={deepDiveSummary.expandedMeta}
+                tone={deepDiveSummary.tone}
+                accentColor={phaseAccentColor}
+              >
+                <VisualizationGallery
+                  visualizations={visualizations}
+                  legacyMermaid={mermaidDiagram}
+                  loading={getPhaseStatus('deep_dive') === 'running'}
+                />
+              </PhaseSection>
+            </div>
+          </div>
+        )}
+
+        {visibleTab === 'figures' && (
+          <div className="space-y-5">
+            <div className="border border-surface-700/45 bg-surface-900/40 px-4 py-4 [.light_&]:bg-white" style={{ borderRadius: 'var(--radius-surface)' }}>
+              <div className="flex items-center gap-2">
+                <AppIcon name="figures" className="w-4 h-4 text-primary-400" />
+                <h3 className="text-sm font-semibold text-surface-100">
+                  {S.workbench.figuresTab}
+                </h3>
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-surface-400">
+                {visualSummary.summaryLine || '시각 검증 결과와 Figure를 한곳에서 확인할 수 있습니다.'}
+              </p>
+            </div>
+
+            <FigureGallery
+              figures={figureList}
+              paperId={paperId ?? ''}
+              loading={getPhaseStatus('visual') === 'running'}
+              onJumpToFigurePage={onJumpToFigurePage}
             />
           </div>
         )}
 
-        <PhaseSection
-          phaseName="deep_dive"
-          phaseStatus={getPhaseStatus('deep_dive')}
-          content={getPhaseContent('deep_dive')}
-          defaultExpanded={false}
-          summaryLine={deepDiveSummary.summaryLine}
-          collapsedMeta={deepDiveSummary.collapsedMeta}
-          expandedMeta={deepDiveSummary.expandedMeta}
-          tone={deepDiveSummary.tone}
-          accentColor={phaseAccentColor}
-        >
-          <VisualizationGallery
-            visualizations={visualizations}
-            legacyMermaid={mermaidDiagram}
-            loading={getPhaseStatus('deep_dive') === 'running'}
-          />
-        </PhaseSection>
+        {visibleTab === 'recipe' && (
+          <div className="space-y-5">
+            <div className="border border-surface-700/45 bg-surface-900/40 px-4 py-4 [.light_&]:bg-white" style={{ borderRadius: 'var(--radius-surface)' }}>
+              <div className="flex items-center gap-2">
+                <AppIcon name="recipe" className="w-4 h-4 text-primary-400" />
+                <h3 className="text-sm font-semibold text-surface-100">
+                  {S.workbench.recipeTab}
+                </h3>
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-surface-400">
+                {recipeSummary.summaryLine || '재현 파라미터와 핵심 실험 정보를 먼저 검토하세요.'}
+              </p>
+            </div>
 
+            <RecipeCard
+              recipe={recipe}
+              loading={getPhaseStatus('recipe') === 'running'}
+            />
+          </div>
+        )}
+
+        {visibleTab === 'experiment' && (
+          <div className="space-y-5">
+            {recipeReady && paperId ? (
+              <div className="border border-surface-700/45 bg-surface-900/40 px-4 py-4 [.light_&]:bg-white" style={{ borderRadius: 'var(--radius-surface)' }}>
+                <div className="mb-3 flex items-center gap-2">
+                  <AppIcon name="experiment" className="w-4 h-4 text-emerald-400" />
+                  <span className="text-sm font-medium text-surface-200">
+                    {S.workbench.experimentTab}
+                  </span>
+                </div>
+                <ExperimentPlanTab
+                  paperId={paperId}
+                  recipeAvailable={recipeReady}
+                />
+              </div>
+            ) : (
+              <ContentState
+                icon={(props) => <AppIcon name="experiment" {...props} />}
+                title={S.workbench.experimentTab}
+                description={S.workbench.experimentPending}
+                tone="muted"
+              />
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

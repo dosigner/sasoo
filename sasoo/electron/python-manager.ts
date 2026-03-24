@@ -111,6 +111,12 @@ export class PythonManager {
     console.log('[PythonManager] Backend path:', this.config.backendPath);
     console.log('[PythonManager] isDev:', this.config.isDev);
 
+    const existingBackendHealthy = await this.checkHealth();
+    if (existingBackendHealthy) {
+      console.log(`[PythonManager] Reusing healthy backend already running on port ${this.config.port}`);
+      return;
+    }
+
     // Check for bundled backend first (production mode)
     const bundledBackend = this.getBundledBackendPath();
     console.log('[PythonManager] Bundled backend path:', bundledBackend);
@@ -195,10 +201,7 @@ export class PythonManager {
     this.process.on('exit', (code, signal) => {
       console.log(`[PythonManager] Process exited with code ${code}, signal ${signal}`);
       this.process = null;
-
-      if (!this.isShuttingDown && code !== 0) {
-        this.handleCrash();
-      }
+      this.handleUnexpectedExit(code);
     });
 
     this.process.on('error', (error) => {
@@ -206,7 +209,7 @@ export class PythonManager {
       this.process = null;
 
       if (!this.isShuttingDown) {
-        this.handleCrash();
+        this.handleUnexpectedExit(1);
       }
     });
 
@@ -301,6 +304,21 @@ export class PythonManager {
       clearInterval(this.healthCheckTimer);
       this.healthCheckTimer = null;
     }
+  }
+
+  private handleUnexpectedExit(code: number | null): void {
+    if (this.isShuttingDown || code === 0) return;
+
+    void (async () => {
+      const healthy = await this.checkHealth();
+      if (healthy) {
+        console.log(`[PythonManager] Detected healthy backend on port ${this.config.port} after child exit; skipping restart loop`);
+        this.restartCount = 0;
+        return;
+      }
+
+      await this.handleCrash();
+    })();
   }
 
   /**

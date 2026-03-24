@@ -1,20 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import {
-  X,
-  ChevronLeft,
-  ChevronRight,
-  ImageIcon,
-  Maximize2,
-  Loader2,
-  BookOpen,
-  Sparkles,
-} from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import type { Figure } from '@/lib/api';
 import { S } from '@/lib/strings';
 import { generateFigureExplanation } from '@/lib/api';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { AppIcon } from '@/components/icons';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -243,7 +235,7 @@ function Lightbox({
         <div className="figure-modal-header absolute top-0 left-0 right-0 h-12 flex items-center justify-between px-4 bg-surface-900/95 backdrop-blur border-b border-surface-700/50 z-10">
           <div className="flex items-center gap-3">
             <h4 className="text-sm font-semibold text-surface-200 flex items-center gap-2">
-              <ImageIcon className="w-4 h-4 text-primary-400" />
+              <AppIcon name="figures" className="w-4 h-4 text-primary-400" />
               {figure.figure_num || 'Figure'}
             </h4>
             <span className={`badge text-2xs ${badge.classes}`}>
@@ -264,7 +256,7 @@ function Lightbox({
                 className="p-1.5 rounded-md text-surface-400 hover:text-white hover:bg-surface-700 transition-colors disabled:opacity-30 disabled:pointer-events-none"
                 aria-label="이전 그림"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <AppIcon name="chevron-left" className="w-4 h-4" />
               </button>
               <span className="text-2xs text-surface-500 tabular-nums min-w-[36px] text-center">
                 {currentIndex + 1} / {figures.length}
@@ -275,7 +267,7 @@ function Lightbox({
                 className="p-1.5 rounded-md text-surface-400 hover:text-white hover:bg-surface-700 transition-colors disabled:opacity-30 disabled:pointer-events-none"
                 aria-label="다음 그림"
               >
-                <ChevronRight className="w-4 h-4" />
+                <AppIcon name="chevron-right" className="w-4 h-4" />
               </button>
             </div>
             {/* Close */}
@@ -284,7 +276,7 @@ function Lightbox({
               className="p-1.5 rounded-md text-surface-400 hover:text-white hover:bg-surface-700 transition-colors"
               aria-label="닫기"
             >
-              <X className="w-4 h-4" />
+              <AppIcon name="close" className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -320,7 +312,7 @@ function Lightbox({
             ) : error ? (
               <div className="flex flex-col items-center justify-center h-full text-center p-8">
                 <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
-                  <X className="w-6 h-6 text-red-400" />
+                  <AppIcon name="error" className="w-6 h-6 text-red-400" />
                 </div>
                 <p className="text-sm text-surface-300 mb-2">{S.figures.explanationFailed}</p>
                 <p className="text-xs text-surface-500 mb-4">{error}</p>
@@ -355,7 +347,7 @@ function Lightbox({
             ) : cached ? (
               <div className="p-6">
                 <div className="flex items-center gap-2 mb-5 pb-3 border-b border-surface-700/50">
-                  <Sparkles className="w-4 h-4 text-primary-400" />
+                  <AppIcon name="sparkles" className="w-4 h-4 text-primary-400" />
                   <h3 className="text-sm font-semibold text-surface-200">
                     {S.figures.expertExplanation}
                   </h3>
@@ -373,7 +365,7 @@ function Lightbox({
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                <BookOpen className="w-10 h-10 text-surface-600 mb-3" />
+                <AppIcon name="library" className="w-10 h-10 text-surface-600 mb-3" />
                 <p className="text-sm text-surface-400">
                   {S.figures.clickForExplanation}
                 </p>
@@ -440,7 +432,7 @@ export default function FigureGallery({
     return (
       <div>
         <h3 className="text-sm font-semibold text-surface-200 mb-3 flex items-center gap-2">
-          <ImageIcon className="w-4 h-4 text-primary-400" />
+          <AppIcon name="figures" className="w-4 h-4 text-primary-400" />
           {S.figures.title}
         </h3>
         <div className="grid grid-cols-3 2xl:grid-cols-4 gap-3">
@@ -456,11 +448,11 @@ export default function FigureGallery({
     return (
       <div>
         <h3 className="text-sm font-semibold text-surface-200 mb-3 flex items-center gap-2">
-          <ImageIcon className="w-4 h-4 text-primary-400" />
+          <AppIcon name="figures" className="w-4 h-4 text-primary-400" />
           {S.figures.title}
         </h3>
         <div className="card flex flex-col items-center justify-center py-8 text-center">
-          <ImageIcon className="w-8 h-8 text-surface-600 mb-2" />
+          <AppIcon name="figures" className="w-8 h-8 text-surface-600 mb-2" />
           <p className="text-sm text-surface-400">
             {S.figures.noFigures}
           </p>
@@ -472,7 +464,7 @@ export default function FigureGallery({
   return (
     <div>
       <h3 className="text-sm font-semibold text-surface-200 mb-3 flex items-center gap-2">
-        <ImageIcon className="w-4 h-4 text-primary-400" />
+        <AppIcon name="figures" className="w-4 h-4 text-primary-400" />
         {S.figures.title}
         <span className="badge-primary text-2xs ml-1">
           {figures.length}
@@ -506,7 +498,7 @@ export default function FigureGallery({
                   loading="lazy"
                 />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                  <Maximize2 className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <AppIcon name="maximize" className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
                 <span className={`absolute top-2 right-2 badge text-2xs ${badge.classes}`}>
                   {badge.label}

@@ -1,20 +1,13 @@
 import { useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Upload as UploadIcon,
-  FileText,
-  X,
-  Check,
   Loader2,
-  AlertCircle,
-  ArrowRight,
-  HardDrive,
-  Beaker,
 } from 'lucide-react';
 import { uploadPaper, updatePaper, type UploadResponse } from '@/lib/api';
 import { getAgentMeta, getAllAgents, agentBgStyle, agentBorderStyle } from '@/lib/agents';
 import { useToast } from '@/components/Toast';
 import { S } from '@/lib/strings';
+import { AppIcon } from '@/components/icons';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -188,8 +181,8 @@ export default function Upload() {
       <div className="w-full max-w-xl">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-primary-500/10 border border-primary-500/20 flex items-center justify-center mx-auto mb-4">
-            <Beaker className="w-7 h-7 text-primary-400" />
+          <div className="icon-surface mx-auto mb-4 h-14 w-14">
+            <AppIcon name="workbench" className="w-7 h-7 text-primary-400" />
           </div>
           <h1 className="text-2xl font-bold text-surface-100 mb-2">
             {S.upload.title}
@@ -205,13 +198,14 @@ export default function Upload() {
           onDragLeave={handleDragLeave}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
-          className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all duration-200 ${
+          className={`relative border-2 border-dashed p-8 text-center transition-all duration-200 ${
             isDragging
               ? 'border-primary-500 bg-primary-500/10 backdrop-blur-md scale-[1.02]'
               : selectedFile
                 ? 'border-surface-600 bg-surface-800'
                 : 'border-surface-600 bg-surface-800/50 hover:border-surface-500 hover:bg-surface-800'
           }`}
+          style={{ borderRadius: 'var(--radius-surface)' }}
         >
           {/* Hidden file input */}
           <input
@@ -228,15 +222,15 @@ export default function Upload() {
           {/* No file selected */}
           {!selectedFile && (
             <div className="space-y-4">
-              <div className="w-12 h-12 rounded-xl bg-surface-700 border border-surface-600 flex items-center justify-center mx-auto">
-                <UploadIcon className="w-6 h-6 text-surface-400" />
+              <div className="w-12 h-12 bg-surface-700 border border-surface-600 flex items-center justify-center mx-auto" style={{ borderRadius: 'var(--radius-control)' }}>
+                <AppIcon name="upload" className="w-6 h-6 text-surface-400" />
               </div>
               <div>
                 <p className="text-sm text-surface-200 mb-1">
                   {S.upload.dragDrop}
                 </p>
                 <p className="text-2xs text-surface-500">
-                  or{' '}
+                  또는{' '}
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     className="text-primary-400 hover:text-primary-300 underline underline-offset-2"
@@ -247,12 +241,12 @@ export default function Upload() {
               </div>
               <div className="flex items-center justify-center gap-3 text-2xs text-surface-500">
                 <span className="flex items-center gap-1">
-                  <FileText className="w-3 h-3" />
+                  <AppIcon name="document" className="w-3 h-3" />
                   {S.upload.pdfOnly}
                 </span>
                 <span className="w-1 h-1 rounded-full bg-surface-600" />
                 <span className="flex items-center gap-1">
-                  <HardDrive className="w-3 h-3" />
+                  <AppIcon name="save" className="w-3 h-3" />
                   {S.upload.maxSize(formatFileSize(MAX_FILE_SIZE))}
                 </span>
               </div>
@@ -263,8 +257,8 @@ export default function Upload() {
           {selectedFile && (
             <div className="space-y-4">
               {/* File info */}
-              <div className="flex items-center gap-3 bg-surface-700/50 rounded-lg px-4 py-3">
-                <FileText className="w-8 h-8 text-primary-400 shrink-0" />
+              <div className="flex items-center gap-3 bg-surface-700/50 px-4 py-3" style={{ borderRadius: 'var(--radius-control)' }}>
+                <AppIcon name="document" className="w-8 h-8 text-primary-400 shrink-0" />
                 <div className="flex-1 min-w-0 text-left">
                   <p className="text-sm text-surface-200 truncate">
                     {selectedFile.name}
@@ -276,9 +270,10 @@ export default function Upload() {
                 {stage === 'idle' && (
                   <button
                     onClick={clearFile}
-                    className="p-1 rounded hover:bg-surface-600 text-surface-400 hover:text-surface-200 transition-colors"
+                    className="p-1 hover:bg-surface-600 text-surface-400 hover:text-surface-200 transition-colors"
+                    style={{ borderRadius: 'var(--radius-control)' }}
                   >
-                    <X className="w-4 h-4" />
+                    <AppIcon name="close" className="w-4 h-4" />
                   </button>
                 )}
               </div>
@@ -310,12 +305,12 @@ export default function Upload() {
               {stage === 'classified' && uploadResult && (
                 <div className="space-y-4 fade-in-up">
                   <div className="flex items-center gap-2 text-sm text-emerald-400">
-                    <Check className="w-4 h-4" />
-                    {S.upload.success}
+                    <AppIcon name="success" className="w-4 h-4" />
+                    {S.upload.handoffTitle}
                   </div>
 
                   {/* Paper info */}
-                  <div className="bg-surface-700/50 rounded-lg p-4 text-left space-y-3">
+                  <div className="bg-surface-700/50 p-4 text-left space-y-3" style={{ borderRadius: 'var(--radius-control)' }}>
                     <div>
                       <span className="text-2xs text-surface-500 uppercase tracking-wider">
                         {S.upload.titleLabel}
@@ -333,11 +328,11 @@ export default function Upload() {
                       const displayColor = agent ? agent.color : '#6b7280';
                       return (
                         <div
-                          className="flex items-center gap-3 p-3 rounded-lg border"
-                          style={{ ...agentBgStyle(displayColor), ...agentBorderStyle(displayColor) }}
+                          className="flex items-center gap-3 p-3 border"
+                          style={{ ...agentBgStyle(displayColor), ...agentBorderStyle(displayColor), borderRadius: 'var(--radius-control)' }}
                         >
-                          <div className="w-16 h-16 rounded-lg bg-surface-700 flex items-center justify-center shrink-0">
-                            <Beaker className="w-8 h-8 text-surface-500" />
+                          <div className="w-16 h-16 bg-surface-700 flex items-center justify-center shrink-0" style={{ borderRadius: 'var(--radius-control)' }}>
+                            <AppIcon name="workbench" className="w-8 h-8 text-surface-500" />
                           </div>
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
@@ -359,7 +354,7 @@ export default function Upload() {
                     {/* Domain selection */}
                     <div>
                       <span className="text-2xs text-surface-500 uppercase tracking-wider">
-                        {S.upload.detectedDomain}
+                        {S.upload.domainConfirm}
                       </span>
                       <select
                         value={domainOverride}
@@ -375,6 +370,46 @@ export default function Upload() {
                           </option>
                         ))}
                       </select>
+                      <p className="mt-1 text-2xs text-surface-500">
+                        {S.upload.domainConfirmHelp}
+                      </p>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="border border-surface-700/60 bg-surface-900/45 p-3" style={{ borderRadius: 'var(--radius-surface)' }}>
+                        <div className="mb-2 flex items-center gap-2 text-2xs uppercase tracking-[0.16em] text-surface-500">
+                          <AppIcon name="sparkles" className="w-3 h-3" />
+                          {S.upload.nextStepTitle}
+                        </div>
+                        <p className="text-xs leading-relaxed text-surface-300">
+                          {S.upload.nextStepDesc}
+                        </p>
+                      </div>
+
+                      <div className="border border-surface-700/60 bg-surface-900/45 p-3" style={{ borderRadius: 'var(--radius-surface)' }}>
+                        <div className="mb-2 flex items-center gap-2 text-2xs uppercase tracking-[0.16em] text-surface-500">
+                          <AppIcon name="arrow-right" className="w-3 h-3" />
+                          {S.upload.outputsTitle}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="badge bg-surface-800 text-surface-300">
+                            <AppIcon name="summary" className="mr-1 h-3 w-3 text-primary-400" />
+                            {S.upload.outputSummary}
+                          </span>
+                          <span className="badge bg-surface-800 text-surface-300">
+                            <AppIcon name="figures" className="mr-1 h-3 w-3 text-primary-400" />
+                            {S.upload.outputFigures}
+                          </span>
+                          <span className="badge bg-surface-800 text-surface-300">
+                            <AppIcon name="recipe" className="mr-1 h-3 w-3 text-primary-400" />
+                            {S.upload.outputRecipe}
+                          </span>
+                          <span className="badge bg-surface-800 text-surface-300">
+                            <AppIcon name="chat" className="mr-1 h-3 w-3 text-primary-400" />
+                            {S.upload.outputChat}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -383,8 +418,8 @@ export default function Upload() {
                     onClick={handleStartAnalysis}
                     className="btn-primary w-full py-3 text-sm"
                   >
-                    {S.upload.openAnalyze}
-                    <ArrowRight className="w-4 h-4" />
+                    {S.upload.openWorkbench}
+                    <AppIcon name="arrow-right" className="w-4 h-4" />
                   </button>
                 </div>
               )}
@@ -392,10 +427,10 @@ export default function Upload() {
               {/* Error state */}
               {stage === 'error' && (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm text-red-400">
-                    <AlertCircle className="w-4 h-4" />
-                    {error}
-                  </div>
+                <div className="flex items-center gap-2 text-sm text-red-400">
+                  <AppIcon name="error" className="w-4 h-4" />
+                  {error}
+                </div>
                   <div className="flex gap-2">
                     <button onClick={handleUpload} className="btn-primary flex-1">
                       {S.upload.retry}
@@ -413,7 +448,7 @@ export default function Upload() {
                   onClick={handleUpload}
                   className="btn-primary w-full py-3 text-sm"
                 >
-                  <UploadIcon className="w-4 h-4" />
+                  <AppIcon name="upload" className="w-4 h-4" />
                   {S.upload.uploadBtn}
                 </button>
               )}
@@ -423,8 +458,8 @@ export default function Upload() {
 
         {/* Error outside the drop zone */}
         {error && stage === 'idle' && (
-          <div className="mt-4 flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
-            <AlertCircle className="w-4 h-4 shrink-0" />
+          <div className="mt-4 flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 px-4 py-3" style={{ borderRadius: 'var(--radius-control)' }}>
+            <AppIcon name="error" className="w-4 h-4 shrink-0" />
             {error}
           </div>
         )}

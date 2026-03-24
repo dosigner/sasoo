@@ -1,4 +1,5 @@
 import type {
+  AnalysisPhase,
   AnalysisResults,
   AnalysisStatus,
   Figure,
@@ -14,6 +15,23 @@ export interface PhaseSummary {
   expandedMeta: string[];
   tone: PhaseTone;
 }
+
+export interface WorkbenchStatusSummary {
+  runStateLabel: string;
+  trustStateLabel: string;
+  nextActionLabel: string;
+  currentPhaseLabel: string;
+  completedCount: number;
+  totalCount: number;
+}
+
+const PHASE_LABELS: Record<AnalysisPhase, string> = {
+  screening: '스크리닝',
+  citation: '인용 분석',
+  visual: 'Figure 검토',
+  recipe: '레시피',
+  deep_dive: '심층 분석',
+};
 
 function percent(value: unknown): string | null {
   if (typeof value !== 'number' || Number.isNaN(value)) return null;
@@ -176,4 +194,112 @@ export function statusMeta(status: AnalysisStatus | null): string | null {
     return `분석 ${Math.round(status.progress_pct || 0)}%`;
   }
   return '분석 완료';
+}
+
+export function buildWorkbenchStatusSummary({
+  status,
+  figures,
+  recipe,
+  visualizations,
+  terminalState,
+}: {
+  status: AnalysisStatus | null;
+  figures: Figure[];
+  recipe: Recipe | null;
+  visualizations: VisualizationPlan | null;
+  terminalState?: 'cancelled' | null;
+}): WorkbenchStatusSummary {
+  const totalCount = status?.phases.length ?? 5;
+  const completedCount = status?.phases.filter((phase) => phase.status === 'completed').length ?? 0;
+  const currentPhase = status?.current_phase;
+  const currentPhaseLabel = currentPhase ? PHASE_LABELS[currentPhase] : '분석 대기';
+  const hasFigures = figures.length > 0;
+  const hasRecipe = Boolean(recipe);
+  const hasVisualizations = Boolean(visualizations?.items.length);
+
+  if (terminalState === 'cancelled') {
+    return {
+      runStateLabel: '취소됨',
+      trustStateLabel: completedCount > 0 ? '부분 결과 유지' : '분석 대기',
+      nextActionLabel: completedCount > 0 ? '완료된 결과를 검토하거나 다시 분석하세요.' : '준비가 되면 분석을 다시 시작하세요.',
+      currentPhaseLabel,
+      completedCount,
+      totalCount,
+    };
+  }
+
+  if (!status || status.overall_status === 'pending') {
+    return {
+      runStateLabel: '분석 전',
+      trustStateLabel: '분석 대기',
+      nextActionLabel: '분석을 시작하면 요약, Figure, 레시피 흐름이 순서대로 준비됩니다.',
+      currentPhaseLabel,
+      completedCount,
+      totalCount,
+    };
+  }
+
+  if (status.overall_status === 'running' || status.overall_status === 'analyzing') {
+    if (hasRecipe) {
+      return {
+        runStateLabel: `${currentPhaseLabel} 진행 중`,
+        trustStateLabel: '레시피 초안 준비됨',
+        nextActionLabel: '재현 파라미터를 먼저 확인하고 필요한 질문을 정리하세요.',
+        currentPhaseLabel,
+        completedCount,
+        totalCount,
+      };
+    }
+    if (hasFigures) {
+      return {
+        runStateLabel: `${currentPhaseLabel} 진행 중`,
+        trustStateLabel: 'Figure 검토 가능',
+        nextActionLabel: '주요 Figure와 캡션을 먼저 검토하세요.',
+        currentPhaseLabel,
+        completedCount,
+        totalCount,
+      };
+    }
+    if (completedCount > 0) {
+      return {
+        runStateLabel: `${currentPhaseLabel} 진행 중`,
+        trustStateLabel: '초기 판독 가능',
+        nextActionLabel: '핵심 주장과 인용 맥락을 먼저 확인하세요.',
+        currentPhaseLabel,
+        completedCount,
+        totalCount,
+      };
+    }
+
+    return {
+      runStateLabel: `${currentPhaseLabel} 진행 중`,
+      trustStateLabel: '결과 준비 중',
+      nextActionLabel: '스크리닝이 끝나면 핵심 주장과 질문 도우미가 열립니다.',
+      currentPhaseLabel,
+      completedCount,
+      totalCount,
+    };
+  }
+
+  if (status.overall_status === 'error') {
+    return {
+      runStateLabel: completedCount > 0 ? '부분 완료' : '분석 실패',
+      trustStateLabel: hasRecipe ? '레시피 초안 유지' : hasFigures ? 'Figure 검토 가능' : '재시도 필요',
+      nextActionLabel: completedCount > 0 ? '남아 있는 결과를 검토한 뒤 재분석하세요.' : '설정을 확인한 뒤 다시 분석을 시작하세요.',
+      currentPhaseLabel,
+      completedCount,
+      totalCount,
+    };
+  }
+
+  return {
+    runStateLabel: '분석 완료',
+    trustStateLabel: hasVisualizations ? '심층 분석 완료' : hasRecipe ? '레시피 검토 가능' : '결과 준비됨',
+    nextActionLabel: hasVisualizations
+      ? '핵심 주장, Figure, 레시피를 교차 검토하세요.'
+      : '준비된 결과를 순서대로 검토하세요.',
+    currentPhaseLabel,
+    completedCount,
+    totalCount,
+  };
 }

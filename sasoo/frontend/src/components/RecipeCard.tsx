@@ -1,12 +1,7 @@
 import { useState, useCallback } from 'react';
-import {
-  FlaskConical,
-  Download,
-  Check,
-  AlertTriangle,
-} from 'lucide-react';
 import type { Recipe } from '@/lib/api';
 import { S } from '@/lib/strings';
+import { AppIcon } from '@/components/icons';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -132,11 +127,11 @@ export default function RecipeCard({
     return (
       <div>
         <h3 className="text-sm font-semibold text-surface-200 mb-3 flex items-center gap-2">
-          <FlaskConical className="w-4 h-4 text-primary-400" />
+          <AppIcon name="recipe" className="w-4 h-4 text-primary-400" />
           {S.recipe.title}
         </h3>
         <div className="card flex flex-col items-center justify-center py-8 text-center">
-          <FlaskConical className="w-8 h-8 text-surface-600 mb-2" />
+          <AppIcon name="recipe" className="w-8 h-8 text-surface-600 mb-2" />
           <p className="text-sm text-surface-400">
             {S.recipe.noRecipe}
           </p>
@@ -185,7 +180,7 @@ export default function RecipeCard({
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-surface-200 flex items-center gap-2">
-          <FlaskConical className="w-4 h-4 text-primary-400" />
+          <AppIcon name="recipe" className="w-4 h-4 text-primary-400" />
           {title}
         </h3>
         <button
@@ -195,12 +190,12 @@ export default function RecipeCard({
         >
           {exported ? (
             <>
-              <Check className="w-3 h-3 text-emerald-400" />
+              <AppIcon name="success" className="w-3 h-3 text-emerald-400" />
               {S.recipe.exported}
             </>
           ) : (
             <>
-              <Download className="w-3 h-3" />
+              <AppIcon name="download" className="w-3 h-3" />
               {S.recipe.exportCsv}
             </>
           )}
@@ -317,7 +312,7 @@ export default function RecipeCard({
                 key={index}
                 className="flex items-start gap-2 bg-amber-500/5 [.light_&]:bg-amber-500/10 border border-amber-500/20 [.light_&]:border-amber-600/30 rounded-lg px-3 py-2"
               >
-                <AlertTriangle className="w-3 h-3 text-amber-400 [.light_&]:text-amber-600 mt-0.5 shrink-0" />
+                <AppIcon name="warning" className="w-3 h-3 text-amber-400 [.light_&]:text-amber-600 mt-0.5 shrink-0" />
                 <p className="text-xs text-amber-300/80 [.light_&]:text-amber-700 leading-relaxed">
                   {note}
                 </p>

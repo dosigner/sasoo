@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen } from 'lucide-react';
 import { type PdfNavigationRequest } from '@/lib/api';
 import { S } from '@/lib/strings';
 import { ContentState } from '@/components/ui';
+import { AppIcon } from '@/components/icons';
 
 interface PdfViewerProps {
   pdfUrl: string;
@@ -57,7 +57,7 @@ export default function PdfViewer({
         {!isLoaded && (
           <div className="absolute inset-0 z-10 flex items-center justify-center p-6">
             <ContentState
-              icon={BookOpen}
+              icon={(props) => <AppIcon name="library" {...props} />}
               title={S.pdf.loading}
               description="문서 뷰어를 준비하고 있습니다."
               loading
@@ -77,7 +77,7 @@ export default function PdfViewer({
         <noscript>
           <div className="flex h-full items-center justify-center p-6">
             <ContentState
-              icon={BookOpen}
+              icon={(props) => <AppIcon name="library" {...props} />}
               title={S.pdf.loadFailed}
               description="PDF 보기를 위해 JavaScript가 필요합니다."
               tone="error"

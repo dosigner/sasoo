@@ -1,17 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Settings as SettingsIcon,
-  Key,
-  Eye,
-  EyeOff,
-  FolderOpen,
-  Save,
   Loader2,
-  Check,
-  AlertCircle,
-  Sun,
-  Moon,
-  DollarSign,
 } from 'lucide-react';
 import {
   getSettings,
@@ -22,6 +11,7 @@ import CostDashboard from '@/components/CostDashboard';
 import { useToast } from '@/components/Toast';
 import { Toggle } from '@/components/ui';
 import { S } from '@/lib/strings';
+import { AppIcon } from '@/components/icons';
 
 // ---------------------------------------------------------------------------
 // Component
@@ -166,7 +156,7 @@ export default function Settings() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-xl font-bold text-surface-100 flex items-center gap-2">
-            <SettingsIcon className="w-5 h-5 text-primary-400" />
+            <AppIcon name="settings" className="w-5 h-5 text-primary-400" />
             {S.settings.title}
           </h1>
           <p className="text-sm text-surface-500 mt-1">
@@ -182,9 +172,9 @@ export default function Settings() {
           {saving ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : saved ? (
-            <Check className="w-4 h-4 text-emerald-300" />
+            <AppIcon name="success" className="w-4 h-4 text-emerald-300" />
           ) : (
-            <Save className="w-4 h-4" />
+            <AppIcon name="save" className="w-4 h-4" />
           )}
           {saving ? S.settings.saving : saved ? S.settings.saved : S.settings.save}
         </button>
@@ -192,8 +182,8 @@ export default function Settings() {
 
       {/* Error */}
       {error && (
-        <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 mb-6">
-          <AlertCircle className="w-4 h-4 shrink-0" />
+        <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 px-4 py-3 mb-6" style={{ borderRadius: 'var(--radius-control)' }}>
+          <AppIcon name="error" className="w-4 h-4 shrink-0" />
           {error}
         </div>
       )}
@@ -204,7 +194,7 @@ export default function Settings() {
         {/* ---------------------------------------------------------------- */}
         <section>
           <h2 className="text-sm font-semibold text-surface-200 flex items-center gap-2 mb-4">
-            <Key className="w-4 h-4 text-primary-400" />
+            <AppIcon name="key" className="w-4 h-4 text-primary-400" />
             {S.settings.apiKeys}
           </h2>
 
@@ -235,13 +225,14 @@ export default function Settings() {
                 />
                 <button
                   onClick={() => setShowGeminiKey(!showGeminiKey)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-surface-500 hover:text-surface-300 transition-colors"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-surface-500 hover:text-surface-300 transition-colors"
+                  style={{ borderRadius: 'var(--radius-control)' }}
                   type="button"
                 >
                   {showGeminiKey ? (
-                    <EyeOff className="w-4 h-4" />
+                    <AppIcon name="eye-off" className="w-4 h-4" />
                   ) : (
-                    <Eye className="w-4 h-4" />
+                    <AppIcon name="eye" className="w-4 h-4" />
                   )}
                 </button>
               </div>
@@ -285,13 +276,14 @@ export default function Settings() {
                 />
                 <button
                   onClick={() => setShowClaudeKey(!showClaudeKey)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-surface-500 hover:text-surface-300 transition-colors"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-surface-500 hover:text-surface-300 transition-colors"
+                  style={{ borderRadius: 'var(--radius-control)' }}
                   type="button"
                 >
                   {showClaudeKey ? (
-                    <EyeOff className="w-4 h-4" />
+                    <AppIcon name="eye-off" className="w-4 h-4" />
                   ) : (
-                    <Eye className="w-4 h-4" />
+                    <AppIcon name="eye" className="w-4 h-4" />
                   )}
                 </button>
               </div>
@@ -316,7 +308,7 @@ export default function Settings() {
         {/* ---------------------------------------------------------------- */}
         <section>
           <h2 className="text-sm font-semibold text-surface-200 flex items-center gap-2 mb-4">
-            <FolderOpen className="w-4 h-4 text-primary-400" />
+            <AppIcon name="folder" className="w-4 h-4 text-primary-400" />
             {S.settings.librarySection}
           </h2>
 
@@ -349,7 +341,7 @@ export default function Settings() {
                   className="btn-ghost px-3 shrink-0"
                   title={S.settings.browseFolder}
                 >
-                  <FolderOpen className="w-4 h-4" />
+                  <AppIcon name="folder" className="w-4 h-4" />
                 </button>
               </div>
               <p className="text-2xs text-surface-600 mt-1">
@@ -372,9 +364,9 @@ export default function Settings() {
         <section>
           <h2 className="text-sm font-semibold text-surface-200 flex items-center gap-2 mb-4">
             {theme === 'dark' ? (
-              <Moon className="w-4 h-4 text-primary-400" />
+              <AppIcon name="moon" className="w-4 h-4 text-primary-400" />
             ) : (
-              <Sun className="w-4 h-4 text-primary-400" />
+              <AppIcon name="sun" className="w-4 h-4 text-primary-400" />
             )}
             {S.settings.appearance}
           </h2>
@@ -382,24 +374,26 @@ export default function Settings() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setTheme('dark')}
-              className={`flex items-center gap-2 px-4 py-3 rounded-lg border transition-colors ${
+              className={`flex items-center gap-2 px-4 py-3 border transition-colors ${
                 theme === 'dark'
                   ? 'border-primary-500 bg-primary-500/10 text-primary-400'
                   : 'border-surface-700 bg-surface-800 text-surface-400 hover:border-surface-600'
               }`}
+              style={{ borderRadius: 'var(--radius-control)' }}
             >
-              <Moon className="w-4 h-4" />
+              <AppIcon name="moon" className="w-4 h-4" />
               <span className="text-sm">{S.settings.dark}</span>
             </button>
             <button
               onClick={() => setTheme('light')}
-              className={`flex items-center gap-2 px-4 py-3 rounded-lg border transition-colors ${
+              className={`flex items-center gap-2 px-4 py-3 border transition-colors ${
                 theme === 'light'
                   ? 'border-primary-500 bg-primary-500/10 text-primary-400'
                   : 'border-surface-700 bg-surface-800 text-surface-400 hover:border-surface-600'
               }`}
+              style={{ borderRadius: 'var(--radius-control)' }}
             >
-              <Sun className="w-4 h-4" />
+              <AppIcon name="sun" className="w-4 h-4" />
               <span className="text-sm">{S.settings.light}</span>
             </button>
           </div>
@@ -410,7 +404,7 @@ export default function Settings() {
         {/* ---------------------------------------------------------------- */}
         <section>
           <h2 className="text-sm font-semibold text-surface-200 flex items-center gap-2 mb-4">
-            <DollarSign className="w-4 h-4 text-primary-400" />
+            <AppIcon name="dollar" className="w-4 h-4 text-primary-400" />
             {S.settings.usageCosts}
           </h2>
           <CostDashboard />
@@ -448,7 +442,7 @@ export default function Settings() {
                 {saving ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Save className="w-4 h-4" />
+                  <AppIcon name="save" className="w-4 h-4" />
                 )}
                 {S.settings.save}
               </button>

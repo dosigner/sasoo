@@ -35,7 +35,7 @@ macOS ARM:
    - App launches cleanly
    - Library screen opens
    - PDF loads without toolbar regressions
-   - Workbench opens and chat popup overlays correctly
+   - Workbench opens and docked chat behaves correctly
    - Analysis can start and complete
    - App can close and relaunch
 
@@ -48,7 +48,7 @@ Windows:
    - `latest.yml` exists
    - Installer launches without immediate crash
    - Backend bundle starts
-   - PDF open, analysis, and chat popup work
+   - PDF open, analysis, and docked chat work
 
 ## GitHub Actions Release Flow
 
@@ -67,7 +67,7 @@ Manual rerun for an existing tag:
 
 1. Open Actions
 2. Run `Release`
-3. Enter the exact tag, for example `v0.6.4`
+3. Enter the exact tag, for example `v0.6.5`
 
 ## Signing And Trust
 

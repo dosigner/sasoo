@@ -1,8 +1,8 @@
-import type { LucideIcon } from 'lucide-react';
-import { Loader2 } from 'lucide-react';
+import type { ComponentType } from 'react';
+import { AppIcon } from '@/components/icons';
 
 interface ContentStateProps {
-  icon: LucideIcon;
+  icon: ComponentType<{ className?: string; title?: string }>;
   title: string;
   description?: string;
   actionLabel?: string;
@@ -50,17 +50,19 @@ export default function ContentState({
 
   return (
     <div
-      className={`flex flex-col items-center justify-center rounded-[18px] border px-5 text-center ${styles.shell} ${
+      className={`flex flex-col items-center justify-center border px-5 text-center ${styles.shell} ${
         compact ? 'py-5' : 'py-8'
       } ${className}`}
+      style={{ borderRadius: 'var(--radius-surface)' }}
     >
       <div
-        className={`mb-3 flex items-center justify-center rounded-2xl border ${styles.iconWrap} ${
+        className={`mb-3 flex items-center justify-center border ${styles.iconWrap} ${
           compact ? 'h-10 w-10' : 'h-11 w-11'
         }`}
+        style={{ borderRadius: 'var(--radius-control)' }}
       >
         {loading ? (
-          <Loader2 className={`animate-spin ${styles.icon} ${compact ? 'h-4 w-4' : 'h-5 w-5'}`} />
+          <AppIcon name="spinner" className={`animate-spin ${styles.icon} ${compact ? 'h-4 w-4' : 'h-5 w-5'}`} />
         ) : (
           <Icon className={`${styles.icon} ${compact ? 'h-4 w-4' : 'h-5 w-5'}`} />
         )}
