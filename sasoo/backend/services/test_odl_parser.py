@@ -186,7 +186,7 @@ class OdlParserUnitTests(unittest.TestCase):
         self.assertEqual(payload["bbox"], [1, 2, 3, 4])
 
     def test_figure_row_to_api_dict_converts_library_absolute_path_to_static_url(self) -> None:
-        with patch("services.odl_parser.LIBRARY_ROOT", Path("/Users/alice/Papers")):
+        with patch("services.odl_parser.get_library_root", return_value=Path("/Users/alice/Papers")):
             payload = figure_row_to_api_dict(
                 {
                     "id": 1,
@@ -390,7 +390,7 @@ class OdlParserUnitTests(unittest.TestCase):
         self.assertEqual(payload["bbox"], [5, 6, 7, 8])
 
     def test_table_row_to_api_dict_converts_library_absolute_paths_to_static_urls(self) -> None:
-        with patch("services.odl_parser.LIBRARY_ROOT", Path("/Users/alice/Papers")):
+        with patch("services.odl_parser.get_library_root", return_value=Path("/Users/alice/Papers")):
             payload = table_row_to_api_dict(
                 {
                     "id": 2,

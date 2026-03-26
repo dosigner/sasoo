@@ -59,12 +59,13 @@ except ImportError:
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from models.database import (
     APP_DATA_ROOT,
-    LIBRARY_ROOT,
     close_db,
+    get_library_root,
+    get_library_search_roots,
     init_db,
 )
 
@@ -91,7 +92,7 @@ async def lifespan(app: FastAPI):
     setup_logging(level=log_level)
     print(f"[Sasoo] App data root: {APP_DATA_ROOT}")
     print(f"[Sasoo] Database: {APP_DATA_ROOT / 'sasoo.db'}")
-    print(f"[Sasoo] Library root: {LIBRARY_ROOT}")
+    print(f"[Sasoo] Library root: {get_library_root()}")
 
     # Load API keys from database into environment variables (with decryption)
     from models.database import fetch_all
@@ -140,7 +141,7 @@ app = FastAPI(
         "(Screening -> Visual Verification -> Recipe Extraction -> Deep Dive) "
         "powered by Gemini 3.1 + Claude Sonnet 4.5 dual LLM."
     ),
-    version="0.6.7",
+    version="0.6.8",
     lifespan=lifespan,
 )
 
@@ -172,13 +173,7 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 
 APP_DATA_ROOT.mkdir(parents=True, exist_ok=True)
-LIBRARY_ROOT.mkdir(parents=True, exist_ok=True)
-
-app.mount(
-    "/static/library",
-    StaticFiles(directory=str(LIBRARY_ROOT)),
-    name="library",
-)
+get_library_root().mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Routers
@@ -204,14 +199,36 @@ async def root():
     return {
         "service": "sasoo",
         "status": "running",
-        "version": "0.4.2",
-        "library_path": str(LIBRARY_ROOT),
+        "version": "0.6.8",
+        "library_path": str(get_library_root()),
     }
 
 
 @app.get("/health", tags=["health"])
 async def health_check():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "library_path": str(get_library_root()),
+    }
+
+
+@app.get("/static/library/{requested_path:path}", include_in_schema=False)
+async def library_asset(requested_path: str):
+    relative_path = Path(requested_path)
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        raise HTTPException(status_code=400, detail="Invalid library asset path")
+
+    for root in get_library_search_roots():
+        resolved_root = root.resolve(strict=False)
+        candidate = (root / relative_path).resolve(strict=False)
+        try:
+            candidate.relative_to(resolved_root)
+        except ValueError:
+            continue
+        if candidate.is_file():
+            return FileResponse(candidate)
+
+    raise HTTPException(status_code=404, detail="Library asset not found")
 
 
 @app.post("/shutdown", tags=["health"])

@@ -85,7 +85,7 @@ Manual rerun for an existing tag:
 
 1. Open Actions
 2. Run `Release`
-3. Enter the exact tag, for example `v0.6.7`
+3. Enter the exact tag, for example `v0.6.8`
 
 ## Signing And Trust
 

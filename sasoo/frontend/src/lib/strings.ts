@@ -204,6 +204,8 @@ export const S = {
     loadFailed: '설정을 불러올 수 없습니다',
     saveFailed: '변경을 저장하지 못했습니다',
     browseFolder: '폴더 선택',
+    browseFolderFailed: '폴더 선택 창을 열지 못했습니다',
+    browseFolderUnavailable: '현재 환경에서는 폴더 선택을 사용할 수 없습니다',
     // API Keys
     apiKeys: '모델 키',
     geminiKey: 'Google Gemini API 키',
@@ -215,7 +217,7 @@ export const S = {
     librarySection: '보관함 경로',
     libraryPath: '논문 저장 경로',
     libraryPathHelp:
-      '업로드한 PDF와 분석 결과가 보관되는 디렉토리입니다. 경로를 바꾸면 앱을 다시 시작해야 완전히 반영됩니다.',
+      '업로드한 PDF와 분석 결과가 보관되는 디렉토리입니다. 새 업로드부터 이 경로를 사용하며, 기존 논문은 저장된 위치를 그대로 참조합니다.',
     browseFolderTitle: '라이브러리 폴더 선택',
     autoAnalyze: '업로드 후 자동 분석',
     autoAnalyzeHelp: '논문을 보관함에 추가한 뒤 곧바로 분석을 시작합니다.',

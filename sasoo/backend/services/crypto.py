@@ -6,7 +6,7 @@ The encryption key is stored in the OS keychain via the `keyring` library.
 
 import logging
 import os
-import secrets
+import sys
 from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -26,6 +26,9 @@ def _get_or_create_fernet_key() -> bytes:
     Retrieve the Fernet key from the OS keychain, or generate and store one.
     Falls back to a file-based key if keyring is unavailable.
     """
+    if not _should_use_os_keyring():
+        return _get_or_create_file_key()
+
     try:
         import keyring as kr
 
@@ -41,6 +44,24 @@ def _get_or_create_fernet_key() -> bytes:
     except Exception as exc:
         logger.warning("Keyring unavailable (%s), falling back to file-based key", exc)
         return _get_or_create_file_key()
+
+
+def _should_use_os_keyring() -> bool:
+    """
+    Use OS keyring only when explicitly enabled or during development.
+
+    Packaged desktop builds prefer a local file-based key because keyring
+    backends can block or fail inside bundled Python subprocesses on macOS.
+    """
+    explicit = os.environ.get("SASOO_USE_OS_KEYRING")
+    if explicit is not None:
+        return explicit.strip().lower() in {"1", "true", "yes", "on"}
+
+    if os.environ.get("SASOO_DISABLE_OS_KEYRING", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return False
+
+    is_packaged_desktop = bool(getattr(sys, "frozen", False)) or os.environ.get("SASOO_ENV") == "production"
+    return not is_packaged_desktop
 
 
 def _get_or_create_file_key() -> bytes:

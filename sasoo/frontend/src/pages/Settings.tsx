@@ -161,6 +161,41 @@ export default function Settings() {
     }
   }, [geminiKey, claudeKey, libraryPath, theme, autoAnalyze, pdfParserMode, extractionPipelineVersion, toast]);
 
+  const handleBrowseDirectory = useCallback(async () => {
+    if (!window.electronAPI?.openDirectory) {
+      toast.error(S.settings.browseFolderUnavailable);
+      return;
+    }
+
+    try {
+      const fallbackPath =
+        libraryPath.trim() ||
+        await window.electronAPI.getAppPath('documents') ||
+        await window.electronAPI.getAppPath('home') ||
+        undefined;
+
+      let result;
+      try {
+        result = await window.electronAPI.openDirectory({
+          title: S.settings.browseFolderTitle,
+          defaultPath: fallbackPath,
+        });
+      } catch (error) {
+        console.warn('[settings] browse dialog retry without defaultPath:', error);
+        result = await window.electronAPI.openDirectory({
+          title: S.settings.browseFolderTitle,
+        });
+      }
+
+      if (!result.canceled && result.directoryPath) {
+        setLibraryPath(result.directoryPath);
+      }
+    } catch (error) {
+      console.warn('[settings] browse directory failed:', error);
+      toast.error(S.settings.browseFolderFailed);
+    }
+  }, [libraryPath, toast]);
+
   // -----------------------------------------------------------------------
   // Check for unsaved changes
   // -----------------------------------------------------------------------
@@ -348,17 +383,7 @@ export default function Settings() {
                 />
                 <button
                   type="button"
-                  onClick={async () => {
-                    if (window.electronAPI?.openDirectory) {
-                      const result = await window.electronAPI.openDirectory({
-                        title: S.settings.browseFolderTitle,
-                        defaultPath: libraryPath || undefined,
-                      });
-                      if (!result.canceled && result.directoryPath) {
-                        setLibraryPath(result.directoryPath);
-                      }
-                    }
-                  }}
+                  onClick={handleBrowseDirectory}
                   className="btn-ghost px-3 shrink-0"
                   title={S.settings.browseFolder}
                 >

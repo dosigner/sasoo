@@ -11,7 +11,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from models.database import LIBRARY_ROOT, fetch_all, fetch_one, get_db
+from models.database import fetch_all, fetch_one, get_db, get_library_root
 from models.schemas import SettingsModel, SettingsUpdate
 from services.crypto import decrypt_value, encrypt_value, is_encrypted
 
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 DEFAULT_SETTINGS: dict[str, str] = {
     "gemini_api_key": "",
     "anthropic_api_key": "",
-    "library_path": str(LIBRARY_ROOT),
+    "library_path": str(get_library_root()),
     "default_domain": "optics",
     "auto_analyze": "true",
     "language": "ko",
@@ -133,7 +133,7 @@ async def get_settings():
     return SettingsModel(
         gemini_api_key=_mask_api_key(raw.get("gemini_api_key", "")),
         anthropic_api_key=_mask_api_key(raw.get("anthropic_api_key", "")),
-        library_path=raw.get("library_path", str(LIBRARY_ROOT)),
+        library_path=raw.get("library_path", str(get_library_root())),
         default_domain=raw.get("default_domain", "optics"),
         auto_analyze=raw.get("auto_analyze", "true").lower() == "true",
         language=raw.get("language", "ko"),
@@ -158,6 +158,11 @@ async def update_settings(update: SettingsUpdate):
     if not update_data:
         raise HTTPException(status_code=400, detail="No settings to update.")
 
+    if "library_path" in update_data and update_data["library_path"] is not None:
+        new_path = Path(str(update_data["library_path"])).expanduser().resolve(strict=False)
+        new_path.mkdir(parents=True, exist_ok=True)
+        update_data["library_path"] = str(new_path)
+
     for key, value in update_data.items():
         # Convert booleans and enums to string for storage
         if isinstance(value, bool):
@@ -181,11 +186,6 @@ async def update_settings(update: SettingsUpdate):
                 "extraction_pipeline_force_fallback",
                 "true" if str_value == "legacy" else "false",
             )
-
-    # If library_path changed, ensure the directory exists
-    if "library_path" in update_data:
-        new_path = Path(update_data["library_path"]).expanduser()
-        new_path.mkdir(parents=True, exist_ok=True)
 
     # If API keys changed, update environment variables for current session
     # (use original plaintext value, not encrypted)

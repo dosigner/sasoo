@@ -13,6 +13,7 @@ Paths:
 """
 
 import os
+import sqlite3
 import sys
 import aiosqlite
 from pathlib import Path
@@ -56,39 +57,74 @@ def _get_app_data_root() -> Path:
         return Path(__file__).resolve().parent.parent / "library"
 
 
-def _get_library_root() -> Path:
+def _get_default_library_root() -> Path:
     """
-    Determine the paper library root directory.
+    Default paper library root directory.
 
     - Development: backend/library/ (relative to source)
-    - Production:  User-configured path (read from DB settings),
-                   or %APPDATA%/Sasoo/library/ by default.
+    - Production:  %APPDATA%/Sasoo/library/ by default.
     """
     if _is_bundled():
-        default = _get_app_data_root() / "library"
-        # Check DB for user-configured library path
-        db_path = _get_app_data_root() / "sasoo.db"
-        if db_path.exists():
-            try:
-                import sqlite3
-                conn = sqlite3.connect(str(db_path))
-                cursor = conn.execute(
-                    "SELECT value FROM settings WHERE key = 'library_path'"
-                )
-                row = cursor.fetchone()
-                conn.close()
-                if row and row[0]:
-                    return Path(row[0])
-            except Exception:
-                pass  # Expected if library_path setting doesn't exist yet
-        return default
-    else:
-        # Development: Use local library folder
-        return Path(__file__).resolve().parent.parent / "library"
+        return _get_app_data_root() / "library"
+    return Path(__file__).resolve().parent.parent / "library"
+
+
+def _read_configured_library_root() -> Optional[Path]:
+    """Read the configured library_path directly from SQLite if present."""
+    db_path = _get_app_data_root() / "sasoo.db"
+    if not db_path.exists():
+        return None
+
+    try:
+        conn = sqlite3.connect(str(db_path))
+        try:
+            cursor = conn.execute(
+                "SELECT value FROM settings WHERE key = 'library_path' LIMIT 1"
+            )
+            row = cursor.fetchone()
+        finally:
+            conn.close()
+    except Exception:
+        return None
+
+    if not row or not row[0]:
+        return None
+
+    return Path(str(row[0])).expanduser()
+
+
+def get_library_root() -> Path:
+    """
+    Determine the active paper library root directory.
+
+    Reads the current setting from SQLite when available so runtime changes
+    apply without requiring a backend restart.
+    """
+    configured = _read_configured_library_root()
+    return configured if configured is not None else _get_default_library_root()
+
+
+def get_library_search_roots() -> tuple[Path, ...]:
+    """
+    Return candidate library roots for resolving existing paper folders.
+
+    The default bundled root is kept as a fallback so papers uploaded before a
+    path change remain readable.
+    """
+    current_root = get_library_root()
+    default_root = _get_default_library_root()
+    roots: list[Path] = []
+
+    for candidate in (current_root, default_root):
+        normalized = candidate.expanduser()
+        if normalized not in roots:
+            roots.append(normalized)
+
+    return tuple(roots)
 
 
 APP_DATA_ROOT = _get_app_data_root()
-LIBRARY_ROOT = _get_library_root()
+LIBRARY_ROOT = get_library_root()
 DB_PATH = APP_DATA_ROOT / "sasoo.db"
 CONFIG_PATH = APP_DATA_ROOT / "config.json"
 
@@ -238,7 +274,7 @@ async def init_db() -> None:
 
     # Ensure directories exist
     APP_DATA_ROOT.mkdir(parents=True, exist_ok=True)
-    LIBRARY_ROOT.mkdir(parents=True, exist_ok=True)
+    get_library_root().mkdir(parents=True, exist_ok=True)
 
     _db_connection = await aiosqlite.connect(str(DB_PATH))
     _db_connection.row_factory = aiosqlite.Row
@@ -412,25 +448,29 @@ async def execute_update(query: str, params: tuple = ()) -> int:
 
 def get_paper_dir(folder_name: str) -> Path:
     """Return the absolute path to a paper's folder inside the library."""
-    return LIBRARY_ROOT / folder_name
+    for root in get_library_search_roots():
+        candidate = root / folder_name
+        if candidate.exists():
+            return candidate
+    return get_library_root() / folder_name
 
 
 def get_figures_dir(folder_name: str) -> Path:
     """Return the absolute path to a paper's figures directory."""
-    d = LIBRARY_ROOT / folder_name / "figures"
+    d = get_paper_dir(folder_name) / "figures"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
 def get_paperbanana_dir(folder_name: str) -> Path:
     """Return the absolute path for PaperBanana output."""
-    d = LIBRARY_ROOT / folder_name / "paperbanana"
+    d = get_paper_dir(folder_name) / "paperbanana"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
 def get_tables_dir(folder_name: str) -> Path:
     """Return the absolute path to a paper's tables directory."""
-    d = LIBRARY_ROOT / folder_name / "tables"
+    d = get_paper_dir(folder_name) / "tables"
     d.mkdir(parents=True, exist_ok=True)
     return d

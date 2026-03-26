@@ -25,7 +25,7 @@ from typing import Any, Iterable
 import fitz  # PyMuPDF
 from PIL import Image
 
-from models.database import DB_PATH, LIBRARY_ROOT, fetch_all, get_db
+from models.database import DB_PATH, fetch_all, get_db, get_library_root
 from services.document_audit import find_suspect_pages
 from services.document_manifest import build_document_manifest
 from services.figure_candidates import build_figure_candidates
@@ -2204,7 +2204,7 @@ def _library_asset_to_static_url(asset_path: Any) -> Any:
 
     try:
         relative_path = Path(asset_path).resolve(strict=False).relative_to(
-            LIBRARY_ROOT.resolve(strict=False)
+            get_library_root().resolve(strict=False)
         )
     except (TypeError, ValueError):
         return asset_path
