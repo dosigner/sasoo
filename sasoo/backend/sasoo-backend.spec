@@ -11,6 +11,8 @@ Output:
     dist/sasoo-backend/sasoo-backend.exe
 """
 
+import os
+import sys
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files
 
@@ -51,14 +53,51 @@ except ImportError:
 
 # Optional bundled Java runtime for OpenDataLoader
 java_runtime_data = []
-java_runtime_src = backend_dir / "java-runtime"
-if java_runtime_src.exists():
+
+
+def _java_executable_name() -> str:
+    return "java.exe" if sys.platform == "win32" else "java"
+
+
+def _java_home_matches_platform(java_home: Path) -> bool:
+    candidates = [
+        java_home / "bin" / _java_executable_name(),
+        java_home / "Contents" / "Home" / "bin" / _java_executable_name(),
+    ]
+    return any(candidate.exists() for candidate in candidates)
+
+
+def _find_java_runtime_source() -> tuple[Path | None, str | None]:
+    bundled_runtime = backend_dir / "java-runtime"
+    if bundled_runtime.exists() and _java_home_matches_platform(bundled_runtime):
+        return bundled_runtime, "backend/java-runtime"
+
+    for env_var in ("SASOO_BUNDLED_JAVA_HOME", "JAVA_HOME"):
+        value = os.environ.get(env_var)
+        if not value:
+            continue
+        candidate = Path(value).expanduser()
+        if candidate.exists() and _java_home_matches_platform(candidate):
+            return candidate, env_var
+
+    return None, None
+
+
+java_runtime_src, java_runtime_source = _find_java_runtime_source()
+if java_runtime_src:
     for _f in java_runtime_src.rglob("*"):
         if _f.is_file():
             java_runtime_data.append(
-                (str(_f), str(_f.parent.relative_to(backend_dir)))
+                (str(_f), str(Path("java-runtime") / _f.parent.relative_to(java_runtime_src)))
             )
-    print(f"[SPEC] Bundled Java runtime files collected: {len(java_runtime_data)}")
+    print(
+        f"[SPEC] Bundled Java runtime files collected: {len(java_runtime_data)} "
+        f"from {java_runtime_source}"
+    )
+elif (backend_dir / "java-runtime").exists():
+    print("[SPEC] backend/java-runtime exists but does not match the current platform; skipping bundled runtime")
+elif os.environ.get("SASOO_BUNDLED_JAVA_HOME") or os.environ.get("JAVA_HOME"):
+    print("[SPEC] Java runtime environment variable exists but does not match the current platform; skipping bundled runtime")
 
 odl_data = collect_data_files("opendataloader_pdf")
 print(f"[SPEC] OpenDataLoader package data files collected: {len(odl_data)}")

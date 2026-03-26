@@ -49,6 +49,13 @@ jobs:
           cache: pnpm
           cache-dependency-path: sasoo/pnpm-lock.yaml
 
+      - name: Install Java for Windows packaging
+        if: runner.os == 'Windows'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
       # ── Python ───────────────────────────────────
       - uses: actions/setup-python@v5
         with:

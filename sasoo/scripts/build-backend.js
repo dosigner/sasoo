@@ -186,6 +186,44 @@ function findForeignArtifacts(rootDir) {
   return matches;
 }
 
+function javaExecutableNameForPlatform(platform = process.platform) {
+  return platform === 'win32' ? 'java.exe' : 'java';
+}
+
+function hasPlatformJavaExecutable(javaHomePath) {
+  if (!javaHomePath) {
+    return false;
+  }
+
+  const candidates = [
+    path.join(javaHomePath, 'bin', javaExecutableNameForPlatform()),
+    path.join(javaHomePath, 'Contents', 'Home', 'bin', javaExecutableNameForPlatform()),
+  ];
+
+  return candidates.some((candidate) => fs.existsSync(candidate));
+}
+
+function resolveBundledJavaRuntimeSource() {
+  const candidates = [
+    { label: 'backend/java-runtime', dir: path.join(BACKEND_DIR, 'java-runtime') },
+    { label: 'SASOO_BUNDLED_JAVA_HOME', dir: process.env.SASOO_BUNDLED_JAVA_HOME },
+    { label: 'JAVA_HOME', dir: process.env.JAVA_HOME },
+  ];
+
+  const mismatched = [];
+  for (const candidate of candidates) {
+    if (!candidate.dir || !fs.existsSync(candidate.dir)) {
+      continue;
+    }
+    if (hasPlatformJavaExecutable(candidate.dir)) {
+      return { ...candidate, mismatched };
+    }
+    mismatched.push(candidate.label);
+  }
+
+  return { label: null, dir: null, mismatched };
+}
+
 /**
  * Clean previous build artifacts.
  */
@@ -275,17 +313,16 @@ function verifyBuild() {
   info(`Size: ${sizeMB} MB`);
   info(`OpenDataLoader JAR found: ${odlJarPath}`);
 
-  const bundledJavaRuntime = path.join(BACKEND_DIR, 'java-runtime');
-  if (!fs.existsSync(bundledJavaRuntime)) {
-    warn('backend/java-runtime was not found. Production ODL Java mode will require system Java.');
+  const bundledJavaRuntime = resolveBundledJavaRuntimeSource();
+  if (bundledJavaRuntime.dir) {
+    info(`Bundled Java runtime source: ${bundledJavaRuntime.label} (${bundledJavaRuntime.dir})`);
+  } else if (bundledJavaRuntime.mismatched.length > 0) {
+    warn(
+      `Java runtime candidates exist but do not match ${process.platform}: ${bundledJavaRuntime.mismatched.join(', ')}. ` +
+      'Production ODL Java mode will require a compatible system/runtime on this platform.'
+    );
   } else {
-    const javaCandidates = [
-      path.join(bundledJavaRuntime, 'bin', process.platform === 'win32' ? 'java.exe' : 'java'),
-      path.join(bundledJavaRuntime, 'Contents', 'Home', 'bin', process.platform === 'win32' ? 'java.exe' : 'java'),
-    ];
-    if (!javaCandidates.some((candidate) => fs.existsSync(candidate))) {
-      warn('backend/java-runtime exists, but no Java executable was found under bin/ or Contents/Home/bin/.');
-    }
+    warn('No bundled Java runtime source was found. Production ODL Java mode will require system Java.');
   }
 
   const foreignArtifacts = findForeignArtifacts(OUTPUT_DIR);
