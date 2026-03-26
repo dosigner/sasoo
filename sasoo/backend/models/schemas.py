@@ -57,6 +57,13 @@ class FigureQuality(str, Enum):
     UNREADABLE = "unreadable"
 
 
+class VisualState(str, Enum):
+    READY = "ready"
+    RUNNING = "running"
+    ERROR = "error"
+    PARTIAL = "partial"
+
+
 # ---------------------------------------------------------------------------
 # Paper Models
 # ---------------------------------------------------------------------------
@@ -104,6 +111,11 @@ class PaperResponse(BaseModel):
     analyzed_at: Optional[str] = None
     notes: Optional[str] = None
     created_at: Optional[str] = None
+    text_ready: bool = False
+    visual_ready: bool = False
+    visual_state: VisualState = VisualState.PARTIAL
+    visual_error: Optional[str] = None
+    artifacts_ready: bool = False
 
 
 class PaperListResponse(BaseModel):
@@ -128,12 +140,58 @@ class FigureInfo(BaseModel):
     ai_analysis: Optional[str] = None
     quality: Optional[str] = None
     detailed_explanation: Optional[str] = None
+    page_number: Optional[int] = None
+    bbox: Optional[tuple[float, float, float, float]] = None
+    extraction_engine: Optional[str] = None
+    confidence: Optional[float] = None
+    classifier_label: Optional[str] = None
+    classifier_model: Optional[str] = None
+    parent_figure_id: Optional[int] = None
+    is_composite: Optional[bool] = None
+    resolver_version: Optional[str] = None
+    extraction_status: Optional[str] = None
 
 
 class FigureListResponse(BaseModel):
     """List of figures for a paper."""
     figures: list[FigureInfo]
     total: int
+    visual_state: VisualState = VisualState.PARTIAL
+    visual_error: Optional[str] = None
+    artifacts_ready: bool = False
+    artifacts_error: Optional[str] = None
+
+
+class TableInfo(BaseModel):
+    """Metadata for an extracted table."""
+    id: Optional[int] = None
+    paper_id: int
+    table_num: Optional[str] = None
+    caption: Optional[str] = None
+    page_number: Optional[int] = None
+    bbox: Optional[tuple[float, float, float, float]] = None
+    csv_path: Optional[str] = None
+    html_path: Optional[str] = None
+    markdown_text: Optional[str] = None
+    confidence: Optional[float] = None
+    parse_method: Optional[str] = None
+    classifier_model: Optional[str] = None
+    resolver_version: Optional[str] = None
+    extraction_status: Optional[str] = None
+    repair_attempted: bool = False
+    repair_reason: Optional[str] = None
+    repair_confidence: Optional[float] = None
+    review_required: bool = False
+
+
+class TableListResponse(BaseModel):
+    """List of extracted tables for a paper."""
+    tables: list[TableInfo]
+    total: int
+    visual_state: VisualState = VisualState.PARTIAL
+    visual_error: Optional[str] = None
+    artifacts_ready: bool = False
+    artifacts_error: Optional[str] = None
 
 
 class FigureExplanationResponse(BaseModel):
@@ -367,6 +425,8 @@ class SettingsModel(BaseModel):
     max_concurrent_analyses: int = 3
     gemini_model: str = "gemini-3-flash-preview"
     anthropic_model: str = "claude-sonnet-4-20250514"
+    pdf_parser_mode: str = "java"
+    extraction_pipeline_version: str = "resolver_v1"
 
     @field_validator("library_path", mode="before")
     @classmethod
@@ -389,6 +449,8 @@ class SettingsUpdate(BaseModel):
     max_concurrent_analyses: Optional[int] = None
     gemini_model: Optional[str] = None
     anthropic_model: Optional[str] = None
+    pdf_parser_mode: Optional[str] = None
+    extraction_pipeline_version: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -478,5 +540,3 @@ class VisualizationPlanResponse(BaseModel):
     total_count: int = 0
     model_used: str = ""
     planned_at: Optional[str] = None
-
-

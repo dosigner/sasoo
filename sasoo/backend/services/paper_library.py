@@ -21,6 +21,7 @@ from models.database import (
     get_db,
     get_paper_dir,
 )
+from services.analysis_results import get_latest_completed_phase_row
 
 logger = logging.getLogger(__name__)
 
@@ -476,6 +477,9 @@ class PaperLibrary:
         """
         Get the total API cost for analyzing a specific paper.
 
+        Historical usage view: this intentionally aggregates all recorded runs,
+        not just the latest semantic result per phase.
+
         Returns:
             Dict with total_cost_usd, total_tokens_in, total_tokens_out,
             by_phase breakdown.
@@ -522,6 +526,9 @@ class PaperLibrary:
     ) -> dict[str, Any]:
         """
         Get aggregated API cost for a specific month.
+
+        Historical usage view: this intentionally aggregates all recorded runs
+        inside the month, not latest-per-phase semantics.
 
         Args:
             year: Year (default: current year).
@@ -602,6 +609,9 @@ class PaperLibrary:
     async def get_stats(self) -> dict[str, Any]:
         """
         Get overall library statistics.
+
+        Historical usage view: token and cost totals intentionally include the
+        full analysis_results history.
 
         Returns:
             Dict with total papers, domain/status/agent counts, cost totals.
@@ -699,20 +709,10 @@ class PaperLibrary:
         return rows
 
     async def get_phase_result(self, paper_id: int, phase: str) -> Optional[dict]:
-        """Get a specific phase result for a paper."""
-        row = await fetch_one(
-            """
-            SELECT * FROM analysis_results
-            WHERE paper_id = ? AND phase = ?
-            ORDER BY created_at DESC LIMIT 1
-            """,
-            (paper_id, phase),
-        )
-        if row:
-            try:
-                row["parsed_result"] = json.loads(row.get("result", "{}"))
-            except (json.JSONDecodeError, TypeError):
-                row["parsed_result"] = {"raw": row.get("result", "")}
+        """Get the latest completed result for a specific phase."""
+        row = await get_latest_completed_phase_row(paper_id, phase)
+        if row and isinstance(row.get("parsed_result"), dict) and "raw_text" in row["parsed_result"]:
+            row["parsed_result"] = {"raw": row["parsed_result"]["raw_text"]}
         return row
 
     async def get_figures(self, paper_id: int) -> list[dict]:

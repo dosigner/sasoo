@@ -1,10 +1,34 @@
 import { AppIcon } from '@/components/icons';
+import type { WorkbenchSplitPreset } from '@/hooks/useWorkbenchLayout';
+
+function rgbaFromHex(color: string, alpha: number): string {
+  const cleaned = color.replace('#', '');
+  if (cleaned.length !== 6) return color;
+
+  const r = parseInt(cleaned.slice(0, 2), 16);
+  const g = parseInt(cleaned.slice(2, 4), 16);
+  const b = parseInt(cleaned.slice(4, 6), 16);
+
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function buildAgentPillStyle(color?: string | null): React.CSSProperties | undefined {
+  if (!color) return undefined;
+
+  return {
+    color,
+    borderColor: rgbaFromHex(color, 0.24),
+    backgroundColor: rgbaFromHex(color, 0.1),
+  };
+}
 
 interface WorkbenchHeaderProps {
   title: string;
   domain?: string | null;
   agentLabel?: string | null;
+  agentColor?: string | null;
   pdfCollapsed: boolean;
+  activeSplitPreset: WorkbenchSplitPreset | null;
   runStateLabel: string;
   trustStateLabel: string;
   analysisError?: string | null;
@@ -13,6 +37,7 @@ interface WorkbenchHeaderProps {
   primaryActionLabel: string;
   onBack: () => void;
   onTogglePdf: () => void;
+  onSplitPresetChange: (preset: WorkbenchSplitPreset) => void;
   onStartAnalysis: () => void;
   onCancelAnalysis: () => void;
 }
@@ -21,7 +46,9 @@ export default function WorkbenchHeader({
   title,
   domain,
   agentLabel,
+  agentColor,
   pdfCollapsed,
+  activeSplitPreset,
   runStateLabel,
   trustStateLabel,
   analysisError,
@@ -30,9 +57,16 @@ export default function WorkbenchHeader({
   primaryActionLabel,
   onBack,
   onTogglePdf,
+  onSplitPresetChange,
   onStartAnalysis,
   onCancelAnalysis,
 }: WorkbenchHeaderProps) {
+  const splitPresets: Array<{ label: string; value: WorkbenchSplitPreset }> = [
+    { label: '1:2', value: '1:2' },
+    { label: '중앙', value: 'center' },
+    { label: '2:1', value: '2:1' },
+  ];
+
   return (
     <div className="shrink-0 border-b border-surface-700/45 bg-surface-900/95 px-4 py-3 backdrop-blur [.light_&]:bg-white/95">
       <div className="flex items-start justify-between gap-4">
@@ -61,13 +95,22 @@ export default function WorkbenchHeader({
           </button>
 
           <div className="min-w-0">
-            <h1 className="truncate text-sm font-semibold text-surface-100 tracking-apple-body">
+            <h1 className="truncate text-sm font-semibold text-surface-100 tracking-apple-body [.light_&]:text-surface-900">
               {title}
             </h1>
             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-surface-500">
               {domain && <span className="status-pill border-primary-500/20 bg-primary-500/10 text-primary-300">{domain}</span>}
               {agentLabel && (
-                <span className="status-pill border-surface-700/50 bg-surface-800/80 text-surface-300">
+                <span
+                  className={agentColor ? 'status-pill' : 'status-pill border-surface-700/50 bg-surface-800/80 text-surface-300'}
+                  style={buildAgentPillStyle(agentColor)}
+                >
+                  {agentColor && (
+                    <span
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ backgroundColor: agentColor }}
+                    />
+                  )}
                   {agentLabel}
                 </span>
               )}
@@ -89,6 +132,28 @@ export default function WorkbenchHeader({
                 {analysisError}
               </span>
             )}
+
+            <div className="inline-flex items-center rounded-full border border-surface-700/60 bg-surface-800/80 p-1 [.light_&]:border-surface-200 [.light_&]:bg-surface-100">
+              {splitPresets.map((preset) => {
+                const isActive = activeSplitPreset === preset.value;
+                return (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    onClick={() => onSplitPresetChange(preset.value)}
+                    disabled={pdfCollapsed}
+                    aria-pressed={isActive}
+                    className={`rounded-full px-3 py-1.5 text-2xs font-medium transition-colors ${
+                      isActive
+                        ? 'bg-primary-600 text-white'
+                        : 'text-surface-400 hover:bg-surface-700/80 hover:text-surface-100 [.light_&]:text-surface-600 [.light_&]:hover:bg-white [.light_&]:hover:text-surface-900'
+                    } disabled:cursor-not-allowed disabled:opacity-40`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
 
             {canStartAnalysis && (
               <button

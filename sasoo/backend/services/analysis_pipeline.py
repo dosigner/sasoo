@@ -15,7 +15,6 @@ Pro Image) in parallel.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
 import time
@@ -37,6 +36,11 @@ from services.viz.viz_router import VizRouter, VizRouterOutput
 from services.viz.mermaid_generator import MermaidGenerator, MermaidOutput
 from services.viz.paperbanana_bridge import PaperBananaBridge
 from services.pricing import calc_cost
+from services.document_context import (
+    build_document_context_from_text,
+    compute_input_hash,
+    load_or_build_document_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +165,7 @@ class AnalysisPipeline:
     @staticmethod
     def _compute_input_hash(input_text: str) -> str:
         """Compute a stable hash for cache lookup."""
-        return hashlib.sha256(input_text.encode("utf-8")).hexdigest()[:16]
+        return compute_input_hash(input_text)
 
     async def _check_cache(self, paper_id: int, phase: str, input_text: str) -> Optional[PhaseResult]:
         """Check if a cached result exists for this (paper, phase, input_hash)."""
@@ -231,13 +235,16 @@ class AnalysisPipeline:
         # Update paper status to analyzing
         await self._update_paper_status(paper_id, "analyzing")
 
-        # If sections are empty, try splitting from parsed paper
-        if not sections and parsed_paper and hasattr(parsed_paper, "full_text"):
-            try:
-                sections = self._splitter.split(parsed_paper.full_text)
-            except Exception as exc:
-                logger.warning("Section splitting failed: %s", exc)
-                sections = {"full_text": parsed_paper.full_text}
+        full_text = getattr(parsed_paper, "full_text", "") if parsed_paper else ""
+        if not full_text and sections:
+            full_text = sections.get("full_text", "") or "\n\n".join(sections.values())
+
+        if paper_dir:
+            document_context = await asyncio.to_thread(load_or_build_document_context, Path(paper_dir))
+        else:
+            document_context = build_document_context_from_text(full_text)
+
+        phase_inputs = document_context.get("phase_inputs", {})
 
         # Helper for progress reporting
         async def _emit(phase: str, pct: float, msg: str) -> None:
@@ -251,8 +258,7 @@ class AnalysisPipeline:
         await _emit("screening", 0.0, "Starting Phase 1: Screening...")
         report.phases["screening"] = await self._run_phase_screening(
             paper_id=paper_id,
-            sections=sections,
-            parsed_paper=parsed_paper,
+            screening_input=str(phase_inputs.get("screening", "")),
         )
         await _emit("screening", 25.0, "Phase 1 complete.")
 
@@ -268,8 +274,7 @@ class AnalysisPipeline:
         await _emit("recipe", 50.0, "Starting Phase 3: Recipe Extraction...")
         report.phases["recipe"] = await self._run_phase_recipe(
             paper_id=paper_id,
-            sections=sections,
-            parsed_paper=parsed_paper,
+            recipe_input=str(phase_inputs.get("recipe", "")),
         )
         await _emit("recipe", 75.0, "Phase 3 complete.")
 
@@ -277,8 +282,7 @@ class AnalysisPipeline:
         await _emit("deep_dive", 75.0, "Starting Phase 4: Deep Dive...")
         report.phases["deep_dive"] = await self._run_phase_deep_dive(
             paper_id=paper_id,
-            sections=sections,
-            parsed_paper=parsed_paper,
+            deep_dive_input=str(phase_inputs.get("deep_dive", "")),
         )
         await _emit("deep_dive", 90.0, "Phase 4 complete.")
 
@@ -318,8 +322,7 @@ class AnalysisPipeline:
     async def _run_phase_screening(
         self,
         paper_id: int,
-        sections: dict[str, str],
-        parsed_paper: Any,
+        screening_input: str,
     ) -> PhaseResult:
         """
         Phase 1: Screening analysis.
@@ -331,28 +334,7 @@ class AnalysisPipeline:
         model = "gemini-3-flash-preview"
 
         try:
-            # Build input text from relevant sections
-            input_parts: list[str] = []
-            for key in ("abstract", "conclusion", "conclusions", "summary"):
-                if key in sections and sections[key]:
-                    input_parts.append(f"=== {key.title()} ===\n{sections[key]}")
-
-            # Fallback: use first/last portions of full text
-            if not input_parts:
-                full_text = sections.get("full_text", "")
-                if not full_text and parsed_paper:
-                    full_text = getattr(parsed_paper, "full_text", "")
-                if full_text:
-                    # Use first 2000 and last 2000 chars as proxy
-                    input_parts.append(
-                        "=== Beginning (Abstract area) ===\n" + full_text[:2000]
-                    )
-                    if len(full_text) > 4000:
-                        input_parts.append(
-                            "=== End (Conclusion area) ===\n" + full_text[-2000:]
-                        )
-
-            input_text = "\n\n".join(input_parts)
+            input_text = screening_input
 
             # Check cache before calling LLM
             cached = await self._check_cache(paper_id, "screening", input_text)
@@ -523,8 +505,7 @@ class AnalysisPipeline:
     async def _run_phase_recipe(
         self,
         paper_id: int,
-        sections: dict[str, str],
-        parsed_paper: Any,
+        recipe_input: str,
     ) -> PhaseResult:
         """
         Phase 3: Recipe extraction.
@@ -536,30 +517,7 @@ class AnalysisPipeline:
         model = "gemini-3.1-pro-preview"
 
         try:
-            # Build input from method-related sections
-            input_parts: list[str] = []
-            method_keys = [
-                "method", "methods", "experimental", "materials and methods",
-                "materials_and_methods", "procedure", "fabrication",
-            ]
-            for key in method_keys:
-                if key in sections and sections[key]:
-                    input_parts.append(f"=== {key.title()} ===\n{sections[key]}")
-
-            if not input_parts:
-                # Fallback: use middle portion of the paper
-                full_text = sections.get("full_text", "")
-                if not full_text and parsed_paper:
-                    full_text = getattr(parsed_paper, "full_text", "")
-                if full_text:
-                    mid = len(full_text) // 2
-                    start = max(0, mid - 3000)
-                    end = min(len(full_text), mid + 3000)
-                    input_parts.append(
-                        "=== Method/Experimental (estimated) ===\n" + full_text[start:end]
-                    )
-
-            input_text = "\n\n".join(input_parts)
+            input_text = recipe_input
 
             # Check cache before calling LLM
             cached = await self._check_cache(paper_id, "recipe", input_text)
@@ -612,8 +570,7 @@ class AnalysisPipeline:
     async def _run_phase_deep_dive(
         self,
         paper_id: int,
-        sections: dict[str, str],
-        parsed_paper: Any,
+        deep_dive_input: str,
     ) -> PhaseResult:
         """
         Phase 4: Deep dive critical analysis.
@@ -625,31 +582,7 @@ class AnalysisPipeline:
         model = "gemini-3.1-pro-preview"
 
         try:
-            input_parts: list[str] = []
-            deep_keys = [
-                "introduction", "results", "results and discussion",
-                "results_and_discussion", "discussion",
-            ]
-            for key in deep_keys:
-                if key in sections and sections[key]:
-                    input_parts.append(f"=== {key.title()} ===\n{sections[key]}")
-
-            if not input_parts:
-                full_text = sections.get("full_text", "")
-                if not full_text and parsed_paper:
-                    full_text = getattr(parsed_paper, "full_text", "")
-                if full_text:
-                    # Use first 3000 chars (intro) and latter half (results)
-                    input_parts.append(
-                        "=== Introduction (estimated) ===\n" + full_text[:3000]
-                    )
-                    if len(full_text) > 6000:
-                        input_parts.append(
-                            "=== Results & Discussion (estimated) ===\n"
-                            + full_text[len(full_text)//2:]
-                        )
-
-            input_text = "\n\n".join(input_parts)
+            input_text = deep_dive_input
 
             # Check cache before calling LLM
             cached = await self._check_cache(paper_id, "deep_dive", input_text)

@@ -32,6 +32,9 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "max_concurrent_analyses": "3",
     "gemini_model": "gemini-3-flash-preview",
     "anthropic_model": "claude-sonnet-4-20250514",
+    "pdf_parser_mode": "java",
+    "extraction_pipeline_version": "resolver_v1",
+    "extraction_pipeline_force_fallback": "false",
 }
 
 
@@ -43,12 +46,23 @@ async def _ensure_defaults() -> None:
     """Insert default settings for any missing keys, and sync library_path."""
     db = await get_db()
     for key, value in DEFAULT_SETTINGS.items():
-        existing = await fetch_one("SELECT key FROM settings WHERE key = ?", (key,))
+        existing = await fetch_one("SELECT key, value FROM settings WHERE key = ?", (key,))
         if existing is None:
             await db.execute(
                 "INSERT INTO settings (key, value) VALUES (?, ?)",
                 (key, value),
             )
+        elif key == "extraction_pipeline_version":
+            fallback_row = await fetch_one(
+                "SELECT value FROM settings WHERE key = 'extraction_pipeline_force_fallback' LIMIT 1"
+            )
+            existing_value = str(existing.get("value") or "").strip().lower()
+            fallback_forced = str((fallback_row or {}).get("value") or "false").strip().lower() == "true"
+            if existing_value == "legacy" and not fallback_forced:
+                await db.execute(
+                    "UPDATE settings SET value = ?, updated_at = ? WHERE key = ?",
+                    ("resolver_v1", datetime.utcnow().isoformat(), key),
+                )
     await db.commit()
 
 
@@ -71,6 +85,12 @@ async def _get_all_settings() -> dict[str, str]:
             result[key] = decrypted
         else:
             result[key] = value
+    if result.get("pdf_parser_mode") != "java":
+        await _set_setting("pdf_parser_mode", "java")
+        result["pdf_parser_mode"] = "java"
+    if result.get("extraction_pipeline_version") == "legacy" and result.get("extraction_pipeline_force_fallback", "false").lower() != "true":
+        await _set_setting("extraction_pipeline_version", "resolver_v1")
+        result["extraction_pipeline_version"] = "resolver_v1"
     return result
 
 
@@ -121,6 +141,8 @@ async def get_settings():
         max_concurrent_analyses=int(raw.get("max_concurrent_analyses", "3")),
         gemini_model=raw.get("gemini_model", "gemini-3-flash-preview"),
         anthropic_model=raw.get("anthropic_model", "claude-sonnet-4-20250514"),
+        pdf_parser_mode=raw.get("pdf_parser_mode", "java"),
+        extraction_pipeline_version=raw.get("extraction_pipeline_version", "resolver_v1"),
     )
 
 
@@ -149,7 +171,16 @@ async def update_settings(update: SettingsUpdate):
             if not str_value or "..." in str_value:
                 continue
             str_value = encrypt_value(str_value)
+        if key == "pdf_parser_mode" and str_value != "java":
+            raise HTTPException(status_code=400, detail="Slim build supports only 'java' for pdf_parser_mode.")
+        if key == "extraction_pipeline_version" and str_value not in {"legacy", "resolver_v1"}:
+            raise HTTPException(status_code=400, detail="extraction_pipeline_version must be 'legacy' or 'resolver_v1'.")
         await _set_setting(key, str_value)
+        if key == "extraction_pipeline_version":
+            await _set_setting(
+                "extraction_pipeline_force_fallback",
+                "true" if str_value == "legacy" else "false",
+            )
 
     # If library_path changed, ensure the directory exists
     if "library_path" in update_data:
@@ -175,6 +206,9 @@ async def get_cost_summary(
     """
     Get usage & cost data including monthly trends, token usage,
     model breakdown, and per-paper costs.
+
+    Historical usage view: these aggregates intentionally reflect cumulative
+    analysis_results history rather than latest-per-phase semantics.
     """
     if month is None:
         month = datetime.utcnow().strftime("%Y-%m")
@@ -297,6 +331,34 @@ async def get_cost_summary(
         for model, stats in sorted(model_agg.items(), key=lambda x: x[1]["cost_usd"], reverse=True)
     ]
 
+    phase_call_counts: dict[str, int] = {}
+    for row in await fetch_all(
+        """SELECT phase, COUNT(*) as cnt
+           FROM analysis_results
+           WHERE phase != 'error'
+           GROUP BY phase"""
+    ):
+        phase_call_counts[str(row.get("phase") or "unknown")] = int(row.get("cnt") or 0)
+
+    cache_rows = await fetch_all(
+        """SELECT estimated_cost_usd
+           FROM analysis_cache_events"""
+    )
+    estimated_cached_calls_saved = len(cache_rows)
+    estimated_cached_cost_usd_saved = round(
+        sum(row.get("estimated_cost_usd") or 0.0 for row in cache_rows),
+        4,
+    )
+
+    table_repair_row = await fetch_one(
+        """SELECT
+               SUM(CASE WHEN COALESCE(repair_attempted, 0) = 1 THEN 1 ELSE 0 END) AS repair_attempts,
+               SUM(CASE WHEN COALESCE(review_required, 0) = 1 THEN 1 ELSE 0 END) AS review_required
+           FROM tables"""
+    )
+    uncertain_table_repair_calls = int(table_repair_row.get("repair_attempts") or 0) if table_repair_row else 0
+    review_required_tables = int(table_repair_row.get("review_required") or 0) if table_repair_row else 0
+
     # --- Current month stats ---
     cm_rows = await fetch_all(
         """SELECT cost_usd, tokens_in, tokens_out, paper_id
@@ -334,6 +396,13 @@ async def get_cost_summary(
             "avg_cost_per_paper": round(avg_cost, 4),
             "total_tokens_in": total_tokens_in,
             "total_tokens_out": total_tokens_out,
+        },
+        "efficiency": {
+            "phase_call_counts": phase_call_counts,
+            "estimated_cached_calls_saved": estimated_cached_calls_saved,
+            "estimated_cached_cost_usd_saved": estimated_cached_cost_usd_saved,
+            "uncertain_table_repair_calls": uncertain_table_repair_calls,
+            "review_required_tables": review_required_tables,
         },
     }
 

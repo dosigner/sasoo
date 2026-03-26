@@ -8,6 +8,10 @@ Current automated workflows:
 
 - [release.yml](/Users/dongj/Documents/논문/.github/workflows/release.yml)
 
+Current build plan:
+
+- [electron-build-plan.md](/Users/dongj/Documents/논문/sasoo/docs/03-release/electron-build-plan.md)
+
 Current local artifact verifiers:
 
 - [verify-mac-artifacts.js](/Users/dongj/Documents/논문/sasoo/scripts/verify-mac-artifacts.js)
@@ -20,10 +24,23 @@ Current local artifact verifiers:
    - [package.json](/Users/dongj/Documents/논문/sasoo/package.json)
    - [frontend/package.json](/Users/dongj/Documents/논문/sasoo/frontend/package.json)
    - [backend/main.py](/Users/dongj/Documents/논문/sasoo/backend/main.py)
-2. Confirm local-only data is ignored by git:
+2. Confirm the local build machine matches the intended path:
+   - macOS local validation is for `Darwin arm64`
+   - Windows packaging must run on `windows-latest` CI or a real Windows machine
+3. Confirm toolchain availability before packaging:
+   - `node`
+   - `pnpm`
+   - `backend/.venv`
+   - backend Python version
+4. Preferred release packaging Python is `3.12`.
+   - local Python `3.14.x` is acceptable for development validation, but not the release baseline
+5. Confirm local-only data is ignored by git:
    - [sasoo/.gitignore](/Users/dongj/Documents/논문/sasoo/.gitignore)
-3. Run the frontend validation:
-   - `cd /Users/dongj/Documents/논문/sasoo/frontend && pnpm lint && pnpm build`
+6. Run the frontend validation:
+   - `cd /Users/dongj/Documents/논문/sasoo/frontend && pnpm build`
+7. Run backend test validation:
+   - `cd /Users/dongj/Documents/논문/sasoo/backend && ./.venv/bin/python -m unittest discover -s services -p 'test*.py'`
+   - `cd /Users/dongj/Documents/논문/sasoo/backend && ./.venv/bin/python -m unittest discover -s api -p 'test*.py'`
 
 ## Local Smoke Checks
 
@@ -36,7 +53,7 @@ macOS ARM:
    - Library screen opens
    - PDF loads without toolbar regressions
    - Workbench opens and docked chat behaves correctly
-   - Analysis can start and complete
+   - Analysis can start
    - App can close and relaunch
 
 Windows:
@@ -59,7 +76,8 @@ Tagged release:
    - `git push origin vX.Y.Z`
 3. GitHub Actions will:
    - build macOS ARM on `macos-14`
-   - build Windows on `windows-2022`
+   - build Windows on `windows-latest`
+   - use Python `3.12`
    - verify generated artifacts
    - upload assets to the matching GitHub draft release
 
@@ -67,7 +85,7 @@ Manual rerun for an existing tag:
 
 1. Open Actions
 2. Run `Release`
-3. Enter the exact tag, for example `v0.6.5`
+3. Enter the exact tag, for example `v0.6.6`
 
 ## Signing And Trust
 
@@ -102,4 +120,4 @@ If those secrets are not configured, the workflows still build artifacts, but us
 
 ## Known Risk
 
-The backend packaging step currently emits a warning related to Pydantic v1 compatibility on Python 3.14+. Keep the release runners on Python 3.12 unless backend dependencies are upgraded.
+The backend packaging step can warn on Python 3.14+ because release packaging is validated on Python 3.12. Keep the release runners on Python 3.12 unless backend dependencies are upgraded.

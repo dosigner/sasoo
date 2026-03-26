@@ -115,7 +115,8 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
         w-96 max-w-full
         transition-all duration-200
         ${isExiting ? 'opacity-0 translate-x-4' : 'opacity-100 translate-x-0 animate-slide-in-right'}
-        bg-white/90 backdrop-blur-lg border-surface-200/60 dark:bg-surface-800/90 dark:backdrop-blur-lg dark:border-surface-700/50
+        bg-surface-800/90 backdrop-blur-lg border-surface-700/50
+        [.light_&]:bg-white/90 [.light_&]:border-surface-200/60
       `}
     >
       {/* Content */}
@@ -128,11 +129,11 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
 
           {/* Text */}
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-surface-900 dark:text-surface-100">
+            <p className="text-sm font-medium text-surface-100 [.light_&]:text-surface-900">
               {toast.message}
             </p>
             {toast.description && (
-              <p className="text-xs text-surface-600 dark:text-surface-400 mt-1">
+              <p className="mt-1 text-xs text-surface-400 [.light_&]:text-surface-600">
                 {toast.description}
               </p>
             )}
@@ -144,15 +145,15 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
       <button
         onClick={handleClose}
         className="absolute top-3 right-3 p-1 rounded transition-colors
-          text-surface-500 hover:text-surface-700 hover:bg-surface-200
-          dark:text-surface-400 dark:hover:text-surface-200 dark:hover:bg-surface-700/50"
+          text-surface-400 hover:text-surface-200 hover:bg-surface-700/50
+          [.light_&]:text-surface-500 [.light_&]:hover:text-surface-700 [.light_&]:hover:bg-surface-200"
         aria-label="Close notification"
       >
         <AppIcon name="close" className="w-4 h-4" />
       </button>
 
       {/* Progress bar */}
-      <div className="absolute bottom-0 left-0 right-0 h-1 bg-surface-200 dark:bg-surface-700/20">
+      <div className="absolute bottom-0 left-0 right-0 h-1 bg-surface-700/20 [.light_&]:bg-surface-200">
         <div
           className={`h-full ${progressBg} transition-all duration-75 ease-linear`}
           style={{ width: `${progress}%` }}

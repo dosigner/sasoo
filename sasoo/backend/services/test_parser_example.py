@@ -8,12 +8,12 @@ This demonstrates the complete workflow:
 """
 import asyncio
 from pathlib import Path
-from pdf_parser import PdfParser
-from section_splitter import SectionSplitter
 
 
 async def main():
     """Example workflow."""
+    from services.pdf_parser import PdfParser
+    from services.section_splitter import SectionSplitter
 
     # Initialize services
     parser = PdfParser(output_base_dir=Path("./test_papers"))

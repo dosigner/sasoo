@@ -343,6 +343,18 @@ function MetaBadge({
   );
 }
 
+function normalizeAgentError(err: unknown, fallback: string): string {
+  if (!(err instanceof Error)) return fallback;
+  if (
+    err.message.startsWith('Request failed:') ||
+    err.message === 'Internal Server Error' ||
+    err.message === 'Failed to fetch'
+  ) {
+    return fallback;
+  }
+  return err.message;
+}
+
 export default function Agents() {
   const [mode, setMode] = useState<PageMode>('list');
   const [authorMode, setAuthorMode] = useState<AuthorMode>('create');
@@ -375,12 +387,6 @@ export default function Agents() {
   const rawPreview = useMemo(() => serializeAgentMarkdown(formData), [formData]);
   const previewName = formData.display_name_ko || formData.display_name || formData.name || '새 에이전트';
   const previewDomain = formData.domain_display_ko || formData.domain_display || formData.domain || '도메인 미정';
-  const listSummary = useMemo(() => {
-    const builtinCount = agents.filter((agent) => agent.builtin).length;
-    const activeCount = agents.filter((agent) => agent.enabled).length;
-    return `전체 ${agents.length}개 · 기본 ${builtinCount}개 · 활성 ${activeCount}개`;
-  }, [agents]);
-
   const routingSummary = useMemo(() => {
     const keywordCount = formData.keywords.length;
     const weightedCount = formData.weighted_keywords.length;
@@ -419,6 +425,8 @@ export default function Agents() {
   const isEditingBuiltin = Boolean(editingAgent?.builtin);
   const isAdvancedStep = authorStep === 'advanced';
   const saveUsesRaw = rawDirty;
+  const builtinCount = agents.filter((agent) => agent.builtin).length;
+  const activeCount = agents.filter((agent) => agent.enabled).length;
 
   function showToast(message: string, type: 'success' | 'error' = 'success') {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -433,7 +441,7 @@ export default function Agents() {
       setAgents(data);
       fetchAllAgents().catch(() => {});
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to load agents', 'error');
+      showToast(normalizeAgentError(err, '에이전트 편성 정보를 불러오지 못했습니다.'), 'error');
     } finally {
       setLoading(false);
     }
@@ -496,7 +504,7 @@ export default function Agents() {
       setRawDirty(false);
       setEditRawMd(detail.raw_md || serializeAgentMarkdown(agentToForm(detail)));
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to load agent', 'error');
+      showToast(normalizeAgentError(err, '에이전트 초안을 열지 못했습니다.'), 'error');
     } finally {
       setAuthorLoading(false);
     }
@@ -522,7 +530,7 @@ export default function Agents() {
       setEditRawMd(result.raw_md || serializeAgentMarkdown(nextForm));
       showToast('AI 초안을 불러왔습니다. 맡길 논문 범위와 답변 톤을 먼저 검토하세요.');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : S.agents.generateFailed, 'error');
+      showToast(normalizeAgentError(err, S.agents.generateFailed), 'error');
     } finally {
       setGenerating(false);
     }
@@ -555,7 +563,7 @@ export default function Agents() {
       setAuthorStep('basic');
       setRawDirty(false);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Save failed', 'error');
+      showToast(normalizeAgentError(err, '에이전트를 저장하지 못했습니다.'), 'error');
     } finally {
       setSubmitting(false);
     }
@@ -567,7 +575,7 @@ export default function Agents() {
       showToast(S.agents.duplicateSuccess);
       await loadAgents();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Duplicate failed', 'error');
+      showToast(normalizeAgentError(err, '에이전트를 복제하지 못했습니다.'), 'error');
     }
   }
 
@@ -583,7 +591,7 @@ export default function Agents() {
       URL.revokeObjectURL(url);
       showToast(S.agents.exportSuccess);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Export failed', 'error');
+      showToast(normalizeAgentError(err, '에이전트를 내보내지 못했습니다.'), 'error');
     }
   }
 
@@ -596,7 +604,7 @@ export default function Agents() {
       setMode('list');
       await loadAgents();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Delete failed', 'error');
+      showToast(normalizeAgentError(err, '에이전트를 삭제하지 못했습니다.'), 'error');
     }
   }
 
@@ -612,7 +620,7 @@ export default function Agents() {
       showToast(S.agents.importSuccess);
       await loadAgents();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : S.agents.invalidFile, 'error');
+      showToast(normalizeAgentError(err, S.agents.invalidFile), 'error');
     } finally {
       e.target.value = '';
     }
@@ -681,10 +689,12 @@ export default function Agents() {
   }
 
   return (
-    <div className="relative p-6">
+    <div className={`relative ${mode === 'list' ? 'page-container-wide' : 'page-container-compact'}`}>
       {toast && (
-        <div className={`fixed top-16 right-4 z-50 rounded-lg px-4 py-2 text-sm shadow-lg ${
-          toast.type === 'success' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
+        <div className={`fixed right-4 top-16 z-50 rounded-full border px-4 py-2 text-sm shadow-lg backdrop-blur-xl ${
+          toast.type === 'success'
+            ? 'border-emerald-500/25 bg-emerald-500/12 text-emerald-100'
+            : 'border-amber-500/25 bg-amber-500/12 text-amber-100'
         }`}
         >
           {toast.message}
@@ -772,80 +782,120 @@ export default function Agents() {
 
       {mode === 'list' && (
         <>
-          <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h1 className="text-xl font-bold text-surface-100">{S.agents.title}</h1>
-              <p className="mt-1 text-sm text-surface-500">
-                이 에이전트가 어떤 논문을 맡고 어떤 식으로 답하는지 정하는 곳입니다.
-              </p>
-              <p className="mt-2 text-xs text-surface-600">{listSummary}</p>
+          <section className="archive-panel panel-compact mb-4">
+            <div className="page-header-dense">
+              <div>
+                <div className="archive-kicker">{S.agents.heroKicker}</div>
+                <h1 className="mt-2 text-[1.8rem] font-semibold tracking-[-0.05em] text-surface-100">{S.agents.title}</h1>
+                <p className="mt-2 text-sm leading-6 text-surface-400">{S.agents.heroBody}</p>
+                <div className="page-status-strip mt-3">
+                  <span className="archive-inline-status archive-inline-status-muted">
+                    {S.agents.summaryAgents} {agents.length}
+                  </span>
+                  <span className="archive-inline-status archive-inline-status-muted">
+                    {S.agents.summaryBuiltin} {builtinCount}
+                  </span>
+                  <span className="archive-inline-status archive-inline-status-muted">
+                    {S.agents.summaryActive} {activeCount}
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleImportClick}
+                  className="flex items-center gap-1.5 rounded-full border border-surface-700 bg-surface-900/70 px-4 py-2.5 text-sm text-surface-200 transition-colors hover:border-surface-500 hover:bg-surface-900"
+                >
+                  <Upload className="h-4 w-4" />
+                  {S.agents.import_}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreateChoiceOpen(true)}
+                  className="flex items-center gap-1.5 rounded-full bg-primary-500 px-5 py-2.5 text-sm font-medium text-black transition-colors hover:bg-primary-400"
+                >
+                  <Plus className="h-4 w-4" />
+                  {S.agents.createNew}
+                </button>
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={handleImportClick}
-                className="flex items-center gap-1.5 rounded-lg bg-surface-700 px-3 py-2 text-sm text-surface-200 transition-colors hover:bg-surface-600"
-              >
-                <Upload className="h-4 w-4" />
-                {S.agents.import_}
-              </button>
-              <button
-                type="button"
-                onClick={() => setCreateChoiceOpen(true)}
-                className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600"
-              >
-                <Plus className="h-4 w-4" />
-                새 에이전트 만들기
-              </button>
-            </div>
-          </div>
+          </section>
 
           {loading ? (
             <div className="flex items-center justify-center py-24 text-sm text-surface-500">불러오는 중...</div>
           ) : agents.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-surface-700/50 bg-surface-800/50 py-24">
-              <p className="font-medium text-surface-400">{S.agents.noAgents}</p>
-              <p className="text-sm text-surface-600">{S.agents.noAgentsDesc}</p>
+            <div className="archive-panel flex flex-col items-center justify-center gap-3 px-6 py-20 text-center">
+              <p className="text-lg font-semibold text-surface-200">{S.agents.registryEmptyTitle}</p>
+              <p className="max-w-md text-sm leading-7 text-surface-500">{S.agents.registryEmptyBody}</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => enterCreate('direct')}
+                  className="btn-secondary"
+                >
+                  {S.agents.createDirect}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => enterCreate('ai')}
+                  className="btn-primary"
+                >
+                  {S.agents.createAi}
+                </button>
+              </div>
             </div>
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-surface-700/50 bg-surface-800/85">
-              <div className="hidden grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto_auto] gap-4 border-b border-surface-700/50 px-5 py-3 text-2xs uppercase tracking-[0.14em] text-surface-500 md:grid">
-                <div>에이전트</div>
-                <div>도메인</div>
-                <div>상태</div>
-                <div>작업</div>
+            <section className="archive-panel panel-compact">
+              <div className="mb-4">
+                <div className="archive-kicker">{S.agents.registryTitle}</div>
               </div>
-              <div className="divide-y divide-surface-700/50">
+              <div className="grid gap-4 xl:grid-cols-2">
                 {agents.map((agent) => (
                   <div
                     key={agent.name}
-                    className="grid gap-4 px-4 py-4 transition-colors hover:bg-surface-900/35 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto_auto] md:items-center md:px-5"
+                    className="rounded-[24px] border border-surface-800/80 bg-surface-950/55 p-5 transition-colors hover:border-surface-700"
                   >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <AgentAvatar name={agentDisplayName(agent)} color={agent.color} size="sm" />
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-surface-100">
-                          {agentDisplayName(agent)}
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <AgentAvatar name={agentDisplayName(agent)} color={agent.color} size="sm" />
+                        <div className="min-w-0">
+                          <div className="truncate text-base font-semibold tracking-[-0.03em] text-surface-100">
+                            {agentDisplayName(agent)}
+                          </div>
+                          <div className="mt-1 truncate text-xs text-surface-500">{agent.name}</div>
                         </div>
-                        <div className="truncate text-xs text-surface-500">{agent.name}</div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <MetaBadge tone={agent.builtin ? 'warning' : 'neutral'}>
+                          {agent.builtin ? '기본' : '사용자'}
+                        </MetaBadge>
+                        <MetaBadge tone={agent.enabled ? 'success' : 'neutral'}>
+                          {agent.enabled ? '활성' : '비활성'}
+                        </MetaBadge>
                       </div>
                     </div>
-                    <div className="text-sm text-surface-300">
-                      {agent.domain_display_ko || agent.domain_display || agent.domain || '미정'}
+                    <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-surface-600">담당 분야</div>
+                        <div className="mt-2 text-sm text-surface-200">
+                          {agent.domain_display_ko || agent.domain_display || agent.domain || '미정'}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-surface-600">응답 태도</div>
+                        <div className="mt-2 line-clamp-2 text-sm text-surface-400">
+                          {agent.personality || '설명 없음'}
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <MetaBadge tone={agent.builtin ? 'warning' : 'neutral'}>
-                        {agent.builtin ? '기본 에이전트' : '사용자 에이전트'}
-                      </MetaBadge>
-                      <MetaBadge tone={agent.enabled ? 'success' : 'neutral'}>
-                        {agent.enabled ? '활성' : '비활성'}
-                      </MetaBadge>
-                    </div>
-                    <div>
+                    <div className="mt-5 flex items-center justify-between gap-3 border-t border-surface-800/80 pt-4">
+                      <p className="line-clamp-2 text-xs leading-6 text-surface-500">
+                        {agent.quote || '대표 문장이 아직 비어 있습니다.'}
+                      </p>
                       <button
                         type="button"
                         onClick={() => void enterEdit(agent)}
-                        className="flex items-center gap-1.5 rounded-lg bg-surface-700 px-3 py-2 text-sm text-surface-200 transition-colors hover:bg-surface-600"
+                        className="flex shrink-0 items-center gap-1.5 rounded-full border border-surface-700 bg-surface-900/70 px-4 py-2 text-sm text-surface-200 transition-colors hover:border-surface-500 hover:bg-surface-900"
                       >
                         <Edit3 className="h-4 w-4" />
                         {S.agents.edit}
@@ -854,14 +904,14 @@ export default function Agents() {
                   </div>
                 ))}
               </div>
-            </div>
+            </section>
           )}
         </>
       )}
 
       {mode === 'author' && (
         <>
-          <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-start gap-3">
               <button
                 type="button"

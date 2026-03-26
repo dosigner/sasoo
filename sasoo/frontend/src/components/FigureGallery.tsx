@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Loader2 } from 'lucide-react';
-import type { Figure } from '@/lib/api';
+import { getLibraryAssetUrl, type Figure, type VisualState } from '@/lib/api';
 import { S } from '@/lib/strings';
 import { generateFigureExplanation } from '@/lib/api';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
@@ -16,12 +16,21 @@ interface FigureGalleryProps {
   figures: Figure[];
   paperId: string;
   loading?: boolean;
+  visualState?: VisualState;
+  visualError?: string | null;
+  artifactsReady?: boolean;
+  artifactsError?: string | null;
   onJumpToFigurePage?: (figure: Figure) => void;
 }
 
 interface CachedExplanation {
   explanation: string;
   modelUsed: string;
+}
+
+interface FigureGroup {
+  parent: Figure;
+  children: Figure[];
 }
 
 // ---------------------------------------------------------------------------
@@ -44,21 +53,54 @@ function qualityBadge(quality: string | null): {
   }
 }
 
-/** Build a URL for a figure's image from its file_path */
 function getFigureImageUrl(figure: Figure): string {
-  if (!figure.file_path) return '';
-  // Normalize backslashes to forward slashes (Windows paths)
-  const normalized = figure.file_path.replace(/\\/g, '/');
-  // Extract path relative to library root: {folder}/figures/{filename}
-  const libraryIdx = normalized.indexOf('/library/');
-  if (libraryIdx >= 0) {
-    const relative = normalized.substring(libraryIdx + '/library/'.length);
-    // In Electron production (file:// protocol), use absolute backend URL
-    const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
-    const baseUrl = isFileProtocol ? 'http://localhost:8000' : '';
-    return `${baseUrl}/static/library/${encodeURI(relative)}`;
+  return getLibraryAssetUrl(figure.file_path);
+}
+
+function formatConfidence(confidence: number | null | undefined): string | null {
+  if (typeof confidence !== 'number' || Number.isNaN(confidence)) return null;
+  return `${Math.round(confidence * 100)}%`;
+}
+
+function buildStatusBadge(figure: Figure): { label: string; classes: string } {
+  if (figure.extraction_status === 'uncertain') {
+    return {
+      label: S.figures.statusUncertain,
+      classes: 'bg-amber-500/10 text-amber-300 border border-amber-500/20',
+    };
   }
-  return figure.file_path;
+
+  return {
+    label: S.figures.statusReady,
+    classes: 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20',
+  };
+}
+
+function buildFigureGroups(figures: Figure[]): FigureGroup[] {
+  const byId = new Map<number, Figure>();
+  const childMap = new Map<number, Figure[]>();
+  const rootFigures: Figure[] = [];
+
+  for (const figure of figures) {
+    if (typeof figure.id === 'number') {
+      byId.set(figure.id, figure);
+    }
+  }
+
+  for (const figure of figures) {
+    if (typeof figure.parent_figure_id === 'number' && byId.has(figure.parent_figure_id)) {
+      const siblings = childMap.get(figure.parent_figure_id) ?? [];
+      siblings.push(figure);
+      childMap.set(figure.parent_figure_id, siblings);
+      continue;
+    }
+    rootFigures.push(figure);
+  }
+
+  return rootFigures.map((parent) => ({
+    parent,
+    children: typeof parent.id === 'number' ? childMap.get(parent.id) ?? [] : [],
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -379,6 +421,123 @@ function Lightbox({
 }
 
 // ---------------------------------------------------------------------------
+// Figure Card
+// ---------------------------------------------------------------------------
+
+interface FigureCardProps {
+  figure: Figure;
+  index: number;
+  childCount?: number;
+  onOpen: (index: number) => void;
+  onJumpToFigurePage?: (figure: Figure) => void;
+}
+
+function FigureCard({
+  figure,
+  index,
+  childCount = 0,
+  onOpen,
+  onJumpToFigurePage,
+}: FigureCardProps) {
+  const badge = qualityBadge(figure.quality);
+  const statusBadge = buildStatusBadge(figure);
+  const confidenceLabel = formatConfidence(figure.confidence);
+
+  return (
+    <div
+      className="card-hover overflow-hidden p-0 group"
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(index)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen(index);
+        }
+      }}
+      aria-label={S.figures.viewDetail(figure.figure_num || 'Figure')}
+    >
+      <div className="relative aspect-[4/3] overflow-hidden bg-surface-700">
+        <img
+          src={getFigureImageUrl(figure)}
+          alt={figure.caption || `Figure ${figure.figure_num}`}
+          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          loading="lazy"
+        />
+        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/30">
+          <AppIcon name="maximize" className="h-5 w-5 text-white opacity-0 transition-opacity group-hover:opacity-100" />
+        </div>
+        <div className="absolute left-2 right-2 top-2 flex flex-wrap items-center justify-between gap-2">
+          <span className={`badge text-2xs ${badge.classes}`}>
+            {badge.label}
+          </span>
+          <span className={`badge text-2xs ${statusBadge.classes}`}>
+            {statusBadge.label}
+          </span>
+        </div>
+      </div>
+
+      <div className="space-y-3 p-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="text-xs font-semibold text-surface-200">
+              {figure.figure_num || `Figure ${index + 1}`}
+            </h4>
+            {figure.is_composite && (
+              <span className="status-pill border-primary-500/20 bg-primary-500/10 text-primary-300">
+                {S.figures.composite}
+              </span>
+            )}
+            {childCount > 0 && (
+              <span className="status-pill border-surface-700/50 bg-surface-800/80 text-surface-300">
+                {S.figures.childGroup(childCount)}
+              </span>
+            )}
+          </div>
+          {figure.caption && (
+            <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-surface-400">
+              {figure.caption}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {confidenceLabel && (
+            <span className="status-pill border-primary-500/20 bg-primary-500/10 text-primary-300">
+              {S.figures.confidence(confidenceLabel)}
+            </span>
+          )}
+          {figure.classifier_model && (
+            <span className="status-pill border-surface-700/50 bg-surface-800/80 text-surface-300">
+              {S.figures.provenanceLabel(figure.classifier_model)}
+            </span>
+          )}
+          {figure.resolver_version && (
+            <span className="status-pill border-surface-700/50 bg-surface-800/80 text-surface-400">
+              {figure.resolver_version}
+            </span>
+          )}
+        </div>
+
+        {typeof figure.page_number === 'number' && onJumpToFigurePage && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onJumpToFigurePage(figure);
+            }}
+            className="btn-secondary w-full text-xs"
+          >
+            <AppIcon name="arrow-right" className="h-3.5 w-3.5" />
+            {S.figures.jumpToPage}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
 
@@ -386,10 +545,33 @@ export default function FigureGallery({
   figures,
   paperId,
   loading = false,
+  visualState = 'ready',
+  visualError = null,
+  artifactsError = null,
+  onJumpToFigurePage,
 }: FigureGalleryProps) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxVisible, setLightboxVisible] = useState(false);
   const [lightboxClosing, setLightboxClosing] = useState(false);
+  const figureGroups = buildFigureGroups(figures);
+  const figureCards = figureGroups.flatMap(({ parent, children }, groupIndex) => {
+    const parentIndex = Math.max(figures.indexOf(parent), 0);
+
+    return [
+      {
+        key: parent.id ?? `group-${groupIndex}`,
+        figure: parent,
+        index: parentIndex,
+        childCount: children.length,
+      },
+      ...children.map((child, childIndex) => ({
+        key: child.id ?? `child-${groupIndex}-${childIndex}`,
+        figure: child,
+        index: Math.max(figures.indexOf(child), 0),
+        childCount: 0,
+      })),
+    ];
+  });
 
   const openLightbox = useCallback((index: number) => {
     setLightboxIndex(index);
@@ -428,6 +610,11 @@ export default function FigureGallery({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [lightboxIndex, prevFigure, nextFigure]);
 
+  const effectiveError = visualError ?? artifactsError;
+  const hasArtifactError = visualState === 'error' && Boolean(effectiveError);
+  const isPreparingArtifacts = visualState === 'running';
+  const isPartialArtifacts = visualState === 'partial';
+
   if (loading) {
     return (
       <div>
@@ -435,7 +622,7 @@ export default function FigureGallery({
           <AppIcon name="figures" className="w-4 h-4 text-primary-400" />
           {S.figures.title}
         </h3>
-        <div className="grid grid-cols-3 2xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           <FigureSkeleton />
           <FigureSkeleton />
           <FigureSkeleton />
@@ -452,9 +639,23 @@ export default function FigureGallery({
           {S.figures.title}
         </h3>
         <div className="card flex flex-col items-center justify-center py-8 text-center">
-          <AppIcon name="figures" className="w-8 h-8 text-surface-600 mb-2" />
+          {isPreparingArtifacts ? (
+            <Loader2 className="w-8 h-8 text-primary-400 mb-2 animate-spin" />
+          ) : hasArtifactError ? (
+            <AppIcon name="error" className="w-8 h-8 text-red-400 mb-2" />
+          ) : isPartialArtifacts ? (
+            <AppIcon name="warning" className="w-8 h-8 text-amber-400 mb-2" />
+          ) : (
+            <AppIcon name="figures" className="w-8 h-8 text-surface-600 mb-2" />
+          )}
           <p className="text-sm text-surface-400">
-            {S.figures.noFigures}
+            {isPreparingArtifacts
+              ? S.figures.preparing
+              : hasArtifactError
+                ? effectiveError
+                : isPartialArtifacts
+                  ? S.figures.partialWarning
+                : S.figures.noFigures}
           </p>
         </div>
       </div>
@@ -471,53 +672,36 @@ export default function FigureGallery({
         </span>
       </h3>
 
-      <div className="grid grid-cols-3 2xl:grid-cols-4 gap-3">
-        {figures.map((figure, index) => {
-          const badge = qualityBadge(figure.quality);
+      {hasArtifactError ? (
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/8 px-3 py-2 text-xs text-red-200">
+          <AppIcon name="error" className="w-3.5 h-3.5 text-red-300" />
+          <span>{effectiveError}</span>
+        </div>
+      ) : isPreparingArtifacts && (
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-primary-500/20 bg-primary-500/8 px-3 py-2 text-xs text-primary-200">
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-400" />
+          <span>{S.figures.syncing}</span>
+        </div>
+      )}
 
-          return (
-            <div
-              key={figure.id ?? index}
-              className="card-hover p-0 overflow-hidden cursor-pointer group"
-              role="button"
-              tabIndex={0}
-              onClick={() => openLightbox(index)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  openLightbox(index);
-                }
-              }}
-              aria-label={`${figure.figure_num || 'Figure'} 상세 보기`}
-            >
-              <div className="relative aspect-[4/3] bg-surface-700 overflow-hidden">
-                <img
-                  src={getFigureImageUrl(figure)}
-                  alt={figure.caption || `Figure ${figure.figure_num}`}
-                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                  loading="lazy"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                  <AppIcon name="maximize" className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-                <span className={`absolute top-2 right-2 badge text-2xs ${badge.classes}`}>
-                  {badge.label}
-                </span>
-              </div>
+      {!hasArtifactError && !isPreparingArtifacts && isPartialArtifacts && (
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          <AppIcon name="warning" className="w-3.5 h-3.5 text-amber-300" />
+          <span>{S.figures.partialWarning}</span>
+        </div>
+      )}
 
-              <div className="p-3">
-                <h4 className="text-xs font-medium text-surface-200 mb-1">
-                  {figure.figure_num || 'Figure'}
-                </h4>
-                {figure.caption && (
-                  <p className="text-2xs text-surface-400 line-clamp-2">
-                    {figure.caption}
-                  </p>
-                )}
-              </div>
-            </div>
-          );
-        })}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        {figureCards.map(({ key, figure, index, childCount }) => (
+          <FigureCard
+            key={key}
+            figure={figure}
+            index={index}
+            childCount={childCount}
+            onOpen={openLightbox}
+            onJumpToFigurePage={onJumpToFigurePage}
+          />
+        ))}
       </div>
 
       {lightboxVisible && lightboxIndex !== null && (

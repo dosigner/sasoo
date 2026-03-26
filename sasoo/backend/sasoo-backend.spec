@@ -12,6 +12,7 @@ Output:
 """
 
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_data_files
 
 # Get the backend directory
 backend_dir = Path(SPECPATH).resolve()
@@ -48,11 +49,25 @@ try:
 except ImportError:
     print("[SPEC] PaperBanana not installed, skipping data files")
 
+# Optional bundled Java runtime for OpenDataLoader
+java_runtime_data = []
+java_runtime_src = backend_dir / "java-runtime"
+if java_runtime_src.exists():
+    for _f in java_runtime_src.rglob("*"):
+        if _f.is_file():
+            java_runtime_data.append(
+                (str(_f), str(_f.parent.relative_to(backend_dir)))
+            )
+    print(f"[SPEC] Bundled Java runtime files collected: {len(java_runtime_data)}")
+
+odl_data = collect_data_files("opendataloader_pdf")
+print(f"[SPEC] OpenDataLoader package data files collected: {len(odl_data)}")
+
 a = Analysis(
     ['main.py'],
     pathex=[str(backend_dir)],
     binaries=[],
-    datas=agents_data + paperbanana_data,
+    datas=agents_data + paperbanana_data + java_runtime_data + odl_data,
     hiddenimports=[
         # FastAPI and dependencies
         'fastapi',
@@ -94,6 +109,7 @@ a = Analysis(
         'pymupdf',
         'PIL',
         'PIL.Image',
+        'opendataloader_pdf',
 
         # YAML
         'yaml',
@@ -175,7 +191,23 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        # Hybrid OCR stack is intentionally excluded from the slim build.
+        'accelerate',
+        'cv2',
+        'docling',
+        'docling_core',
+        'docling_ibm_models',
+        'docling_parse',
+        'easyocr',
+        'huggingface_hub',
+        'opencv_python',
+        'opencv_python_headless',
+        'rapidocr',
+        'torch',
+        'torchvision',
+        'transformers',
+    ],
     noarchive=False,
     optimize=0,
 )

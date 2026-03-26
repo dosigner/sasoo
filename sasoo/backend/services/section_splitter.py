@@ -106,6 +106,19 @@ class SectionSplitter:
         r'^\((\d+)\)\s+(.+)$',
     ]
 
+    _PAGE_MARKER_PATTERN = re.compile(r'\n?\s*---\s*Page\s+\d+\s*---\s*\n?', re.IGNORECASE)
+    _REFERENCE_START_PATTERN = re.compile(r'^\s*(?:\[(\d+)\]|(\d+)\.)\s+(.*)$')
+    _REFERENCE_TERMINATOR_PATTERN = re.compile(
+        r'^\s*(supplementary(?:\s+materials?)?|appendix|acknowledg(?:e)?ments?)\b',
+        re.IGNORECASE,
+    )
+    _REFERENCE_SIGNAL_PATTERN = re.compile(
+        r'(?:\b(?:19|20)\d{2}\b|doi\s*:|https?://|et\s+al\.|'
+        r'\b(?:Opt(?:ics)?\.?\s*(?:Express|Letters|Eng)|Nature|Science|Photonics|'
+        r'J\.\s*[A-Z]|Proc\.\s*SPIE|Astron\.\s*Astrophys\.|Biomed\.\s*Opt\.\s*Express)\b)',
+        re.IGNORECASE,
+    )
+
     def __init__(self):
         """Initialize section splitter."""
         pass
@@ -473,6 +486,10 @@ class SectionSplitter:
         Returns:
             References section text, or empty string if not found
         """
+        candidates = self._extract_reference_entries(self._compose_reference_source_text(sections))
+        if len(candidates) >= 3:
+            return "\n".join(f"{num}. {entry}" for num, entry in candidates)
+
         return self._get_section(sections, [SectionType.REFERENCES.value])
 
     def get_body_text_without_references(self, sections: dict[str, str]) -> str:
@@ -499,9 +516,97 @@ class SectionSplitter:
                     idx = lower.rfind(marker)
                     if idx > len(full) * 0.5:  # Only if in latter half
                         return full[:idx]
-            return full
+            return self._trim_reference_tail(full)
 
-        return "\n\n".join(parts)
+        return self._trim_reference_tail("\n\n".join(parts))
+
+    def _compose_reference_source_text(self, sections: dict[str, str]) -> str:
+        parts: list[str] = []
+        for section_name, text in sections.items():
+            if section_name == "full_text" or not text.strip():
+                continue
+            parts.append(text)
+
+        if parts:
+            return "\n\n".join(parts)
+        return sections.get("full_text", "")
+
+    def _extract_reference_entries(self, text: str) -> list[tuple[int, str]]:
+        cleaned = self._PAGE_MARKER_PATTERN.sub("\n", text or "")
+        if not cleaned.strip():
+            return []
+
+        entries: list[tuple[int, str]] = []
+        seen: set[int] = set()
+        current_num: Optional[int] = None
+        current_lines: list[str] = []
+
+        def flush() -> None:
+            nonlocal current_num, current_lines
+            if current_num is None:
+                current_lines = []
+                return
+
+            merged = re.sub(r"\s+", " ", " ".join(current_lines)).strip()
+            if merged and self._looks_like_reference_entry(merged) and current_num not in seen:
+                entries.append((current_num, merged))
+                seen.add(current_num)
+
+            current_num = None
+            current_lines = []
+
+        for raw_line in cleaned.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            if self._REFERENCE_TERMINATOR_PATTERN.match(line):
+                if len(entries) >= 3:
+                    flush()
+                    break
+                flush()
+                continue
+
+            match = self._REFERENCE_START_PATTERN.match(line)
+            if match:
+                flush()
+                current_num = int(match.group(1) or match.group(2))
+                current_lines = [match.group(3).strip()]
+                continue
+
+            if current_num is not None:
+                current_lines.append(line)
+
+        flush()
+        entries.sort(key=lambda item: item[0])
+        return entries
+
+    def _looks_like_reference_entry(self, text: str) -> bool:
+        normalized = re.sub(r"\s+", " ", text).strip()
+        if len(normalized) < 30:
+            return False
+
+        if not self._REFERENCE_SIGNAL_PATTERN.search(normalized):
+            return False
+
+        heading_like = normalized.lower()
+        if heading_like.startswith(("introduction", "method", "results", "discussion", "conclusion")):
+            return False
+
+        return True
+
+    def _trim_reference_tail(self, text: str) -> str:
+        if not text:
+            return text
+
+        for match in re.finditer(r'(?m)^\s*(?:\[\d+\]|\d+\.)\s+', text):
+            if match.start() < len(text) * 0.15:
+                continue
+            extracted = self._extract_reference_entries(text[match.start():])
+            if len(extracted) >= 3:
+                return text[:match.start()].rstrip()
+
+        return text
 
     def get_section_statistics(self, sections: dict[str, str]) -> dict[str, int]:
         """

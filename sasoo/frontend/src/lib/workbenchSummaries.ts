@@ -1,9 +1,11 @@
 import type {
+  ArtifactStatus,
   AnalysisPhase,
   AnalysisResults,
   AnalysisStatus,
   Figure,
   Recipe,
+  Table,
   VisualizationPlan,
 } from '@/lib/api';
 
@@ -54,6 +56,7 @@ export function buildPhaseSummary(
   results: AnalysisResults | null,
   recipe: Recipe | null,
   figures: Figure[],
+  tables: Table[],
   visualizations: VisualizationPlan | null,
 ): PhaseSummary {
   if (!results) {
@@ -111,11 +114,20 @@ export function buildPhaseSummary(
       typeof visual.figure_count === 'number' && visual.figure_count > 0
         ? visual.figure_count
         : figures.length;
+    const tableCount =
+      typeof visual.tables_found === 'number' && visual.tables_found > 0
+        ? visual.tables_found
+        : tables.length;
     return {
-      summaryLine: shortText(visual.quality_summary, figureCount > 0 ? '추출된 figure와 데이터 시각 요소를 정리했습니다.' : '추출된 figure가 없습니다.'),
+      summaryLine: shortText(
+        visual.quality_summary,
+        figureCount > 0 || tableCount > 0
+          ? '추출된 figure와 table을 함께 정리했습니다.'
+          : '추출된 시각 자료가 없습니다.'
+      ),
       collapsedMeta: [
         figureCount > 0 ? `Figure ${figureCount}개` : 'Figure 없음',
-        typeof visual.tables_found === 'number' ? `표 ${visual.tables_found}` : '',
+        tableCount > 0 ? `표 ${tableCount}개` : '표 없음',
         typeof visual.equations_found === 'number' ? `수식 ${visual.equations_found}` : '',
       ].filter(Boolean),
       expandedMeta: [
@@ -198,13 +210,17 @@ export function statusMeta(status: AnalysisStatus | null): string | null {
 
 export function buildWorkbenchStatusSummary({
   status,
+  artifactStatus,
   figures,
+  tables,
   recipe,
   visualizations,
   terminalState,
 }: {
   status: AnalysisStatus | null;
+  artifactStatus?: ArtifactStatus | null;
   figures: Figure[];
+  tables: Table[];
   recipe: Recipe | null;
   visualizations: VisualizationPlan | null;
   terminalState?: 'cancelled' | null;
@@ -214,13 +230,33 @@ export function buildWorkbenchStatusSummary({
   const currentPhase = status?.current_phase;
   const currentPhaseLabel = currentPhase ? PHASE_LABELS[currentPhase] : '분석 대기';
   const hasFigures = figures.length > 0;
+  const hasTables = tables.length > 0;
   const hasRecipe = Boolean(recipe);
   const hasVisualizations = Boolean(visualizations?.items.length);
+  const textReady = artifactStatus?.text_ready;
+  const visualReady = artifactStatus?.visual_ready;
+  const visualState = artifactStatus?.visual_state;
+
+  const fallbackTrustState = hasVisualizations
+    ? '심층 분석 완료'
+    : hasRecipe
+      ? '레시피 검토 가능'
+      : '결과 준비됨';
+  const trustStateLabel =
+    textReady === false
+      ? '본문 준비 중'
+      : visualState === 'error'
+        ? '시각 자료 동기화 오류'
+        : visualState === 'running'
+          ? '시각 자료 동기화 중'
+          : visualState === 'partial' || (textReady === true && visualReady === false)
+            ? '시각 자료 일부만 준비됨'
+            : fallbackTrustState;
 
   if (terminalState === 'cancelled') {
     return {
       runStateLabel: '취소됨',
-      trustStateLabel: completedCount > 0 ? '부분 결과 유지' : '분석 대기',
+      trustStateLabel,
       nextActionLabel: completedCount > 0 ? '완료된 결과를 검토하거나 다시 분석하세요.' : '준비가 되면 분석을 다시 시작하세요.',
       currentPhaseLabel,
       completedCount,
@@ -229,10 +265,18 @@ export function buildWorkbenchStatusSummary({
   }
 
   if (!status || status.overall_status === 'pending') {
+    const nextActionLabel =
+      textReady === false
+        ? '본문 정리가 끝나면 요약, Figure/Table, 레시피가 순서대로 준비됩니다.'
+        : visualState === 'running'
+          ? '시각 자료를 동기화하는 중입니다. 잠시 후 Figure/Table 탭을 확인하세요.'
+          : visualState === 'error'
+            ? '시각 artifact 동기화 상태를 확인한 뒤 다시 시도하세요.'
+            : '분석을 시작하면 요약, Figure/Table, 레시피 흐름이 순서대로 준비됩니다.';
     return {
       runStateLabel: '분석 전',
-      trustStateLabel: '분석 대기',
-      nextActionLabel: '분석을 시작하면 요약, Figure, 레시피 흐름이 순서대로 준비됩니다.',
+      trustStateLabel,
+      nextActionLabel,
       currentPhaseLabel,
       completedCount,
       totalCount,
@@ -240,21 +284,69 @@ export function buildWorkbenchStatusSummary({
   }
 
   if (status.overall_status === 'running' || status.overall_status === 'analyzing') {
+    if (textReady === false) {
+      return {
+        runStateLabel: `${currentPhaseLabel} 진행 중`,
+        trustStateLabel,
+        nextActionLabel: '본문 정리가 끝나면 핵심 주장과 질문 도우미가 열립니다.',
+        currentPhaseLabel,
+        completedCount,
+        totalCount,
+      };
+    }
+    if (visualState === 'error') {
+      return {
+        runStateLabel: `${currentPhaseLabel} 진행 중`,
+        trustStateLabel,
+        nextActionLabel: hasFigures || hasTables
+          ? '사용 가능한 Figure/Table을 먼저 검토하고 시각 artifact 상태를 다시 확인하세요.'
+          : '시각 artifact 동기화 상태를 확인한 뒤 다시 시도하세요.',
+        currentPhaseLabel,
+        completedCount,
+        totalCount,
+      };
+    }
+    if (visualState === 'running') {
+      return {
+        runStateLabel: `${currentPhaseLabel} 진행 중`,
+        trustStateLabel,
+        nextActionLabel: hasFigures || hasTables
+          ? '동기화가 계속되는 동안 현재 Figure/Table 결과를 먼저 검토하세요.'
+          : '시각 자료를 동기화하는 중입니다. Figure/Table 탭이 순차적으로 채워집니다.',
+        currentPhaseLabel,
+        completedCount,
+        totalCount,
+      };
+    }
+    if (visualState === 'partial' || (textReady === true && visualReady === false)) {
+      return {
+        runStateLabel: `${currentPhaseLabel} 진행 중`,
+        trustStateLabel,
+        nextActionLabel: hasFigures || hasTables
+          ? '준비된 Figure/Table부터 검토하고 부족한 시각 자료는 다시 확인하세요.'
+          : '일부 시각 자료만 준비되었습니다. 동기화가 끝나면 Figure/Table 탭을 다시 확인하세요.',
+        currentPhaseLabel,
+        completedCount,
+        totalCount,
+      };
+    }
     if (hasRecipe) {
       return {
         runStateLabel: `${currentPhaseLabel} 진행 중`,
-        trustStateLabel: '레시피 초안 준비됨',
+        trustStateLabel,
         nextActionLabel: '재현 파라미터를 먼저 확인하고 필요한 질문을 정리하세요.',
         currentPhaseLabel,
         completedCount,
         totalCount,
       };
     }
-    if (hasFigures) {
+    if (hasFigures || hasTables) {
       return {
         runStateLabel: `${currentPhaseLabel} 진행 중`,
-        trustStateLabel: 'Figure 검토 가능',
-        nextActionLabel: '주요 Figure와 캡션을 먼저 검토하세요.',
+        trustStateLabel,
+        nextActionLabel: hasTables && !hasFigures
+          ? '검출된 Table과 구조 복구 상태를 먼저 검토하세요.'
+          : '주요 Figure와 Table을 먼저 검토하세요.',
         currentPhaseLabel,
         completedCount,
         totalCount,
@@ -263,7 +355,7 @@ export function buildWorkbenchStatusSummary({
     if (completedCount > 0) {
       return {
         runStateLabel: `${currentPhaseLabel} 진행 중`,
-        trustStateLabel: '초기 판독 가능',
+        trustStateLabel,
         nextActionLabel: '핵심 주장과 인용 맥락을 먼저 확인하세요.',
         currentPhaseLabel,
         completedCount,
@@ -273,7 +365,7 @@ export function buildWorkbenchStatusSummary({
 
     return {
       runStateLabel: `${currentPhaseLabel} 진행 중`,
-      trustStateLabel: '결과 준비 중',
+      trustStateLabel,
       nextActionLabel: '스크리닝이 끝나면 핵심 주장과 질문 도우미가 열립니다.',
       currentPhaseLabel,
       completedCount,
@@ -284,7 +376,7 @@ export function buildWorkbenchStatusSummary({
   if (status.overall_status === 'error') {
     return {
       runStateLabel: completedCount > 0 ? '부분 완료' : '분석 실패',
-      trustStateLabel: hasRecipe ? '레시피 초안 유지' : hasFigures ? 'Figure 검토 가능' : '재시도 필요',
+      trustStateLabel,
       nextActionLabel: completedCount > 0 ? '남아 있는 결과를 검토한 뒤 재분석하세요.' : '설정을 확인한 뒤 다시 분석을 시작하세요.',
       currentPhaseLabel,
       completedCount,
@@ -294,9 +386,9 @@ export function buildWorkbenchStatusSummary({
 
   return {
     runStateLabel: '분석 완료',
-    trustStateLabel: hasVisualizations ? '심층 분석 완료' : hasRecipe ? '레시피 검토 가능' : '결과 준비됨',
+    trustStateLabel,
     nextActionLabel: hasVisualizations
-      ? '핵심 주장, Figure, 레시피를 교차 검토하세요.'
+      ? '핵심 주장, Figure, Table, 레시피를 교차 검토하세요.'
       : '준비된 결과를 순서대로 검토하세요.',
     currentPhaseLabel,
     completedCount,

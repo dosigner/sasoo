@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ChevronLeft,
@@ -79,10 +79,15 @@ function statusTone(status: PaperStatus): {
   }
 }
 
-function primaryActionLabel(status: PaperStatus): string {
-  if (status === 'analyzing') return S.library.continueAnalysis;
-  if (status === 'error') return S.library.reviewError;
-  return S.library.openedFromLibrary;
+function handleInteractiveKeyDown(
+  event: KeyboardEvent<HTMLElement>,
+  onActivate: () => void,
+): void {
+  if (event.target !== event.currentTarget) return;
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    onActivate();
+  }
 }
 
 function activityLabel(paper: Paper): string {
@@ -110,9 +115,9 @@ interface PaperItemProps {
   onToggleMenu: (id: string) => void;
 }
 
-function RowMenu({ paper, onOpen, onDelete, menuOpen, onToggleMenu }: PaperItemProps) {
-  const actionLabel = primaryActionLabel(paper.status);
+type RowMenuProps = Omit<PaperItemProps, 'onOpen'>;
 
+function RowMenu({ paper, onDelete, menuOpen, onToggleMenu }: RowMenuProps) {
   return (
     <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
       <button
@@ -125,16 +130,9 @@ function RowMenu({ paper, onOpen, onDelete, menuOpen, onToggleMenu }: PaperItemP
       </button>
       {menuOpen && (
         <div
-          className="absolute right-0 top-11 z-20 min-w-[10rem] border border-surface-700/60 bg-surface-900/95 p-1.5 shadow-2xl backdrop-blur"
+          className="absolute right-0 top-11 z-20 min-w-[9rem] border border-surface-700/50 bg-surface-900/95 p-1.5 shadow-2xl backdrop-blur"
           style={{ borderRadius: 'var(--radius-surface)' }}
         >
-          <button
-            onClick={() => onOpen(String(paper.id))}
-            className="flex w-full items-center px-3 py-2 text-left text-xs text-surface-200 transition-colors hover:bg-surface-800 [.light_&]:text-surface-800 [.light_&]:hover:bg-surface-100"
-            style={{ borderRadius: 'var(--radius-control)' }}
-          >
-            {actionLabel}
-          </button>
           <button
             onClick={() => onDelete(String(paper.id), paper.title)}
             className="flex w-full items-center px-3 py-2 text-left text-xs text-red-300 transition-colors hover:bg-red-500/10"
@@ -151,14 +149,17 @@ function RowMenu({ paper, onOpen, onDelete, menuOpen, onToggleMenu }: PaperItemP
 function PaperShelfRow({ paper, onOpen, onDelete, menuOpen, onToggleMenu }: PaperItemProps) {
   const tone = statusTone(paper.status);
   const agent = getAgentMeta(paper.agent_used);
-  const actionLabel = primaryActionLabel(paper.status);
   const tags = tagsForPaper(paper);
   const rowToneClass = `library-shelf-row--${paper.status}`;
 
   return (
     <article
-      className={`library-shelf-row ${rowToneClass} group relative grid gap-3 border-b border-surface-700/40 px-4 py-3 transition-colors hover:bg-surface-900/35 md:grid-cols-[10px_minmax(0,1.8fr)_minmax(9rem,0.85fr)_minmax(9rem,0.72fr)_auto] md:items-center md:px-6`}
+      role="button"
+      tabIndex={0}
+      aria-label={`${paper.title} 워크벤치 열기`}
+      className={`library-shelf-row ${rowToneClass} group relative grid cursor-pointer gap-3 border-b border-surface-800/65 px-4 py-3.5 transition-colors hover:bg-surface-900/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 focus-visible:ring-inset md:grid-cols-[10px_minmax(0,1.8fr)_minmax(9rem,0.85fr)_minmax(9rem,0.72fr)_auto] md:items-center md:px-6`}
       onClick={() => onOpen(String(paper.id))}
+      onKeyDown={(event) => handleInteractiveKeyDown(event, () => onOpen(String(paper.id)))}
     >
       <div className={`h-full min-h-[64px] w-[3px] rounded-full ${tone.line} md:w-[4px]`} />
 
@@ -169,7 +170,7 @@ function PaperShelfRow({ paper, onOpen, onDelete, menuOpen, onToggleMenu }: Pape
             {statusLabel(paper.status)}
           </span>
           {paper.year && (
-            <span className="text-2xs text-surface-400">{paper.year}</span>
+            <span className="text-[11px] text-surface-400 [.light_&]:text-surface-600">{paper.year}</span>
           )}
         </div>
         <h3 className="library-record-title transition-colors group-hover:text-white">
@@ -189,7 +190,7 @@ function PaperShelfRow({ paper, onOpen, onDelete, menuOpen, onToggleMenu }: Pape
             {tags.map((tag) => (
               <span
                 key={tag}
-                className="rounded-full border border-surface-700/60 px-2 py-1 text-2xs text-surface-400"
+                className="rounded-full border border-surface-700/50 px-2 py-1 text-[11px] text-surface-400 [.light_&]:text-surface-600"
               >
                 {tag}
               </span>
@@ -220,25 +221,15 @@ function PaperShelfRow({ paper, onOpen, onDelete, menuOpen, onToggleMenu }: Pape
           <div className="library-meta-value">{activityLabel(paper)}</div>
         </div>
         {paper.doi && (
-          <div className="truncate text-2xs text-surface-500">
+          <div className="truncate text-[11px] text-surface-500 [.light_&]:text-surface-600">
             DOI {paper.doi}
           </div>
         )}
       </div>
 
-      <div className="flex items-center justify-end gap-2">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpen(String(paper.id));
-          }}
-          className="rounded-full border border-surface-700 px-3 py-1.5 text-xs text-surface-200 transition-colors hover:border-surface-500 hover:bg-surface-800 [.light_&]:text-surface-800 [.light_&]:hover:bg-surface-100"
-        >
-          {actionLabel}
-        </button>
+      <div className="flex items-center justify-end">
         <RowMenu
           paper={paper}
-          onOpen={onOpen}
           onDelete={onDelete}
           menuOpen={menuOpen}
           onToggleMenu={onToggleMenu}
@@ -252,30 +243,33 @@ function PaperArchiveCard({ paper, onOpen, onDelete, menuOpen, onToggleMenu }: P
   const tone = statusTone(paper.status);
   const agent = getAgentMeta(paper.agent_used);
   const tags = tagsForPaper(paper);
-  const actionLabel = primaryActionLabel(paper.status);
   const cardToneClass = `library-archive-card--${paper.status}`;
 
   return (
     <article
-      className={`library-archive-card ${cardToneClass} group`}
+      role="button"
+      tabIndex={0}
+      aria-label={`${paper.title} 워크벤치 열기`}
+      className={`library-archive-card ${cardToneClass} group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-900 [.light_&]:focus-visible:ring-offset-surface-50`}
       onClick={() => onOpen(String(paper.id))}
+      onKeyDown={(event) => handleInteractiveKeyDown(event, () => onOpen(String(paper.id)))}
     >
       <div className={`absolute inset-x-4 top-0 h-1 rounded-b-full ${tone.line}`} />
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <div className="text-2xs text-surface-400">
+          <div className="text-[11px] text-surface-400 [.light_&]:text-surface-600">
             {paper.year || '연도 미상'} · {paper.domain}
           </div>
           <div className="mt-2 line-clamp-3 text-[15px] font-semibold leading-snug text-surface-100 group-hover:text-white [.light_&]:text-surface-900 [.light_&]:group-hover:text-surface-900">
             {paper.title}
           </div>
         </div>
-        <span className={`shrink-0 rounded-full border px-2 py-1 text-2xs ${tone.badge}`}>
+        <span className={`shrink-0 rounded-full border px-2 py-1 text-[11px] ${tone.badge}`}>
           {statusLabel(paper.status)}
         </span>
       </div>
 
-      <div className="space-y-2.5 text-xs text-surface-400">
+      <div className="space-y-2.5 text-[13px] leading-5 text-surface-400 [.light_&]:text-surface-600">
         {paper.authors && <div className="line-clamp-2">{paper.authors}</div>}
         <div className="flex items-center justify-between gap-3">
           <span>최근 활동</span>
@@ -295,7 +289,7 @@ function PaperArchiveCard({ paper, onOpen, onDelete, menuOpen, onToggleMenu }: P
             {tags.map((tag) => (
               <span
                 key={tag}
-                className="rounded-full border border-surface-700/60 px-2 py-1 text-2xs text-surface-400"
+                className="rounded-full border border-surface-700/50 px-2 py-1 text-[11px] text-surface-400 [.light_&]:text-surface-600"
               >
                 {tag}
               </span>
@@ -304,19 +298,9 @@ function PaperArchiveCard({ paper, onOpen, onDelete, menuOpen, onToggleMenu }: P
         )}
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-2 border-t border-surface-700/50 pt-3">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpen(String(paper.id));
-          }}
-          className="rounded-full border border-surface-700 px-3 py-1.5 text-xs text-surface-200 transition-colors hover:border-surface-500 hover:bg-surface-700 [.light_&]:text-surface-800 [.light_&]:hover:bg-surface-100"
-        >
-          {actionLabel}
-        </button>
+      <div className="mt-4 flex items-center justify-end gap-2 border-t border-surface-700/40 pt-3 [.light_&]:border-surface-200">
         <RowMenu
           paper={paper}
-          onOpen={onOpen}
           onDelete={onDelete}
           menuOpen={menuOpen}
           onToggleMenu={onToggleMenu}
@@ -418,42 +402,35 @@ export default function Library() {
 
   const from = (page - 1) * (filters.page_size || 20) + 1;
   const to = Math.min(page * (filters.page_size || 20), total);
+  const handleGoUpload = useCallback(() => navigate('/'), [navigate]);
 
   return (
-    <div className="mx-auto max-w-7xl p-6">
-      <section className="library-archive-header mb-6 pb-6">
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-6">
-          <div className="max-w-2xl">
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-surface-900/50 px-3 py-1 text-2xs text-surface-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-primary-400" />
-              Research Archive
-            </div>
-            <h1 className="text-3xl font-semibold tracking-[-0.03em] text-surface-100 [.light_&]:text-surface-900">
+    <div className="page-container-wide">
+      <section className="library-archive-header archive-panel panel-compact mb-4">
+        <div className="page-header-dense">
+          <div>
+            <div className="archive-kicker">{S.library.heroKicker}</div>
+            <h1 className="mt-2 text-[1.8rem] font-semibold tracking-[-0.05em] text-surface-100 [.light_&]:text-surface-900">
               {S.library.title}
             </h1>
-            <p className="mt-2 max-w-xl text-sm leading-relaxed text-surface-400 [.light_&]:text-surface-600">
-              최근 분석한 논문부터 다시 살펴보고, 분야별로 정리된 기록을 빠르게 찾아볼 수 있는 보관함입니다.
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-surface-400 [.light_&]:text-surface-600">
+              {S.library.heroBody}
             </p>
-          </div>
-          <div className="grid min-w-[15rem] gap-3 sm:grid-cols-3 sm:gap-4">
-            <div className="pl-3">
-              <div className="text-2xs text-surface-500">전체 보관</div>
-              <div className="mt-2 text-2xl font-semibold text-surface-100 [.light_&]:text-surface-900">{total}</div>
-            </div>
-            <div className="pl-3">
-              <div className="text-2xs text-surface-500">분석 완료</div>
-              <div className="mt-2 text-2xl font-semibold text-surface-100 [.light_&]:text-surface-900">
-                {statusMetaCount(papers, 'completed')}
-              </div>
-            </div>
-            <div className="pl-3">
-              <div className="text-2xs text-surface-500">최근 활동</div>
-              <div className="mt-2 text-2xl font-semibold text-surface-100 [.light_&]:text-surface-900">{activityCount}</div>
+            <div className="page-status-strip mt-3">
+              <span className="archive-inline-status archive-inline-status-muted">
+                {S.library.paperCount(total)}
+              </span>
+              <span className="archive-inline-status archive-inline-status-muted">
+                {S.library.collectionReady} {statusMetaCount(papers, 'completed')}
+              </span>
+              <span className="archive-inline-status archive-inline-status-muted">
+                {S.library.collectionActive} {activityCount}
+              </span>
             </div>
           </div>
         </div>
 
-        <div className="library-controlbar mt-5 lg:grid-cols-[minmax(0,1fr)_auto_auto_auto] lg:items-center">
+        <div className="library-controlbar mt-4 lg:grid-cols-[minmax(0,1fr)_auto_auto_auto] lg:items-center">
           <div className="relative" role="search">
             <AppIcon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-500" />
             <input
@@ -536,11 +513,11 @@ export default function Library() {
       </section>
 
       {showFilters && (
-        <section className="library-filter-panel mb-6">
+        <section className="library-filter-panel mb-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="text-2xs text-surface-400">분류 기준</div>
-              <div className="mt-1 text-sm text-surface-300">분야와 상태로 먼저 좁히고, 연도와 태그는 보조 기준으로 사용하세요.</div>
+              <div className="text-[11px] uppercase tracking-[0.16em] text-surface-500 [.light_&]:text-surface-600">분류 기준</div>
+              <div className="mt-1 text-[14px] leading-6 text-surface-300 [.light_&]:text-surface-700">분야와 상태로 먼저 좁히고, 연도와 태그는 보조 기준으로 사용하세요.</div>
             </div>
             {hasActiveFilters && (
               <button
@@ -653,10 +630,7 @@ export default function Library() {
       )}
 
       {error && (
-        <div
-          className="mb-4 flex items-center gap-2 border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400"
-          style={{ borderRadius: 'var(--radius-control)' }}
-        >
+        <div className="mb-5 archive-inline-status archive-inline-status-error">
           <AlertCircle className="w-4 h-4 shrink-0" />
           {error}
         </div>
@@ -672,8 +646,8 @@ export default function Library() {
       )}
 
       {!loading && papers.length === 0 && (
-        <div className="rounded-[28px] border border-surface-700/50 bg-surface-800/70 px-6 py-16 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-surface-700 bg-surface-900">
+        <div className="archive-panel px-6 py-16 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-surface-800 bg-surface-950">
             <AppIcon name="library" className="w-6 h-6 text-surface-500" />
           </div>
           <h3 className="text-lg font-semibold text-surface-300 mb-2">
@@ -682,14 +656,22 @@ export default function Library() {
           <p className="mx-auto max-w-md text-sm leading-relaxed text-surface-500 mb-4">
             {hasActiveFilters
               ? S.library.noMatchDesc
-              : '첫 논문을 서가에 추가하면, 최근 분석한 논문부터 다시 살펴볼 수 있습니다.'}
+              : S.library.noPapersDesc}
           </p>
-          {hasActiveFilters && (
+          {hasActiveFilters ? (
             <button
               onClick={clearFilters}
               className="rounded-full border border-surface-700 px-4 py-2 text-sm text-surface-200 transition-colors hover:border-surface-500"
             >
               {S.library.clearFilters}
+            </button>
+          ) : (
+            <button
+              onClick={handleGoUpload}
+              className="btn-primary"
+            >
+              <AppIcon name="upload" className="w-4 h-4" />
+              {S.library.emptyCta}
             </button>
           )}
         </div>
@@ -697,12 +679,12 @@ export default function Library() {
 
       {!loading && papers.length > 0 && viewMode === 'list' && (
         <section className="library-shelf">
-          <div className="grid gap-4 px-4 py-2 text-2xs text-surface-400 md:grid-cols-[10px_minmax(0,1.8fr)_minmax(9rem,0.85fr)_minmax(9rem,0.72fr)_auto] md:px-6">
+          <div className="grid gap-4 px-4 py-3 text-[11px] uppercase tracking-[0.16em] text-surface-500 md:grid-cols-[10px_minmax(0,1.8fr)_minmax(9rem,0.85fr)_minmax(9rem,0.72fr)_auto] md:px-6">
             <div />
-            <div>서지 기록</div>
+            <div>{S.library.shelfTitle}</div>
             <div>분류</div>
             <div>활동</div>
-            <div className="text-right">작업</div>
+            <div className="text-right">메뉴</div>
           </div>
           {papers.map((paper) => (
             <PaperShelfRow

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   getPaper,
@@ -11,9 +11,6 @@ import { useAnalysis } from '@/hooks/useAnalysis';
 import { useToast } from '@/components/Toast';
 import { S } from '@/lib/strings';
 import { buildChatStarterPrompts, buildWorkbenchStatusSummary } from '@/lib/workbenchSummaries';
-import PdfViewer from '@/components/PdfViewer';
-import AnalysisPanel from '@/components/AnalysisPanel';
-import ChatPanel from '@/components/ChatPanel';
 import WorkbenchHeader from '@/components/workbench/WorkbenchHeader';
 import { ContentState, Modal } from '@/components/ui';
 import { useWorkbenchLayout } from '@/hooks/useWorkbenchLayout';
@@ -23,6 +20,23 @@ import { AppIcon } from '@/components/icons';
 
 const ANALYSIS_PROFILE_OPTIONS: PaperBananaProfile[] = ['fast', 'balanced', 'quality'];
 type AnalysisProfileSelection = 'default' | PaperBananaProfile;
+const PdfViewer = lazy(() => import('@/components/PdfViewer'));
+const AnalysisPanel = lazy(() => import('@/components/AnalysisPanel'));
+const ChatPanel = lazy(() => import('@/components/ChatPanel'));
+
+function PanelFallback({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="flex h-full items-center justify-center p-6">
+      <ContentState
+        icon={(props) => <AppIcon name="spinner" {...props} />}
+        title={title}
+        description={description}
+        loading
+        tone="muted"
+      />
+    </div>
+  );
+}
 
 export default function Workbench() {
   const { id } = useParams<{ id: string }>();
@@ -40,6 +54,7 @@ export default function Workbench() {
     status,
     results,
     figures,
+    tables,
     recipe,
     mermaid,
     visualizations,
@@ -51,6 +66,7 @@ export default function Workbench() {
   const {
     containerRef,
     splitPosition,
+    activePreset,
     isResizing,
     pdfCollapsed,
     isSnapping,
@@ -58,6 +74,7 @@ export default function Workbench() {
     handleDoubleClick,
     handleKeyDown,
     togglePdf,
+    setSplitPreset,
   } = useWorkbenchLayout();
 
   const {
@@ -167,6 +184,11 @@ export default function Workbench() {
   const pdfUrl = getPdfUrl(String(paper.id));
   const paperId = id ?? String(paper.id);
   const screeningCompleted = status?.phases.some((phase) => phase.phase === 'screening' && phase.status === 'completed') ?? false;
+  const artifactStatus = {
+    text_ready: paper.text_ready,
+    visual_ready: paper.visual_ready,
+    visual_state: paper.visual_state,
+  };
   const chatStarters = buildChatStarterPrompts({
     results,
     figures: figures?.figures ?? [],
@@ -174,7 +196,9 @@ export default function Workbench() {
   });
   const statusSummary = buildWorkbenchStatusSummary({
     status,
+    artifactStatus,
     figures: figures?.figures ?? [],
+    tables: tables?.tables ?? [],
     recipe,
     visualizations,
     terminalState,
@@ -233,7 +257,9 @@ export default function Workbench() {
         title={paper.title}
         domain={paper.domain}
         agentLabel={agentMeta?.nameKo || agentMeta?.name || paper.agent_used}
+        agentColor={agentMeta?.color}
         pdfCollapsed={pdfCollapsed}
+        activeSplitPreset={activePreset}
         runStateLabel={statusSummary.runStateLabel}
         trustStateLabel={statusSummary.trustStateLabel}
         analysisError={analysisError}
@@ -242,6 +268,7 @@ export default function Workbench() {
         primaryActionLabel={primaryActionLabel}
         onBack={() => navigate('/library')}
         onTogglePdf={togglePdf}
+        onSplitPresetChange={setSplitPreset}
         onStartAnalysis={openAnalysisConfirm}
         onCancelAnalysis={() => void onCancelCurrentAnalysis()}
       />
@@ -252,12 +279,21 @@ export default function Workbench() {
             className="relative h-full overflow-hidden"
             style={{ width: `${splitPosition}%` }}
           >
-            <PdfViewer
-              key={pdfUrl}
-              pdfUrl={pdfUrl}
-              title={paper.title}
-              navigationRequest={navigationRequest}
-            />
+            <Suspense
+              fallback={
+                <PanelFallback
+                  title={S.pdf.loading}
+                  description="문서 뷰어를 준비하고 있습니다."
+                />
+              }
+            >
+              <PdfViewer
+                key={pdfUrl}
+                pdfUrl={pdfUrl}
+                title={paper.title}
+                navigationRequest={navigationRequest}
+              />
+            </Suspense>
             {isResizing && (
               <div className="absolute inset-0 z-10" />
             )}
@@ -284,41 +320,69 @@ export default function Workbench() {
           style={{ width: pdfCollapsed ? '100%' : `${100 - splitPosition}%` }}
         >
           <div className="min-w-0 flex-1">
-            <AnalysisPanel
-              status={status}
-              results={results}
-              figures={figures}
-              recipe={recipe}
-              mermaid={mermaid}
-              visualizations={visualizations}
-              isRunning={isRunning}
-              agentName={paper.agent_used}
-              paperId={paperId}
-              terminalState={terminalState}
-              onJumpToFigurePage={(figure) => {
-                if (typeof figure.page_number !== 'number') return;
-                setNavigationRequest({
-                  page: figure.page_number,
-                  requestId: `${figure.id ?? figure.figure_num ?? 'figure'}-${Date.now()}`,
-                  source: 'figure',
-                });
-              }}
-            />
+            <Suspense
+              fallback={
+                <PanelFallback
+                  title={S.analysis.loadingResults}
+                  description="분석 패널을 준비하고 있습니다."
+                />
+              }
+            >
+              <AnalysisPanel
+                status={status}
+                artifactStatus={artifactStatus}
+                results={results}
+                figures={figures}
+                tables={tables}
+                recipe={recipe}
+                mermaid={mermaid}
+                visualizations={visualizations}
+                isRunning={isRunning}
+                agentName={paper.agent_used}
+                paperId={paperId}
+                terminalState={terminalState}
+                onJumpToFigurePage={(figure) => {
+                  if (typeof figure.page_number !== 'number') return;
+                  setNavigationRequest({
+                    page: figure.page_number,
+                    requestId: `${figure.id ?? figure.figure_num ?? 'figure'}-${Date.now()}`,
+                    source: 'figure',
+                  });
+                }}
+                onJumpToTablePage={(table) => {
+                  if (typeof table.page_number !== 'number') return;
+                  setNavigationRequest({
+                    page: table.page_number,
+                    requestId: `${table.id ?? table.table_num ?? 'table'}-${Date.now()}`,
+                    source: 'table',
+                  });
+                }}
+              />
+            </Suspense>
           </div>
         </div>
       </div>
 
-      <ChatPanel
-        paperId={paperId}
-        agentName={paper.agent_used}
-        open={chatOpen}
-        ready={screeningCompleted}
-        readyMessage={S.workbench.assistantWaiting}
-        draft={chatDraft}
-        starters={chatStarters}
-        onToggleOpen={() => setChatOpen((prev) => !prev)}
-        onDraftChange={setChatDraft}
-      />
+      <Suspense
+        fallback={
+          <PanelFallback
+            title="채팅 불러오는 중..."
+            description="에이전트 채팅 패널을 준비하고 있습니다."
+          />
+        }
+      >
+        <ChatPanel
+          paperId={paperId}
+          agentName={paper.agent_used}
+          open={chatOpen}
+          ready={screeningCompleted}
+          readyMessage={S.workbench.assistantWaiting}
+          draft={chatDraft}
+          starters={chatStarters}
+          onToggleOpen={() => setChatOpen((prev) => !prev)}
+          onDraftChange={setChatDraft}
+        />
+      </Suspense>
     </div>
   );
 }

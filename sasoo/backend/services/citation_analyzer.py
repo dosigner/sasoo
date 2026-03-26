@@ -17,6 +17,17 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
+_JOURNAL_PATTERN = re.compile(
+    r'\b(?:Nature|Science|Cell|Phys\.\s*Rev(?:\s+\w+)?|Adv\.\s*Mater|ACS\s+\w+|'
+    r'IEEE(?:\s+\w+)?|Opt\.\s*Express|Biomed\.\s*Opt\.\s*Express|'
+    r'Biomedical\s+optics\s+express|Opt\.\s*Eng\.?|Astron\.\s*Astrophys\.?|'
+    r'J\.\s*Biophotonics|J\.\s*Opt\.\s*Soc\.\s*Am\.\s*[AB]?|'
+    r'J\.\s*Astron\.\s*Telesc\.\s*Instrum\.\s*Syst\.?|Appl\.\s*\w+|'
+    r'Proc\.\s*SPIE|Ann\.\s*\w+|Light:\s*\w+|Optica|Photonics|Laser|'
+    r'Chem\.\s*\w+|Angew\.\s*\w+|PNAS|PLoS|BMC\s+\w+|Nat\.\s*\w+)\b[^,;.]*',
+    re.IGNORECASE,
+)
+
 
 # ---------------------------------------------------------------------------
 # Data Structures
@@ -181,50 +192,82 @@ def _parse_single_reference(text: str, num: int) -> ParsedReference:
     # Clean up
     text = re.sub(r'\s+', ' ', text).strip()
 
+    journal_match = _JOURNAL_PATTERN.search(text)
+
     # Extract year (4-digit number, typically 19xx or 20xx)
     year_match = re.search(r'\b((?:19|20)\d{2})\b', text)
     if year_match:
         ref.year = int(year_match.group(1))
 
-    # Extract authors: typically the beginning before the first period or quote
-    # Pattern: "Author A, Author B, ... Title. Journal..."
-    # Try to split at first sentence boundary that looks like a title start
-    parts = text.split('. ', 1)
-    if len(parts) >= 2:
-        potential_authors = parts[0].strip()
-        # Authors usually contain commas and are shorter
-        if len(potential_authors) < 200:
-            ref.authors = potential_authors
-            remainder = parts[1]
-        else:
-            remainder = text
-    else:
-        remainder = text
+    prefix_end = len(text)
+    if journal_match:
+        prefix_end = journal_match.start()
+    elif year_match:
+        prefix_end = year_match.start()
 
-    # Try to extract title (usually in quotes or the next sentence)
-    # Quoted title
-    quoted = re.search(r'["\u201c](.+?)["\u201d]', remainder)
-    if quoted:
-        ref.title = quoted.group(1)
-    else:
-        # First sentence after authors
-        title_parts = remainder.split('. ', 1)
-        if title_parts:
-            ref.title = title_parts[0].strip()
+    authors, title = _split_reference_prefix(text[:prefix_end].strip(" ,.;"))
+    if authors:
+        ref.authors = authors
+    if title:
+        ref.title = title
+
+    if not ref.title:
+        quoted = re.search(r'["\u201c](.+?)["\u201d]', text)
+        if quoted:
+            ref.title = quoted.group(1)
 
     # Try to extract journal (usually italic or after title, contains common journal words)
-    journal_match = re.search(
-        r'(?:Nature|Science|Cell|Phys\.\s*Rev|Adv\.\s*Mater|ACS\s+\w+|IEEE|Opt\.\s*Express|'
-        r'Nano\s*Lett|J\.\s*\w+|Appl\.\s*\w+|Proc\.\s*\w+|Ann\.\s*\w+|'
-        r'Light:\s*\w+|Optica|Photonics|Laser|Chem\.\s*\w+|Angew\.\s*\w+|'
-        r'PNAS|PLoS|BMC\s+\w+|Nat\.\s*\w+)[^,;.]*',
-        remainder,
-        re.IGNORECASE,
-    )
     if journal_match:
         ref.journal = journal_match.group(0).strip().rstrip('.,;')
 
     return ref
+
+
+def _split_reference_prefix(prefix: str) -> tuple[str, str]:
+    prefix = prefix.strip(" ,.;")
+    if not prefix:
+        return "", ""
+
+    quoted = re.search(r'["\u201c](.+?)["\u201d]', prefix)
+    if quoted:
+        authors = prefix[:quoted.start()].strip(" ,.;")
+        title = quoted.group(1).strip(" ,.;")
+        return authors, title
+
+    comma_idx = prefix.find(",")
+    if comma_idx > 0:
+        candidate_authors = prefix[:comma_idx].strip()
+        candidate_title = prefix[comma_idx + 1:].strip(" ,.;")
+        if _looks_like_author_prefix(candidate_authors) and len(candidate_title.split()) >= 3:
+            return candidate_authors, candidate_title
+
+    sentence_boundaries = list(re.finditer(r'\.\s+(?=[A-Z][a-z]{2,})', prefix))
+    for boundary in reversed(sentence_boundaries):
+        candidate_authors = prefix[: boundary.start() + 1].strip(" ,.;")
+        candidate_title = prefix[boundary.end() :].strip(" ,.;")
+        if _looks_like_author_prefix(candidate_authors) and len(candidate_title.split()) >= 3:
+            return candidate_authors, candidate_title
+
+    parts = prefix.split('. ', 1)
+    if len(parts) == 2 and _looks_like_author_prefix(parts[0]):
+        return parts[0].strip(" ,.;"), parts[1].strip(" ,.;")
+
+    return "", prefix
+
+
+def _looks_like_author_prefix(text: str) -> bool:
+    normalized = text.strip()
+    if not normalized:
+        return False
+    if normalized.lower().startswith(("introduction", "method", "results", "discussion", "conclusion")):
+        return False
+    return bool(
+        re.search(r'\b[A-Z]\.', normalized)
+        or re.search(r'\bet\s+al\b', normalized, re.IGNORECASE)
+        or "&" in normalized
+        or " and " in normalized.lower()
+        or normalized.count(",") >= 2
+    )
 
 
 # ---------------------------------------------------------------------------

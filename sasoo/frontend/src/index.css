@@ -3,15 +3,15 @@
 @tailwind utilities;
 
 :root {
-  --color-bg-primary: #000000;
-  --color-bg-secondary: #1c1c1e;
-  --color-bg-tertiary: #3a3a3c;
-  --color-text-primary: #f5f5f7;
-  --color-text-secondary: #e8e8ed;
-  --color-text-muted: #8e8e93;
-  --color-accent: #0a84ff;
-  --color-accent-hover: #409cff;
-  --color-border: #3a3a3c;
+  --color-bg-primary: #090909;
+  --color-bg-secondary: #121212;
+  --color-bg-tertiary: #1d1d1d;
+  --color-text-primary: #f4f1ea;
+  --color-text-secondary: #d6d1c7;
+  --color-text-muted: #918a80;
+  --color-accent: #d6a756;
+  --color-accent-hover: #e5bb75;
+  --color-border: rgba(255, 248, 233, 0.12);
   --color-success: #30d158;
   --color-warning: #ffd60a;
   --color-error: #ff453a;
@@ -28,6 +28,7 @@
   --radius-control: 12px;
   --radius-surface: 16px;
   --radius-pill: 999px;
+  --app-rail-width: 4.5rem;
 }
 
 .light {
@@ -58,6 +59,9 @@
   body {
     @apply bg-surface-900 text-surface-200 font-sans;
     transition: background-color var(--transition-speed) ease-out, color var(--transition-speed) ease-out;
+    background:
+      radial-gradient(circle at top left, rgba(214, 167, 86, 0.07), transparent 28%),
+      linear-gradient(180deg, #090909 0%, #0c0c0c 48%, #101010 100%);
   }
 
   .light body,
@@ -107,7 +111,7 @@
 @layer components {
   /* Reusable card component */
   .card {
-    @apply bg-surface-800 border border-surface-700/60 p-4;
+    @apply border border-surface-700/40 bg-surface-900/40 p-4;
     border-radius: var(--radius-surface);
   }
 
@@ -117,6 +121,252 @@
 
   .card-hover {
     @apply card transition-all duration-200 ease-out hover:border-surface-600/80 hover:bg-surface-800;
+  }
+
+  .app-shell {
+    @apply flex h-screen flex-col bg-surface-950 text-surface-200;
+  }
+
+  .light .app-shell {
+    background:
+      radial-gradient(circle at top left, rgba(10, 132, 255, 0.08), transparent 26%),
+      linear-gradient(180deg, rgba(247, 247, 250, 0.98), rgba(240, 242, 247, 0.98));
+    @apply text-surface-800;
+  }
+
+  .app-desktop-rail {
+    width: var(--app-rail-width);
+    @apply shrink-0 items-center border-r border-surface-800/80 bg-surface-950/90 px-3 py-4 backdrop-blur-md;
+  }
+
+  .light .app-desktop-rail {
+    @apply border-surface-200/90 bg-white/90;
+  }
+
+  .app-rail-brand {
+    @apply flex h-10 w-10 items-center justify-center rounded-2xl border border-surface-800/80 bg-surface-950/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)];
+  }
+
+  .light .app-rail-brand {
+    @apply border-surface-200/90 bg-white;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.8),
+      0 10px 24px rgba(15, 23, 42, 0.08);
+  }
+
+  .app-desktop-nav {
+    @apply mt-5 flex flex-1 flex-col items-center gap-2;
+  }
+
+  .app-nav-link {
+    @apply relative flex h-11 w-11 items-center justify-center rounded-2xl border border-transparent text-surface-500 transition-all duration-200 focus:outline-none focus-visible:border-primary-500/30 focus-visible:bg-surface-900/95 focus-visible:text-surface-50 focus-visible:ring-2 focus-visible:ring-primary-500/20;
+  }
+
+  .app-nav-link:hover {
+    @apply border-surface-800 bg-surface-900/80 text-surface-100;
+  }
+
+  .light .app-nav-link {
+    @apply text-surface-500 focus-visible:bg-white focus-visible:text-surface-900;
+  }
+
+  .light .app-nav-link:hover {
+    @apply border-surface-200 bg-white text-surface-900;
+  }
+
+  .app-nav-link-active {
+    border-color: rgba(214, 167, 86, 0.2);
+    background: linear-gradient(180deg, rgba(214, 167, 86, 0.14), rgba(214, 167, 86, 0.05));
+    @apply text-surface-50;
+  }
+
+  .light .app-nav-link-active {
+    border-color: rgba(10, 132, 255, 0.16);
+    background: linear-gradient(180deg, rgba(10, 132, 255, 0.14), rgba(10, 132, 255, 0.05));
+    @apply text-primary-700;
+  }
+
+  .app-nav-link-label {
+    @apply pointer-events-none absolute left-[calc(100%+0.8rem)] top-1/2 -translate-y-1/2 rounded-full border border-surface-700/80 bg-surface-950/95 px-3 py-1.5 text-xs font-medium text-surface-100 opacity-0 shadow-lg transition-all duration-150;
+    transform: translate(-4px, -50%);
+    white-space: nowrap;
+  }
+
+  .light .app-nav-link-label {
+    @apply border-surface-200 bg-white text-surface-800;
+  }
+
+  .app-nav-link:hover .app-nav-link-label,
+  .app-nav-link:focus-visible .app-nav-link-label {
+    opacity: 1;
+    transform: translate(0, -50%);
+  }
+
+  .page-container-wide {
+    @apply mx-auto min-h-full w-full px-4 py-4 md:px-6 md:py-5 xl:px-8;
+    max-width: 120rem;
+  }
+
+  .page-container-compact {
+    @apply mx-auto min-h-full w-full px-4 py-4 md:px-6 md:py-5 xl:px-8;
+    max-width: 96rem;
+  }
+
+  .page-scaffold {
+    @apply h-full overflow-y-auto;
+  }
+
+  .page-scaffold-default {
+    @apply bg-surface-900;
+  }
+
+  .light .page-scaffold-default {
+    @apply bg-surface-50;
+  }
+
+  .page-scaffold-archive {
+    background:
+      radial-gradient(circle at top left, rgba(214, 167, 86, 0.08), transparent 30%),
+      radial-gradient(circle at 100% 0%, rgba(255, 255, 255, 0.04), transparent 18%),
+      linear-gradient(180deg, rgba(10, 10, 10, 0.98), rgba(14, 14, 14, 0.98));
+  }
+
+  .light .page-scaffold-archive {
+    background:
+      radial-gradient(circle at top left, rgba(10, 132, 255, 0.08), transparent 28%),
+      radial-gradient(circle at 100% 0%, rgba(255, 255, 255, 0.7), transparent 18%),
+      linear-gradient(180deg, rgba(249, 250, 252, 0.98), rgba(240, 243, 247, 0.98));
+  }
+
+  .page-scaffold-control {
+    background:
+      linear-gradient(180deg, rgba(8, 8, 8, 0.98), rgba(12, 12, 12, 0.98));
+  }
+
+  .light .page-scaffold-control {
+    background:
+      linear-gradient(180deg, rgba(248, 249, 252, 0.98), rgba(239, 242, 247, 0.98));
+  }
+
+  .archive-panel {
+    @apply border border-surface-800/60 bg-surface-950/50 backdrop-blur-md;
+    border-radius: 20px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.02),
+      0 18px 42px rgba(0, 0, 0, 0.12);
+  }
+
+  .light .archive-panel {
+    @apply border-surface-200/90 bg-white/80;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.85),
+      0 18px 42px rgba(15, 23, 42, 0.06);
+  }
+
+  .archive-kicker {
+    @apply text-[11px] uppercase tracking-[0.24em] text-surface-500;
+  }
+
+  .panel-compact {
+    @apply px-4 py-4 md:px-5 md:py-4;
+  }
+
+  .page-header-dense {
+    @apply flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between;
+  }
+
+  .page-status-strip {
+    @apply flex flex-wrap items-center gap-2 text-xs text-surface-400;
+  }
+
+  .archive-inline-status {
+    @apply inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px];
+    border-color: rgba(255, 248, 233, 0.12);
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .light .archive-inline-status {
+    border-color: rgba(209, 213, 220, 0.9);
+    background: rgba(255, 255, 255, 0.9);
+  }
+
+  .archive-inline-status-muted {
+    @apply text-surface-400;
+  }
+
+  .archive-inline-status-success {
+    @apply text-emerald-300;
+    border-color: rgba(52, 211, 153, 0.2);
+    background: rgba(16, 185, 129, 0.08);
+  }
+
+  .archive-inline-status-error {
+    @apply text-amber-300;
+    border-color: rgba(245, 158, 11, 0.2);
+    background: rgba(245, 158, 11, 0.08);
+  }
+
+  .light .archive-inline-status-muted {
+    @apply text-surface-600;
+  }
+
+  .light .archive-inline-status-success {
+    @apply text-emerald-700;
+    border-color: rgba(16, 185, 129, 0.22);
+    background: rgba(16, 185, 129, 0.08);
+  }
+
+  .light .archive-inline-status-error {
+    @apply text-amber-700;
+    border-color: rgba(245, 158, 11, 0.22);
+    background: rgba(245, 158, 11, 0.12);
+  }
+
+  .settings-panel-title {
+    @apply text-surface-100;
+  }
+
+  .light .settings-panel-title {
+    @apply text-surface-900;
+  }
+
+  .settings-panel-description,
+  .settings-hero-body {
+    @apply text-surface-400;
+  }
+
+  .light .settings-panel-description,
+  .light .settings-hero-body {
+    @apply text-surface-600;
+  }
+
+  .settings-hero-title {
+    @apply text-surface-100;
+  }
+
+  .light .settings-hero-title {
+    @apply text-surface-900;
+  }
+
+  .settings-appearance-option {
+    border-radius: var(--radius-control);
+  }
+
+  .settings-appearance-option-inactive {
+    @apply border-surface-700 bg-surface-800 text-surface-400 hover:border-surface-600;
+  }
+
+  .light .settings-appearance-option-inactive {
+    @apply border-surface-200 bg-white text-surface-600 hover:border-surface-300 hover:bg-surface-50 hover:text-surface-900;
+  }
+
+  .settings-savebar {
+    @apply border-surface-800/80 bg-surface-950/95;
+  }
+
+  .light .settings-savebar {
+    @apply border-surface-200/90 bg-white/95;
+    box-shadow: 0 -12px 30px rgba(15, 23, 42, 0.06);
   }
 
   .light .card-hover:hover {
@@ -316,12 +566,12 @@
   }
 
   .library-controlbar {
-    @apply grid gap-3 pt-4;
+    @apply grid gap-2.5 pt-3;
   }
 
   .library-filter-panel {
-    @apply rounded-[24px] bg-surface-900/55 p-4;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    @apply rounded-[20px] border border-surface-800/50 bg-surface-950/30 p-4;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   }
 
   .light .library-filter-panel {
@@ -331,7 +581,7 @@
   }
 
   .library-shelf {
-    @apply overflow-hidden rounded-[28px] bg-surface-800/55;
+    @apply overflow-hidden rounded-[22px] border border-surface-800/60 bg-surface-900/30;
   }
 
   .light .library-shelf {
@@ -341,7 +591,7 @@
 
   .library-shelf-row {
     position: relative;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.015);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.012);
   }
 
   .library-shelf-row::after {
@@ -351,11 +601,39 @@
     pointer-events: none;
     opacity: 0;
     transition: opacity 180ms ease;
-    background: linear-gradient(90deg, rgba(255, 255, 255, 0.035), transparent 22%);
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.03), transparent 24%);
   }
 
   .library-shelf-row:hover::after {
     opacity: 1;
+  }
+
+  .library-status-badge {
+    @apply inline-flex items-center gap-2 rounded-full border border-surface-700/40 bg-surface-950/60 px-2.5 py-1 text-[11px] text-surface-300;
+  }
+
+  .library-status-dot {
+    @apply h-1.5 w-1.5 rounded-full bg-current;
+  }
+
+  .library-record-title {
+    @apply text-[16px] font-semibold tracking-[-0.03em] text-surface-100;
+  }
+
+  .library-record-meta {
+    @apply flex flex-wrap items-center gap-2 text-[13px] leading-5 text-surface-500;
+  }
+
+  .library-meta-label {
+    @apply text-[11px] uppercase tracking-[0.16em] text-surface-600;
+  }
+
+  .library-meta-value {
+    @apply text-sm text-surface-200;
+  }
+
+  .library-agent-label {
+    @apply inline-flex items-center gap-2 text-sm text-surface-200;
   }
 
   .library-shelf-row--completed {
@@ -395,7 +673,7 @@
   }
 
   .library-status-badge {
-    @apply inline-flex items-center gap-1 rounded-full border px-2 py-1 text-2xs;
+    @apply inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px];
   }
 
   .library-status-dot {
@@ -421,7 +699,7 @@
   }
 
   .library-record-title {
-    @apply text-[15px] font-medium leading-snug tracking-normal text-surface-100;
+    @apply text-[16px] font-semibold leading-snug tracking-[-0.02em] text-surface-100;
   }
 
   .light .library-record-title {
@@ -429,7 +707,7 @@
   }
 
   .library-record-meta {
-    @apply mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-surface-400;
+    @apply mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] leading-5 text-surface-400;
   }
 
   .light .library-record-meta {
@@ -437,7 +715,7 @@
   }
 
   .library-meta-label {
-    @apply text-2xs font-medium text-surface-500;
+    @apply text-[11px] font-medium uppercase tracking-[0.14em] text-surface-500;
   }
 
   .light .library-meta-label {
@@ -445,7 +723,7 @@
   }
 
   .library-meta-value {
-    @apply text-sm text-surface-200;
+    @apply text-[15px] leading-6 text-surface-200;
   }
 
   .light .library-meta-value {
@@ -453,7 +731,7 @@
   }
 
   .library-agent-label {
-    @apply inline-flex items-center gap-2 text-sm text-surface-300;
+    @apply inline-flex items-center gap-2 text-[15px] leading-6 text-surface-300;
   }
 
   .light .library-agent-label {
@@ -461,12 +739,12 @@
   }
 
   .library-archive-card {
-    @apply relative overflow-hidden rounded-[24px] bg-surface-800/80 p-4 transition-colors;
+    @apply relative overflow-hidden rounded-[24px] border border-surface-800/50 bg-surface-900/40 p-4 transition-colors;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   }
 
   .library-archive-card:hover {
-    @apply bg-surface-800;
+    @apply bg-surface-900/50;
   }
 
   .light .library-archive-card {
@@ -509,11 +787,11 @@
 /* Utilities (unlayered to avoid @apply circular dependency with custom colors) */
   /* Glass morphism effect */
   .glass {
-    @apply bg-surface-800/85 backdrop-blur-xl border border-surface-700/40;
+    @apply bg-surface-800/90 backdrop-blur-xl border border-surface-700/40;
   }
 
   .light .glass {
-    @apply bg-white/85 backdrop-blur-xl border-surface-200/50;
+    @apply bg-white/90 backdrop-blur-xl border-surface-200/50;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -869,12 +1147,12 @@
   }
 
   .phase-meta-pill {
-    @apply inline-flex items-center border border-surface-700/45 bg-surface-900/55 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-surface-500;
+    @apply inline-flex items-center border border-surface-700/50 bg-surface-900/60 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-surface-500;
     border-radius: var(--radius-pill);
   }
 
   .phase-meta-pill-soft {
-    @apply bg-surface-800/45 text-surface-400;
+    @apply bg-surface-800/50 text-surface-400;
   }
 
   .pdf-toolbar-btn {
@@ -904,12 +1182,48 @@
   }
 
   .pdf-thumb-canvas {
-    @apply overflow-hidden border border-surface-700/45 bg-surface-900/70 p-1;
+    @apply overflow-hidden border border-surface-700/50 bg-surface-900/70 p-1;
     border-radius: var(--radius-control);
   }
 
   .pdf-viewer-shell {
-    @apply h-full [&_.rpv-core__viewer]:h-full [&_.rpv-core__viewer]:bg-[#09090b] [&_.rpv-core__inner-pages]:bg-[#09090b] [&_.rpv-core__page-layer]:shadow-none [&_.rpv-core__page-layer]:mx-auto [&_.rpv-core__page-layer]:my-3 [&_.rpv-core__canvas-layer]:rounded-lg;
+    @apply h-full;
+  }
+
+  .pdf-viewer-shell .pdfjs-viewer-container {
+    @apply h-full bg-[#09090b] px-5 py-4;
+  }
+
+  .light .pdf-viewer-shell .pdfjs-viewer-container {
+    @apply bg-white;
+  }
+
+  .pdf-viewer-shell .pdfjs-viewer-pages {
+    @apply mx-auto;
+  }
+
+  .pdf-viewer-shell .pdfjs-viewer-pages .page {
+    @apply mb-4 shadow-none;
+  }
+
+  .pdf-viewer-shell .pdfjs-thumbnail-panel .thumbnail {
+    @apply mb-3 rounded-2xl border border-transparent bg-transparent p-2 transition-all duration-200;
+  }
+
+  .pdf-viewer-shell .pdfjs-thumbnail-panel .thumbnail:hover {
+    @apply border-surface-700/60 bg-surface-900/75;
+  }
+
+  .pdf-viewer-shell .pdfjs-thumbnail-panel .thumbnail.selected {
+    @apply border-primary-500/20 bg-primary-500/10;
+  }
+
+  .pdf-viewer-shell .pdfjs-thumbnail-panel .thumbnailImage {
+    @apply rounded-xl border border-surface-700/50 bg-surface-900/70;
+  }
+
+  .light .pdf-viewer-shell .pdfjs-thumbnail-panel .thumbnailImage {
+    @apply border-surface-200 bg-white;
   }
 
   .chat-starter-chip {
@@ -922,7 +1236,7 @@
   }
 
   .chat-empty-state {
-    @apply mb-4 flex items-start gap-3 border border-surface-700/45 bg-surface-900/35 px-4 py-4 text-left;
+    @apply mb-4 flex items-start gap-3 border border-surface-700/50 bg-surface-900/40 px-4 py-4 text-left;
     border-radius: var(--radius-surface);
   }
 
@@ -931,7 +1245,7 @@
   }
 
   .chat-empty-icon {
-    @apply flex h-8 w-8 shrink-0 items-center justify-center border border-surface-700/55 bg-surface-800/80;
+    @apply flex h-8 w-8 shrink-0 items-center justify-center border border-surface-700/60 bg-surface-800/80;
     border-radius: var(--radius-pill);
   }
 
@@ -953,7 +1267,7 @@
   }
 
   .chat-bubble-agent {
-    @apply rounded-bl-md border-surface-700/55 bg-surface-800/80 text-surface-200;
+    @apply rounded-bl-md border-surface-700/60 bg-surface-800/80 text-surface-200;
   }
 
   .light .chat-bubble-user {
@@ -969,7 +1283,7 @@
   }
 
   .chat-follow-chip {
-    @apply rounded-full border border-surface-700/50 bg-surface-900/45 px-3 py-1 text-2xs text-surface-400 transition-colors duration-200 hover:border-primary-500/20 hover:text-surface-200;
+    @apply rounded-full border border-surface-700/50 bg-surface-900/50 px-3 py-1 text-2xs text-surface-400 transition-colors duration-200 hover:border-primary-500/20 hover:text-surface-200;
   }
 
   .app-icon {
@@ -982,7 +1296,7 @@
   }
 
   .chat-composer {
-    @apply flex items-end gap-2 rounded-[22px] border border-surface-700/55 bg-surface-800/80 px-3 py-2;
+    @apply flex items-end gap-2 rounded-[22px] border border-surface-700/60 bg-surface-800/80 px-3 py-2;
   }
 
   .light .chat-composer {
@@ -1002,7 +1316,7 @@
   }
 
   .light .chat-send-button {
-    @apply border-primary-500/15 bg-primary-50 text-primary-600 hover:bg-primary-100;
+    @apply border-primary-500/20 bg-primary-50 text-primary-600 hover:bg-primary-100;
   }
 
   .chat-floating-backdrop {
@@ -1040,7 +1354,7 @@
   }
 
   .chat-floating-header {
-    @apply flex items-start justify-between gap-3 border-b border-surface-700/45 px-4 py-4;
+    @apply flex items-start justify-between gap-3 border-b border-surface-700/50 px-4 py-4;
   }
 
   .light .chat-markdown h1,

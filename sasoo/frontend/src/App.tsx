@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import { S } from '@/lib/strings';
 import logoImg from '@/assets/logo.png';
@@ -13,13 +13,14 @@ import Titlebar from '@/components/Titlebar';
 import UpdateBanner from '@/components/UpdateBanner';
 import PageScaffold from '@/components/layout/PageScaffold';
 import WorkbenchScaffold from '@/components/layout/WorkbenchScaffold';
+import { ContentState } from '@/components/ui';
 
 // Pages
-import UploadPage from '@/pages/Upload';
-import Workbench from '@/pages/Workbench';
-import Library from '@/pages/Library';
-import SettingsPage from '@/pages/Settings';
-import Agents from '@/pages/Agents';
+const UploadPage = lazy(() => import('@/pages/Upload'));
+const Workbench = lazy(() => import('@/pages/Workbench'));
+const Library = lazy(() => import('@/pages/Library'));
+const SettingsPage = lazy(() => import('@/pages/Settings'));
+const Agents = lazy(() => import('@/pages/Agents'));
 
 // ---------------------------------------------------------------------------
 // Navigation items
@@ -32,12 +33,25 @@ const NAV_ITEMS = [
   { to: '/settings', icon: 'settings' as AppIconName, label: S.app.settings, exact: false },
 ];
 
+function RouteFallback() {
+  return (
+    <div className="flex h-full items-center justify-center p-6">
+      <ContentState
+        icon={(props) => <AppIcon name="spinner" {...props} />}
+        title={S.workbench.loading}
+        description="화면을 준비하고 있습니다."
+        loading
+        tone="muted"
+      />
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // App Component
 // ---------------------------------------------------------------------------
 
 function App() {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const location = useLocation();
 
   // Detect if we're on the workbench page (needs full screen)
@@ -57,7 +71,7 @@ function App() {
 
     // Phase 1: instant restore from localStorage (no flash)
     const cached = localStorage.getItem('sasoo-theme');
-    applyTheme(cached || 'dark');
+    applyTheme(cached || 'light');
 
     // Phase 2: sync with backend as source of truth
     getSettings()
@@ -88,148 +102,53 @@ function App() {
     return unsub;
   }, []);
 
-  // Load sidebar state from localStorage
-  useEffect(() => {
-    const savedCollapsed = localStorage.getItem('sasoo-sidebar-collapsed');
-    if (savedCollapsed === 'true') {
-      setSidebarCollapsed(true);
-    }
-  }, []);
-
-  const toggleSidebar = useCallback(() => {
-    setSidebarCollapsed((c) => {
-      const newValue = !c;
-      localStorage.setItem('sasoo-sidebar-collapsed', String(newValue));
-      return newValue;
-    });
-  }, []);
-
-  // Keyboard shortcut: Ctrl+B to toggle sidebar
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
-        e.preventDefault();
-        toggleSidebar();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleSidebar]);
-
   return (
     <ToastProvider>
       <ErrorBoundary>
-        <div className="flex flex-col h-screen bg-surface-900 text-surface-200">
-      <Titlebar />
-      <UpdateBanner />
-      <div className="flex flex-1 min-h-0">
-      {/* Sidebar */}
-      <aside
-        className={`flex flex-col bg-surface-800/85 backdrop-blur-xl border-r border-surface-700/50 transition-all duration-300 shrink-0 ${
-          sidebarCollapsed ? 'w-16' : 'w-56'
-        }`}
-      >
-        {/* Logo */}
-        <div className="flex items-center gap-3 px-4 h-14 border-b border-surface-700 shrink-0">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0">
-            <img src={logoImg} alt="Sasoo" className="w-8 h-8" />
-          </div>
-          {!sidebarCollapsed && (
-            <div className="min-w-0">
-              <h1 className="text-base font-bold text-surface-100 tracking-apple-tight">
-                Sasoo
-              </h1>
-              <p className="text-2xs text-surface-500 truncate">
-                {S.app.subtitle}
-              </p>
-            </div>
-          )}
-        </div>
+        <div className="app-shell">
+          <Titlebar />
+          <UpdateBanner />
+          <div className="flex flex-1 min-h-0">
+            {!isWorkbench && (
+              <aside className="app-desktop-rail" aria-label={S.app.name}>
+                <div className="app-rail-brand" title={S.app.name}>
+                  <img src={logoImg} alt="Sasoo" className="h-8 w-8 rounded-xl" />
+                </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 py-3 px-2 space-y-1 overflow-y-auto">
-          {NAV_ITEMS.map((item, index) => {
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.exact}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-lg transition-colors ${
-                    sidebarCollapsed ? 'px-3 py-2.5 justify-center' : 'px-3 py-2.5'
-                  } ${
-                    isActive
-                      ? 'bg-primary-500/10 text-primary-400 border border-primary-500/20'
-                      : 'text-surface-400 hover:bg-surface-700/50 hover:text-surface-200 border border-transparent'
-                  }`
-                }
-                title={sidebarCollapsed ? item.label : undefined}
-                aria-label={item.label}
-              >
-                <AppIcon name={item.icon} className="w-4.5 h-4.5 shrink-0" />
-                {!sidebarCollapsed && (
-                  <span
-                    className="text-sm font-medium sidebar-label-enter"
-                    style={{ animationDelay: `${index * 25}ms` }}
-                  >
-                    {item.label}
-                  </span>
-                )}
-              </NavLink>
-            );
-          })}
-
-          {/* Workbench link appears when viewing a paper */}
-          {isWorkbench && (
-            <div
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 bg-primary-500/10 text-primary-400 border border-primary-500/20 ${
-                sidebarCollapsed ? 'justify-center' : ''
-              }`}
-            >
-              <AppIcon name="workbench" className="w-4.5 h-4.5 shrink-0" />
-              {!sidebarCollapsed && (
-                <span className="text-sm font-medium">{S.app.workbench}</span>
-              )}
-            </div>
-          )}
-        </nav>
-
-        {/* Collapse toggle */}
-        <div className="px-2 py-3 border-t border-surface-700 shrink-0">
-          <button
-            onClick={toggleSidebar}
-            className={`flex items-center gap-2 w-full rounded-lg px-3 py-2 text-surface-500 hover:text-surface-300 hover:bg-surface-700/50 transition-colors ${
-              sidebarCollapsed ? 'justify-center' : ''
-            }`}
-            title={sidebarCollapsed ? S.app.expandSidebar : S.app.collapseSidebar}
-            aria-label={sidebarCollapsed ? '사이드바 펼치기' : '사이드바 접기'}
-          >
-            <AppIcon
-              name="chevron-left"
-              className={`w-4 h-4 transition-transform duration-300 ${
-                sidebarCollapsed ? 'rotate-180' : ''
-              }`}
-            />
-            {!sidebarCollapsed && (
-              <span className="text-xs">{S.app.collapse}</span>
+                <nav className="app-desktop-nav" aria-label="기본 내비게이션">
+                  {NAV_ITEMS.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      end={item.exact}
+                      className={({ isActive }) =>
+                        `app-nav-link ${isActive ? 'app-nav-link-active' : ''}`
+                      }
+                      title={item.label}
+                      aria-label={item.label}
+                    >
+                      <AppIcon name={item.icon} className="h-4 w-4 shrink-0" />
+                      <span className="app-nav-link-label">{item.label}</span>
+                    </NavLink>
+                  ))}
+                </nav>
+              </aside>
             )}
-          </button>
-        </div>
-      </aside>
 
-      {/* Main content */}
-      <main className="flex-1 min-w-0 overflow-hidden">
-        <div key={location.pathname} className="h-full w-full overflow-hidden animate-page-enter">
-          <Routes>
-            <Route path="/" element={<PageScaffold><UploadPage /></PageScaffold>} />
-            <Route path="/agents" element={<PageScaffold><Agents /></PageScaffold>} />
-            <Route path="/workbench/:id" element={<WorkbenchScaffold><Workbench /></WorkbenchScaffold>} />
-            <Route path="/library" element={<PageScaffold><Library /></PageScaffold>} />
-            <Route path="/settings" element={<PageScaffold><SettingsPage /></PageScaffold>} />
-          </Routes>
-        </div>
-      </main>
-      </div>
+            <main className="flex-1 min-w-0 overflow-hidden">
+              <div key={location.pathname} className="h-full w-full overflow-hidden animate-page-enter">
+                <Suspense fallback={<RouteFallback />}>
+                  <Routes>
+                    <Route path="/" element={<PageScaffold variant="archive"><UploadPage /></PageScaffold>} />
+                    <Route path="/agents" element={<PageScaffold variant="control"><Agents /></PageScaffold>} />
+                    <Route path="/workbench/:id" element={<WorkbenchScaffold><Workbench /></WorkbenchScaffold>} />
+                    <Route path="/library" element={<PageScaffold variant="archive"><Library /></PageScaffold>} />
+                    <Route path="/settings" element={<PageScaffold variant="control"><SettingsPage /></PageScaffold>} />
+                  </Routes>
+                </Suspense>
+              </div>
+            </main>
+          </div>
         </div>
       </ErrorBoundary>
     </ToastProvider>

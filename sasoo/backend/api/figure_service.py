@@ -3,9 +3,11 @@ Sasoo - Figure explanation service.
 Handles the explain_figure endpoint for per-figure AI explanations.
 """
 
+import asyncio
 import json
 import logging
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 
@@ -18,8 +20,16 @@ from models.database import (
     get_paper_dir,
 )
 from models.schemas import FigureExplanationResponse
+from services.odl_parser import (
+    OdlParserError,
+    OdlRuntimeError,
+    ensure_paper_artifacts,
+    ensure_text_artifacts_async,
+    explain_odl_failure,
+)
+from services.analysis_results import get_latest_completed_phase_rows
+from services.document_context import load_or_build_document_context
 from services.pricing import calc_cost
-from services.pdf_cache import get_pdf_text
 from api.analysis_helpers import _call_gemini
 
 
@@ -423,23 +433,46 @@ async def explain_figure_handler(paper_id: int, figure_id: int):
             model_used="cached",
         )
 
-    # Load paper full text (cached)
+    # Load paper context and resolve the current figure asset.
     folder_name = paper["folder_name"]
     paper_dir = get_paper_dir(folder_name)
-    full_text = ""
+    figure_detail_context = ""
+    resolved_figure_image_path: Optional[Path] = None
     try:
-        full_text = get_pdf_text(paper_dir)
-    except FileNotFoundError:
-        pass
+        await ensure_text_artifacts_async(paper_dir)
+        figure_image_path = figure.get("file_path")
+        if figure_image_path:
+            candidate_path = Path(figure_image_path)
+            resolved_figure_image_path = candidate_path if candidate_path.is_absolute() else (paper_dir / candidate_path)
+        if resolved_figure_image_path and not resolved_figure_image_path.exists():
+            await ensure_paper_artifacts(paper_id, paper_dir)
+            refreshed = await fetch_one(
+                "SELECT * FROM figures WHERE id = ? AND paper_id = ?",
+                (figure_id, paper_id),
+            )
+            if refreshed is not None:
+                figure = refreshed
+                figure_image_path = figure.get("file_path")
+                if figure_image_path:
+                    candidate_path = Path(figure_image_path)
+                    resolved_figure_image_path = candidate_path if candidate_path.is_absolute() else (paper_dir / candidate_path)
+        document_context = await asyncio.to_thread(load_or_build_document_context, paper_dir)
+        figure_detail_context = str(document_context.get("phase_inputs", {}).get("figure_detail", ""))
+    except (OdlParserError, OdlRuntimeError, FileNotFoundError) as exc:
+        status_code, detail = explain_odl_failure(exc)
+        raise HTTPException(status_code=status_code, detail=detail) from exc
 
-    # Gather all analysis results for context
-    results = await fetch_all(
-        "SELECT phase, result FROM analysis_results WHERE paper_id = ? AND phase != 'error'",
-        (paper_id,),
+    latest_phase_rows = await get_latest_completed_phase_rows(
+        paper_id,
+        phases=["visual", "recipe", "deep_dive"],
     )
-    analysis_context = ""
-    for r in results:
-        analysis_context += f"\n--- {r['phase']} ---\n{r['result'][:3000]}\n"
+    analysis_context_parts: list[str] = []
+    for phase in ["visual", "recipe", "deep_dive"]:
+        row = latest_phase_rows.get(phase)
+        if not row:
+            continue
+        analysis_context_parts.append(f"\n--- {phase} ---\n{str(row.get('result') or '')[:2800]}\n")
+    analysis_context = "".join(analysis_context_parts)
 
     # Get all figure captions for cross-reference
     all_figures = await fetch_all(
@@ -465,6 +498,9 @@ You are writing an extremely detailed explanation of a specific figure from a sc
 FIGURE TO EXPLAIN:
 - Figure identifier: {figure_num}
 - Caption from paper: {caption if caption else "(캡션 미추출)"}
+- Extraction confidence: {figure.get("confidence", "unknown")}
+- Extraction provenance: label={figure.get("classifier_label", "unknown")}, model={figure.get("classifier_model", "unknown")}, resolver={figure.get("resolver_version", "legacy")}, engine={figure.get("extraction_engine", "unknown")}
+- Extraction status: {figure.get("extraction_status", "resolved")}
 - **아래 첨부된 실제 그림 이미지를 분석하세요.**
 
 ALL FIGURES IN PAPER (for cross-reference):
@@ -497,16 +533,15 @@ Be exhaustive. Do NOT summarize or abbreviate. Include every relevant numerical 
 
 중요: 첨부된 이미지를 직접 보고 분석하세요. 이미지에 보이는 모든 요소(축, 레이블, 곡선, 데이터 포인트, 서브패널, 화살표, 색상 코딩, 스케일 바 등)를 실제로 확인하고 설명해야 합니다.
 
---- PAPER FULL TEXT ---
-{full_text[:15000]}
+--- FIGURE DETAIL CONTEXT ---
+{figure_detail_context}
 
 --- ANALYSIS RESULTS ---
-{analysis_context[:5000]}
+{analysis_context}
 """
 
     # Get the figure's file path and pass it to Gemini for multimodal analysis
-    figure_image_path = figure.get("file_path")
-    image_paths_arg = [figure_image_path] if figure_image_path and Path(figure_image_path).exists() else None
+    image_paths_arg = [str(resolved_figure_image_path)] if resolved_figure_image_path and resolved_figure_image_path.exists() else None
 
     try:
         result = await _call_gemini(prompt, model="gemini-3-flash-preview", thinking_level="high", image_paths=image_paths_arg)

@@ -69,22 +69,22 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
       // Default fallback UI
       return (
-        <div className="flex items-center justify-center h-full min-h-screen bg-surface-50 dark:bg-surface-900 p-4">
-          <div className="bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl p-8 max-w-md w-full shadow-xl">
+        <div className="flex h-full min-h-screen items-center justify-center bg-surface-900 p-4 [.light_&]:bg-surface-50">
+          <div className="w-full max-w-md rounded-xl border border-surface-700 bg-surface-800 p-8 shadow-xl [.light_&]:border-surface-200 [.light_&]:bg-white">
             {/* Error Icon */}
             <div className="flex justify-center mb-6">
               <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-                <AlertTriangle className="w-8 h-8 text-red-600 dark:text-red-400" />
+                <AlertTriangle className="w-8 h-8 text-red-400 [.light_&]:text-red-600" />
               </div>
             </div>
 
             {/* Error Title */}
-            <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100 text-center mb-3">
+            <h1 className="mb-3 text-center text-xl font-bold text-surface-100 [.light_&]:text-surface-900">
               오류가 발생했습니다
             </h1>
 
             {/* Error Message */}
-            <p className="text-sm text-surface-600 dark:text-surface-400 text-center mb-6 break-words">
+            <p className="mb-6 break-words text-center text-sm text-surface-400 [.light_&]:text-surface-600">
               {error?.message || '알 수 없는 오류가 발생했습니다.'}
             </p>
 
@@ -101,7 +101,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
               {/* Home Button */}
               <Link
                 to="/"
-                className="w-full px-4 py-2.5 bg-surface-100 hover:bg-surface-200 dark:bg-surface-700 dark:hover:bg-surface-600 text-surface-700 dark:text-surface-200 rounded-lg font-medium transition-colors duration-200 text-center border border-surface-300 dark:border-surface-600"
+                className="w-full rounded-lg border border-surface-600 bg-surface-700 px-4 py-2.5 text-center font-medium text-surface-200 transition-colors duration-200 hover:bg-surface-600 [.light_&]:border-surface-300 [.light_&]:bg-surface-100 [.light_&]:text-surface-700 [.light_&]:hover:bg-surface-200"
               >
                 홈으로 돌아가기
               </Link>
@@ -109,11 +109,11 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
             {/* Developer Info (only in development) */}
             {process.env.NODE_ENV === 'development' && error && (
-              <details className="mt-6 p-4 bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-lg">
-                <summary className="text-xs font-medium text-surface-600 dark:text-surface-300 cursor-pointer hover:text-surface-700 dark:hover:text-surface-200">
+              <details className="mt-6 rounded-lg border border-surface-700 bg-surface-900 p-4 [.light_&]:border-surface-200 [.light_&]:bg-surface-50">
+                <summary className="cursor-pointer text-xs font-medium text-surface-300 hover:text-surface-200 [.light_&]:text-surface-600 [.light_&]:hover:text-surface-700">
                   개발자 정보 (Development Only)
                 </summary>
-                <pre className="mt-3 text-2xs text-red-600 dark:text-red-400 overflow-auto max-h-40">
+                <pre className="mt-3 max-h-40 overflow-auto text-2xs text-red-400 [.light_&]:text-red-600">
                   {error.stack}
                 </pre>
               </details>

@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS analysis_results (
     tokens_in INTEGER,
     tokens_out INTEGER,
     cost_usd REAL,
+    input_hash TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -134,7 +135,38 @@ CREATE TABLE IF NOT EXISTS figures (
     file_path TEXT,
     ai_analysis TEXT,
     quality TEXT,
-    detailed_explanation TEXT
+    detailed_explanation TEXT,
+    page_number INTEGER,
+    bbox_json TEXT,
+    extraction_engine TEXT,
+    confidence REAL,
+    classifier_label TEXT,
+    classifier_model TEXT,
+    parent_figure_id INTEGER REFERENCES figures(id) ON DELETE SET NULL,
+    is_composite INTEGER,
+    resolver_version TEXT,
+    extraction_status TEXT
+);
+
+CREATE TABLE IF NOT EXISTS tables (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    paper_id INTEGER REFERENCES papers(id) ON DELETE CASCADE,
+    table_num TEXT,
+    caption TEXT,
+    page_number INTEGER,
+    bbox_json TEXT,
+    csv_path TEXT,
+    html_path TEXT,
+    markdown_text TEXT,
+    confidence REAL,
+    parse_method TEXT,
+    classifier_model TEXT,
+    resolver_version TEXT,
+    extraction_status TEXT,
+    repair_attempted INTEGER DEFAULT 0,
+    repair_reason TEXT,
+    repair_confidence REAL,
+    review_required INTEGER DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_papers_status ON papers(status);
@@ -144,7 +176,24 @@ CREATE INDEX IF NOT EXISTS idx_analysis_paper_id ON analysis_results(paper_id);
 CREATE INDEX IF NOT EXISTS idx_analysis_phase ON analysis_results(phase);
 CREATE INDEX IF NOT EXISTS idx_analysis_created_at ON analysis_results(created_at);
 CREATE INDEX IF NOT EXISTS idx_analysis_cost ON analysis_results(cost_usd);
+CREATE INDEX IF NOT EXISTS idx_analysis_cache ON analysis_results(paper_id, phase, input_hash);
 CREATE INDEX IF NOT EXISTS idx_figures_paper_id ON figures(paper_id);
+CREATE INDEX IF NOT EXISTS idx_tables_paper_id ON tables(paper_id);
+CREATE INDEX IF NOT EXISTS idx_tables_sort ON tables(paper_id, page_number, table_num);
+
+CREATE TABLE IF NOT EXISTS analysis_cache_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    paper_id INTEGER REFERENCES papers(id) ON DELETE CASCADE,
+    phase TEXT NOT NULL,
+    input_hash TEXT,
+    source_model TEXT,
+    estimated_cost_usd REAL DEFAULT 0,
+    tokens_in INTEGER DEFAULT 0,
+    tokens_out INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_analysis_cache_events_created_at ON analysis_cache_events(created_at);
+CREATE INDEX IF NOT EXISTS idx_analysis_cache_events_phase ON analysis_cache_events(phase);
 
 CREATE TABLE IF NOT EXISTS experiment_plans (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -210,6 +259,69 @@ async def init_db() -> None:
     except Exception:
         pass  # Column already exists — expected on subsequent startups
 
+    # Figure metadata migrations for ODL-backed extraction
+    for ddl in (
+        "ALTER TABLE figures ADD COLUMN page_number INTEGER",
+        "ALTER TABLE figures ADD COLUMN bbox_json TEXT",
+        "ALTER TABLE figures ADD COLUMN extraction_engine TEXT",
+        "ALTER TABLE figures ADD COLUMN confidence REAL",
+        "ALTER TABLE figures ADD COLUMN classifier_label TEXT",
+        "ALTER TABLE figures ADD COLUMN classifier_model TEXT",
+        "ALTER TABLE figures ADD COLUMN parent_figure_id INTEGER",
+        "ALTER TABLE figures ADD COLUMN is_composite INTEGER",
+        "ALTER TABLE figures ADD COLUMN resolver_version TEXT",
+        "ALTER TABLE figures ADD COLUMN extraction_status TEXT",
+    ):
+        try:
+            await _db_connection.execute(ddl)
+            await _db_connection.commit()
+        except Exception:
+            pass
+
+    for ddl in (
+        """
+        CREATE TABLE IF NOT EXISTS tables (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            paper_id INTEGER REFERENCES papers(id) ON DELETE CASCADE,
+            table_num TEXT,
+            caption TEXT,
+            page_number INTEGER,
+            bbox_json TEXT,
+            csv_path TEXT,
+            html_path TEXT,
+            markdown_text TEXT,
+            confidence REAL,
+            parse_method TEXT,
+            classifier_model TEXT,
+            resolver_version TEXT,
+            extraction_status TEXT,
+            repair_attempted INTEGER DEFAULT 0,
+            repair_reason TEXT,
+            repair_confidence REAL,
+            review_required INTEGER DEFAULT 0
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_tables_paper_id ON tables(paper_id)",
+        "CREATE INDEX IF NOT EXISTS idx_tables_sort ON tables(paper_id, page_number, table_num)",
+    ):
+        try:
+            await _db_connection.execute(ddl)
+            await _db_connection.commit()
+        except Exception:
+            pass
+
+    for ddl in (
+        "ALTER TABLE tables ADD COLUMN repair_attempted INTEGER DEFAULT 0",
+        "ALTER TABLE tables ADD COLUMN repair_reason TEXT",
+        "ALTER TABLE tables ADD COLUMN repair_confidence REAL",
+        "ALTER TABLE tables ADD COLUMN review_required INTEGER DEFAULT 0",
+    ):
+        try:
+            await _db_connection.execute(ddl)
+            await _db_connection.commit()
+        except Exception:
+            pass
+
     # Migration: Add input_hash column for LLM response caching
     try:
         await _db_connection.execute("ALTER TABLE analysis_results ADD COLUMN input_hash TEXT")
@@ -217,14 +329,29 @@ async def init_db() -> None:
     except Exception:
         pass  # Column already exists
 
-    # Index for cache lookups
-    try:
-        await _db_connection.execute(
-            "CREATE INDEX IF NOT EXISTS idx_analysis_cache ON analysis_results(paper_id, phase, input_hash)"
+    for ddl in (
+        """
+        CREATE TABLE IF NOT EXISTS analysis_cache_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            paper_id INTEGER REFERENCES papers(id) ON DELETE CASCADE,
+            phase TEXT NOT NULL,
+            input_hash TEXT,
+            source_model TEXT,
+            estimated_cost_usd REAL DEFAULT 0,
+            tokens_in INTEGER DEFAULT 0,
+            tokens_out INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
-        await _db_connection.commit()
-    except Exception:
-        pass
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_analysis_cache ON analysis_results(paper_id, phase, input_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_analysis_cache_events_created_at ON analysis_cache_events(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_analysis_cache_events_phase ON analysis_cache_events(phase)",
+    ):
+        try:
+            await _db_connection.execute(ddl)
+            await _db_connection.commit()
+        except Exception:
+            pass
 
 
 async def get_db() -> aiosqlite.Connection:
@@ -298,5 +425,12 @@ def get_figures_dir(folder_name: str) -> Path:
 def get_paperbanana_dir(folder_name: str) -> Path:
     """Return the absolute path for PaperBanana output."""
     d = LIBRARY_ROOT / folder_name / "paperbanana"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def get_tables_dir(folder_name: str) -> Path:
+    """Return the absolute path to a paper's tables directory."""
+    d = LIBRARY_ROOT / folder_name / "tables"
     d.mkdir(parents=True, exist_ok=True)
     return d

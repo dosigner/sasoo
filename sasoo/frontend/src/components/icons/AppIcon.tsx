@@ -34,6 +34,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Play,
+  Plus,
   Save,
   Search,
   Settings,
@@ -59,6 +60,7 @@ export type AppIconName =
   | 'panel-close'
   | 'summary'
   | 'figures'
+  | 'tables'
   | 'recipe'
   | 'experiment'
   | 'search'
@@ -91,6 +93,7 @@ export type AppIconName =
   | 'chat'
   | 'download'
   | 'minimize'
+  | 'plus'
   | 'maximize'
   | 'restore'
   | 'play'
@@ -112,6 +115,7 @@ const ICON_MAP = {
   'panel-close': PanelLeftClose,
   summary: FileSearch,
   figures: ImageIcon,
+  tables: LayoutGrid,
   recipe: FlaskConical,
   experiment: FlaskConical,
   search: Search,
@@ -144,6 +148,7 @@ const ICON_MAP = {
   chat: MessageSquareText,
   download: Download,
   minimize: Minus,
+  plus: Plus,
   maximize: Maximize2,
   restore: Grid2x2,
   play: Play,

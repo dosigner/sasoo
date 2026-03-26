@@ -13,6 +13,33 @@ import { Toggle } from '@/components/ui';
 import { S } from '@/lib/strings';
 import { AppIcon } from '@/components/icons';
 
+function SettingPanel({
+  kicker,
+  title,
+  description,
+  children,
+}: {
+  kicker: string;
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="archive-panel panel-compact">
+      <div className="mb-4">
+        <div className="archive-kicker">{kicker}</div>
+        <h2 className="settings-panel-title mt-2 text-xl font-semibold tracking-[-0.04em]">
+          {title}
+        </h2>
+        <p className="settings-panel-description mt-2 max-w-2xl text-sm leading-6">
+          {description}
+        </p>
+      </div>
+      {children}
+    </section>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -29,8 +56,10 @@ export default function Settings() {
   const [geminiKey, setGeminiKey] = useState('');
   const [claudeKey, setClaudeKey] = useState('');
   const [libraryPath, setLibraryPath] = useState('');
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [theme, setTheme] = useState<'dark' | 'light'>('light');
   const [autoAnalyze, setAutoAnalyze] = useState(false);
+  const [pdfParserMode, setPdfParserMode] = useState<'java'>('java');
+  const [extractionPipelineVersion, setExtractionPipelineVersion] = useState<'legacy' | 'resolver_v1'>('resolver_v1');
 
   // API key status (masked value from server, for display only)
   const [geminiKeyStatus, setGeminiKeyStatus] = useState('');
@@ -58,8 +87,10 @@ export default function Settings() {
         setGeminiKey('');
         setClaudeKey('');
         setLibraryPath(data.library_path || '');
-        setTheme(data.theme || 'dark');
+        setTheme(data.theme || 'light');
         setAutoAnalyze(data.auto_analyze ?? false);
+        setPdfParserMode(data.pdf_parser_mode || 'java');
+        setExtractionPipelineVersion(data.extraction_pipeline_version || 'resolver_v1');
       } catch (err) {
         if (!cancelled) {
           if (err instanceof Error) console.warn('[settings] load error:', err.message);
@@ -104,6 +135,8 @@ export default function Settings() {
         library_path: libraryPath,
         theme,
         auto_analyze: autoAnalyze,
+        pdf_parser_mode: pdfParserMode,
+        extraction_pipeline_version: extractionPipelineVersion,
       };
       if (geminiKey.trim()) payload.gemini_api_key = geminiKey.trim();
       if (claudeKey.trim()) payload.anthropic_api_key = claudeKey.trim();
@@ -126,7 +159,7 @@ export default function Settings() {
     } finally {
       setSaving(false);
     }
-  }, [geminiKey, claudeKey, libraryPath, theme, autoAnalyze, toast]);
+  }, [geminiKey, claudeKey, libraryPath, theme, autoAnalyze, pdfParserMode, extractionPipelineVersion, toast]);
 
   // -----------------------------------------------------------------------
   // Check for unsaved changes
@@ -136,8 +169,10 @@ export default function Settings() {
     (geminiKey.trim() !== '' ||
       claudeKey.trim() !== '' ||
       libraryPath !== (settings.library_path || '') ||
-      theme !== (settings.theme || 'dark') ||
-      autoAnalyze !== (settings.auto_analyze ?? false));
+      theme !== (settings.theme || 'light') ||
+      autoAnalyze !== (settings.auto_analyze ?? false) ||
+      pdfParserMode !== (settings.pdf_parser_mode || 'java') ||
+      extractionPipelineVersion !== (settings.extraction_pipeline_version || 'resolver_v1'));
 
   if (loading) {
     return (
@@ -151,55 +186,46 @@ export default function Settings() {
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-xl font-bold text-surface-100 flex items-center gap-2">
-            <AppIcon name="settings" className="w-5 h-5 text-primary-400" />
-            {S.settings.title}
-          </h1>
-          <p className="text-sm text-surface-500 mt-1">
-            {S.settings.description}
-          </p>
+    <div className="page-container-compact">
+      <section className="archive-panel panel-compact mb-4">
+        <div className="page-header-dense">
+          <div>
+            <div className="archive-kicker">{S.settings.heroKicker}</div>
+            <h1 className="settings-hero-title mt-2 text-[1.8rem] font-semibold tracking-[-0.05em]">
+              {S.settings.title}
+            </h1>
+            <p className="settings-hero-body mt-2 text-sm leading-6">
+              {S.settings.heroBody}
+            </p>
+            <div className="page-status-strip mt-3">
+              <span className="archive-inline-status archive-inline-status-muted">
+                {S.settings.apiKeys} {geminiKeyStatus || claudeKeyStatus ? S.settings.statusConfigured : S.settings.statusMissing}
+              </span>
+              <span className="archive-inline-status archive-inline-status-muted">
+                {S.settings.librarySection} {libraryPath ? S.settings.statusConfigured : S.settings.statusMissing}
+              </span>
+              <span className="archive-inline-status archive-inline-status-muted">
+                {S.settings.appearance} {theme === 'light' ? S.settings.light : S.settings.dark}
+              </span>
+            </div>
+          </div>
         </div>
+      </section>
 
-        <button
-          onClick={handleSave}
-          disabled={saving || !hasChanges}
-          className="btn-primary"
-        >
-          {saving ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : saved ? (
-            <AppIcon name="success" className="w-4 h-4 text-emerald-300" />
-          ) : (
-            <AppIcon name="save" className="w-4 h-4" />
-          )}
-          {saving ? S.settings.saving : saved ? S.settings.saved : S.settings.save}
-        </button>
-      </div>
-
-      {/* Error */}
       {error && (
-        <div className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 px-4 py-3 mb-6" style={{ borderRadius: 'var(--radius-control)' }}>
-          <AppIcon name="error" className="w-4 h-4 shrink-0" />
+        <div className="mb-4 archive-inline-status archive-inline-status-error">
+          <AppIcon name="warning" className="w-4 h-4 shrink-0" />
           {error}
         </div>
       )}
 
-      <div className="space-y-8">
-        {/* ---------------------------------------------------------------- */}
-        {/* API Keys */}
-        {/* ---------------------------------------------------------------- */}
-        <section>
-          <h2 className="text-sm font-semibold text-surface-200 flex items-center gap-2 mb-4">
-            <AppIcon name="key" className="w-4 h-4 text-primary-400" />
-            {S.settings.apiKeys}
-          </h2>
-
+      <div className="space-y-4">
+        <SettingPanel
+          kicker={S.settings.sectionCurrent}
+          title={S.settings.apiKeys}
+          description="현재 연결 상태를 먼저 확인하고, 바꿀 키만 새로 입력합니다."
+        >
           <div className="space-y-4">
-            {/* Gemini API key */}
             <div>
               <div className="flex items-center gap-2 mb-1.5">
                 <label className="text-xs text-surface-400">
@@ -250,7 +276,6 @@ export default function Settings() {
               </p>
             </div>
 
-            {/* Claude API key */}
             <div>
               <div className="flex items-center gap-2 mb-1.5">
                 <label className="text-xs text-surface-400">
@@ -301,17 +326,13 @@ export default function Settings() {
               </p>
             </div>
           </div>
-        </section>
+        </SettingPanel>
 
-        {/* ---------------------------------------------------------------- */}
-        {/* Library Configuration */}
-        {/* ---------------------------------------------------------------- */}
-        <section>
-          <h2 className="text-sm font-semibold text-surface-200 flex items-center gap-2 mb-4">
-            <AppIcon name="folder" className="w-4 h-4 text-primary-400" />
-            {S.settings.librarySection}
-          </h2>
-
+        <SettingPanel
+          kicker={S.settings.sectionEdit}
+          title={S.settings.librarySection}
+          description="논문이 쌓이는 경로와 업로드 직후의 기본 동작을 정리합니다."
+        >
           <div className="space-y-4">
             <div>
               <label className="text-xs text-surface-400 block mb-1.5">
@@ -355,29 +376,54 @@ export default function Settings() {
               label={S.settings.autoAnalyze}
               description={S.settings.autoAnalyzeHelp}
             />
+
+            <div>
+              <label className="text-xs text-surface-400 block mb-1.5">
+                {S.settings.pdfParser}
+              </label>
+              <select
+                value={pdfParserMode}
+                onChange={(e) => setPdfParserMode(e.target.value as 'java')}
+                className="input"
+              >
+                <option value="java">{S.settings.pdfParserJava}</option>
+              </select>
+              <p className="text-2xs text-surface-600 mt-1">
+                {S.settings.pdfParserHelp}
+              </p>
+            </div>
+
+            <div>
+              <label className="text-xs text-surface-400 block mb-1.5">
+                {S.settings.extractionPipeline}
+              </label>
+              <select
+                value={extractionPipelineVersion}
+                onChange={(e) => setExtractionPipelineVersion(e.target.value as 'legacy' | 'resolver_v1')}
+                className="input"
+              >
+                <option value="legacy">{S.settings.extractionPipelineLegacy}</option>
+                <option value="resolver_v1">{S.settings.extractionPipelineResolverV1}</option>
+              </select>
+              <p className="text-2xs text-surface-600 mt-1">
+                {S.settings.extractionPipelineHelp}
+              </p>
+            </div>
           </div>
-        </section>
+        </SettingPanel>
 
-        {/* ---------------------------------------------------------------- */}
-        {/* Appearance */}
-        {/* ---------------------------------------------------------------- */}
-        <section>
-          <h2 className="text-sm font-semibold text-surface-200 flex items-center gap-2 mb-4">
-            {theme === 'dark' ? (
-              <AppIcon name="moon" className="w-4 h-4 text-primary-400" />
-            ) : (
-              <AppIcon name="sun" className="w-4 h-4 text-primary-400" />
-            )}
-            {S.settings.appearance}
-          </h2>
-
+        <SettingPanel
+          kicker={S.settings.sectionEdit}
+          title={S.settings.appearance}
+          description="현재 작업 환경에 맞게 화면 톤을 조정합니다."
+        >
           <div className="flex items-center gap-3">
             <button
               onClick={() => setTheme('dark')}
-              className={`flex items-center gap-2 px-4 py-3 border transition-colors ${
+              className={`settings-appearance-option flex items-center gap-2 px-4 py-3 border transition-colors ${
                 theme === 'dark'
-                  ? 'border-primary-500 bg-primary-500/10 text-primary-400'
-                  : 'border-surface-700 bg-surface-800 text-surface-400 hover:border-surface-600'
+                  ? 'settings-appearance-option-active border-primary-500 bg-primary-500/10 text-primary-400'
+                  : 'settings-appearance-option-inactive'
               }`}
               style={{ borderRadius: 'var(--radius-control)' }}
             >
@@ -386,10 +432,10 @@ export default function Settings() {
             </button>
             <button
               onClick={() => setTheme('light')}
-              className={`flex items-center gap-2 px-4 py-3 border transition-colors ${
+              className={`settings-appearance-option flex items-center gap-2 px-4 py-3 border transition-colors ${
                 theme === 'light'
-                  ? 'border-primary-500 bg-primary-500/10 text-primary-400'
-                  : 'border-surface-700 bg-surface-800 text-surface-400 hover:border-surface-600'
+                  ? 'settings-appearance-option-active border-primary-500 bg-primary-500/10 text-primary-400'
+                  : 'settings-appearance-option-inactive'
               }`}
               style={{ borderRadius: 'var(--radius-control)' }}
             >
@@ -397,27 +443,28 @@ export default function Settings() {
               <span className="text-sm">{S.settings.light}</span>
             </button>
           </div>
-        </section>
+        </SettingPanel>
 
-        {/* ---------------------------------------------------------------- */}
-        {/* Usage & Cost Dashboard */}
-        {/* ---------------------------------------------------------------- */}
-        <section>
-          <h2 className="text-sm font-semibold text-surface-200 flex items-center gap-2 mb-4">
-            <AppIcon name="dollar" className="w-4 h-4 text-primary-400" />
-            {S.settings.usageCosts}
-          </h2>
+        <SettingPanel
+          kicker={S.settings.sectionCurrent}
+          title={S.settings.usageCosts}
+          description="최근 분석이 얼마나 호출과 비용을 만들었는지 확인합니다."
+        >
           <CostDashboard />
-        </section>
+        </SettingPanel>
       </div>
 
-      {/* Sticky save bar when changes exist */}
-      {hasChanges && (
-        <div className="fixed bottom-0 left-0 right-0 bg-surface-800/85 backdrop-blur-lg border-t border-surface-700/50 px-6 py-3 z-40">
-          <div className="max-w-3xl mx-auto flex items-center justify-between">
-            <span className="text-sm text-surface-400">
-              {S.settings.unsavedChanges}
-            </span>
+      {(hasChanges || saved) && (
+        <div className="settings-savebar fixed bottom-0 left-0 right-0 z-40 border-t px-5 py-3 backdrop-blur-xl">
+          <div className="mx-auto flex max-w-[96rem] items-center justify-between gap-4">
+            <div className={saved ? 'archive-inline-status archive-inline-status-success' : 'archive-inline-status archive-inline-status-muted'}>
+              {saved ? (
+                <AppIcon name="success" className="w-4 h-4" />
+              ) : (
+                <AppIcon name="info" className="w-4 h-4" />
+              )}
+              {saved ? S.settings.saved : S.settings.unsavedChanges}
+            </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
@@ -426,8 +473,10 @@ export default function Settings() {
                   setClaudeKey('');
                   if (settings) {
                     setLibraryPath(settings.library_path || '');
-                    setTheme(settings.theme || 'dark');
+                    setTheme(settings.theme || 'light');
                     setAutoAnalyze(settings.auto_analyze ?? false);
+                    setPdfParserMode(settings.pdf_parser_mode || 'java');
+                    setExtractionPipelineVersion(settings.extraction_pipeline_version || 'resolver_v1');
                   }
                 }}
                 className="btn-ghost text-sm"
@@ -436,7 +485,7 @@ export default function Settings() {
               </button>
               <button
                 onClick={handleSave}
-                disabled={saving}
+                disabled={saving || !hasChanges}
                 className="btn-primary text-sm"
               >
                 {saving ? (

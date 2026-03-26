@@ -7,6 +7,7 @@ python-multipart>=0.0.12
 # PDF processing
 PyMuPDF>=1.25.0
 pdfplumber>=0.11.0
+opendataloader-pdf>=2.0.2
 
 # LLM providers
 google-genai>=1.0.0

@@ -6,31 +6,19 @@ Cache files are stored alongside the PDF:
   ~/sasoo-library/papers/{folder_name}/.text_cache.txt
   ~/sasoo-library/papers/{folder_name}/.text_cache.meta.json
 
-Invalidation: SHA-256 hash of the PDF file. If the PDF changes, the cache
-is automatically regenerated.
+Invalidation: PDF mtime_ns + size. If the PDF changes, the cache is
+automatically regenerated without re-reading the whole file on cache hits.
 """
 
-import hashlib
 import json
 import logging
 import time
 from pathlib import Path
 
-import fitz  # PyMuPDF
-
 logger = logging.getLogger(__name__)
 
 CACHE_FILENAME = ".text_cache.txt"
 CACHE_META_FILENAME = ".text_cache.meta.json"
-
-
-def _pdf_hash(pdf_path: Path) -> str:
-    """Return first 16 hex chars of the PDF's SHA-256."""
-    h = hashlib.sha256()
-    with open(pdf_path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            h.update(chunk)
-    return h.hexdigest()[:16]
 
 
 def _read_cache(paper_dir: Path, pdf_path: Path) -> str | None:
@@ -46,7 +34,13 @@ def _read_cache(paper_dir: Path, pdf_path: Path) -> str | None:
     except (json.JSONDecodeError, OSError):
         return None
 
-    if meta.get("pdf_hash") != _pdf_hash(pdf_path):
+    from services.odl_parser import get_pdf_signature
+
+    pdf_signature = get_pdf_signature(pdf_path)
+    if (
+        meta.get("pdf_mtime_ns") != pdf_signature["pdf_mtime_ns"]
+        or meta.get("pdf_size") != pdf_signature["pdf_size"]
+    ):
         return None  # PDF changed → invalidate
 
     return cache_file.read_text(encoding="utf-8")
@@ -56,26 +50,20 @@ def _write_cache(paper_dir: Path, pdf_path: Path, text: str) -> None:
     """Persist extracted text to disk."""
     cache_file = paper_dir / CACHE_FILENAME
     meta_file = paper_dir / CACHE_META_FILENAME
+    from services.odl_parser import get_pdf_signature
+
+    pdf_signature = get_pdf_signature(pdf_path)
 
     cache_file.write_text(text, encoding="utf-8")
     meta_file.write_text(
         json.dumps({
-            "pdf_hash": _pdf_hash(pdf_path),
+            "pdf_mtime_ns": pdf_signature["pdf_mtime_ns"],
+            "pdf_size": pdf_signature["pdf_size"],
             "extracted_at": time.time(),
             "char_count": len(text),
         }),
         encoding="utf-8",
     )
-
-
-def _extract_full_text(pdf_path: Path) -> str:
-    """Extract full text from every page of the PDF."""
-    doc = fitz.open(str(pdf_path))
-    parts: list[str] = []
-    for page in doc:
-        parts.append(page.get_text())
-    doc.close()
-    return "\n".join(parts)
 
 
 def get_pdf_text(paper_dir: Path) -> str:
@@ -100,10 +88,13 @@ def get_pdf_text(paper_dir: Path) -> str:
         logger.debug("PDF text cache HIT for %s", paper_dir.name)
         return cached
 
-    # Cache miss → extract and save
-    logger.info("PDF text cache MISS for %s — extracting...", paper_dir.name)
-    text = _extract_full_text(pdf_path)
-    _write_cache(paper_dir, pdf_path, text)
+    from services.odl_parser import ensure_text_artifacts
+
+    logger.info("PDF text cache MISS for %s — preparing text artifacts...", paper_dir.name)
+    manifest = ensure_text_artifacts(paper_dir)
+    text = manifest.get("full_text", "")
+    if not text:
+        raise RuntimeError(f"OpenDataLoader did not produce text for {paper_dir}")
     return text
 
 
@@ -118,6 +109,11 @@ def warm_cache(paper_dir: Path) -> None:
 
     pdf_path = pdf_files[0]
     if _read_cache(paper_dir, pdf_path) is None:
-        text = _extract_full_text(pdf_path)
-        _write_cache(paper_dir, pdf_path, text)
-        logger.info("Warmed PDF text cache for %s (%d chars)", paper_dir.name, len(text))
+        from services.odl_parser import ensure_text_artifacts
+
+        manifest = ensure_text_artifacts(paper_dir)
+        logger.info(
+            "Warmed text cache for %s (%d chars)",
+            paper_dir.name,
+            len(manifest.get("full_text", "")),
+        )

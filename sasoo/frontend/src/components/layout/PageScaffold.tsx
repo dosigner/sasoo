@@ -2,11 +2,22 @@ import type { ReactNode } from 'react';
 
 interface PageScaffoldProps {
   children: ReactNode;
+  variant?: 'archive' | 'control' | 'default';
 }
 
-export default function PageScaffold({ children }: PageScaffoldProps) {
+export default function PageScaffold({
+  children,
+  variant = 'default',
+}: PageScaffoldProps) {
+  const variantClass =
+    variant === 'archive'
+      ? 'page-scaffold-archive'
+      : variant === 'control'
+        ? 'page-scaffold-control'
+        : 'page-scaffold-default';
+
   return (
-    <div className="h-full overflow-y-auto bg-surface-900 [.light_&]:bg-surface-50">
+    <div className={`page-scaffold ${variantClass}`}>
       {children}
     </div>
   );

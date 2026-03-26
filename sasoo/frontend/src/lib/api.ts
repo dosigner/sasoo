@@ -2,6 +2,7 @@
 // Communicates with FastAPI backend
 
 const BACKEND_PORT = 8000;
+const NETWORK_RETRY_DELAYS_MS = [300, 900, 1800];
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,7 +23,14 @@ export interface Paper {
   analyzed_at: string | null;
   notes: string | null;
   created_at: string | null;
+  text_ready: boolean;
+  visual_ready: boolean;
+  visual_state: VisualState;
+  visual_error: string | null;
+  artifacts_ready: boolean;
 }
+
+export type ArtifactStatus = Pick<Paper, 'text_ready' | 'visual_ready' | 'visual_state'>;
 
 export type PaperStatus =
   | 'pending'
@@ -62,6 +70,7 @@ export type UploadResponse = Paper;
 // Analysis types
 export type AnalysisPhase = 'screening' | 'citation' | 'visual' | 'recipe' | 'deep_dive';
 export type PhaseStatusValue = 'pending' | 'running' | 'completed' | 'error';
+export type VisualState = 'ready' | 'running' | 'error' | 'partial';
 export type PaperBananaProfile = 'fast' | 'balanced' | 'quality';
 
 export interface AnalysisRunRequest {
@@ -107,22 +116,73 @@ export interface Figure {
   paper_id: number;
   figure_num: string | null;
   page_number?: number | null;
+  bbox?: [number, number, number, number] | null;
   caption: string | null;
   file_path: string | null;
   ai_analysis: string | null;
   quality: string | null;
   detailed_explanation: string | null;
+  extraction_engine?: 'odl-java' | 'odl-hybrid' | null;
+  confidence?: number | null;
+  classifier_label?: string | null;
+  classifier_model?: string | null;
+  parent_figure_id?: number | null;
+  is_composite?: boolean | null;
+  resolver_version?: string | null;
+  extraction_status?: string | null;
 }
 
 export interface PdfNavigationRequest {
   page: number;
   requestId: string;
-  source: 'figure' | 'citation' | 'recipe';
+  source: 'figure' | 'table' | 'citation' | 'recipe';
 }
 
 export interface FigureListResponse {
   figures: Figure[];
   total: number;
+  visual_state: VisualState;
+  visual_error?: string | null;
+  artifacts_ready: boolean;
+  artifacts_error?: string | null;
+}
+
+export interface Table {
+  id: number | null;
+  paper_id: number;
+  table_num: string | null;
+  caption: string | null;
+  page_number?: number | null;
+  bbox?: [number, number, number, number] | null;
+  csv_path?: string | null;
+  html_path?: string | null;
+  markdown_text?: string | null;
+  confidence?: number | null;
+  parse_method?: 'odl' | 'pdfplumber' | 'hybrid' | 'vlm_repaired' | null;
+  classifier_model?: string | null;
+  resolver_version?: string | null;
+  extraction_status?: string | null;
+  repair_attempted?: boolean;
+  repair_reason?: string | null;
+  repair_confidence?: number | null;
+  review_required?: boolean;
+}
+
+export interface EfficiencyMetrics {
+  phase_call_counts: Record<string, number>;
+  estimated_cached_calls_saved: number;
+  estimated_cached_cost_usd_saved: number;
+  uncertain_table_repair_calls: number;
+  review_required_tables: number;
+}
+
+export interface TableListResponse {
+  tables: Table[];
+  total: number;
+  visual_state: VisualState;
+  visual_error?: string | null;
+  artifacts_ready: boolean;
+  artifacts_error?: string | null;
 }
 
 export interface FigureExplanationResponse {
@@ -206,6 +266,8 @@ export interface Settings {
   gemini_model: string;
   anthropic_model: string;
   paperbanana_profile: PaperBananaProfile;
+  pdf_parser_mode: 'java';
+  extraction_pipeline_version: 'legacy' | 'resolver_v1';
 }
 
 export interface ModelStats {
@@ -248,6 +310,7 @@ export interface CostSummary {
     total_tokens_in: number;
     total_tokens_out: number;
   };
+  efficiency: EfficiencyMetrics;
 }
 
 // ---------------------------------------------------------------------------
@@ -273,7 +336,7 @@ export class ApiError extends Error {
 // In development (http://), use relative URL (Vite proxy handles it)
 export function getApiBase(): string {
   const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
-  return isFileProtocol ? `http://localhost:${BACKEND_PORT}/api` : '/api';
+  return isFileProtocol ? `http://127.0.0.1:${BACKEND_PORT}/api` : '/api';
 }
 
 // For static URL helper
@@ -286,6 +349,8 @@ async function request<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${getApiBase()}${endpoint}`;
+  const method = (options.method ?? 'GET').toUpperCase();
+  const shouldRetryNetworkError = method === 'GET' || method === 'HEAD';
 
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
@@ -296,13 +361,31 @@ async function request<T>(
     headers['Content-Type'] = 'application/json';
   }
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      response = await fetch(url, {
+        ...options,
+        headers,
+      });
+      break;
+    } catch (error) {
+      const retryDelay = NETWORK_RETRY_DELAYS_MS[attempt];
+      if (!shouldRetryNetworkError || retryDelay === undefined) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+    }
+  }
 
   if (!response.ok) {
-    let errorMessage = `Request failed: ${response.statusText}`;
+    let errorMessage =
+      response.status >= 500
+        ? '서버 응답을 기다리는 중 문제가 발생했습니다.'
+        : response.status === 404
+          ? '요청한 항목을 찾을 수 없습니다.'
+          : '요청을 처리하지 못했습니다.';
     let details: unknown = undefined;
     try {
       const errorBody = await response.json();
@@ -453,6 +536,10 @@ export async function cancelAnalysis(paperId: string): Promise<void> {
 
 export async function getFigures(paperId: string): Promise<FigureListResponse> {
   return request<FigureListResponse>(`/analysis/${paperId}/figures`);
+}
+
+export async function getTables(paperId: string): Promise<TableListResponse> {
+  return request<TableListResponse>(`/analysis/${paperId}/tables`);
 }
 
 export async function generateFigureExplanation(
@@ -734,9 +821,22 @@ export function getStaticUrl(relativeUrl: string | null | undefined): string {
   if (!relativeUrl) return '';
   // In Electron production (file:// protocol), use absolute backend URL
   if (isFileProtocolCheck() && relativeUrl.startsWith('/static/')) {
-    return `http://localhost:${BACKEND_PORT}${relativeUrl}`;
+    return `http://127.0.0.1:${BACKEND_PORT}${relativeUrl}`;
   }
   return relativeUrl;
+}
+
+export function getLibraryAssetUrl(assetPath: string | null | undefined): string {
+  if (!assetPath) return '';
+
+  const normalized = assetPath.replace(/\\/g, '/');
+  const libraryIdx = normalized.indexOf('/library/');
+  if (libraryIdx >= 0) {
+    const relative = normalized.substring(libraryIdx + '/library/'.length);
+    return getStaticUrl(`/static/library/${encodeURI(relative)}`);
+  }
+
+  return getStaticUrl(assetPath);
 }
 
 // Domain list is now dynamic - fetched from /api/agents

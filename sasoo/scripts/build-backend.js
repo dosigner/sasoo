@@ -107,6 +107,45 @@ function checkPyInstaller(pythonPath) {
 }
 
 /**
+ * Inspect the Python version used for packaging.
+ * Release packaging is validated on Python 3.12 in CI.
+ */
+function inspectPythonVersion(pythonPath) {
+  info('Inspecting Python runtime...');
+
+  try {
+    const result = spawnSync(
+      pythonPath,
+      ['-c', 'import platform; print(platform.python_version())'],
+      {
+        encoding: 'utf-8',
+        stdio: 'pipe',
+      }
+    );
+
+    if (result.status !== 0) {
+      warn('Could not determine Python version. Continuing without a release-version check.');
+      return;
+    }
+
+    const version = result.stdout.trim();
+    const [major, minor] = version.split('.').map((part) => Number(part));
+    info(`Python version: ${version}`);
+
+    if (major === 3 && minor === 12) {
+      success('Python 3.12 detected. This matches the CI release packaging baseline.');
+      return;
+    }
+
+    warn(
+      `Python ${version} detected. Local builds can still run, but release-quality packaging is only validated on Python 3.12.`
+    );
+  } catch (e) {
+    warn('Could not determine Python version. Continuing without a release-version check.');
+  }
+}
+
+/**
  * Detect platform-specific files that should never ship in the current build.
  */
 function findForeignArtifacts(rootDir) {
@@ -212,9 +251,20 @@ function verifyBuild() {
   info('Verifying build output...');
 
   const exePath = path.join(OUTPUT_DIR, process.platform === 'win32' ? 'sasoo-backend.exe' : 'sasoo-backend');
+  const odlJarPath = path.join(
+    OUTPUT_DIR,
+    '_internal',
+    'opendataloader_pdf',
+    'jar',
+    'opendataloader-pdf-cli.jar'
+  );
 
   if (!fs.existsSync(exePath)) {
     error(`Executable not found: ${exePath}`);
+    return false;
+  }
+  if (!fs.existsSync(odlJarPath)) {
+    error(`OpenDataLoader JAR not found in build output: ${odlJarPath}`);
     return false;
   }
 
@@ -223,6 +273,20 @@ function verifyBuild() {
 
   success(`Executable created: ${exePath}`);
   info(`Size: ${sizeMB} MB`);
+  info(`OpenDataLoader JAR found: ${odlJarPath}`);
+
+  const bundledJavaRuntime = path.join(BACKEND_DIR, 'java-runtime');
+  if (!fs.existsSync(bundledJavaRuntime)) {
+    warn('backend/java-runtime was not found. Production ODL Java mode will require system Java.');
+  } else {
+    const javaCandidates = [
+      path.join(bundledJavaRuntime, 'bin', process.platform === 'win32' ? 'java.exe' : 'java'),
+      path.join(bundledJavaRuntime, 'Contents', 'Home', 'bin', process.platform === 'win32' ? 'java.exe' : 'java'),
+    ];
+    if (!javaCandidates.some((candidate) => fs.existsSync(candidate))) {
+      warn('backend/java-runtime exists, but no Java executable was found under bin/ or Contents/Home/bin/.');
+    }
+  }
 
   const foreignArtifacts = findForeignArtifacts(OUTPUT_DIR);
   if (foreignArtifacts.length > 0) {
@@ -303,6 +367,8 @@ async function main() {
   if (!checkPyInstaller(pythonPath)) {
     process.exit(1);
   }
+
+  inspectPythonVersion(pythonPath);
 
   // Clean previous build
   cleanBuild();

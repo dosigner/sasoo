@@ -10,10 +10,12 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import {
+  type ArtifactStatus,
   getStaticUrl,
   type AnalysisResults,
   type AnalysisStatus,
   type FigureListResponse,
+  type TableListResponse,
   type Recipe,
   type MermaidDiagram,
   type VisualizationPlan,
@@ -21,11 +23,13 @@ import {
   type PhaseStatusValue,
   type AnalysisPhase,
   type Figure,
+  type Table,
 } from '@/lib/api';
 import { getAgentMeta } from '@/lib/agents';
 import { buildPhaseSummary, buildWorkbenchStatusSummary } from '@/lib/workbenchSummaries';
 import { S } from '@/lib/strings';
 import FigureGallery from './FigureGallery';
+import TableGallery from './TableGallery';
 import RecipeCard from './RecipeCard';
 import ExperimentPlanTab from './ExperimentPlanTab';
 import { ContentState } from '@/components/ui';
@@ -39,8 +43,10 @@ import ProgressTracker from './ProgressTracker';
 
 interface AnalysisPanelProps {
   status: AnalysisStatus | null;
+  artifactStatus?: ArtifactStatus | null;
   results: AnalysisResults | null;
   figures: FigureListResponse | null;
+  tables: TableListResponse | null;
   recipe: Recipe | null;
   mermaid: MermaidDiagram | null;
   visualizations: VisualizationPlan | null;
@@ -48,6 +54,7 @@ interface AnalysisPanelProps {
   agentName?: string;
   paperId?: string;
   onJumpToFigurePage?: (figure: Figure) => void;
+  onJumpToTablePage?: (table: Table) => void;
   terminalState?: 'cancelled' | null;
 }
 
@@ -809,8 +816,10 @@ function VisualizationGallery({
 
 export default function AnalysisPanel({
   status,
+  artifactStatus,
   results,
   figures,
+  tables,
   recipe,
   mermaid: mermaidDiagram,
   visualizations,
@@ -818,9 +827,10 @@ export default function AnalysisPanel({
   agentName,
   paperId,
   onJumpToFigurePage,
+  onJumpToTablePage,
   terminalState,
 }: AnalysisPanelProps) {
-  const [activeTab, setActiveTab] = useState<'summary' | 'figures' | 'recipe' | 'experiment'>('summary');
+  const [activeTab, setActiveTab] = useState<'summary' | 'figures' | 'tables' | 'recipe' | 'experiment'>('summary');
 
   useEffect(() => {
     setActiveTab('summary');
@@ -860,15 +870,18 @@ export default function AnalysisPanel({
   const agentMeta = getAgentMeta(agentName);
   const phaseAccentColor = agentMeta?.color;
   const figureList = figures?.figures ?? [];
-  const screeningSummary = buildPhaseSummary('screening', results, recipe, figureList, visualizations);
-  const citationSummary = buildPhaseSummary('citation', results, recipe, figureList, visualizations);
-  const visualSummary = buildPhaseSummary('visual', results, recipe, figureList, visualizations);
-  const recipeSummary = buildPhaseSummary('recipe', results, recipe, figureList, visualizations);
-  const deepDiveSummary = buildPhaseSummary('deep_dive', results, recipe, figureList, visualizations);
+  const tableList = tables?.tables ?? [];
+  const screeningSummary = buildPhaseSummary('screening', results, recipe, figureList, tableList, visualizations);
+  const citationSummary = buildPhaseSummary('citation', results, recipe, figureList, tableList, visualizations);
+  const visualSummary = buildPhaseSummary('visual', results, recipe, figureList, tableList, visualizations);
+  const recipeSummary = buildPhaseSummary('recipe', results, recipe, figureList, tableList, visualizations);
+  const deepDiveSummary = buildPhaseSummary('deep_dive', results, recipe, figureList, tableList, visualizations);
   const recipeReady = getPhaseStatus('recipe') === 'completed' && Boolean(paperId);
   const workbenchStatus = buildWorkbenchStatusSummary({
     status,
+    artifactStatus,
     figures: figureList,
+    tables: tableList,
     recipe,
     visualizations,
     terminalState,
@@ -876,9 +889,10 @@ export default function AnalysisPanel({
 
   const visibleTab = activeTab === 'experiment' && !recipeReady ? 'summary' : activeTab;
 
-  const tabs: Array<{ key: 'summary' | 'figures' | 'recipe' | 'experiment'; label: string; icon: 'summary' | 'figures' | 'recipe' | 'experiment'; disabled?: boolean }> = [
+  const tabs: Array<{ key: 'summary' | 'figures' | 'tables' | 'recipe' | 'experiment'; label: string; icon: 'summary' | 'figures' | 'tables' | 'recipe' | 'experiment'; disabled?: boolean }> = [
     { key: 'summary', label: S.workbench.summaryTab, icon: 'summary' },
     { key: 'figures', label: S.workbench.figuresTab, icon: 'figures' },
+    { key: 'tables', label: S.workbench.tablesTab, icon: 'tables' },
     { key: 'recipe', label: S.workbench.recipeTab, icon: 'recipe' },
     { key: 'experiment', label: S.workbench.experimentTab, icon: 'experiment', disabled: !recipeReady },
   ];
@@ -1012,7 +1026,37 @@ export default function AnalysisPanel({
               figures={figureList}
               paperId={paperId ?? ''}
               loading={getPhaseStatus('visual') === 'running'}
+              visualState={figures?.visual_state}
+              visualError={figures?.visual_error}
+              artifactsReady={figures?.artifacts_ready}
+              artifactsError={figures?.artifacts_error}
               onJumpToFigurePage={onJumpToFigurePage}
+            />
+          </div>
+        )}
+
+        {visibleTab === 'tables' && (
+          <div className="space-y-5">
+            <div className="border border-surface-700/45 bg-surface-900/40 px-4 py-4 [.light_&]:bg-white" style={{ borderRadius: 'var(--radius-surface)' }}>
+              <div className="flex items-center gap-2">
+                <AppIcon name="tables" className="w-4 h-4 text-primary-400" />
+                <h3 className="text-sm font-semibold text-surface-100">
+                  {S.workbench.tablesTab}
+                </h3>
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-surface-400">
+                {visualSummary.summaryLine || '복구된 Table 구조와 저장된 CSV/HTML 자산을 한곳에서 확인할 수 있습니다.'}
+              </p>
+            </div>
+
+            <TableGallery
+              tables={tableList}
+              loading={getPhaseStatus('visual') === 'running'}
+              visualState={tables?.visual_state}
+              visualError={tables?.visual_error}
+              artifactsReady={tables?.artifacts_ready}
+              artifactsError={tables?.artifacts_error}
+              onJumpToTablePage={onJumpToTablePage}
             />
           </div>
         )}

@@ -1,24 +1,23 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
+import logoImg from '@/assets/logo.png';
 import {
-  Loader2,
-} from 'lucide-react';
-import { uploadPaper, updatePaper, type UploadResponse } from '@/lib/api';
+  getPapers,
+  getSettings,
+  uploadPaper,
+  updatePaper,
+  type Paper,
+  type Settings,
+  type UploadResponse,
+} from '@/lib/api';
 import { getAgentMeta, getAllAgents, agentBgStyle, agentBorderStyle } from '@/lib/agents';
 import { useToast } from '@/components/Toast';
 import { S } from '@/lib/strings';
 import { AppIcon } from '@/components/icons';
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const ACCEPTED_TYPES = ['application/pdf'];
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -26,11 +25,97 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-type UploadStage = 'idle' | 'uploading' | 'parsing' | 'classified' | 'error';
+function formatPaperDate(dateStr: string | null): string {
+  if (!dateStr) return S.upload.noTimestamp;
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+  return new Date(dateStr).toLocaleDateString('ko-KR', {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function paperStatusLabel(status: Paper['status']): string {
+  switch (status) {
+    case 'completed':
+      return S.status.analyzed;
+    case 'analyzing':
+      return S.status.analyzing;
+    case 'error':
+      return S.status.error;
+    case 'pending':
+    default:
+      return S.status.pending;
+  }
+}
+
+function paperStatusClass(status: Paper['status']): string {
+  switch (status) {
+    case 'completed':
+      return 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300';
+    case 'analyzing':
+      return 'border-sky-500/20 bg-sky-500/10 text-sky-300';
+    case 'error':
+      return 'border-red-500/20 bg-red-500/10 text-red-300';
+    case 'pending':
+    default:
+      return 'border-amber-500/20 bg-amber-500/10 text-amber-300';
+  }
+}
+
+function RecentPaperRow({
+  paper,
+  metaLabel,
+  metaValue,
+  onOpen,
+}: {
+  paper: Paper;
+  metaLabel: string;
+  metaValue: string;
+  onOpen: (id: string) => void;
+}) {
+  const agent = getAgentMeta(paper.agent_used);
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(String(paper.id))}
+      className="group w-full rounded-[20px] bg-surface-950/30 px-4 py-3.5 text-left transition-all duration-200 hover:bg-surface-950/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950 [.light_&]:bg-white/80 [.light_&]:hover:bg-white [.light_&]:focus-visible:ring-offset-surface-50"
+      aria-label={`${paper.title} 워크벤치 열기`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] ${paperStatusClass(paper.status)}`}>
+            <span className="h-1.5 w-1.5 rounded-full bg-current" />
+            {paperStatusLabel(paper.status)}
+          </div>
+          <h3 className="mt-3 line-clamp-2 text-[15px] font-semibold leading-6 text-surface-100 transition-colors group-hover:text-white [.light_&]:group-hover:text-surface-900">
+            {paper.title}
+          </h3>
+          <p className="mt-1.5 line-clamp-1 text-[13px] leading-5 text-surface-500 [.light_&]:text-surface-600">
+            {paper.authors || paper.journal || paper.domain}
+          </p>
+        </div>
+        <span className="mt-0.5 shrink-0 rounded-full bg-surface-900/70 p-2 text-surface-400 transition-colors group-hover:text-surface-100 [.light_&]:bg-surface-100 [.light_&]:text-surface-600 [.light_&]:group-hover:text-surface-900">
+          <AppIcon name="arrow-right" className="h-3.5 w-3.5" />
+        </span>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] leading-5 text-surface-500 [.light_&]:text-surface-600">
+        <span>{metaLabel} {metaValue}</span>
+        <span className="h-1 w-1 rounded-full bg-surface-700" />
+        <span>{paper.domain}</span>
+        {agent && (
+          <>
+            <span className="h-1 w-1 rounded-full bg-surface-700" />
+            <span>{agent.nameKo}</span>
+          </>
+        )}
+      </div>
+    </button>
+  );
+}
+
+type UploadStage = 'idle' | 'uploading' | 'parsing' | 'classified' | 'error';
 
 export default function Upload() {
   const navigate = useNavigate();
@@ -44,10 +129,55 @@ export default function Upload() {
   const [domainOverride, setDomainOverride] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [settingsSnapshot, setSettingsSnapshot] = useState<Settings | null>(null);
+  const [systemReady, setSystemReady] = useState<boolean | null>(null);
+  const [recentAnalyses, setRecentAnalyses] = useState<Paper[]>([]);
+  const [recentLibrary, setRecentLibrary] = useState<Paper[]>([]);
 
-  // -----------------------------------------------------------------------
-  // File validation
-  // -----------------------------------------------------------------------
+  useEffect(() => {
+    let cancelled = false;
+
+    getSettings()
+      .then((data) => {
+        if (cancelled) return;
+        setSettingsSnapshot(data);
+        setSystemReady(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSystemReady(false);
+      });
+
+    Promise.all([
+      getPapers({
+        page: 1,
+        page_size: 4,
+        sort_by: 'analyzed_at',
+        sort_order: 'desc',
+      }),
+      getPapers({
+        page: 1,
+        page_size: 4,
+        sort_by: 'created_at',
+        sort_order: 'desc',
+      }),
+    ])
+      .then(([analysisResponse, libraryResponse]) => {
+        if (cancelled) return;
+        setRecentAnalyses(analysisResponse.papers.filter((paper) => paper.analyzed_at).slice(0, 4));
+        setRecentLibrary(libraryResponse.papers.slice(0, 4));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRecentAnalyses([]);
+        setRecentLibrary([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const validateFile = useCallback((file: File): string | null => {
     if (!ACCEPTED_TYPES.includes(file.type) && !file.name.endsWith('.pdf')) {
       return S.upload.onlyPdf;
@@ -61,9 +191,6 @@ export default function Upload() {
     return null;
   }, []);
 
-  // -----------------------------------------------------------------------
-  // Handle file selection
-  // -----------------------------------------------------------------------
   const handleFileSelect = useCallback(
     (file: File) => {
       const validationError = validateFile(file);
@@ -79,9 +206,6 @@ export default function Upload() {
     [validateFile]
   );
 
-  // -----------------------------------------------------------------------
-  // Upload handler
-  // -----------------------------------------------------------------------
   const handleUpload = useCallback(async () => {
     if (!selectedFile) return;
 
@@ -92,9 +216,7 @@ export default function Upload() {
     try {
       const result = await uploadPaper(selectedFile, (progress) => {
         setUploadProgress(progress);
-        if (progress >= 100) {
-          setStage('parsing');
-        }
+        if (progress >= 100) setStage('parsing');
       });
 
       setUploadResult(result);
@@ -109,13 +231,9 @@ export default function Upload() {
     }
   }, [selectedFile, toast]);
 
-  // -----------------------------------------------------------------------
-  // Navigate to workbench
-  // -----------------------------------------------------------------------
   const handleStartAnalysis = useCallback(async () => {
     if (!uploadResult) return;
     try {
-      // If user changed domain, update it on the backend before navigating
       if (domainOverride && domainOverride !== uploadResult.domain) {
         await updatePaper(uploadResult.id, { domain: domainOverride });
       }
@@ -125,9 +243,6 @@ export default function Upload() {
     }
   }, [navigate, uploadResult, domainOverride]);
 
-  // -----------------------------------------------------------------------
-  // Drag and drop handlers
-  // -----------------------------------------------------------------------
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -137,10 +252,7 @@ export default function Upload() {
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    // Only set false if leaving the drop zone (not entering a child)
-    if (e.currentTarget === e.target) {
-      setIsDragging(false);
-    }
+    if (e.currentTarget === e.target) setIsDragging(false);
   }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -155,59 +267,109 @@ export default function Upload() {
       setIsDragging(false);
 
       const files = Array.from(e.dataTransfer.files);
-      if (files.length > 0) {
-        handleFileSelect(files[0]);
-      }
+      if (files.length > 0) handleFileSelect(files[0]);
     },
     [handleFileSelect]
   );
 
-  // -----------------------------------------------------------------------
-  // Clear selection
-  // -----------------------------------------------------------------------
   const clearFile = useCallback(() => {
     setSelectedFile(null);
     setUploadResult(null);
     setStage('idle');
     setError(null);
     setUploadProgress(0);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }, []);
 
-  return (
-    <div className="min-h-full flex items-center justify-center p-8">
-      <div className="w-full max-w-xl">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="icon-surface mx-auto mb-4 h-14 w-14">
-            <AppIcon name="workbench" className="w-7 h-7 text-primary-400" />
-          </div>
-          <h1 className="text-2xl font-bold text-surface-100 mb-2">
-            {S.upload.title}
-          </h1>
-          <p className="text-sm text-surface-400 max-w-sm mx-auto">
-            {S.upload.description}
-          </p>
-        </div>
+  const systemStatusClass =
+    systemReady === null
+      ? 'archive-inline-status archive-inline-status-muted'
+      : systemReady
+        ? 'archive-inline-status archive-inline-status-success'
+        : 'archive-inline-status archive-inline-status-error';
 
-        {/* Upload zone */}
-        <div
+  const handleOpenRecent = useCallback(
+    (id: string) => {
+      navigate(`/workbench/${id}`);
+    },
+    [navigate]
+  );
+
+  const systemSummary = [
+    {
+      label: S.upload.systemLibrary,
+      value: settingsSnapshot?.library_path || S.upload.systemNotConfigured,
+    },
+    {
+      label: S.upload.systemAuto,
+      value: settingsSnapshot?.auto_analyze ? S.upload.systemAutoOn : S.upload.systemAutoOff,
+    },
+    {
+      label: S.upload.systemTheme,
+      value: settingsSnapshot?.theme === 'light' ? S.settings.light : S.settings.dark,
+    },
+  ];
+
+  return (
+    <div className="page-container-wide">
+      <section className="page-header-dense mb-4">
+        <div>
+          <div className="archive-kicker">{S.upload.heroKicker}</div>
+          <div className="mt-3 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-surface-800/80 bg-surface-950/85">
+              <img src={logoImg} alt="Sasoo" className="h-7 w-7 rounded-xl" />
+            </div>
+            <div>
+              <h1 className="text-[1.45rem] font-semibold tracking-[-0.05em] text-surface-100">
+                {S.app.name}
+              </h1>
+              <p className="text-sm text-surface-400">{S.upload.heroBody}</p>
+            </div>
+          </div>
+        </div>
+        <div className="page-status-strip">
+          <span className={systemStatusClass}>
+            <span className={`h-2 w-2 rounded-full ${systemReady ? 'bg-emerald-400' : systemReady === false ? 'bg-amber-300' : 'bg-surface-500'}`} />
+            {systemReady === null
+              ? S.settings.loadingSettings
+              : systemReady
+                ? S.upload.systemReady
+                : S.upload.systemOffline}
+          </span>
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.18fr)_minmax(24rem,34rem)]">
+        <section
           onDragEnter={handleDragEnter}
           onDragLeave={handleDragLeave}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
-          className={`relative border-2 border-dashed p-8 text-center transition-all duration-200 ${
-            isDragging
-              ? 'border-primary-500 bg-primary-500/10 backdrop-blur-md scale-[1.02]'
-              : selectedFile
-                ? 'border-surface-600 bg-surface-800'
-                : 'border-surface-600 bg-surface-800/50 hover:border-surface-500 hover:bg-surface-800'
+          className={`archive-panel panel-compact relative overflow-hidden ${
+            isDragging ? 'border-primary-500/40 bg-primary-500/10' : ''
           }`}
-          style={{ borderRadius: 'var(--radius-surface)' }}
         >
-          {/* Hidden file input */}
+          <div className="page-header-dense gap-3 border-b border-surface-800/70 pb-4">
+            <div>
+              <div className="archive-kicker">{S.upload.surfaceTitle}</div>
+              <h2 className="mt-2 text-[1.55rem] font-semibold tracking-[-0.04em] text-surface-50 [.light_&]:text-surface-900">
+                {selectedFile ? selectedFile.name : S.upload.dragDrop}
+              </h2>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-surface-400 [.light_&]:text-surface-600">
+                {selectedFile ? formatFileSize(selectedFile.size) : S.upload.surfaceBody}
+              </p>
+            </div>
+            {!selectedFile && (
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="btn-primary shrink-0 justify-center py-3 text-sm"
+              >
+                <AppIcon name="upload" className="h-4 w-4" />
+                {S.upload.uploadBtn}
+              </button>
+            )}
+          </div>
+
           <input
             ref={fileInputRef}
             type="file"
@@ -219,220 +381,140 @@ export default function Upload() {
             }}
           />
 
-          {/* No file selected */}
           {!selectedFile && (
-            <div className="space-y-4">
-              <div className="w-12 h-12 bg-surface-700 border border-surface-600 flex items-center justify-center mx-auto" style={{ borderRadius: 'var(--radius-control)' }}>
-                <AppIcon name="upload" className="w-6 h-6 text-surface-400" />
+            <div className="mt-4 rounded-[18px] border border-dashed border-surface-700/80 bg-surface-950/40 px-4 py-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-surface-800/80 bg-surface-900/90">
+                  <AppIcon name="upload" className="h-5 w-5 text-primary-400" />
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-surface-100 [.light_&]:text-surface-900">{S.upload.surfaceActionTitle}</div>
+                  <p className="mt-1 text-sm leading-6 text-surface-400 [.light_&]:text-surface-600">{S.upload.emptyHint}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-surface-200 mb-1">
-                  {S.upload.dragDrop}
-                </p>
-                <p className="text-2xs text-surface-500">
-                  또는{' '}
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="text-primary-400 hover:text-primary-300 underline underline-offset-2"
-                  >
-                    {S.upload.browse}
-                  </button>
-                </p>
-              </div>
-              <div className="flex items-center justify-center gap-3 text-2xs text-surface-500">
-                <span className="flex items-center gap-1">
-                  <AppIcon name="document" className="w-3 h-3" />
-                  {S.upload.pdfOnly}
-                </span>
-                <span className="w-1 h-1 rounded-full bg-surface-600" />
-                <span className="flex items-center gap-1">
-                  <AppIcon name="save" className="w-3 h-3" />
-                  {S.upload.maxSize(formatFileSize(MAX_FILE_SIZE))}
-                </span>
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-surface-500">
+                <span>{S.upload.pdfOnly}</span>
+                <span className="h-1 w-1 rounded-full bg-surface-700" />
+                <span>{S.upload.maxSize(formatFileSize(MAX_FILE_SIZE))}</span>
               </div>
             </div>
           )}
 
-          {/* File selected */}
           {selectedFile && (
-            <div className="space-y-4">
-              {/* File info */}
-              <div className="flex items-center gap-3 bg-surface-700/50 px-4 py-3" style={{ borderRadius: 'var(--radius-control)' }}>
-                <AppIcon name="document" className="w-8 h-8 text-primary-400 shrink-0" />
-                <div className="flex-1 min-w-0 text-left">
-                  <p className="text-sm text-surface-200 truncate">
-                    {selectedFile.name}
-                  </p>
-                  <p className="text-2xs text-surface-500">
-                    {formatFileSize(selectedFile.size)}
-                  </p>
+            <div className="mt-6 space-y-4">
+              <div className="rounded-[22px] border border-surface-800 bg-surface-950/60 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-surface-800 bg-surface-900">
+                    <AppIcon name="document" className="h-5 w-5 text-primary-400" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-surface-100 [.light_&]:text-surface-900">{selectedFile.name}</div>
+                    <div className="mt-1 text-xs text-surface-500 [.light_&]:text-surface-600">{formatFileSize(selectedFile.size)}</div>
+                  </div>
+                  {stage === 'idle' && (
+                    <button
+                      onClick={clearFile}
+                      className="rounded-full border border-surface-800 px-3 py-1.5 text-xs text-surface-400 transition-colors hover:border-surface-600 hover:text-surface-200"
+                    >
+                      {S.upload.clear}
+                    </button>
+                  )}
                 </div>
-                {stage === 'idle' && (
-                  <button
-                    onClick={clearFile}
-                    className="p-1 hover:bg-surface-600 text-surface-400 hover:text-surface-200 transition-colors"
-                    style={{ borderRadius: 'var(--radius-control)' }}
-                  >
-                    <AppIcon name="close" className="w-4 h-4" />
-                  </button>
-                )}
               </div>
 
-              {/* Upload progress */}
               {(stage === 'uploading' || stage === 'parsing') && (
-                <div className="space-y-2">
-                  <div className="h-2 bg-surface-700 rounded-full overflow-hidden">
+                <div className="rounded-[22px] border border-surface-800 bg-surface-950/60 p-4">
+                  <div className="h-2 overflow-hidden rounded-full bg-surface-800">
                     <div
-                      className="h-full bg-primary-500 rounded-full transition-all duration-300"
-                      style={{
-                        width:
-                          stage === 'parsing'
-                            ? '100%'
-                            : `${uploadProgress}%`,
-                      }}
+                      className="h-full rounded-full bg-primary-500 transition-all duration-300"
+                      style={{ width: stage === 'parsing' ? '100%' : `${uploadProgress}%` }}
                     />
                   </div>
-                  <div className="flex items-center justify-center gap-2 text-xs text-surface-400">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-400" />
-                    {stage === 'uploading'
-                      ? S.upload.uploading(uploadProgress)
-                      : S.upload.parsing}
+                  <div className="mt-3 flex items-center gap-2 text-sm text-surface-400">
+                    <Loader2 className="h-4 w-4 animate-spin text-primary-400" />
+                    {stage === 'uploading' ? S.upload.uploading(uploadProgress) : S.upload.parsing}
                   </div>
                 </div>
               )}
 
-              {/* Classification result */}
               {stage === 'classified' && uploadResult && (
                 <div className="space-y-4 fade-in-up">
-                  <div className="flex items-center gap-2 text-sm text-emerald-400">
-                    <AppIcon name="success" className="w-4 h-4" />
+                  <div className="archive-inline-status archive-inline-status-success">
+                    <AppIcon name="success" className="h-4 w-4" />
                     {S.upload.handoffTitle}
                   </div>
 
-                  {/* Paper info */}
-                  <div className="bg-surface-700/50 p-4 text-left space-y-3" style={{ borderRadius: 'var(--radius-control)' }}>
-                    <div>
-                      <span className="text-2xs text-surface-500 uppercase tracking-wider">
-                        {S.upload.titleLabel}
-                      </span>
-                      <p className="text-sm text-surface-200 mt-0.5">
-                        {uploadResult.title}
-                      </p>
+                <div className="rounded-[22px] border border-surface-800 bg-surface-950/60 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-surface-500">
+                    {S.upload.titleLabel}
                     </div>
-                    {/* Agent card */}
+                    <p className="mt-2 text-sm leading-6 text-surface-100 [.light_&]:text-surface-900">{uploadResult.title}</p>
+
                     {(() => {
                       const agent = getAgentMeta(uploadResult.agent_used);
                       const displayName = agent ? agent.name : S.agent.unknownAgent;
                       const displayPersonality = agent ? agent.personality : S.agent.unknownDomain;
                       const displayQuote = agent ? agent.quote : S.agent.fallbackQuote;
                       const displayColor = agent ? agent.color : '#6b7280';
+
                       return (
                         <div
-                          className="flex items-center gap-3 p-3 border"
-                          style={{ ...agentBgStyle(displayColor), ...agentBorderStyle(displayColor), borderRadius: 'var(--radius-control)' }}
+                          className="mt-5 rounded-[20px] border p-3"
+                          style={{ ...agentBgStyle(displayColor), ...agentBorderStyle(displayColor) }}
                         >
-                          <div className="w-16 h-16 bg-surface-700 flex items-center justify-center shrink-0" style={{ borderRadius: 'var(--radius-control)' }}>
-                            <AppIcon name="workbench" className="w-8 h-8 text-surface-500" />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-semibold" style={{ color: displayColor }}>
-                                {displayName}
-                              </span>
-                              <span className="text-2xs text-surface-500">
-                                {displayPersonality}
-                              </span>
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-900/80">
+                              <AppIcon name="agents" className="h-5 w-5 text-surface-400" />
                             </div>
-                            <p className="text-xs text-surface-400 mt-0.5 italic">
-                              "{displayQuote}"
-                            </p>
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold" style={{ color: displayColor }}>
+                                {displayName}
+                              </div>
+                              <div className="mt-1 text-xs text-surface-500">{displayPersonality}</div>
+                              <p className="mt-2 text-xs italic text-surface-300">"{displayQuote}"</p>
+                            </div>
                           </div>
                         </div>
                       );
                     })()}
 
-                    {/* Domain selection */}
-                    <div>
-                      <span className="text-2xs text-surface-500 uppercase tracking-wider">
+                    <div className="mt-5">
+                      <label className="text-[11px] uppercase tracking-[0.22em] text-surface-500">
                         {S.upload.domainConfirm}
-                      </span>
+                      </label>
                       <select
                         value={domainOverride}
                         onChange={(e) => setDomainOverride(e.target.value)}
-                        className="input mt-1"
+                        className="input mt-2"
                       >
                         {getAllAgents().map((agent) => (
                           <option key={agent.domain} value={agent.domain}>
                             {agent.domain_display}
-                            {agent.domain === uploadResult.domain
-                              ? ` ${S.upload.detected}`
-                              : ''}
+                            {agent.domain === uploadResult.domain ? ` ${S.upload.detected}` : ''}
                           </option>
                         ))}
                       </select>
-                      <p className="mt-1 text-2xs text-surface-500">
+                      <p className="mt-2 text-xs leading-6 text-surface-500">
                         {S.upload.domainConfirmHelp}
                       </p>
                     </div>
-
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="border border-surface-700/60 bg-surface-900/45 p-3" style={{ borderRadius: 'var(--radius-surface)' }}>
-                        <div className="mb-2 flex items-center gap-2 text-2xs uppercase tracking-[0.16em] text-surface-500">
-                          <AppIcon name="sparkles" className="w-3 h-3" />
-                          {S.upload.nextStepTitle}
-                        </div>
-                        <p className="text-xs leading-relaxed text-surface-300">
-                          {S.upload.nextStepDesc}
-                        </p>
-                      </div>
-
-                      <div className="border border-surface-700/60 bg-surface-900/45 p-3" style={{ borderRadius: 'var(--radius-surface)' }}>
-                        <div className="mb-2 flex items-center gap-2 text-2xs uppercase tracking-[0.16em] text-surface-500">
-                          <AppIcon name="arrow-right" className="w-3 h-3" />
-                          {S.upload.outputsTitle}
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <span className="badge bg-surface-800 text-surface-300">
-                            <AppIcon name="summary" className="mr-1 h-3 w-3 text-primary-400" />
-                            {S.upload.outputSummary}
-                          </span>
-                          <span className="badge bg-surface-800 text-surface-300">
-                            <AppIcon name="figures" className="mr-1 h-3 w-3 text-primary-400" />
-                            {S.upload.outputFigures}
-                          </span>
-                          <span className="badge bg-surface-800 text-surface-300">
-                            <AppIcon name="recipe" className="mr-1 h-3 w-3 text-primary-400" />
-                            {S.upload.outputRecipe}
-                          </span>
-                          <span className="badge bg-surface-800 text-surface-300">
-                            <AppIcon name="chat" className="mr-1 h-3 w-3 text-primary-400" />
-                            {S.upload.outputChat}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
                   </div>
 
-                  {/* Start Analysis button */}
-                  <button
-                    onClick={handleStartAnalysis}
-                    className="btn-primary w-full py-3 text-sm"
-                  >
+                  <button onClick={handleStartAnalysis} className="btn-primary w-full justify-center py-3 text-sm">
                     {S.upload.openWorkbench}
-                    <AppIcon name="arrow-right" className="w-4 h-4" />
+                    <AppIcon name="arrow-right" className="h-4 w-4" />
                   </button>
                 </div>
               )}
 
-              {/* Error state */}
               {stage === 'error' && (
-                <div className="space-y-3">
-                <div className="flex items-center gap-2 text-sm text-red-400">
-                  <AppIcon name="error" className="w-4 h-4" />
-                  {error}
-                </div>
+                <div className="space-y-4">
+                  <div className="archive-inline-status archive-inline-status-error">
+                    <AppIcon name="warning" className="h-4 w-4" />
+                    {error}
+                  </div>
                   <div className="flex gap-2">
-                    <button onClick={handleUpload} className="btn-primary flex-1">
+                    <button onClick={handleUpload} className="btn-primary flex-1 justify-center">
                       {S.upload.retry}
                     </button>
                     <button onClick={clearFile} className="btn-secondary">
@@ -442,28 +524,82 @@ export default function Upload() {
                 </div>
               )}
 
-              {/* Upload button (idle state with file selected) */}
               {stage === 'idle' && (
-                <button
-                  onClick={handleUpload}
-                  className="btn-primary w-full py-3 text-sm"
-                >
-                  <AppIcon name="upload" className="w-4 h-4" />
+                <button onClick={handleUpload} className="btn-primary w-full justify-center py-3 text-sm">
+                  <AppIcon name="upload" className="h-4 w-4" />
                   {S.upload.uploadBtn}
                 </button>
               )}
             </div>
           )}
-        </div>
 
-        {/* Error outside the drop zone */}
-        {error && stage === 'idle' && (
-          <div className="mt-4 flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 px-4 py-3" style={{ borderRadius: 'var(--radius-control)' }}>
-            <AppIcon name="error" className="w-4 h-4 shrink-0" />
-            {error}
-          </div>
-        )}
-      </div>
+          {error && stage === 'idle' && (
+            <div className="mt-5 archive-inline-status archive-inline-status-error">
+              <AppIcon name="warning" className="h-4 w-4" />
+              {error}
+            </div>
+          )}
+        </section>
+
+        <div className="grid gap-4">
+          <section className="archive-panel panel-compact">
+            <div className="archive-kicker">{S.upload.recentAnalyses}</div>
+            <div className="mt-3 grid gap-3">
+              {recentAnalyses.length > 0 ? (
+                recentAnalyses.map((paper) => (
+                  <RecentPaperRow
+                    key={`recent-analysis-${paper.id}`}
+                    paper={paper}
+                    metaLabel={S.upload.lastAnalyzed}
+                    metaValue={formatPaperDate(paper.analyzed_at)}
+                    onOpen={handleOpenRecent}
+                  />
+                ))
+              ) : (
+                <div className="rounded-[18px] bg-surface-950/30 px-4 py-5 text-sm leading-6 text-surface-500 [.light_&]:bg-white/72 [.light_&]:text-surface-600">
+                  {S.upload.recentAnalysesEmpty}
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="archive-panel panel-compact">
+            <div className="archive-kicker">{S.upload.recentLibrary}</div>
+            <div className="mt-3 grid gap-3">
+              {recentLibrary.length > 0 ? (
+                recentLibrary.map((paper) => (
+                  <RecentPaperRow
+                    key={`recent-library-${paper.id}`}
+                    paper={paper}
+                    metaLabel={S.upload.addedLabel}
+                    metaValue={formatPaperDate(paper.created_at)}
+                    onOpen={handleOpenRecent}
+                  />
+                ))
+              ) : (
+                <div className="rounded-[18px] bg-surface-950/30 px-4 py-5 text-sm leading-6 text-surface-500 [.light_&]:bg-white/72 [.light_&]:text-surface-600">
+                  {S.upload.recentLibraryEmpty}
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="archive-panel panel-compact">
+            <div className="archive-kicker">{S.upload.systemTitle}</div>
+            <div className="mt-3 grid gap-3">
+              {systemSummary.map((item) => (
+                <div
+                  key={item.label}
+                  className="flex items-center justify-between gap-4 rounded-[18px] bg-surface-950/30 px-4 py-3 [.light_&]:bg-white/72"
+                >
+                  <span className="text-[11px] uppercase tracking-[0.16em] text-surface-500 [.light_&]:text-surface-600">{item.label}</span>
+                  <span className="max-w-[65%] truncate text-right text-[15px] text-surface-100 [.light_&]:text-surface-900">{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      </section>
     </div>
   );
 }

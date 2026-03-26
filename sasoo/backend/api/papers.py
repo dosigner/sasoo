@@ -4,6 +4,7 @@ Endpoints for uploading, listing, retrieving, updating, and deleting papers.
 """
 
 import json
+import logging
 import re
 import shutil
 import uuid
@@ -15,8 +16,6 @@ from urllib.parse import quote
 import fitz  # PyMuPDF
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
-
-from services.pdf_cache import warm_cache
 
 from models.database import (
     execute_insert,
@@ -34,8 +33,18 @@ from models.schemas import (
     PaperResponse,
     PaperUpdate,
 )
+from services.odl_parser import (
+    OdlParserError,
+    OdlRuntimeError,
+    ensure_text_artifacts_async,
+    explain_odl_failure,
+    resolve_paper_title,
+    schedule_paper_artifacts_refresh,
+)
+from services.artifact_status import resolve_artifact_status_contract
 
 router = APIRouter(prefix="/api/papers", tags=["papers"])
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Domain classification heuristic (fast, pre-LLM)
@@ -78,6 +87,84 @@ DOMAIN_AGENT_MAP: dict[DomainType, AgentType] = {
     DomainType.GENERAL: AgentType.ATLAS,
 }
 
+_DOMAIN_NOISE_PATTERNS = [
+    re.compile(r"^\s*---\s*Page\s+\d+\s*---\s*$", re.IGNORECASE),
+    re.compile(r"\barxiv:\s*\S+", re.IGNORECASE),
+    re.compile(r"^\s*(?:[A-Za-z-]+\.){1,}[A-Za-z-]+\s*$"),
+    re.compile(r"^\s*(?:\d{1,2}\s+)?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*[\s,.-]+\d{4}\s*$", re.IGNORECASE),
+]
+
+
+async def _get_visual_row_counts(paper_id: int) -> tuple[int, int]:
+    row = await fetch_one(
+        """
+        SELECT
+            (
+                SELECT COUNT(*)
+                FROM figures
+                WHERE paper_id = ?
+                  AND COALESCE(extraction_status, 'resolved') != 'rejected'
+            ) AS figure_count,
+            (
+                SELECT COUNT(*)
+                FROM tables
+                WHERE paper_id = ?
+                  AND COALESCE(extraction_status, 'resolved') != 'rejected'
+            ) AS table_count
+        """,
+        (paper_id, paper_id),
+    )
+    return int(row["figure_count"] or 0), int(row["table_count"] or 0)
+
+
+async def _paper_payload(
+    row: dict,
+    *,
+    schedule_refresh: bool = False,
+) -> dict:
+    paper_id = int(row["id"])
+    folder_name = str(row["folder_name"])
+    paper_dir = get_paper_dir(folder_name)
+
+    figure_count, table_count = await _get_visual_row_counts(paper_id)
+    payload = dict(row)
+    try:
+        artifact_status = await resolve_artifact_status_contract(
+            paper_id=paper_id,
+            paper_dir=paper_dir,
+            row_count=figure_count + table_count,
+            schedule_if_needed=schedule_refresh,
+            schedule_error_message="시각 artifact 동기화를 시작하지 못했습니다.",
+        )
+        payload["text_ready"] = artifact_status.text_ready
+        payload["visual_ready"] = artifact_status.visual_ready
+        payload["visual_state"] = artifact_status.visual_state
+        payload["visual_error"] = artifact_status.visual_error
+        payload["artifacts_ready"] = artifact_status.artifacts_ready
+    except FileNotFoundError as exc:
+        logger.warning(
+            "Paper %s is missing its PDF under %s; returning degraded payload.",
+            paper_id,
+            paper_dir,
+        )
+        payload.update(_missing_pdf_payload())
+
+    pdf_files = sorted(paper_dir.glob("*.pdf")) if paper_dir.exists() else []
+    fallback_title = pdf_files[0].stem if pdf_files else str(payload.get("title") or "Untitled Paper")
+    payload["title"] = resolve_paper_title(str(payload.get("title") or ""), "", fallback_title)
+
+    return payload
+
+
+def _missing_pdf_payload() -> dict[str, object]:
+    return {
+        "text_ready": False,
+        "visual_ready": False,
+        "visual_state": "error",
+        "visual_error": "PDF not found",
+        "artifacts_ready": False,
+    }
+
 
 def classify_domain(text: str) -> tuple[DomainType, AgentType]:
     """
@@ -97,6 +184,18 @@ def classify_domain(text: str) -> tuple[DomainType, AgentType]:
 
     best_domain = max(scores, key=scores.get)  # type: ignore[arg-type]
     return best_domain, DOMAIN_AGENT_MAP[best_domain]
+
+
+def _clean_domain_classification_text(text: str) -> str:
+    cleaned_lines: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if any(pattern.search(line) for pattern in _DOMAIN_NOISE_PATTERNS):
+            continue
+        cleaned_lines.append(line)
+    return "\n".join(cleaned_lines)
 
 
 # ---------------------------------------------------------------------------
@@ -120,13 +219,7 @@ def extract_pdf_metadata(pdf_path: str) -> dict:
     first_pages_text = "\n".join(full_text_parts)
 
     # Try to get title from metadata or first line of text
-    title = meta.get("title", "").strip()
-    if not title:
-        lines = [l.strip() for l in first_pages_text.split("\n") if l.strip()]
-        title = lines[0] if lines else "Untitled Paper"
-        # Truncate overly long first-line "titles"
-        if len(title) > 200:
-            title = title[:200] + "..."
+    title = resolve_paper_title(meta.get("title", ""), first_pages_text, Path(pdf_path).stem)
 
     # Authors
     authors = meta.get("author", "").strip() or None
@@ -168,7 +261,7 @@ def extract_pdf_metadata(pdf_path: str) -> dict:
             break
 
     # Domain classification
-    domain, agent = classify_domain(first_pages_text)
+    domain, agent = classify_domain(_clean_domain_classification_text(first_pages_text))
 
     # Total pages
     total_pages = len(doc)
@@ -417,87 +510,52 @@ async def upload_paper(file: UploadFile = File(...)):
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are accepted.")
 
-    # Save PDF to temp location first, extract metadata, then generate folder name
     content = await file.read()
-
-    # Use a temporary directory for initial PDF processing
-    import tempfile
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        tmp_pdf = Path(tmp_dir) / file.filename
-        with open(tmp_pdf, "wb") as f:
-            f.write(content)
-
-        # Extract metadata
-        try:
-            metadata = extract_pdf_metadata(str(tmp_pdf))
-        except Exception as e:
-            raise HTTPException(status_code=422, detail=f"Failed to parse PDF: {str(e)}")
-
-    # Generate folder name via Gemini Flash (fallback to UUID)
-    try:
-        from services.naming_service import generate_folder_name
-        folder_name = await generate_folder_name(
-            title=metadata["title"],
-            year=metadata.get("year"),
-            journal=metadata.get("journal"),
-            domain=metadata.get("domain"),
-            abstract=metadata.get("first_pages_text", "")[:500],
-        )
-    except Exception as exc:
-        import logging
-        logging.getLogger(__name__).warning("Folder name generation failed, using fallback: %s", exc)
-        folder_name = f"{uuid.uuid4().hex[:12]}_{_sanitize_filename(file.filename)}"
-
-    paper_dir = get_paper_dir(folder_name)
+    fallback_folder = f"{uuid.uuid4().hex[:12]}_{_sanitize_filename(file.filename)}"
+    paper_dir = get_paper_dir(fallback_folder)
     paper_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save PDF to final location
     pdf_path = paper_dir / file.filename
     with open(pdf_path, "wb") as f:
         f.write(content)
 
-    # Pre-cache full text for later analysis phases
-    warm_cache(paper_dir)
-
-    # Extract figures
-    figures_dir = get_figures_dir(folder_name)
     try:
-        figures = extract_figures_from_pdf(str(pdf_path), str(figures_dir))
+        manifest = await ensure_text_artifacts_async(paper_dir, force=True)
+    except (OdlParserError, OdlRuntimeError, FileNotFoundError) as exc:
+        shutil.rmtree(paper_dir, ignore_errors=True)
+        status_code, detail = explain_odl_failure(exc)
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+    except Exception as exc:
+        shutil.rmtree(paper_dir, ignore_errors=True)
+        raise HTTPException(status_code=422, detail=f"Failed to parse PDF: {exc}") from exc
+
+    metadata = dict(manifest.get("metadata", {}))
+    full_text = str(manifest.get("full_text", ""))
+    domain, agent = classify_domain(_clean_domain_classification_text(full_text)[:3000])
+    metadata["domain"] = domain.value
+    metadata["agent_used"] = agent.value
+
+    folder_name = fallback_folder
+    try:
+        from services.naming_service import generate_folder_name
+
+        suggested_name = await generate_folder_name(
+            title=metadata.get("title", file.filename),
+            year=metadata.get("year"),
+            journal=metadata.get("journal"),
+            domain=metadata.get("domain"),
+            abstract=full_text[:500],
+        )
+        folder_name = _make_unique_folder_name(suggested_name, fallback_folder)
     except Exception as exc:
         import logging
-        logging.getLogger(__name__).warning("Figure extraction failed: %s", exc)
-        figures = []
+        logging.getLogger(__name__).warning("Folder name generation failed, using fallback: %s", exc)
 
-    # Extract and match figure captions
-    try:
-        captions_list = extract_figure_captions(str(pdf_path))
-        caption_map = match_captions_to_figures(figures, captions_list)
-        for fig in figures:
-            if fig["figure_num"] in caption_map:
-                fig["caption"] = caption_map[fig["figure_num"]]
-    except Exception as exc:
-        import logging
-        logging.getLogger(__name__).warning("Caption extraction failed: %s", exc)
-
-    # Generate descriptive figure filenames via Gemini Flash
-    try:
-        from services.naming_service import generate_figure_names
-        captions_for_naming = [
-            {"figure_num": fig["figure_num"], "caption": fig.get("caption", ""), "page": fig["figure_num"]}
-            for fig in figures
-        ]
-        if captions_for_naming:
-            new_names = await generate_figure_names(captions_for_naming)
-            for fig, new_name in zip(figures, new_names):
-                old_path = Path(fig["file_path"])
-                if old_path.exists():
-                    new_path = old_path.parent / f"{new_name}{old_path.suffix}"
-                    if not new_path.exists():
-                        old_path.rename(new_path)
-                        fig["file_path"] = str(new_path)
-    except Exception as exc:
-        import logging
-        logging.getLogger(__name__).warning("Figure renaming failed: %s", exc)
+    if folder_name != fallback_folder:
+        target_dir = get_paper_dir(folder_name)
+        if not target_dir.exists():
+            paper_dir.rename(target_dir)
+            paper_dir = target_dir
 
     # Insert paper into DB
     paper_id = await execute_insert(
@@ -521,24 +579,21 @@ async def upload_paper(file: UploadFile = File(...)):
         ),
     )
 
-    # Insert extracted figures into DB
-    db = await get_db()
-    for fig in figures:
-        await db.execute(
-            """
-            INSERT INTO figures (paper_id, figure_num, caption, file_path, quality)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (paper_id, fig["figure_num"], fig["caption"], fig["file_path"], fig["quality"]),
-        )
-    await db.commit()
+    try:
+        await schedule_paper_artifacts_refresh(paper_id, paper_dir)
+    except Exception:
+        logger.exception("Failed to schedule initial visual artifact refresh for paper %s", paper_id)
 
     # Fetch and return the created record
     paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
     if paper is None:
         raise HTTPException(status_code=500, detail="Failed to retrieve created paper.")
 
-    return PaperResponse(**paper)
+    return PaperResponse(
+        **await _paper_payload(
+            paper,
+        )
+    )
 
 
 @router.get("", response_model=PaperListResponse)
@@ -593,7 +648,14 @@ async def list_papers(
         tuple(params) + (page_size, offset),
     )
 
-    papers = [PaperResponse(**row) for row in rows]
+    papers = [
+        PaperResponse(
+            **await _paper_payload(
+                row,
+            )
+        )
+        for row in rows
+    ]
     return PaperListResponse(papers=papers, total=total, page=page, page_size=page_size)
 
 
@@ -643,7 +705,13 @@ async def get_paper(paper_id: int):
     paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
     if paper is None:
         raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
-    return PaperResponse(**paper)
+
+    try:
+        payload = await _paper_payload(paper, schedule_refresh=True)
+    except FileNotFoundError as exc:
+        status_code, detail = explain_odl_failure(exc)
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+    return PaperResponse(**payload)
 
 
 @router.get("/{paper_id}/pdf")
@@ -715,7 +783,13 @@ async def update_paper(paper_id: int, update: PaperUpdate):
 
     # Return updated record
     paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
-    return PaperResponse(**paper)
+    if paper is None:
+        raise HTTPException(status_code=500, detail=f"Failed to reload paper {paper_id}.")
+    return PaperResponse(
+        **await _paper_payload(
+            paper,
+        )
+    )
 
 
 @router.delete("/{paper_id}", status_code=204)
@@ -737,6 +811,7 @@ async def delete_paper(paper_id: int):
     db = await get_db()
     await db.execute("DELETE FROM analysis_results WHERE paper_id = ?", (paper_id,))
     await db.execute("DELETE FROM figures WHERE paper_id = ?", (paper_id,))
+    await db.execute("DELETE FROM tables WHERE paper_id = ?", (paper_id,))
     await db.execute("DELETE FROM papers WHERE id = ?", (paper_id,))
     await db.commit()
 
@@ -801,3 +876,18 @@ def _sanitize_filename(filename: str) -> str:
     # Collapse multiple underscores
     sanitized = re.sub(r"_+", "_", sanitized)
     return sanitized[:80]  # Limit length
+
+
+def _make_unique_folder_name(preferred: str, fallback: str) -> str:
+    """Avoid collisions when generating a stable paper folder name."""
+    base = preferred or fallback
+    candidate = _sanitize_filename(base)
+    if not candidate:
+        candidate = fallback
+    if not get_paper_dir(candidate).exists():
+        return candidate
+
+    suffix = 2
+    while get_paper_dir(f"{candidate}_{suffix}").exists():
+        suffix += 1
+    return f"{candidate}_{suffix}"

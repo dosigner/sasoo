@@ -2,10 +2,17 @@ import { useCallback, useRef, useState } from 'react';
 
 const MIN_PANEL_WIDTH = 20;
 const MAX_PANEL_WIDTH = 80;
-const DEFAULT_SPLIT = 58;
+const DEFAULT_SPLIT = 50;
 const SNAP_POINTS = [25, 33, 42, 50, 58, 67, 75];
 const SNAP_THRESHOLD = 2;
 const KEYBOARD_STEP = 5;
+const SPLIT_PRESETS = {
+  '1:2': 33,
+  center: 50,
+  '2:1': 67,
+} as const;
+
+export type WorkbenchSplitPreset = keyof typeof SPLIT_PRESETS;
 
 export function useWorkbenchLayout() {
   const [splitPosition, setSplitPosition] = useState(DEFAULT_SPLIT);
@@ -98,9 +105,18 @@ export function useWorkbenchLayout() {
     setPdfCollapsed((value) => !value);
   }, []);
 
+  const setSplitPreset = useCallback((preset: WorkbenchSplitPreset) => {
+    setIsSnapping(false);
+    setSplitPosition(SPLIT_PRESETS[preset]);
+  }, []);
+
+  const activePreset = (Object.entries(SPLIT_PRESETS) as Array<[WorkbenchSplitPreset, number]>)
+    .find(([, value]) => splitPosition === value)?.[0] ?? null;
+
   return {
     containerRef,
     splitPosition,
+    activePreset,
     isResizing,
     pdfCollapsed,
     isSnapping,
@@ -108,5 +124,6 @@ export function useWorkbenchLayout() {
     handleDoubleClick,
     handleKeyDown,
     togglePdf,
+    setSplitPreset,
   };
 }

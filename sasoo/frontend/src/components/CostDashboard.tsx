@@ -40,6 +40,16 @@ function shortModelName(model: string): string {
   return model.length > 20 ? model.slice(0, 20) + '...' : model;
 }
 
+const PHASE_LABELS: Record<string, string> = {
+  screening: 'Screening',
+  citation: 'Citation',
+  visual: 'Visual',
+  recipe: 'Recipe',
+  deep_dive: 'Deep Dive',
+  visualization: 'Viz',
+  viz_plan: 'Viz Plan',
+};
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -185,6 +195,61 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
           </div>
           <div className="text-2xs text-surface-500 mt-1">
             {S.cost.totalPapers(costData.totals.total_papers)}
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <h4 className="mb-3 flex items-center gap-2 text-xs font-semibold text-surface-300">
+          <TrendingUp className="h-3.5 w-3.5 text-primary-400" />
+          {S.cost.efficiencyMetrics}
+        </h4>
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-[18px] bg-surface-950/40 px-4 py-3 [.light_&]:bg-surface-50">
+            <div className="text-[11px] uppercase tracking-[0.14em] text-surface-500">
+              {S.cost.cacheSavings}
+            </div>
+            <div className="mt-2 text-lg font-semibold text-surface-100 font-mono tabular-nums">
+              {costData.efficiency.estimated_cached_calls_saved}
+            </div>
+            <div className="mt-1 text-[13px] leading-5 text-surface-500">
+              {S.cost.estimatedSavedCalls(costData.efficiency.estimated_cached_calls_saved)}
+            </div>
+            <div className="mt-1 text-[13px] leading-5 text-primary-300">
+              {S.cost.estimatedSavedCost(formatCurrency(costData.efficiency.estimated_cached_cost_usd_saved))}
+            </div>
+          </div>
+
+          <div className="rounded-[18px] bg-surface-950/40 px-4 py-3 [.light_&]:bg-surface-50">
+            <div className="text-[11px] uppercase tracking-[0.14em] text-surface-500">
+              {S.cost.phaseCalls}
+            </div>
+            <div className="mt-2 space-y-1.5">
+              {Object.entries(costData.efficiency.phase_call_counts)
+                .sort(([, left], [, right]) => right - left)
+                .slice(0, 4)
+                .map(([phase, calls]) => (
+                  <div key={phase} className="flex items-center justify-between gap-3 text-[13px] leading-5">
+                    <span className="text-surface-400">{PHASE_LABELS[phase] || phase}</span>
+                    <span className="font-mono tabular-nums text-surface-100">{calls}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+
+          <div className="rounded-[18px] bg-surface-950/40 px-4 py-3 [.light_&]:bg-surface-50">
+            <div className="text-[11px] uppercase tracking-[0.14em] text-surface-500">
+              {S.cost.tableReviewQueue}
+            </div>
+            <div className="mt-2 text-lg font-semibold text-surface-100 font-mono tabular-nums">
+              {costData.efficiency.review_required_tables}
+            </div>
+            <div className="mt-1 text-[13px] leading-5 text-surface-500">
+              {S.cost.reviewRequiredCount(costData.efficiency.review_required_tables)}
+            </div>
+            <div className="mt-1 text-[13px] leading-5 text-amber-300">
+              {S.cost.repairAttempts(costData.efficiency.uncertain_table_repair_calls)}
+            </div>
           </div>
         </div>
       </div>

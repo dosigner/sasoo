@@ -4,6 +4,7 @@ import {
   type AnalysisStatus,
   type AnalysisResults,
   type FigureListResponse,
+  type TableListResponse,
   type Recipe,
   type MermaidDiagram,
   type VisualizationPlan,
@@ -13,6 +14,7 @@ import {
   getAnalysisStatus,
   getAnalysisResults,
   getFigures,
+  getTables,
   getRecipe,
   getMermaid,
   getVisualizations,
@@ -30,6 +32,8 @@ interface UseAnalysisReturn {
   results: AnalysisResults | null;
   /** Extracted figures (available after Phase 2) */
   figures: FigureListResponse | null;
+  /** Extracted tables (available after visual phase) */
+  tables: TableListResponse | null;
   /** Reproducibility recipe (available after Phase 3) */
   recipe: Recipe | null;
   /** Mermaid diagram (legacy, available after Phase 4) */
@@ -52,6 +56,7 @@ interface UseAnalysisReturn {
 
 // Polling intervals
 const POLL_INTERVAL_ACTIVE = 2000; // 2s while actively running
+const VISUAL_REFRESH_RETRY_MS = 1500;
 // POLL_INTERVAL_IDLE removed: completed papers no longer poll
 
 // ---------------------------------------------------------------------------
@@ -62,6 +67,7 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
   const [status, setStatus] = useState<AnalysisStatus | null>(null);
   const [results, setResults] = useState<AnalysisResults | null>(null);
   const [figures, setFigures] = useState<FigureListResponse | null>(null);
+  const [tables, setTables] = useState<TableListResponse | null>(null);
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [mermaid, setMermaid] = useState<MermaidDiagram | null>(null);
   const [visualizations, setVisualizations] = useState<VisualizationPlan | null>(null);
@@ -72,27 +78,106 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
   // Track which phases we already fetched sub-resources for
   const fetchedPhases = useRef<Set<string>>(new Set());
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const visualRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
   const fetchingRef = useRef(false);
+  const analysisSessionRef = useRef(0);
+
+  const clearPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }, []);
+
+  const clearVisualRetry = useCallback(() => {
+    if (visualRetryRef.current) {
+      clearTimeout(visualRetryRef.current);
+      visualRetryRef.current = null;
+    }
+  }, []);
+
+  const isSessionActive = useCallback((sessionId: number) => {
+    return mountedRef.current && analysisSessionRef.current === sessionId;
+  }, []);
+
+  const clearAnalysisState = useCallback(() => {
+    setStatus(null);
+    setResults(null);
+    setFigures(null);
+    setTables(null);
+    setRecipe(null);
+    setMermaid(null);
+    setVisualizations(null);
+    setIsRunning(false);
+    setIsPolling(false);
+    setError(null);
+    fetchedPhases.current.clear();
+    fetchingRef.current = false;
+    clearPolling();
+    clearVisualRetry();
+  }, [clearPolling, clearVisualRetry]);
+
+  const beginNewSession = useCallback(() => {
+    const sessionId = analysisSessionRef.current + 1;
+    analysisSessionRef.current = sessionId;
+    clearAnalysisState();
+    return sessionId;
+  }, [clearAnalysisState]);
 
   // Cleanup on unmount
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
+      clearPolling();
+      clearVisualRetry();
     };
-  }, []);
+  }, [clearPolling, clearVisualRetry]);
 
   // -----------------------------------------------------------------------
   // Fetch sub-resources when phases complete
   // -----------------------------------------------------------------------
+  const fetchExistingVisualAssets = useCallback(
+    async (targetPaperId: string, sessionId: number) => {
+      const [figuresResult, tablesResult] = await Promise.allSettled([
+        getFigures(targetPaperId),
+        getTables(targetPaperId),
+      ]);
+
+      if (!isSessionActive(sessionId)) return;
+
+      if (figuresResult.status === 'fulfilled') {
+        setFigures(figuresResult.value);
+      } else {
+        console.warn('[useAnalysis] Failed to prefetch figures:', figuresResult.reason);
+      }
+
+      if (tablesResult.status === 'fulfilled') {
+        setTables(tablesResult.value);
+      } else {
+        console.warn('[useAnalysis] Failed to prefetch tables:', tablesResult.reason);
+      }
+
+      const figuresReady =
+        figuresResult.status === 'fulfilled'
+          ? figuresResult.value.visual_state !== 'running'
+          : true;
+      const tablesReady =
+        tablesResult.status === 'fulfilled'
+          ? tablesResult.value.visual_state !== 'running'
+          : true;
+
+      if (figuresReady && tablesReady) {
+        clearVisualRetry();
+      }
+    },
+    [clearVisualRetry, isSessionActive]
+  );
+
   const fetchPhaseResources = useCallback(
-    async (phaseStatus: AnalysisStatus) => {
-      if (!paperId || fetchingRef.current) return;
+    async (phaseStatus: AnalysisStatus, targetPaperId: string, sessionId: number) => {
+      if (!isSessionActive(sessionId) || fetchingRef.current) return;
       fetchingRef.current = true;
       try {
         const completedPhases = phaseStatus.phases
@@ -103,8 +188,9 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
         // Fetch results whenever any phase completes
         if (completedPhases.length > 0) {
           try {
-            const res = await getAnalysisResults(paperId);
-            if (mountedRef.current) setResults(res);
+            const res = await getAnalysisResults(targetPaperId);
+            if (!isSessionActive(sessionId)) return;
+            setResults(res);
           } catch (err) {
             console.warn('[useAnalysis] Failed to fetch results:', err);
           }
@@ -115,12 +201,12 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
           completedPhases.includes('visual') &&
           !fetchedPhases.current.has('visual')
         ) {
+          if (!isSessionActive(sessionId)) return;
           fetchedPhases.current.add('visual');
           try {
-            const figs = await getFigures(paperId);
-            if (mountedRef.current) setFigures(figs);
+            await fetchExistingVisualAssets(targetPaperId, sessionId);
           } catch (err) {
-            console.warn('[useAnalysis] Failed to fetch figures:', err);
+            console.warn('[useAnalysis] Failed to fetch visual artifacts:', err);
           }
         }
 
@@ -129,10 +215,12 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
           completedPhases.includes('recipe') &&
           !fetchedPhases.current.has('recipe')
         ) {
+          if (!isSessionActive(sessionId)) return;
           fetchedPhases.current.add('recipe');
           try {
-            const rec = await getRecipe(paperId);
-            if (mountedRef.current) setRecipe(rec);
+            const rec = await getRecipe(targetPaperId);
+            if (!isSessionActive(sessionId)) return;
+            setRecipe(rec);
           } catch (err) {
             console.warn('[useAnalysis] Failed to fetch recipe:', err);
           }
@@ -143,6 +231,7 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
           completedPhases.includes('deep_dive') &&
           !fetchedPhases.current.has('deep_dive')
         ) {
+          if (!isSessionActive(sessionId)) return;
           fetchedPhases.current.add('deep_dive');
         }
 
@@ -150,8 +239,9 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
         if (completedPhases.includes('deep_dive')) {
           const alreadyHasViz = fetchedPhases.current.has('visualizations');
           try {
-            const viz = await getVisualizations(paperId);
-            if (mountedRef.current && viz.items.length > 0) {
+            const viz = await getVisualizations(targetPaperId);
+            if (!isSessionActive(sessionId)) return;
+            if (viz.items.length > 0) {
               setVisualizations(viz);
               fetchedPhases.current.add('visualizations');
               return;
@@ -160,50 +250,73 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
             console.warn('[useAnalysis] Failed to fetch visualizations:', err);
           }
           if (isCompleted && !alreadyHasViz) {
+            if (!isSessionActive(sessionId)) return;
             fetchedPhases.current.add('visualizations');
             try {
-              const dia = await getMermaid(paperId);
-              if (mountedRef.current) setMermaid(dia);
+              const dia = await getMermaid(targetPaperId);
+              if (!isSessionActive(sessionId)) return;
+              setMermaid(dia);
             } catch (err) {
               console.warn('[useAnalysis] Failed to fetch mermaid:', err);
             }
           }
         }
       } finally {
-        fetchingRef.current = false;
+        if (isSessionActive(sessionId)) {
+          fetchingRef.current = false;
+        }
       }
     },
-    [paperId]
+    [fetchExistingVisualAssets, isSessionActive]
   );
+
+  useEffect(() => {
+    const needsRetry =
+      figures?.visual_state === 'running' || tables?.visual_state === 'running';
+
+    if (!paperId || !needsRetry) {
+      clearVisualRetry();
+      return;
+    }
+
+    const sessionId = analysisSessionRef.current;
+    clearVisualRetry();
+    visualRetryRef.current = setTimeout(() => {
+      void fetchExistingVisualAssets(paperId, sessionId);
+    }, VISUAL_REFRESH_RETRY_MS);
+
+    return clearVisualRetry;
+  }, [paperId, figures, tables, clearVisualRetry, fetchExistingVisualAssets]);
 
   // -----------------------------------------------------------------------
   // Poll for status
   // -----------------------------------------------------------------------
-  const pollStatus = useCallback(async () => {
-    if (!paperId) return;
+  const pollStatus = useCallback(async (targetPaperId?: string, sessionId?: number) => {
+    const activePaperId = targetPaperId ?? paperId;
+    const activeSessionId = sessionId ?? analysisSessionRef.current;
+    if (!activePaperId) return;
 
     try {
-      const s = await getAnalysisStatus(paperId);
-      if (!mountedRef.current) return;
+      const s = await getAnalysisStatus(activePaperId);
+      if (!isSessionActive(activeSessionId)) return;
 
       setStatus(s);
       const running = s.overall_status === 'running' || s.overall_status === 'analyzing';
       setIsRunning(running);
 
       // Fetch sub-resources for completed phases
-      await fetchPhaseResources(s);
+      await fetchPhaseResources(s, activePaperId, activeSessionId);
+      if (!isSessionActive(activeSessionId)) return;
 
       // Stop polling when done or errored
       if (s.overall_status === 'completed' || s.overall_status === 'error') {
-        if (pollingRef.current) {
-          clearInterval(pollingRef.current);
-          pollingRef.current = null;
-        }
+        clearPolling();
         setIsPolling(false);
 
         // Final fetch: ensure visualizations are loaded now that pipeline is done
         if (s.overall_status === 'completed') {
-          await fetchPhaseResources(s);
+          await fetchPhaseResources(s, activePaperId, activeSessionId);
+          if (!isSessionActive(activeSessionId)) return;
         }
 
         if (s.overall_status === 'error') {
@@ -216,7 +329,7 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
         }
       }
     } catch (err) {
-      if (!mountedRef.current) return;
+      if (!isSessionActive(activeSessionId)) return;
       if (err instanceof ApiError && err.status === 404) {
         // No analysis exists yet, that's fine
         return;
@@ -224,18 +337,19 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
       if (err instanceof Error) console.warn('[analysis] status error:', err.message);
       setError(S.error.getStatusFailed);
     }
-  }, [paperId, fetchPhaseResources]);
+  }, [paperId, clearPolling, fetchPhaseResources, isSessionActive]);
 
   // Start polling
   const startPolling = useCallback(
-    (interval: number = POLL_INTERVAL_ACTIVE) => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-      }
+    (targetPaperId: string, sessionId: number, interval: number = POLL_INTERVAL_ACTIVE) => {
+      clearPolling();
+      if (!isSessionActive(sessionId)) return;
       setIsPolling(true);
-      pollingRef.current = setInterval(pollStatus, interval);
+      pollingRef.current = setInterval(() => {
+        void pollStatus(targetPaperId, sessionId);
+      }, interval);
     },
-    [pollStatus]
+    [clearPolling, isSessionActive, pollStatus]
   );
 
   // -----------------------------------------------------------------------
@@ -244,80 +358,65 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
 
   const startAnalysis = useCallback(async (request: AnalysisRunRequest = {}) => {
     if (!paperId) return;
-
-    setError(null);
+    const sessionId = beginNewSession();
+    if (!isSessionActive(sessionId)) return;
     setIsRunning(true);
-    setStatus(null);
-    setResults(null);
-    setFigures(null);
-    setRecipe(null);
-    setMermaid(null);
-    setVisualizations(null);
-    fetchedPhases.current.clear();
 
     try {
       await apiRunAnalysis(paperId, request);
-      if (!mountedRef.current) return;
+      if (!isSessionActive(sessionId)) return;
       // Don't set the /run response as status (it's not an AnalysisStatus).
       // Instead, poll immediately to get the real status.
-      await pollStatus();
-      startPolling(POLL_INTERVAL_ACTIVE);
+      await pollStatus(paperId, sessionId);
+      if (!isSessionActive(sessionId)) return;
+      startPolling(paperId, sessionId, POLL_INTERVAL_ACTIVE);
     } catch (err) {
-      if (!mountedRef.current) return;
+      if (!isSessionActive(sessionId)) return;
       setIsRunning(false);
       if (err instanceof Error) console.warn('[analysis] start error:', err.message);
       setError(S.error.startAnalysisFailed);
     }
-  }, [paperId, startPolling]);
+  }, [paperId, beginNewSession, isSessionActive, pollStatus, startPolling]);
 
   const refresh = useCallback(async () => {
     await pollStatus();
   }, [pollStatus]);
 
   const reset = useCallback(() => {
-    setStatus(null);
-    setResults(null);
-    setFigures(null);
-    setRecipe(null);
-    setMermaid(null);
-    setVisualizations(null);
-    setIsRunning(false);
-    setIsPolling(false);
-    setError(null);
-    fetchedPhases.current.clear();
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-  }, []);
+    beginNewSession();
+  }, [beginNewSession]);
 
   // -----------------------------------------------------------------------
   // Initial load: check if analysis already exists
   // -----------------------------------------------------------------------
   useEffect(() => {
+    const sessionId = beginNewSession();
+
     if (!paperId) {
-      reset();
       return;
     }
+    const targetPaperId = paperId;
 
     let cancelled = false;
 
     async function init() {
       try {
-        const s = await getAnalysisStatus(paperId!);
-        if (cancelled) return;
+        const s = await getAnalysisStatus(targetPaperId);
+        if (cancelled || !isSessionActive(sessionId)) return;
         setStatus(s);
+        await fetchExistingVisualAssets(targetPaperId, sessionId);
+        if (cancelled || !isSessionActive(sessionId)) return;
 
         if (s.overall_status === 'running' || s.overall_status === 'analyzing') {
           setIsRunning(true);
-          startPolling(POLL_INTERVAL_ACTIVE);
+          startPolling(targetPaperId, sessionId, POLL_INTERVAL_ACTIVE);
         } else if (s.overall_status === 'completed') {
           setIsRunning(false);
-          await fetchPhaseResources(s);
+          await fetchPhaseResources(s, targetPaperId, sessionId);
           // No polling needed for completed papers
         }
       } catch (err) {
-        if (cancelled) return;
+        if (cancelled || !isSessionActive(sessionId)) return;
         if (err instanceof ApiError && err.status === 404) {
           // No analysis yet -- normal state
           return;
@@ -331,18 +430,19 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
 
     return () => {
       cancelled = true;
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
+      if (analysisSessionRef.current === sessionId) {
+        clearPolling();
+        clearVisualRetry();
+        fetchingRef.current = false;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paperId]);
+  }, [paperId, beginNewSession, clearPolling, clearVisualRetry, fetchExistingVisualAssets, fetchPhaseResources, isSessionActive, startPolling]);
 
   return {
     status,
     results,
     figures,
+    tables,
     recipe,
     mermaid,
     visualizations,

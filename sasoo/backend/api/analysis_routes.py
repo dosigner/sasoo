@@ -13,7 +13,7 @@ import asyncio
 import json
 import logging
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -27,8 +27,6 @@ from models.database import (
     execute_update,
     fetch_all,
     fetch_one,
-    get_db,
-    get_figures_dir,
     get_paper_dir,
     get_paperbanana_dir,
 )
@@ -47,11 +45,32 @@ from models.schemas import (
     PhaseStatus,
     RecipeCard,
     ReportResponse,
+    TableInfo,
+    TableListResponse,
     VisualizationItem,
     VisualizationPlanResponse,
 )
+from services.odl_parser import (
+    OdlParserError,
+    OdlRuntimeError,
+    ensure_text_artifacts_async,
+    explain_odl_failure,
+    figure_row_to_api_dict,
+    schedule_paper_artifacts_refresh,
+    table_row_to_api_dict,
+)
+from services.analysis_results import (
+    get_latest_completed_phase_row,
+    get_latest_completed_phase_rows,
+)
+from services.artifact_status import resolve_artifact_status_contract
+from services.document_context import (
+    build_visual_partial_cache_input,
+    compute_input_hash,
+    find_cached_phase_result,
+    load_or_build_document_context,
+)
 from services.pricing import calc_cost
-from services.pdf_cache import get_pdf_text
 
 from api.analysis_state import _running_analyses, _cancel_events, _analyses_lock
 from api.analysis_helpers import (
@@ -71,20 +90,212 @@ from api.figure_service import explain_figure_handler
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _utcnow_iso() -> str:
+    return _utcnow().isoformat()
+
+
+async def _get_visual_row_counts(paper_id: int) -> tuple[int, int]:
+    row = await fetch_one(
+        """
+        SELECT
+            (
+                SELECT COUNT(*)
+                FROM figures
+                WHERE paper_id = ?
+                  AND COALESCE(extraction_status, 'resolved') != 'rejected'
+            ) AS figure_count,
+            (
+                SELECT COUNT(*)
+                FROM tables
+                WHERE paper_id = ?
+                  AND COALESCE(extraction_status, 'resolved') != 'rejected'
+            ) AS table_count
+        """,
+        (paper_id, paper_id),
+    )
+    return int(row["figure_count"] or 0), int(row["table_count"] or 0)
+
+
+async def _get_cached_phase_result(paper_id: int, phase: str, input_text: str) -> Optional[dict]:
+    cached = await find_cached_phase_result(paper_id, phase, input_text)
+    if cached is None:
+        return None
+    await execute_insert(
+        """
+        INSERT INTO analysis_cache_events
+            (paper_id, phase, input_hash, source_model, estimated_cost_usd, tokens_in, tokens_out)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            paper_id,
+            phase,
+            cached.input_hash or compute_input_hash(input_text),
+            cached.model_used or "cached",
+            cached.cost_usd or 0.0,
+            cached.tokens_in or 0,
+            cached.tokens_out or 0,
+        ),
+    )
+    return {
+        "text": cached.result_text,
+        "model": cached.model_used or "cached",
+        "tokens_in": cached.tokens_in,
+        "tokens_out": cached.tokens_out,
+        "cost_usd": cached.cost_usd,
+        "input_hash": cached.input_hash or compute_input_hash(input_text),
+    }
+
+
+def _screening_gate_decision(screening_result_text: Optional[str]) -> tuple[bool, str]:
+    if not screening_result_text:
+        return (False, "")
+    try:
+        payload = json.loads(_clean_llm_json(screening_result_text))
+    except (TypeError, json.JSONDecodeError):
+        return (False, "")
+
+    if "relevance_score" not in payload or payload.get("relevance_score") in {None, ""}:
+        return (False, "")
+
+    try:
+        relevance = float(payload.get("relevance_score"))
+    except (TypeError, ValueError):
+        return (False, "")
+
+    domain = str(payload.get("domain") or "").strip().lower()
+    key_topics = payload.get("key_topics") or []
+    is_experimental = bool(payload.get("is_experimental", True))
+
+    if relevance < 0.35:
+        return (True, "low_relevance_screening")
+    if relevance < 0.5 and domain in {"general", "unknown"} and (not is_experimental or len(key_topics) < 2):
+        return (True, "low_confidence_screening")
+    return (False, "")
+
+
+async def _store_skipped_phase_result(
+    *,
+    paper_id: int,
+    phase: str,
+    phase_status: PhaseStatus,
+    status: AnalysisStatus,
+    progress_pct: float,
+    reason: str,
+    title: str,
+) -> dict:
+    result_text = json.dumps(
+        {
+            "skipped": True,
+            "reason": reason,
+            "message": f"{title} 단계는 스크리닝 신호가 약해 자동 실행을 건너뛰었습니다.",
+        },
+        ensure_ascii=False,
+    )
+    await _insert_analysis_result(
+        paper_id,
+        phase,
+        result_text,
+        "system",
+        0,
+        0,
+        0.0,
+        json.dumps({"phase": phase, "skip_reason": reason}, ensure_ascii=False, sort_keys=True),
+    )
+    phase_status.status = "completed"
+    phase_status.completed_at = _utcnow_iso()
+    phase_status.model_used = "system"
+    phase_status.tokens_in = 0
+    phase_status.tokens_out = 0
+    phase_status.cost_usd = 0.0
+    status.progress_pct = max(status.progress_pct, progress_pct)
+    return {"text": result_text, "model": "system", "tokens_in": 0, "tokens_out": 0}
+
+
+def _phase_result_snippet(row: Optional[dict], limit: int) -> str:
+    if not row:
+        return ""
+    return str(row.get("result") or "")[:limit]
+
+
+def _result_was_skipped(result: Optional[dict]) -> bool:
+    if not result or not result.get("text"):
+        return False
+    try:
+        payload = json.loads(_clean_llm_json(str(result["text"])))
+    except (TypeError, json.JSONDecodeError):
+        return False
+    return bool(payload.get("skipped"))
+
+
+async def _insert_analysis_result(
+    paper_id: int,
+    phase: str,
+    result_text: str,
+    model_used: str,
+    tokens_in: int,
+    tokens_out: int,
+    cost_usd: float,
+    input_text: str,
+) -> None:
+    await execute_insert(
+        """
+        INSERT INTO analysis_results
+            (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd, input_hash)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            paper_id,
+            phase,
+            result_text,
+            model_used,
+            tokens_in,
+            tokens_out,
+            cost_usd,
+            compute_input_hash(input_text),
+        ),
+    )
+
+
+async def _get_visual_contract(
+    paper_id: int,
+    paper_dir: Path,
+    *,
+    schedule_refresh: bool,
+) -> tuple[dict, int, int]:
+    figure_count, table_count = await _get_visual_row_counts(paper_id)
+    artifact_status = await resolve_artifact_status_contract(
+        paper_id=paper_id,
+        paper_dir=paper_dir,
+        row_count=figure_count + table_count,
+        schedule_if_needed=schedule_refresh,
+        schedule_error_message="시각 artifact 동기화를 시작하지 못했습니다.",
+    )
+    return {
+        "visual_ready": artifact_status.visual_ready,
+        "visual_state": artifact_status.visual_state,
+        "visual_error": artifact_status.visual_error,
+        "artifacts_ready": artifact_status.visual_ready,
+        "artifacts_error": artifact_status.visual_error,
+    }, figure_count, table_count
+
 # ---------------------------------------------------------------------------
 # Phase execution functions
 # ---------------------------------------------------------------------------
 
-async def _run_screening(paper_id: int, text: str, status: AnalysisStatus) -> dict:
+async def _run_screening(paper_id: int, screening_input: str, status: AnalysisStatus) -> dict:
     """Phase 1: Screening - classify domain, score relevance, extract topics."""
     phase_status = PhaseStatus(
         phase=AnalysisPhase.SCREENING,
         status="running",
-        started_at=datetime.utcnow().isoformat(),
+        started_at=_utcnow_iso(),
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.SCREENING
-
     prompt = f"""너는 Sasoo(사수)라는 AI Co-Scientist야. 이 연구 논문을 분석해서 스크리닝 평가를 해줘.
 
 모든 텍스트 내용(summary, key_topics 등)은 반드시 한국어로 작성해.
@@ -104,8 +315,22 @@ Return ONLY valid JSON (마크다운 펜스 없이):
 }}
 
 논문 텍스트:
-{text[:8000]}
+{screening_input}
 """
+
+    cached = await _get_cached_phase_result(paper_id, "screening", prompt)
+    if cached is not None:
+        phase_status.status = "completed"
+        phase_status.completed_at = _utcnow_iso()
+        phase_status.model_used = cached["model"]
+        phase_status.tokens_in = cached["tokens_in"]
+        phase_status.tokens_out = cached["tokens_out"]
+        phase_status.cost_usd = cached["cost_usd"]
+        status.progress_pct = max(status.progress_pct, 16.0)
+        status.total_cost_usd += cached["cost_usd"]
+        status.total_tokens_in += cached["tokens_in"]
+        status.total_tokens_out += cached["tokens_out"]
+        return cached
 
     result = await _call_gemini(prompt, model="gemini-3.1-flash-lite-preview")
     # Clean markdown fences from JSON response
@@ -122,16 +347,20 @@ Return ONLY valid JSON (마크다운 펜스 없이):
     cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
     # Store in DB
-    await execute_insert(
-        """INSERT INTO analysis_results (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (paper_id, "screening", result["text"], result["model"],
-         result["tokens_in"], result["tokens_out"], cost),
+    await _insert_analysis_result(
+        paper_id,
+        "screening",
+        result["text"],
+        result["model"],
+        result["tokens_in"],
+        result["tokens_out"],
+        cost,
+        prompt,
     )
 
     # Update status
     phase_status.status = "completed"
-    phase_status.completed_at = datetime.utcnow().isoformat()
+    phase_status.completed_at = _utcnow_iso()
     phase_status.model_used = result["model"]
     phase_status.tokens_in = result["tokens_in"]
     phase_status.tokens_out = result["tokens_out"]
@@ -144,28 +373,29 @@ Return ONLY valid JSON (마크다운 펜스 없이):
     return result
 
 
-async def _run_citation(paper_id: int, text: str, paper_authors: str, status: AnalysisStatus) -> dict:
+async def _run_citation(
+    paper_id: int,
+    sections: dict[str, str],
+    citation_body: str,
+    citation_references: str,
+    paper_authors: str,
+    status: AnalysisStatus,
+) -> dict:
     """Phase 2: Citation Analysis - parse references, count citation frequency, analyze roles."""
     phase_status = PhaseStatus(
         phase=AnalysisPhase.CITATION,
         status="running",
-        started_at=datetime.utcnow().isoformat(),
+        started_at=_utcnow_iso(),
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.CITATION
 
     # --- Step 1: Parse references and count citations locally ---
     from services.citation_analyzer import analyze_citations
-    from services.section_splitter import SectionSplitter
-
-    splitter = SectionSplitter()
-    sections = splitter.split(text)
-    references_text = splitter.get_references_text(sections)
-    body_text = splitter.get_body_text_without_references(sections)
 
     analysis = analyze_citations(
-        references_text=references_text,
-        body_text=body_text,
+        references_text=citation_references,
+        body_text=citation_body,
         sections=sections,
         paper_authors=paper_authors,
     )
@@ -173,6 +403,7 @@ async def _run_citation(paper_id: int, text: str, paper_authors: str, status: An
 
     # --- Step 2: LLM analysis of top 10 cited references ---
     top_refs = local_result.get("top_cited", [])[:10]
+    llm_prompt = ""
     if top_refs:
         top_refs_text = ""
         for i, ref in enumerate(top_refs, 1):
@@ -213,9 +444,23 @@ Return ONLY valid JSON (마크다운 펜스 없이):
   "key_influences": ["가장 영향을 많이 준 연구 그룹/논문 1-3개 (한국어)"]
 }}
 
-논문 초반 텍스트 (맥락용):
-{text[:3000]}
+논문 본문 텍스트 (맥락용):
+{citation_body[:3000]}
 """
+
+        cached = await _get_cached_phase_result(paper_id, "citation", llm_prompt)
+        if cached is not None:
+            phase_status.status = "completed"
+            phase_status.completed_at = _utcnow_iso()
+            phase_status.model_used = cached["model"]
+            phase_status.tokens_in = cached["tokens_in"]
+            phase_status.tokens_out = cached["tokens_out"]
+            phase_status.cost_usd = cached["cost_usd"]
+            status.progress_pct = max(status.progress_pct, 16.0)
+            status.total_cost_usd += cached["cost_usd"]
+            status.total_tokens_in += cached["tokens_in"]
+            status.total_tokens_out += cached["tokens_out"]
+            return cached
 
         try:
             result = await _call_gemini(llm_prompt)
@@ -259,46 +504,166 @@ Return ONLY valid JSON (마크다운 펜스 없이):
         local_result["summary"] = ""
         cost = 0.0
 
+    input_hash_source = (
+        llm_prompt
+        if top_refs
+        else json.dumps(
+            {
+                "citation_body": citation_body,
+                "citation_references": citation_references,
+                "paper_authors": paper_authors,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    )
+
+    if not top_refs:
+        cached = await _get_cached_phase_result(paper_id, "citation", input_hash_source)
+        if cached is not None:
+            phase_status.status = "completed"
+            phase_status.completed_at = _utcnow_iso()
+            phase_status.model_used = cached["model"]
+            phase_status.tokens_in = cached["tokens_in"]
+            phase_status.tokens_out = cached["tokens_out"]
+            phase_status.cost_usd = cached["cost_usd"]
+            status.progress_pct = max(status.progress_pct, 16.0)
+            status.total_cost_usd += cached["cost_usd"]
+            status.total_tokens_in += cached["tokens_in"]
+            status.total_tokens_out += cached["tokens_out"]
+            return cached
+
     # Store result in DB
     result_json = json.dumps(local_result, ensure_ascii=False)
-    await execute_insert(
-        """INSERT INTO analysis_results (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (paper_id, "citation", result_json,
-         phase_status.model_used or "local",
-         phase_status.tokens_in or 0,
-         phase_status.tokens_out or 0,
-         cost),
+    await _insert_analysis_result(
+        paper_id,
+        "citation",
+        result_json,
+        phase_status.model_used or "local",
+        phase_status.tokens_in or 0,
+        phase_status.tokens_out or 0,
+        cost,
+        input_hash_source,
     )
 
     phase_status.status = "completed"
-    phase_status.completed_at = datetime.utcnow().isoformat()
+    phase_status.completed_at = _utcnow_iso()
     status.progress_pct = max(status.progress_pct, 16.0)
 
     return {"text": result_json, "model": phase_status.model_used or "local",
             "tokens_in": phase_status.tokens_in or 0, "tokens_out": phase_status.tokens_out or 0}
 
 
-async def _run_visual(paper_id: int, text: str, folder_name: str, status: AnalysisStatus) -> dict:
+async def _run_visual(
+    paper_id: int,
+    visual_input: str,
+    folder_name: str,
+    status: AnalysisStatus,
+) -> dict:
     """Phase 3: Visual verification - analyze figures, assess quality."""
     phase_status = PhaseStatus(
         phase=AnalysisPhase.VISUAL,
         status="running",
-        started_at=datetime.utcnow().isoformat(),
+        started_at=_utcnow_iso(),
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.VISUAL
+    paper_dir = get_paper_dir(folder_name)
+    visual_contract, figure_count, table_count = await _get_visual_contract(
+        paper_id,
+        paper_dir,
+        schedule_refresh=True,
+    )
 
     # Get existing figures from DB
     figures = await fetch_all(
-        "SELECT * FROM figures WHERE paper_id = ?", (paper_id,)
+        """
+        SELECT * FROM figures
+        WHERE paper_id = ? AND COALESCE(extraction_status, 'resolved') != 'rejected'
+        """,
+        (paper_id,),
     )
+    tables = await fetch_all(
+        """
+        SELECT * FROM tables
+        WHERE paper_id = ? AND COALESCE(extraction_status, 'resolved') != 'rejected'
+        """,
+        (paper_id,),
+    )
+    figure_count = len(figures)
+    table_count = len(tables)
+
+    if visual_contract["visual_state"] != "ready" or (figure_count == 0 and table_count == 0):
+        if figure_count == 0 and table_count == 0:
+            quality_summary = "추출된 figure/table artifact가 없어 visual phase를 partial mode로 저장했습니다."
+            key_findings = ["시각 asset이 준비되지 않아 텍스트 분석만으로 후속 단계를 진행했습니다."]
+        else:
+            quality_summary = "시각 artifact가 아직 준비되지 않아 현재 확보된 DB 메타데이터만으로 partial visual result를 저장했습니다."
+            key_findings = [
+                f"현재 DB 기준 resolved figure {figure_count}개, resolved table {table_count}개가 있습니다.",
+            ]
+        if visual_contract["visual_error"]:
+            key_findings.append(str(visual_contract["visual_error"]))
+
+        partial_result = {
+            "figure_count": figure_count,
+            "tables_found": table_count,
+            "equations_found": 0,
+            "diagram_types": [],
+            "quality_summary": quality_summary,
+            "key_findings_from_visuals": key_findings,
+            "visual_ready": visual_contract["visual_ready"],
+            "visual_state": visual_contract["visual_state"],
+            "visual_error": visual_contract["visual_error"],
+            "artifacts_ready": visual_contract["artifacts_ready"],
+            "artifacts_error": visual_contract["artifacts_error"],
+            "artifacts_partial": True,
+        }
+        result_text = json.dumps(partial_result, ensure_ascii=False)
+        partial_hash_source = build_visual_partial_cache_input(
+            visual_input=visual_input,
+            figure_count=figure_count,
+            table_count=table_count,
+            visual_state=str(visual_contract["visual_state"]),
+            visual_error=visual_contract["visual_error"],
+        )
+        cached = await _get_cached_phase_result(paper_id, "visual", partial_hash_source)
+        if cached is None:
+            await _insert_analysis_result(
+                paper_id,
+                "visual",
+                result_text,
+                "system",
+                0,
+                0,
+                0.0,
+                partial_hash_source,
+            )
+        else:
+            result_text = cached["text"]
+
+        phase_status.status = "completed"
+        phase_status.completed_at = _utcnow_iso()
+        phase_status.model_used = "system"
+        phase_status.tokens_in = 0
+        phase_status.tokens_out = 0
+        phase_status.cost_usd = 0.0
+        status.progress_pct = max(status.progress_pct, 32.0)
+        return {"text": result_text, "model": "system", "tokens_in": 0, "tokens_out": 0}
 
     figure_desc = ""
-    if figures:
-        figure_desc = f"\n\nExtracted {len(figures)} figures from the paper."
+    if figures or tables:
+        figure_desc = f"\n\nExtracted {figure_count} resolved figures and {table_count} resolved tables from the paper."
         for fig in figures:
-            figure_desc += f"\n- {fig['figure_num']}: quality={fig['quality']}"
+            figure_desc += (
+                f"\n- {fig['figure_num']}: quality={fig['quality']}, "
+                f"confidence={fig.get('confidence')}, resolver={fig.get('resolver_version')}"
+            )
+        for table in tables[:10]:
+            figure_desc += (
+                f"\n- {table['table_num']}: confidence={table.get('confidence')}, "
+                f"method={table.get('parse_method')}, resolver={table.get('resolver_version')}"
+            )
 
     prompt = f"""너는 Sasoo(사수)라는 AI Co-Scientist야. 이 연구 논문의 시각적 요소를 분석해줘.
 
@@ -315,33 +680,53 @@ Return ONLY valid JSON (마크다운 펜스 없이):
   "key_findings_from_visuals": ["시각자료에서 발견한 핵심 사항1", "핵심 사항2", ...]
 }}
 
-논문 텍스트:
-{text[:6000]}
+논문 관련 텍스트:
+{visual_input}
 {figure_desc}
 """
+
+    cached = await _get_cached_phase_result(paper_id, "visual", prompt)
+    if cached is not None:
+        phase_status.status = "completed"
+        phase_status.completed_at = _utcnow_iso()
+        phase_status.model_used = cached["model"]
+        phase_status.tokens_in = cached["tokens_in"]
+        phase_status.tokens_out = cached["tokens_out"]
+        phase_status.cost_usd = cached["cost_usd"]
+        status.progress_pct = max(status.progress_pct, 32.0)
+        status.total_cost_usd += cached["cost_usd"]
+        status.total_tokens_in += cached["tokens_in"]
+        status.total_tokens_out += cached["tokens_out"]
+        return cached
 
     result = await _call_gemini(prompt)
     cleaned_text = _clean_llm_json(result["text"])
 
     # Validate JSON before storing
     try:
-        json.loads(cleaned_text)
-        result["text"] = cleaned_text
+        parsed = json.loads(cleaned_text)
+        parsed["figure_count"] = figure_count
+        parsed["tables_found"] = table_count
+        result["text"] = json.dumps(parsed, ensure_ascii=False)
     except json.JSONDecodeError as exc:
         logger.warning("Phase 2 JSON validation failed: %s", exc)
         result["text"] = json.dumps({"_raw": cleaned_text, "_parse_error": str(exc)})
 
     cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
-    await execute_insert(
-        """INSERT INTO analysis_results (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (paper_id, "visual", result["text"], result["model"],
-         result["tokens_in"], result["tokens_out"], cost),
+    await _insert_analysis_result(
+        paper_id,
+        "visual",
+        result["text"],
+        result["model"],
+        result["tokens_in"],
+        result["tokens_out"],
+        cost,
+        prompt,
     )
 
     phase_status.status = "completed"
-    phase_status.completed_at = datetime.utcnow().isoformat()
+    phase_status.completed_at = _utcnow_iso()
     phase_status.model_used = result["model"]
     phase_status.tokens_in = result["tokens_in"]
     phase_status.tokens_out = result["tokens_out"]
@@ -354,54 +739,38 @@ Return ONLY valid JSON (마크다운 펜스 없이):
     return result
 
 
-async def _run_recipe(paper_id: int, text: str, status: AnalysisStatus) -> dict:
+async def _run_recipe(
+    paper_id: int,
+    recipe_input: str,
+    status: AnalysisStatus,
+    screening_result_text: Optional[str] = None,
+) -> dict:
     """Phase 3: Recipe extraction - extract structured experimental procedure."""
     phase_status = PhaseStatus(
         phase=AnalysisPhase.RECIPE,
         status="running",
-        started_at=datetime.utcnow().isoformat(),
+        started_at=_utcnow_iso(),
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.RECIPE
 
-    # --------------- Smart text extraction ---------------
-    # The Methods/Experimental section is usually in the middle-to-end of the paper.
-    # Send a smarter excerpt: first 3K (intro/abstract) + last 15K (methods, results, refs)
-    text_lower = text.lower()
-    # Try to find the start of the Methods/Experimental section
-    methods_markers = [
-        "methods", "methodology", "experimental", "materials and methods",
-        "experimental setup", "experimental procedure", "experimental details",
-        "fabrication", "sample preparation", "measurement",
-        "simulation setup", "simulation method", "computational method",
-        "numerical method", "synthesis", "characterization",
-        "실험", "방법", "실험 방법", "실험 절차", "재료 및 방법",
-        "시뮬레이션", "합성", "측정",
-    ]
-    methods_start = -1
-    for marker in methods_markers:
-        idx = text_lower.find(marker)
-        if idx > 0 and (methods_start < 0 or idx < methods_start):
-            methods_start = idx
-
-    if methods_start > 0:
-        # Include some context before + full methods section onward
-        context_start = max(0, methods_start - 500)
-        paper_excerpt = text[:3000] + "\n\n...(중략)...\n\n" + text[context_start:context_start + 18000]
-    else:
-        # Fallback: send more text than before (20K instead of 10K)
-        paper_excerpt = text[:20000]
+    should_skip, skip_reason = _screening_gate_decision(screening_result_text)
+    if should_skip:
+        return await _store_skipped_phase_result(
+            paper_id=paper_id,
+            phase="recipe",
+            phase_status=phase_status,
+            status=status,
+            progress_pct=48.0,
+            reason=skip_reason,
+            title="Recipe",
+        )
 
     # --------------- Domain-specific parameter hints ---------------
-    # Look up the screening result to get domain info
-    screening_row = await fetch_one(
-        "SELECT result FROM analysis_results WHERE paper_id = ? AND phase = 'screening' ORDER BY created_at DESC LIMIT 1",
-        (paper_id,),
-    )
     domain_hint = ""
-    if screening_row:
+    if screening_result_text:
         try:
-            screening_data = json.loads(_clean_llm_json(screening_row["result"]))
+            screening_data = json.loads(_clean_llm_json(screening_result_text))
             domain = screening_data.get("domain", "")
             if domain in ("optics", "photonics"):
                 domain_hint = """
@@ -504,8 +873,22 @@ Return ONLY valid JSON (마크다운 펜스 없이, 설명 없이):
 5개 미만이면 텍스트를 다시 꼼꼼히 읽어 — 분명 놓친 게 있을 거야.
 
 논문 텍스트:
-{paper_excerpt}
+{recipe_input}
 """
+
+    cached = await _get_cached_phase_result(paper_id, "recipe", prompt)
+    if cached is not None:
+        phase_status.status = "completed"
+        phase_status.completed_at = _utcnow_iso()
+        phase_status.model_used = cached["model"]
+        phase_status.tokens_in = cached["tokens_in"]
+        phase_status.tokens_out = cached["tokens_out"]
+        phase_status.cost_usd = cached["cost_usd"]
+        status.progress_pct = max(status.progress_pct, 48.0)
+        status.total_cost_usd += cached["cost_usd"]
+        status.total_tokens_in += cached["tokens_in"]
+        status.total_tokens_out += cached["tokens_out"]
+        return cached
 
     try:
         result = await _call_anthropic(prompt)
@@ -525,15 +908,19 @@ Return ONLY valid JSON (마크다운 펜스 없이, 설명 없이):
 
     cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
-    await execute_insert(
-        """INSERT INTO analysis_results (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (paper_id, "recipe", result["text"], result["model"],
-         result["tokens_in"], result["tokens_out"], cost),
+    await _insert_analysis_result(
+        paper_id,
+        "recipe",
+        result["text"],
+        result["model"],
+        result["tokens_in"],
+        result["tokens_out"],
+        cost,
+        prompt,
     )
 
     phase_status.status = "completed"
-    phase_status.completed_at = datetime.utcnow().isoformat()
+    phase_status.completed_at = _utcnow_iso()
     phase_status.model_used = result["model"]
     phase_status.tokens_in = result["tokens_in"]
     phase_status.tokens_out = result["tokens_out"]
@@ -546,17 +933,35 @@ Return ONLY valid JSON (마크다운 펜스 없이, 설명 없이):
     return result
 
 
-async def _run_deep_dive(paper_id: int, text: str, previous_results: list[str], status: AnalysisStatus) -> dict:
+async def _run_deep_dive(
+    paper_id: int,
+    deep_dive_input: str,
+    previous_results: list[str],
+    status: AnalysisStatus,
+    screening_result_text: Optional[str] = None,
+) -> dict:
     """Phase 4: Deep dive - comprehensive analysis using Claude."""
     phase_status = PhaseStatus(
         phase=AnalysisPhase.DEEP_DIVE,
         status="running",
-        started_at=datetime.utcnow().isoformat(),
+        started_at=_utcnow_iso(),
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.DEEP_DIVE
 
-    prev_context = "\n\n".join(previous_results[:3]) if previous_results else ""
+    should_skip, skip_reason = _screening_gate_decision(screening_result_text)
+    if should_skip:
+        return await _store_skipped_phase_result(
+            paper_id=paper_id,
+            phase="deep_dive",
+            phase_status=phase_status,
+            status=status,
+            progress_pct=64.0,
+            reason=skip_reason,
+            title="Deep Dive",
+        )
+
+    prev_context = "\n\n".join(previous_results[:4]) if previous_results else ""
 
     prompt = f"""너는 Sasoo(사수)라는 AI Co-Scientist야. 이 연구 논문에 대한 심층 분석을 해줘.
 
@@ -564,7 +969,7 @@ async def _run_deep_dive(paper_id: int, text: str, previous_results: list[str], 
 전문적이면서도 이해하기 쉽게, 마치 선배 연구자가 후배에게 설명하듯이 써줘.
 
 이전 분석 단계의 결과:
-{prev_context[:3000]}
+{prev_context[:4000]}
 
 위 정보를 바탕으로 포괄적인 심층 분석을 제공해줘.
 
@@ -581,8 +986,22 @@ Return ONLY valid JSON (마크다운 펜스 없이):
 }}
 
 논문 텍스트:
-{text[:10000]}
+{deep_dive_input}
 """
+
+    cached = await _get_cached_phase_result(paper_id, "deep_dive", prompt)
+    if cached is not None:
+        phase_status.status = "completed"
+        phase_status.completed_at = _utcnow_iso()
+        phase_status.model_used = cached["model"]
+        phase_status.tokens_in = cached["tokens_in"]
+        phase_status.tokens_out = cached["tokens_out"]
+        phase_status.cost_usd = cached["cost_usd"]
+        status.progress_pct = max(status.progress_pct, 64.0)
+        status.total_cost_usd += cached["cost_usd"]
+        status.total_tokens_in += cached["tokens_in"]
+        status.total_tokens_out += cached["tokens_out"]
+        return cached
 
     try:
         result = await _call_anthropic(prompt)
@@ -601,15 +1020,19 @@ Return ONLY valid JSON (마크다운 펜스 없이):
 
     cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
-    await execute_insert(
-        """INSERT INTO analysis_results (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (paper_id, "deep_dive", result["text"], result["model"],
-         result["tokens_in"], result["tokens_out"], cost),
+    await _insert_analysis_result(
+        paper_id,
+        "deep_dive",
+        result["text"],
+        result["model"],
+        result["tokens_in"],
+        result["tokens_out"],
+        cost,
+        prompt,
     )
 
     phase_status.status = "completed"
-    phase_status.completed_at = datetime.utcnow().isoformat()
+    phase_status.completed_at = _utcnow_iso()
     phase_status.model_used = result["model"]
     phase_status.tokens_in = result["tokens_in"]
     phase_status.tokens_out = result["tokens_out"]
@@ -641,7 +1064,7 @@ _MERMAID_SYNTAX_RULES = """CRITICAL RULES (Mermaid v10.x compatibility):
 
 async def _plan_visualizations(
     paper_id: int,
-    text: str,
+    visualization_input: str,
     previous_results: list[str],
     status: AnalysisStatus,
 ) -> list[dict]:
@@ -652,7 +1075,7 @@ async def _plan_visualizations(
     phase_status = PhaseStatus(
         phase=AnalysisPhase.DEEP_DIVE,  # piggyback on deep_dive phase for status
         status="running",
-        started_at=datetime.utcnow().isoformat(),
+        started_at=_utcnow_iso(),
     )
     # Don't append a new phase — we update the existing deep_dive phase's progress
 
@@ -686,11 +1109,18 @@ Return ONLY valid JSON (마크다운 펜스 없이). 아래 구조를 정확히 
 고려할 것: 프로세스 흐름, 파라미터 관계, 장비 구성, 신호 경로, 비교표.
 
 --- 분석 결과 (Phase 1-4) ---
-{prev_context[:12000]}
+{prev_context[:9000]}
 
---- 논문 텍스트 ---
-{text[:5000]}
+--- 관련 텍스트 요약 ---
+{visualization_input}
 """
+
+    cached = await _get_cached_phase_result(paper_id, "viz_plan", prompt)
+    if cached is not None:
+        try:
+            return json.loads(cached["text"]).get("visualizations", [])
+        except (json.JSONDecodeError, TypeError, AttributeError):
+            return []
 
     result = await _call_gemini(prompt, model="gemini-3.1-pro-preview")
     cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
@@ -724,17 +1154,27 @@ Return ONLY valid JSON (마크다운 펜스 없이). 아래 구조를 정확히 
     items = items[:5]
 
     # Store the plan in DB
-    await execute_insert(
-        """INSERT INTO analysis_results (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (paper_id, "viz_plan", json.dumps({"visualizations": items}, ensure_ascii=False),
-         result["model"], result["tokens_in"], result["tokens_out"], cost),
+    result_text = json.dumps({"visualizations": items}, ensure_ascii=False)
+    await _insert_analysis_result(
+        paper_id,
+        "viz_plan",
+        result_text,
+        result["model"],
+        result["tokens_in"],
+        result["tokens_out"],
+        cost,
+        prompt,
     )
 
     return items
 
 
-async def _generate_single_mermaid(paper_id: int, viz_item: dict, text: str, previous_results: list[str]) -> str:
+async def _generate_single_mermaid(
+    paper_id: int,
+    viz_item: dict,
+    visualization_input: str,
+    previous_results: list[str],
+) -> str:
     """Generate Mermaid code for a single visualization item using Gemini Pro 3."""
     import re as _re
 
@@ -755,10 +1195,10 @@ async def _generate_single_mermaid(paper_id: int, viz_item: dict, text: str, pre
 분석 데이터와 논문 텍스트를 소스로 사용해:
 
 --- 분석 데이터 ---
-{prev_context[:6000]}
+{prev_context[:5000]}
 
---- 논문 텍스트 ---
-{text[:4000]}
+--- 관련 텍스트 요약 ---
+{visualization_input}
 
 다이어그램 타입 키워드로 시작하는 유효한 Mermaid 코드만 반환해.
 """
@@ -783,7 +1223,14 @@ async def _generate_single_mermaid(paper_id: int, viz_item: dict, text: str, pre
     return mermaid_code
 
 
-async def _generate_single_paperbanana(paper_id: int, viz_item: dict, text: str, folder_name: str) -> dict:
+async def _generate_single_paperbanana(
+    paper_id: int,
+    viz_item: dict,
+    visualization_input: str,
+    folder_name: str,
+    recipe_result: str,
+    deep_dive_result: str,
+) -> dict:
     """
     Generate a PaperBanana illustration for a single visualization item.
     Returns {"image_url": ..., "image_path": ...} or empty dict on failure.
@@ -794,6 +1241,15 @@ async def _generate_single_paperbanana(paper_id: int, viz_item: dict, text: str,
     title = viz_item.get("title", "Illustration")
     description = viz_item.get("description", "")
     category = viz_item.get("category", "conceptual_illustration")
+    enriched_item = dict(viz_item)
+    context_parts = [description]
+    if recipe_result:
+        context_parts.append(f"Recipe context: {recipe_result[:1800]}")
+    if deep_dive_result:
+        context_parts.append(f"Deep dive context: {deep_dive_result[:1800]}")
+    if visualization_input:
+        context_parts.append(f"Paper context: {visualization_input[:2200]}")
+    enriched_item["description"] = "\n\n".join(part for part in context_parts if part)
 
     # Try using the PaperBanana bridge.
     # NOTE: We directly await the bridge's async generate method on the
@@ -811,7 +1267,7 @@ async def _generate_single_paperbanana(paper_id: int, viz_item: dict, text: str,
             paper_dir = str(get_paper_dir(folder_name))
 
             path = await asyncio.wait_for(
-                bridge.generate_illustration(viz_item, paper_dir),
+                bridge.generate_illustration(enriched_item, paper_dir),
                 timeout=300.0,  # 5 minute timeout per illustration
             )
             if path:
@@ -894,9 +1350,11 @@ async def _generate_single_paperbanana(paper_id: int, viz_item: dict, text: str,
 
 async def _run_visualizations(
     paper_id: int,
-    text: str,
+    visualization_input: str,
     folder_name: str,
     previous_results: list[str],
+    recipe_result: str,
+    deep_dive_result: str,
     status: AnalysisStatus,
 ) -> list[dict]:
     """
@@ -905,8 +1363,27 @@ async def _run_visualizations(
     2. Generate each (Mermaid or PaperBanana) in parallel
     3. Store results in DB
     """
+    visualization_cache_input = json.dumps(
+        {
+            "visualization_input": visualization_input,
+            "previous_results": previous_results,
+            "recipe_result": recipe_result,
+            "deep_dive_result": deep_dive_result,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    cached = await _get_cached_phase_result(paper_id, "visualization", visualization_cache_input)
+    if cached is not None:
+        try:
+            cached_data = json.loads(cached["text"])
+            status.progress_pct = 100.0
+            return list(cached_data.get("items", []))
+        except (json.JSONDecodeError, TypeError, AttributeError):
+            pass
+
     # Step 1: Plan
-    viz_plan = await _plan_visualizations(paper_id, text, previous_results, status)
+    viz_plan = await _plan_visualizations(paper_id, visualization_input, previous_results, status)
 
     # Step 2: Generate all in parallel
     async def generate_one(idx: int, item: dict) -> dict:
@@ -922,11 +1399,23 @@ async def _run_visualizations(
         }
         try:
             if tool == "mermaid":
-                code = await _generate_single_mermaid(paper_id, item, text, previous_results)
+                code = await _generate_single_mermaid(
+                    paper_id,
+                    item,
+                    visualization_input,
+                    previous_results,
+                )
                 result_item["mermaid_code"] = code
                 result_item["status"] = "completed"
             elif tool == "paperbanana":
-                pb_result = await _generate_single_paperbanana(paper_id, item, text, folder_name)
+                pb_result = await _generate_single_paperbanana(
+                    paper_id,
+                    item,
+                    visualization_input,
+                    folder_name,
+                    recipe_result,
+                    deep_dive_result,
+                )
                 result_item["image_url"] = pb_result.get("image_url")
                 result_item["image_path"] = pb_result.get("image_path")
                 result_item["status"] = "completed" if pb_result else "error"
@@ -970,13 +1459,17 @@ async def _run_visualizations(
         "items": list(generated_items),
         "total_count": len(generated_items),
         "model_used": "gemini-3.1-pro-preview",
-        "planned_at": datetime.utcnow().isoformat(),
+        "planned_at": _utcnow_iso(),
     }
-    await execute_insert(
-        """INSERT INTO analysis_results (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (paper_id, "visualization", json.dumps(viz_result, ensure_ascii=False),
-         "gemini-3.1-pro-preview", 0, 0, 0.0),
+    await _insert_analysis_result(
+        paper_id,
+        "visualization",
+        json.dumps(viz_result, ensure_ascii=False),
+        "gemini-3.1-pro-preview",
+        0,
+        0,
+        0.0,
+        visualization_cache_input,
     )
 
     # Visualization complete — set progress to 100%
@@ -1023,8 +1516,13 @@ async def _run_full_analysis(paper_id: int):
         folder_name = paper["folder_name"]
         paper_dir = get_paper_dir(folder_name)
 
-        # Read PDF text (cached)
-        full_text = get_pdf_text(paper_dir)
+        document_context = await asyncio.to_thread(load_or_build_document_context, paper_dir)
+        phase_inputs = document_context.get("phase_inputs", {})
+        sections = document_context.get("sections", {})
+        try:
+            await schedule_paper_artifacts_refresh(paper_id, paper_dir)
+        except Exception as exc:
+            logger.warning("Background visual refresh scheduling failed for paper %s: %s", paper_id, exc)
 
         # Check for cancellation
         if cancel_event.is_set():
@@ -1033,7 +1531,11 @@ async def _run_full_analysis(paper_id: int):
             return
 
         # Phase 1: Screening
-        r1 = await _run_screening(paper_id, full_text, status)
+        r1 = await _run_screening(
+            paper_id,
+            str(phase_inputs.get("screening", "")),
+            status,
+        )
 
         # Check for cancellation
         if cancel_event.is_set():
@@ -1043,7 +1545,14 @@ async def _run_full_analysis(paper_id: int):
 
         # Phase 2: Citation Analysis (after screening, before visual)
         paper_authors = paper.get("authors", "") or ""
-        r_cit = await _run_citation(paper_id, full_text, paper_authors, status)
+        r_cit = await _run_citation(
+            paper_id,
+            sections=sections,
+            citation_body=str(phase_inputs.get("citation_body", "")),
+            citation_references=str(phase_inputs.get("citation_references", "")),
+            paper_authors=paper_authors,
+            status=status,
+        )
 
         # Check for cancellation
         if cancel_event.is_set():
@@ -1052,7 +1561,12 @@ async def _run_full_analysis(paper_id: int):
             return
 
         # Phase 3: Visual Verification (independent of citation)
-        r2 = await _run_visual(paper_id, full_text, folder_name, status)
+        r2 = await _run_visual(
+            paper_id,
+            str(phase_inputs.get("visual", "")),
+            folder_name,
+            status,
+        )
 
         # Check for cancellation
         if cancel_event.is_set():
@@ -1070,7 +1584,12 @@ async def _run_full_analysis(paper_id: int):
             previous.append(r2["text"])
 
         # Phase 4: Recipe Extraction (depends on text only)
-        r3 = await _run_recipe(paper_id, full_text, status)
+        r3 = await _run_recipe(
+            paper_id,
+            str(phase_inputs.get("recipe", "")),
+            status,
+            screening_result_text=r1.get("text", ""),
+        )
 
         # Check for cancellation
         if cancel_event.is_set():
@@ -1082,7 +1601,13 @@ async def _run_full_analysis(paper_id: int):
             previous.append(r3["text"])
 
         # Phase 4: Deep Dive (depends on all previous results)
-        r4 = await _run_deep_dive(paper_id, full_text, previous, status)
+        r4 = await _run_deep_dive(
+            paper_id,
+            str(phase_inputs.get("deep_dive", "")),
+            previous,
+            status,
+            screening_result_text=r1.get("text", ""),
+        )
 
         # Check for cancellation
         if cancel_event.is_set():
@@ -1107,16 +1632,23 @@ async def _run_full_analysis(paper_id: int):
         if r4.get("text") and not _is_error_result(r4["text"]):
             all_results.append(r4["text"])
 
-        try:
-            await _run_visualizations(
-                paper_id, full_text, folder_name, all_results, status
-            )
-        except Exception as viz_err:
-            # Visualization failure should NOT block the analysis from completing
-            import logging
-            logging.getLogger(__name__).warning(
-                "Visualization generation failed for paper %d: %s", paper_id, viz_err
-            )
+        if not (_result_was_skipped(r3) and _result_was_skipped(r4)):
+            try:
+                await _run_visualizations(
+                    paper_id,
+                    str(phase_inputs.get("visualization", "")),
+                    folder_name,
+                    all_results,
+                    r3.get("text", ""),
+                    r4.get("text", ""),
+                    status,
+                )
+            except Exception as viz_err:
+                # Visualization failure should NOT block the analysis from completing
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Visualization generation failed for paper %d: %s", paper_id, viz_err
+                )
 
         # Check for cancellation one last time
         if cancel_event.is_set():
@@ -1127,7 +1659,7 @@ async def _run_full_analysis(paper_id: int):
         # Mark paper as completed
         await execute_update(
             "UPDATE papers SET status = ?, analyzed_at = ? WHERE id = ?",
-            ("completed", datetime.utcnow().isoformat(), paper_id),
+            ("completed", _utcnow_iso(), paper_id),
         )
         status.overall_status = "completed"
 
@@ -1147,9 +1679,17 @@ async def _run_full_analysis(paper_id: int):
 
         # Store error as analysis result for debugging
         await execute_insert(
-            """INSERT INTO analysis_results (paper_id, phase, result, model_used)
-               VALUES (?, ?, ?, ?)""",
-            (paper_id, "error", json.dumps({"error": error_msg, "traceback": traceback.format_exc()}), "system"),
+            """
+            INSERT INTO analysis_results (paper_id, phase, result, model_used, input_hash)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                paper_id,
+                "error",
+                json.dumps({"error": error_msg, "traceback": traceback.format_exc()}),
+                "system",
+                compute_input_hash(error_msg),
+            ),
         )
 
     finally:
@@ -1180,6 +1720,17 @@ async def run_analysis(paper_id: int, background_tasks: BackgroundTasks):
     if paper is None:
         raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
 
+    try:
+        await ensure_text_artifacts_async(get_paper_dir(paper["folder_name"]))
+    except (OdlParserError, OdlRuntimeError, FileNotFoundError) as exc:
+        status_code, detail = explain_odl_failure(exc)
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to prepare text artifacts before analysis: {exc}",
+        ) from exc
+
     async with _analyses_lock:
         # Check if already running
         if paper_id in _running_analyses:
@@ -1200,7 +1751,7 @@ async def run_analysis(paper_id: int, background_tasks: BackgroundTasks):
     monthly_limit = float(settings.get("monthly_budget_limit", "50.0"))
 
     # Calculate current month spending
-    current_month = datetime.utcnow().strftime("%Y-%m")
+    current_month = _utcnow().strftime("%Y-%m")
     month_start = f"{current_month}-01"
     month_num = int(current_month.split("-")[1])
     year = int(current_month.split("-")[0])
@@ -1221,11 +1772,6 @@ async def run_analysis(paper_id: int, background_tasks: BackgroundTasks):
             detail=f"Monthly budget limit exceeded (${current_spending:.2f} / ${monthly_limit:.2f}). "
                    f"Increase your budget in Settings to continue.",
         )
-
-    # Clear previous results if re-running
-    db = await get_db()
-    await db.execute("DELETE FROM analysis_results WHERE paper_id = ?", (paper_id,))
-    await db.commit()
 
     # Launch background analysis
     background_tasks.add_task(_run_full_analysis, paper_id)
@@ -1270,9 +1816,9 @@ async def get_analysis_status(paper_id: int):
     if paper is None:
         raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
 
-    results = await fetch_all(
-        "SELECT * FROM analysis_results WHERE paper_id = ? AND phase != 'error' ORDER BY created_at",
-        (paper_id,),
+    latest_results = await get_latest_completed_phase_rows(
+        paper_id,
+        phases=["screening", "citation", "visual", "recipe", "deep_dive", "visualization", "viz_plan"],
     )
 
     phases: list[PhaseStatus] = []
@@ -1281,12 +1827,11 @@ async def get_analysis_status(paper_id: int):
     total_out = 0
 
     phase_order = ["screening", "citation", "visual", "recipe", "deep_dive"]
-    completed_phases = {r["phase"] for r in results}
+    completed_phases = set(latest_results.keys())
 
     for phase_name in phase_order:
-        matching = [r for r in results if r["phase"] == phase_name]
-        if matching:
-            r = matching[-1]  # latest result for this phase
+        r = latest_results.get(phase_name)
+        if r:
             cost = r.get("cost_usd") or 0.0
             tin = r.get("tokens_in") or 0
             tout = r.get("tokens_out") or 0
@@ -1332,9 +1877,9 @@ async def get_analysis_results(paper_id: int):
     if paper is None:
         raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
 
-    results = await fetch_all(
-        "SELECT * FROM analysis_results WHERE paper_id = ? AND phase != 'error' ORDER BY created_at",
-        (paper_id,),
+    latest_results = await get_latest_completed_phase_rows(
+        paper_id,
+        phases=["screening", "citation", "visual", "recipe", "deep_dive"],
     )
 
     # Build status
@@ -1349,13 +1894,10 @@ async def get_analysis_results(paper_id: int):
         "deep_dive": None,
     }
 
-    for r in results:
-        phase = r["phase"]
-        if phase in phase_data:
-            try:
-                phase_data[phase] = json.loads(r["result"])
-            except (json.JSONDecodeError, TypeError):
-                phase_data[phase] = {"raw_text": r["result"]}
+    for phase in phase_data:
+        row = latest_results.get(phase)
+        if row:
+            phase_data[phase] = row.get("parsed_result")
 
     return FullAnalysisResponse(
         paper_id=paper_id,
@@ -1375,36 +1917,79 @@ async def get_figures(paper_id: int):
     if paper is None:
         raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
 
+    paper_dir = get_paper_dir(paper["folder_name"])
+    try:
+        visual_contract, _, _ = await _get_visual_contract(
+            paper_id,
+            paper_dir,
+            schedule_refresh=True,
+        )
+    except FileNotFoundError as exc:
+        status_code, detail = explain_odl_failure(exc)
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+
     rows = await fetch_all(
-        "SELECT * FROM figures WHERE paper_id = ? ORDER BY figure_num",
+        "SELECT * FROM figures WHERE paper_id = ? ORDER BY COALESCE(page_number, 999999), figure_num",
         (paper_id,),
     )
 
-    figures = [FigureInfo(**row) for row in rows]
-    return FigureListResponse(figures=figures, total=len(figures))
+    figures = [FigureInfo(**figure_row_to_api_dict(row)) for row in rows]
+    return FigureListResponse(
+        figures=figures,
+        total=len(figures),
+        visual_state=visual_contract["visual_state"],
+        visual_error=visual_contract["visual_error"],
+        artifacts_ready=visual_contract["artifacts_ready"],
+        artifacts_error=visual_contract["artifacts_error"],
+    )
+
+
+@router.get("/{paper_id}/tables", response_model=TableListResponse)
+async def get_tables(paper_id: int):
+    """Get all extracted tables for a paper."""
+    paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
+    if paper is None:
+        raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
+
+    paper_dir = get_paper_dir(paper["folder_name"])
+    try:
+        visual_contract, _, _ = await _get_visual_contract(
+            paper_id,
+            paper_dir,
+            schedule_refresh=True,
+        )
+    except FileNotFoundError as exc:
+        status_code, detail = explain_odl_failure(exc)
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+
+    rows = await fetch_all(
+        "SELECT * FROM tables WHERE paper_id = ? ORDER BY COALESCE(page_number, 999999), table_num",
+        (paper_id,),
+    )
+    tables = [TableInfo(**table_row_to_api_dict(row)) for row in rows]
+    return TableListResponse(
+        tables=tables,
+        total=len(tables),
+        visual_state=visual_contract["visual_state"],
+        visual_error=visual_contract["visual_error"],
+        artifacts_ready=visual_contract["artifacts_ready"],
+        artifacts_error=visual_contract["artifacts_error"],
+    )
 
 
 @router.get("/{paper_id}/recipe")
 async def get_recipe(paper_id: int):
     """Get the extracted recipe card for a paper."""
-    result = await fetch_one(
-        "SELECT * FROM analysis_results WHERE paper_id = ? AND phase = 'recipe' ORDER BY created_at DESC LIMIT 1",
-        (paper_id,),
-    )
+    result = await get_latest_completed_phase_row(paper_id, "recipe")
     if result is None:
         raise HTTPException(
             status_code=404,
             detail=f"No recipe found for paper {paper_id}. Run analysis first.",
         )
 
-    try:
-        recipe_data = json.loads(result["result"])
-    except (json.JSONDecodeError, TypeError):
-        recipe_data = {"raw_text": result["result"]}
-
     return {
         "paper_id": paper_id,
-        "recipe": recipe_data,
+        "recipe": result.get("parsed_result"),
         "model_used": result.get("model_used"),
         "created_at": result.get("created_at"),
     }
@@ -1421,23 +2006,18 @@ async def get_mermaid(paper_id: int):
         raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
 
     # Check if recipe exists (we need it for the flow)
-    recipe_result = await fetch_one(
-        "SELECT result FROM analysis_results WHERE paper_id = ? AND phase = 'recipe' ORDER BY created_at DESC LIMIT 1",
-        (paper_id,),
-    )
-
-    recipe_text = ""
-    if recipe_result:
-        recipe_text = f"\n\nRecipe data:\n{recipe_result['result'][:3000]}"
-
-    # Get paper text for context (cached)
     folder_name = paper["folder_name"]
     paper_dir = get_paper_dir(folder_name)
-    paper_text = ""
+    visualization_input = ""
+    recipe_text = ""
     try:
-        paper_text = get_pdf_text(paper_dir)
+        document_context = await asyncio.to_thread(load_or_build_document_context, paper_dir)
+        visualization_input = str(document_context.get("phase_inputs", {}).get("visualization", ""))
     except FileNotFoundError:
         pass
+    recipe_result = await get_latest_completed_phase_row(paper_id, "recipe")
+    if recipe_result:
+        recipe_text = f"\n\nRecipe data:\n{_phase_result_snippet(recipe_result, 3000)}"
 
     prompt = f"""Generate a Mermaid flowchart diagram that shows the experimental process/methodology flow of this research paper.
 
@@ -1456,7 +2036,7 @@ Paper title: {paper['title']}
 {recipe_text}
 
 Paper text excerpt:
-{paper_text[:5000]}
+{visualization_input}
 
 Return ONLY valid Mermaid syntax starting with "flowchart TD" or "flowchart LR".
 """
@@ -1502,17 +2082,14 @@ async def get_visualizations(paper_id: int):
         raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
 
     # Look for stored visualization results
-    viz_result = await fetch_one(
-        "SELECT result FROM analysis_results WHERE paper_id = ? AND phase = 'visualization' ORDER BY created_at DESC LIMIT 1",
-        (paper_id,),
-    )
+    viz_result = await get_latest_completed_phase_row(paper_id, "visualization")
 
     if viz_result is None:
         # No visualizations generated yet
         return VisualizationPlanResponse(paper_id=paper_id)
 
     try:
-        data = json.loads(viz_result["result"])
+        data = viz_result.get("parsed_result") or {}
         items = [VisualizationItem(**item) for item in data.get("items", [])]
         return VisualizationPlanResponse(
             paper_id=paper_id,
@@ -1534,12 +2111,12 @@ async def get_report(paper_id: int):
     if paper is None:
         raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
 
-    results = await fetch_all(
-        "SELECT * FROM analysis_results WHERE paper_id = ? AND phase != 'error' ORDER BY created_at",
-        (paper_id,),
+    latest_results = await get_latest_completed_phase_rows(
+        paper_id,
+        phases=["screening", "citation", "visual", "recipe", "deep_dive"],
     )
 
-    if not results:
+    if not latest_results:
         raise HTTPException(
             status_code=404,
             detail=f"No analysis results found for paper {paper_id}. Run analysis first.",
@@ -1565,7 +2142,13 @@ async def get_report(paper_id: int):
         "deep_dive": "Phase 5: Deep Dive Analysis",
     }
 
-    for r in results:
+    ordered_rows = [
+        latest_results[phase]
+        for phase in ["screening", "citation", "visual", "recipe", "deep_dive"]
+        if phase in latest_results
+    ]
+
+    for r in ordered_rows:
         phase = r["phase"]
         title = phase_titles.get(phase, phase.title())
         sections.append(f"## {title}\n")
@@ -1573,18 +2156,20 @@ async def get_report(paper_id: int):
                         f"Tokens: {r.get('tokens_in', 0):,} in / {r.get('tokens_out', 0):,} out | "
                         f"Cost: ${r.get('cost_usd', 0):.4f}*\n")
 
-        try:
-            data = json.loads(r["result"])
-            sections.append(_format_phase_data(phase, data))
-        except (json.JSONDecodeError, TypeError):
-            sections.append(r["result"])
+        parsed = r.get("parsed_result")
+        sections.append(
+            _format_phase_data(
+                phase,
+                parsed if isinstance(parsed, dict) else {"raw_text": r.get("result")},
+            )
+        )
 
         sections.append("")
 
     # Cost summary
-    total_cost = sum(r.get("cost_usd", 0) or 0 for r in results)
-    total_in = sum(r.get("tokens_in", 0) or 0 for r in results)
-    total_out = sum(r.get("tokens_out", 0) or 0 for r in results)
+    total_cost = sum(r.get("cost_usd", 0) or 0 for r in ordered_rows)
+    total_in = sum(r.get("tokens_in", 0) or 0 for r in ordered_rows)
+    total_out = sum(r.get("tokens_out", 0) or 0 for r in ordered_rows)
     sections.append("## Cost Summary\n")
     sections.append(f"- **Total Cost:** ${total_cost:.4f}")
     sections.append(f"- **Total Tokens In:** {total_in:,}")
@@ -1596,7 +2181,7 @@ async def get_report(paper_id: int):
         paper_id=paper_id,
         title=paper["title"],
         markdown=markdown,
-        generated_at=datetime.utcnow().isoformat(),
+        generated_at=_utcnow_iso(),
     )
 
 
@@ -1623,17 +2208,14 @@ async def generate_paperbanana(paper_id: int, request: PaperBananaRequest):
     output_dir = get_paperbanana_dir(folder_name)
 
     # Get analysis results for the visual summary
-    results = await fetch_all(
-        "SELECT phase, result FROM analysis_results WHERE paper_id = ? AND phase != 'error'",
-        (paper_id,),
-    )
-
+    latest_results = await get_latest_completed_phase_rows(paper_id)
     analysis_data: dict = {}
-    for r in results:
-        try:
-            analysis_data[r["phase"]] = json.loads(r["result"])
-        except (json.JSONDecodeError, TypeError):
-            analysis_data[r["phase"]] = {"raw": r["result"]}
+    for phase, row in latest_results.items():
+        parsed = row.get("parsed_result")
+        if isinstance(parsed, dict) and "raw_text" in parsed:
+            analysis_data[phase] = {"raw": parsed["raw_text"]}
+        else:
+            analysis_data[phase] = parsed
 
     # Generate the PaperBanana image
     try:
@@ -1698,26 +2280,28 @@ async def _generate_experiment_plan_impl(paper_id: int):
         raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
 
     # 2. Load recipe result (Phase 3 must be complete)
-    recipe_row = await fetch_one(
-        "SELECT result FROM analysis_results WHERE paper_id = ? AND phase = 'recipe' ORDER BY created_at DESC LIMIT 1",
-        (paper_id,),
-    )
+    recipe_row = await get_latest_completed_phase_row(paper_id, "recipe")
     if not recipe_row:
         raise HTTPException(
             status_code=400,
             detail="Recipe not found. Run analysis first (Phase 3 required).",
         )
 
-    recipe_text = recipe_row["result"]
+    recipe_text = _phase_result_snippet(recipe_row, 5000)
 
-    # 3. Load visual result for [MISSING] context
-    visual_row = await fetch_one(
-        "SELECT result FROM analysis_results WHERE paper_id = ? AND phase = 'visual' ORDER BY created_at DESC LIMIT 1",
-        (paper_id,),
-    )
+    # 3. Load stable recipe context plus latest visual result for [MISSING] context
+    paper_dir = get_paper_dir(paper["folder_name"])
+    recipe_context = ""
+    try:
+        document_context = await asyncio.to_thread(load_or_build_document_context, paper_dir)
+        recipe_context = str(document_context.get("phase_inputs", {}).get("recipe", ""))
+    except FileNotFoundError:
+        pass
+
+    visual_row = await get_latest_completed_phase_row(paper_id, "visual")
     visual_context = ""
     if visual_row:
-        visual_context = f"\n\n시각 검증 결과:\n{visual_row['result'][:2000]}"
+        visual_context = f"\n\n시각 검증 결과:\n{_phase_result_snippet(visual_row, 2000)}"
 
     # 4. Get agent persona
     agent = get_agent_for_domain(paper["domain"] or "general")
@@ -1732,7 +2316,10 @@ async def _generate_experiment_plan_impl(paper_id: int):
 모든 내용은 한국어로 작성해. JSON key만 영어로 유지.
 
 Recipe Card:
-{recipe_text[:8000]}
+{recipe_text}
+
+논문 재현 컨텍스트:
+{recipe_context}
 {visual_context}
 
 Return ONLY valid JSON (마크다운 펜스 없이):
@@ -1855,16 +2442,24 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
     if not paper:
         raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
 
-    # 2. Load analysis results for context (truncated)
+    # 2. Load stable chat context plus latest completed phase snippets
+    paper_dir = get_paper_dir(paper["folder_name"])
+    chat_context = ""
+    try:
+        document_context = await asyncio.to_thread(load_or_build_document_context, paper_dir)
+        chat_context = str(document_context.get("phase_inputs", {}).get("chat", ""))
+    except FileNotFoundError:
+        pass
+
+    latest_phase_rows = await get_latest_completed_phase_rows(
+        paper_id,
+        phases=["screening", "citation", "visual", "recipe", "deep_dive"],
+    )
     phases_data: dict[str, str] = {}
-    for phase in ["screening", "visual", "recipe", "deep_dive"]:
-        row = await fetch_one(
-            "SELECT result FROM analysis_results WHERE paper_id = ? AND phase = ? "
-            "ORDER BY created_at DESC LIMIT 1",
-            (paper_id, phase),
-        )
+    for phase in ["screening", "citation", "visual", "recipe", "deep_dive"]:
+        row = latest_phase_rows.get(phase)
         if row:
-            phases_data[phase] = row["result"][:3000]
+            phases_data[phase] = _phase_result_snippet(row, 3000)
 
     # 3. Get agent persona
     agent = get_agent_for_domain(paper["domain"] or "general")
@@ -1884,11 +2479,14 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
 
     phase_labels = {
         "screening": "스크리닝 결과",
+        "citation": "인용 분석 결과",
         "visual": "시각 분석 결과",
         "recipe": "레시피 추출 결과",
         "deep_dive": "심층 분석 결과",
     }
     context_parts = [paper_info]
+    if chat_context:
+        context_parts.append(f"\n--- 논문 컨텍스트 ---\n{chat_context}")
     for phase, label in phase_labels.items():
         if phase in phases_data:
             context_parts.append(f"\n--- {label} ---\n{phases_data[phase]}")
