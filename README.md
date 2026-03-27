@@ -1,1131 +1,242 @@
 <div align="center">
 
-<br/>
+<img src="sasoo/docs/assets/logo.png" alt="Sasoo logo" width="132" />
 
-<img src="sasoo/docs/assets/logo.png" alt="Sasoo Logo" width="140" />
+# Sasoo
 
-# Sasoo (사수)
+### 논문을 읽기 전에 구조를 세우고, 읽는 동안 figure를 해석하고, 읽은 뒤에는 재현 파라미터까지 남기는 AI 연구 워크벤치
 
-### 논문을 같이 읽어주는 AI 연구실 동료
+<p>
+  <a href="https://github.com/dosigner/sasoo/releases/tag/v0.6.6">
+    <img src="https://img.shields.io/badge/version-v0.6.6-0f766e?style=for-the-badge" alt="Version v0.6.6" />
+  </a>
+  <a href="https://github.com/dosigner/sasoo/releases/latest">
+    <img src="https://img.shields.io/badge/release-latest-111827?style=for-the-badge" alt="Latest release" />
+  </a>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-334155?style=for-the-badge" alt="Platforms" />
+</p>
 
-<a href="https://github.com/dosigner/sasoo/releases/latest">
-<img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
-</a>
-&nbsp;
-<a href="https://github.com/dosigner/sasoo/releases/latest">
-<img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download-macOS_(Apple_Silicon)-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS" />
-</a>
+<p>
+  <img src="https://img.shields.io/badge/Electron-28-1f2937?style=flat-square&logo=electron&logoColor=9feaf9" alt="Electron 28" />
+  <img src="https://img.shields.io/badge/React-18-0f172a?style=flat-square&logo=react" alt="React 18" />
+  <img src="https://img.shields.io/badge/FastAPI-0.115-065f46?style=flat-square&logo=fastapi" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/TypeScript-5.3-1d4ed8?style=flat-square&logo=typescript" alt="TypeScript 5.3" />
+  <img src="https://img.shields.io/badge/Python-3.12-1d4ed8?style=flat-square&logo=python" alt="Python 3.12" />
+</p>
 
-<br/>
+<p>
+  <a href="https://github.com/dosigner/sasoo/releases/download/v0.6.6/Sasoo.Setup.0.6.6.exe">
+    <img src="https://img.shields.io/badge/Download-Windows%20Installer-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Download Windows installer" />
+  </a>
+  <a href="https://github.com/dosigner/sasoo/releases/download/v0.6.6/Sasoo-0.6.6-arm64-mac.zip">
+    <img src="https://img.shields.io/badge/Download-macOS%20Apple%20Silicon-111827?style=for-the-badge&logo=apple&logoColor=white" alt="Download macOS zip" />
+  </a>
+</p>
 
-연구실에 들어왔는데 사수가 없다고?<br/>
-**Sasoo가 네 사수가 되어줄게.**<br/>
-PDF 던져주면 4단계로 쪼개서 분석하고, 레시피 카드까지 뽑아줌.<br/>
-궁금한 거 있으면 **에이전트한테 직접 물어봐.** 실험 계획서도 뽑아줌.
-
-<br/>
-
-[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.6.6-brightgreen?style=flat-square)](https://github.com/dosigner/sasoo/releases/tag/v0.6.6)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
-[![Node](https://img.shields.io/badge/node-18%2B-339933?style=flat-square&logo=node.js&logoColor=white)]()
-[![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)]()
-[![pnpm](https://img.shields.io/badge/pnpm-latest-F69220?style=flat-square&logo=pnpm&logoColor=white)]()
-
-[![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)]()
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.3-3178C6?style=flat-square&logo=typescript&logoColor=white)]()
-[![Electron](https://img.shields.io/badge/Electron-28-47848F?style=flat-square&logo=electron&logoColor=white)]()
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?style=flat-square&logo=fastapi&logoColor=white)]()
-[![Gemini](https://img.shields.io/badge/Gemini_3.1-8E75B2?style=flat-square&logo=google&logoColor=white)]()
-[![Claude](https://img.shields.io/badge/Claude_Sonnet_4.5-D97757?style=flat-square&logo=anthropic&logoColor=white)]()
-
-<br/>
-
-<img src="sasoo/docs/assets/procedure.png" alt="Sasoo 4-Phase Pipeline" width="600" />
+<p>
+  Sasoo는 PDF를 그냥 요약하지 않습니다.<br/>
+  논문을 보관 가능한 단위로 정리하고, 도메인에 맞는 에이전트를 붙이고, figure/table과 recipe를 다시 꺼내 보기 쉬운 형태로 남깁니다.
+</p>
 
 </div>
 
-<br/>
-
-<details>
-<summary><b>📑 목차</b></summary>
-
-- [다운로드](#-다운로드)
-- [컨셉: 연구실 사수](#-컨셉--연구실-사수)
-- [한눈에 보는 워크플로우](#-한눈에-보는-워크플로우)
-- [주요 기능](#-주요-기능)
-- [아키텍처](#-아키텍처)
-- [시작하기](#-시작하기)
-- [4단계 분석 파이프라인](#-4단계-분석-파이프라인)
-- [AI 에이전트 시스템](#-ai-에이전트-시스템)
-- [기술 스택](#-기술-스택)
-- [프로젝트 구조](#-프로젝트-구조)
-  - [저장 경로 구조](#저장-경로-구조)
-- [빌드 & 배포](#-빌드--배포)
-- [로드맵](#-로드맵)
-- [기여 & 라이선스](#-기여--라이선스)
-
-</details>
-
-<br/>
+<div align="center">
+  <img src="sasoo/docs/assets/procedure.png" alt="Sasoo workflow" width="900" />
+</div>
 
 ---
 
-<br/>
+## Why Sasoo
 
-## 🧑‍🔬 컨셉 — 연구실 사수
-
-<br/>
-
-<div align="center">
-
-> _"대학원 들어왔는데 사수가 없다._
-> _논문 읽는 법을 모른다._
-> _Figure가 뭘 말하는지 모르겠다."_
-
-</div>
-
-<br/>
-
-Sasoo(사수)는 이 문제를 해결하기 위해 만들어졌다.
-
-논문을 던져주면, 마치 **연구실 선배가 옆에서 같이 읽어주듯** 4단계에 걸쳐 분석해준다. 각 분야에는 성격이 다른 **전문 에이전트(선배)**가 배치되어 있다:
-
-<br/>
-
-<div align="center">
 <table>
 <tr>
-<td align="center" width="220">
-<br/>
-<img src="sasoo/docs/assets/photon.png" alt="Agent Photon" width="140" />
-<h4>Photon 선배</h4>
-<sub>광학 · 레이저 · FSO</sub><br/><br/>
-<b>직설적 🔥</b><br/><br/>
-<em>"이거 봐봐,<br/>error bar가 없잖아"</em>
-<br/><br/>
+<td width="33%" valign="top">
+<strong>Archive-first</strong><br/>
+한 번 올린 논문은 끝나지 않습니다. PDF, figure, table, recipe, 질문 기록, 보고서가 모두 라이브러리에 남습니다.
 </td>
-<td align="center" width="220">
-<br/>
-<img src="sasoo/docs/assets/bio.png" alt="Agent Cell" width="140" />
-<h4>Cell 선배</h4>
-<sub>바이오 · 분자생물학</sub><br/><br/>
-<b>꼼꼼함 🔬</b><br/><br/>
-<em>"n수가 적은데?<br/>통계 어떻게 한 거야?"</em>
-<br/><br/>
+<td width="33%" valign="top">
+<strong>Figure-aware</strong><br/>
+본문 요약만 하지 않고 figure/table 추출, caption 매칭, 시각 자료 품질 검토, 개별 figure 설명까지 이어집니다.
 </td>
-<td align="center" width="220">
-<br/>
-<img src="sasoo/docs/assets/neural.png" alt="Agent Neural" width="140" />
-<h4>Neural 선배</h4>
-<sub>딥러닝 · NLP · CV</sub><br/><br/>
-<b>분석적 🧠</b><br/><br/>
-<em>"ablation이 빠져있네,<br/>이 loss는 좀 이상한데?"</em>
-<br/><br/>
-</td>
-<td align="center" width="220">
-<br/>
-<img src="sasoo/docs/assets/circuit.png" alt="Agent Circuit" width="140" />
-<h4>Circuit 선배</h4>
-<sub>회로 · 반도체 · 신호처리</sub><br/><br/>
-<b>체계적 ⚡</b><br/><br/>
-<em>"이 회로 시뮬레이션<br/>조건이 좀 빠져있어"</em>
-<br/><br/>
+<td width="33%" valign="top">
+<strong>Agent-routed</strong><br/>
+광학, 바이오, 딥러닝, 회로 계열 에이전트와 커스텀 에이전트를 붙여 논문마다 다른 시선으로 읽게 합니다.
 </td>
 </tr>
 </table>
-</div>
 
-<br/>
+## Current Release
 
-### 선배는 어떻게 배정될까?
+`v0.6.6`은 지금 공개 배포 중인 최신 릴리즈입니다.
 
-논문을 업로드하면 **DomainRouter**가 자동으로 적합한 선배를 찾아준다:
+- Windows NSIS 인스톨러와 macOS Apple Silicon ZIP이 함께 배포됩니다.
+- 데스크톱 설정 저장과 라이브러리 경로 처리 안정화가 반영됐습니다.
+- `resolver_v1` 기반 figure/table 추출 경로가 기본값입니다.
+- 릴리즈 빌드에서 Java 기반 OpenDataLoader 런타임을 함께 패키징합니다.
+- Workbench, Library, Agents, Settings, Experiment Plan 흐름이 한 묶음으로 정리되어 있습니다.
 
-<div align="center">
+## What You Get
+
+| Surface | What it does |
+| --- | --- |
+| Upload | PDF 업로드, 파일 검증, 최근 분석/라이브러리 기록, 도메인 및 담당 에이전트 확인 |
+| Workbench | PDF 뷰어와 분석 패널을 나란히 두고 요약, figure, table, recipe, experiment plan, chat을 함께 검토 |
+| Library | 제목, 저자, DOI, 태그, 상태, 연도 기준으로 검색하고 다시 열기 |
+| Agents | 기본 에이전트 외에 커스텀 `.md` 에이전트를 생성하고 수정 |
+| Settings | Gemini/Anthropic 키, 라이브러리 경로, 자동 분석, 테마, 추출 파이프라인, 비용 대시보드 관리 |
+| Reports | 분석 결과를 재현 가능한 markdown 리포트와 artifact 상태로 남김 |
+
+## Domain Agents
+
+| Agent | Focus |
+| --- | --- |
+| Photon | 광학, 레이저, FSO, 실험 셋업 검토 |
+| Cell | 바이오, 분자생물학, 샘플 수와 실험 조건 점검 |
+| Neural | 딥러닝, CV, NLP, ablation과 비교 실험 검토 |
+| Circuit | 회로, 반도체, 신호처리, 조건과 FoM 정리 |
+| Custom agents | 앱 안에서 생성한 `.md` 기반 도메인 프롬프트 |
+
+## Workflow
 
 ```mermaid
 flowchart LR
-    A["📄 PDF 업로드"]:::input --> B["🔍 키워드 매칭"]
-    B -->|"확신도 ≥ 0.7"| D["✅ 에이전트 배정"]:::success
-    B -->|"확신도 < 0.7"| C["🤖 Gemini 시맨틱 분류"]
-    C -->|"분류 성공"| D
-    C -->|"애매함"| E["👤 사용자 확인"]
-    E --> D
-    D --> F["🚀 4단계 분석 시작"]:::success
-
-    classDef input fill:#e3f2fd,stroke:#1565c0,color:#000
-    classDef success fill:#e8f5e9,stroke:#2e7d32,color:#000
+    A["PDF 업로드"] --> B["도메인 분류 + 에이전트 배정"]
+    B --> C["텍스트/figure/table artifact 생성"]
+    C --> D["4단계 분석 실행"]
+    D --> E["Workbench 검토"]
+    E --> F["Library 보관"]
+    E --> G["Chat / Experiment Plan"]
 ```
 
-</div>
+### 4-Phase Analysis
 
-배정된 선배는 본인 분야에 맞는 **전용 프롬프트**로 분석한다. 광학 논문에는 wavelength·beam quality를, 바이오 논문에는 cell line·passage number를 체크하는 식이다.
+1. `Screening`
+   논문의 도메인, 핵심 주장, 실험성, relevance를 빠르게 거릅니다.
+2. `Visual Verification`
+   figure/table을 중심으로 축, 품질, caption 맥락, 시각 artifact 상태를 확인합니다.
+3. `Recipe Extraction`
+   방법론과 실험 파라미터를 구조화된 recipe 카드로 뽑습니다.
+4. `Deep Dive`
+   claim, evidence, weak point, follow-up 질문, Mermaid 기반 설명 흐름까지 확장합니다.
 
-<br/>
+## Installation
 
----
+| Platform | Asset | Notes |
+| --- | --- | --- |
+| Windows 10/11 | [`Sasoo.Setup.0.6.6.exe`](https://github.com/dosigner/sasoo/releases/download/v0.6.6/Sasoo.Setup.0.6.6.exe) | NSIS installer |
+| macOS Apple Silicon | [`Sasoo-0.6.6-arm64-mac.zip`](https://github.com/dosigner/sasoo/releases/download/v0.6.6/Sasoo-0.6.6-arm64-mac.zip) | unsigned ZIP |
+| Linux | source build | 현재 GitHub release asset은 제공하지 않음 |
 
-<br/>
+### macOS note
 
-## 🎯 한눈에 보는 워크플로우
+macOS 배포본은 unsigned ZIP입니다.
 
-<br/>
+1. ZIP을 풀고 `Sasoo.app`를 `/Applications`로 옮깁니다.
+2. 실행이 막히면 아래를 실행합니다.
 
-<div align="center">
-<table>
-<tr>
-<td align="center" width="160">
-<h1>📄</h1>
-<h4>1. Upload</h4>
-<sub>PDF 드래그 앤 드롭</sub>
-</td>
-<td align="center" width="40">
-<h3>→</h3>
-</td>
-<td align="center" width="160">
-<h1>🤖</h1>
-<h4>2. 자동 분류</h4>
-<sub>DomainRouter가<br/>분야 감지 + 선배 배정</sub>
-</td>
-<td align="center" width="40">
-<h3>→</h3>
-</td>
-<td align="center" width="160">
-<h1>⚗️</h1>
-<h4>3. 4단계 분석</h4>
-<sub>파이프라인 순차 실행<br/>진행률 실시간 표시</sub>
-</td>
-<td align="center" width="40">
-<h3>→</h3>
-</td>
-<td align="center" width="160">
-<h1>🔬</h1>
-<h4>4. Workbench</h4>
-<sub>PDF + 분석 결과<br/>Figure + Mermaid</sub>
-</td>
-<td align="center" width="40">
-<h3>→</h3>
-</td>
-<td align="center" width="160">
-<h1>📚</h1>
-<h4>5. Library</h4>
-<sub>분석된 논문<br/>검색 · 관리</sub>
-</td>
-<td align="center" width="40">
-<h3>+</h3>
-</td>
-<td align="center" width="160">
-<h1>🛠️</h1>
-<h4>6. Agents</h4>
-<sub>커스텀 에이전트<br/>생성 · 관리</sub>
-</td>
-</tr>
-<tr>
-<td colspan="13" align="center"><br/><b>분석 완료 후</b></td>
-</tr>
-<tr>
-<td align="center" width="160">
-<h1>💬</h1>
-<h4>7. Chat</h4>
-<sub>에이전트에게<br/>논문 내용 질문</sub>
-</td>
-<td align="center" width="40">
-<h3>+</h3>
-</td>
-<td align="center" width="160">
-<h1>📋</h1>
-<h4>8. Experiment Plan</h4>
-<sub>Recipe Card 기반<br/>실험 재현 가이드</sub>
-</td>
-<td></td><td></td><td></td><td></td><td></td><td></td><td></td>
-</tr>
-</table>
-</div>
+```bash
+xattr -dr com.apple.quarantine /Applications/Sasoo.app
+```
 
-<br/>
+3. 그래도 경고가 뜨면 앱을 우클릭한 뒤 `Open`으로 1회 실행합니다.
 
----
+## API Keys
 
-<br/>
+전체 기능을 안정적으로 쓰려면 `Gemini`와 `Anthropic` 키를 둘 다 넣는 것이 좋습니다.
 
-## ✨ 주요 기능
+- Gemini: screening, visual 분석, 일부 resolver/visual generation 경로
+- Anthropic: deep dive, Mermaid/diagram 생성, 일부 고급 분석 경로
 
-<br/>
+설치 후 `Settings`에서 바로 입력할 수 있습니다.
 
-<div align="center">
-<table>
-<tr>
-<td width="60" align="center">⚗️</td>
-<td><b>4단계 분석</b></td>
-<td>Screening → Visual Verification → Recipe Extraction → Deep Dive</td>
-</tr>
-<tr>
-<td align="center">🧑‍🔬</td>
-<td><b>도메인 에이전트</b></td>
-<td>분야별 전문 선배가 맞춤 분석 (Photon, Cell, Neural, Circuit)</td>
-</tr>
-<tr>
-<td align="center">🧠</td>
-<td><b>듀얼 LLM</b></td>
-<td>Gemini 3.1 (분석) + Claude Sonnet 4.5 (시각화) 전략적 분업</td>
-</tr>
-<tr>
-<td align="center">🖼️</td>
-<td><b>Figure-First</b></td>
-<td>PDF에서 Figure 자동 추출 → 캡션 매칭 → 데이터 품질 평가</td>
-</tr>
-<tr>
-<td align="center">🧾</td>
-<td><b>Recipe Card</b></td>
-<td>실험 파라미터를 <code>[EXPLICIT]</code> <code>[INFERRED]</code> <code>[MISSING]</code> 태그로 정리</td>
-</tr>
-<tr>
-<td align="center">💰</td>
-<td><b>토큰 절감</b></td>
-<td>섹션 분할로 필요한 부분만 전송, Flash/Pro 모델 전략 배분</td>
-</tr>
-<tr>
-<td align="center">📊</td>
-<td><b>비용 대시보드</b></td>
-<td>단계별 토큰 수·비용 실시간 추적 ($0.004~$0.076/논문)</td>
-</tr>
-<tr>
-<td align="center">🔒</td>
-<td><b>로컬 퍼스트</b></td>
-<td>SQLite + 로컬 파일 저장, 인터넷은 API 호출에만 사용</td>
-</tr>
-<tr>
-<td align="center">🛠️</td>
-<td><b>에이전트 생성</b></td>
-<td><code>.md</code> 기반 커스텀 에이전트 생성 + Gemini AI 자동 생성</td>
-</tr>
-<tr>
-<td align="center">💬</td>
-<td><b>에이전트 채팅</b></td>
-<td>분석 완료 후 에이전트에게 논문 내용 직접 질문 — SSE 실시간 스트리밍, Markdown·GFM·KaTeX 수식 렌더링</td>
-</tr>
-<tr>
-<td align="center">📋</td>
-<td><b>실험 계획서</b></td>
-<td>Recipe Card 기반 실험 재현 가이드 자동 생성 (재료·장비·프로토콜)</td>
-</tr>
-</table>
-</div>
+## Quick Start
 
-<br/>
+1. 앱을 설치하고 실행합니다.
+2. `Settings`에서 API 키와 라이브러리 저장 경로를 확인합니다.
+3. PDF를 업로드합니다.
+4. 감지된 도메인과 에이전트를 확인한 뒤 Workbench로 진입합니다.
+5. 분석을 시작하고 summary, figure, table, recipe를 순서대로 검토합니다.
+6. 필요하면 chat과 experiment plan으로 후속 질문과 재현 계획을 만듭니다.
 
----
-
-<br/>
-
-## 🏗️ 아키텍처
-
-<br/>
+## Architecture
 
 ```mermaid
-graph TB
-    subgraph Desktop["🖥️ Electron Shell"]
-        Main["main.ts<br/>앱 라이프사이클"]
-        Preload["preload.ts<br/>IPC Bridge"]
-        PM["python-manager.ts<br/>Backend 프로세스 관리"]
-    end
-
-    subgraph Frontend["⚛️ React + Vite"]
-        Upload["Upload Page"]
-        Workbench["Workbench Page"]
-        Library["Library Page"]
-        Agents["Agents Page"]
-        Settings["Settings Page"]
-        Components["AnalysisPanel | PdfViewer<br/>RecipeCard | MermaidRenderer<br/>CostDashboard | FigureGallery"]
-    end
-
-    subgraph Backend["🐍 FastAPI"]
-        API["API Layer<br/>papers · analysis · settings"]
-
-        subgraph Services["Core Services"]
-            Pipeline["AnalysisPipeline<br/>4-Phase Orchestrator"]
-            Router["DomainRouter<br/>키워드 + 시맨틱 분류"]
-            Parser["PdfParser<br/>텍스트 · Figure · 테이블"]
-        end
-
-        subgraph Agents["Domain Agents"]
-            Photon["🔴 Photon<br/>광학"]
-            Cell["🟢 Cell<br/>바이오"]
-            Neural["🟣 Neural<br/>AI/ML"]
-            Circuit["🟡 Circuit<br/>전자공학"]
-        end
-
-        subgraph LLM["LLM Clients"]
-            Gemini["Gemini 3.1<br/>Flash + Pro"]
-            Claude["Claude Sonnet 4.5<br/>Mermaid 생성"]
-        end
-
-        subgraph Viz["Visualization"]
-            VizRouter["VizRouter"]
-            Mermaid["MermaidGenerator"]
-            PB["PaperBanana Bridge"]
-        end
-    end
-
-    subgraph Storage["💾 Local Storage"]
-        DB["SQLite DB"]
-        Files["Library/<br/>PDF · Figures · Reports"]
-    end
-
-    Main --> PM
-    PM -->|"spawn/kill"| Backend
-    Frontend -->|"REST API"| API
-    API --> Pipeline
-    Pipeline --> Router
-    Router --> Agents
-    Pipeline --> Parser
-    Pipeline --> LLM
-    Pipeline --> Viz
-    VizRouter --> Mermaid
-    VizRouter --> PB
-    Backend --> Storage
+flowchart TB
+    A["Electron shell"] --> B["React frontend"]
+    A --> C["FastAPI backend"]
+    C --> D["SQLite settings / analysis cache"]
+    C --> E["Library storage"]
+    C --> F["OpenDataLoader + resolver_v1"]
+    C --> G["Gemini"]
+    C --> H["Claude"]
+    B --> I["Upload / Workbench / Library / Agents / Settings"]
 ```
 
-<br/>
+### Main pieces
 
----
+- Frontend: React 18 + TypeScript + Vite
+- Desktop shell: Electron
+- Backend API: FastAPI
+- Persistence: SQLite + filesystem library storage
+- Extraction: Java-based OpenDataLoader, resolver-based figure/table pipeline
+- LLM layer: Gemini + Claude
 
-<br/>
+## Local Development
 
-## ⬇️ 다운로드
-
-<br/>
-
-<div align="center">
-
-> **설치파일을 받아서 바로 사용하고 싶다면?**
-
-<table>
-<tr>
-<td align="center" width="300">
-<br/>
-<h3>🪟 Windows</h3>
-<a href="https://github.com/dosigner/sasoo/releases/latest">
-<img src="https://img.shields.io/badge/Sasoo_Setup_0.6.6.exe-Download-2ea44f?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
-</a>
-<br/><br/>
-<sub>Windows 10/11 · NSIS 인스톨러</sub>
-<br/><br/>
-</td>
-<td align="center" width="300">
-<br/>
-<h3>🍎 macOS</h3>
-<a href="https://github.com/dosigner/sasoo/releases/latest">
-<img src="https://img.shields.io/badge/Sasoo_macOS_Apple_Silicon.zip-Download-2ea44f?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS" />
-</a>
-<br/><br/>
-<sub>macOS (Apple Silicon) · unsigned ZIP</sub>
-<br/><br/>
-</td>
-</tr>
-</table>
-
-<sub>Linux 빌드는 <a href="#-빌드--배포">빌드 & 배포</a> 섹션 참고</sub>
-
-</div>
-
-<br/>
-
-> **현재 최신 태그**: [`v0.6.6`](https://github.com/dosigner/sasoo/releases/tag/v0.6.6)
-> macOS Apple Silicon ZIP과 Windows NSIS 인스톨러 기준으로 배포됩니다.
->
-> **API 키 필요**: 설치 후 Settings에서 Gemini API Key를 입력해야 분석 기능을 사용할 수 있습니다.
-> 키 발급: [aistudio.google.com](https://aistudio.google.com)
->
-> **macOS 설치 안내**: ZIP을 풀고 `Sasoo.app`를 `Applications`로 옮긴 뒤, 첫 실행은 우클릭 → 열기를 사용하세요.
-> 무료 계정 기준 macOS 배포는 현재 unsigned ZIP-only입니다.
-
-<br/>
-
----
-
-<br/>
-
-## 🚀 시작하기
-
-<br/>
-
-### 필수 요구사항
-
-| 항목 | 버전 | 비고 |
-|:-----|:-----|:-----|
-| **Node.js** | 18+ | [nodejs.org](https://nodejs.org) |
-| **pnpm** | latest | `npm i -g pnpm` |
-| **Python** | 3.10+ | [python.org](https://python.org) |
-| **Gemini API Key** | — | [aistudio.google.com](https://aistudio.google.com) |
-| **Anthropic API Key** | — | [console.anthropic.com](https://console.anthropic.com) (시각화용, 선택) |
-
-<br/>
-
-### 🧑‍💻 Human (수동 설치)
-
-<table>
-<tr><td>
-
-**Step 1** — 저장소 클론
+저장소 루트에는 문서와 릴리즈 파일이 있고, 실제 앱 코드는 `sasoo/` 아래에 있습니다.
 
 ```bash
 git clone https://github.com/dosigner/sasoo.git
-cd sasoo
-```
-
-</td></tr>
-<tr><td>
-
-**Step 2** — 프론트엔드 의존성 설치
-
-```bash
-pnpm install          # 루트 + frontend 자동 설치 (postinstall)
-```
-
-</td></tr>
-<tr><td>
-
-**Step 3** — 백엔드 Python 환경
-
-```bash
-cd backend
-python -m venv .venv
-
-# Windows
-.venv\Scripts\activate
-# macOS/Linux
-source .venv/bin/activate
-
-pip install -r requirements.txt
-cd ..
-```
-
-</td></tr>
-<tr><td>
-
-**Step 4** — API 키 설정
-
-```bash
-# backend/.env 파일 생성
-echo "GEMINI_API_KEY=your-gemini-key" > backend/.env
-echo "ANTHROPIC_API_KEY=your-anthropic-key" >> backend/.env
-```
-
-> 또는 앱 실행 후 **Settings** 페이지에서 직접 입력 가능
-
-</td></tr>
-<tr><td>
-
-**Step 5** — 실행!
-
-```bash
-pnpm dev              # Frontend(Vite) + Electron 동시 실행
-```
-
-> 백엔드는 Electron이 `python-manager.ts`를 통해 자동 기동한다.
-> 수동 실행: `cd backend && python main.py --reload`
-
-</td></tr>
-</table>
-
-<br/>
-
-### 🤖 Agent (자동 설치)
-
-```bash
-# 원라인 (macOS/Linux)
-git clone https://github.com/dosigner/sasoo.git && cd sasoo && bash scripts/setup.sh
-```
-
-<details>
-<summary>setup.sh 내용</summary>
-
-```bash
-#!/bin/bash
-set -e
-echo "=== Sasoo Setup ==="
+cd sasoo/sasoo
 pnpm install
-cd backend && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && cd ..
-read -p "Gemini API Key: " GEMINI_KEY
-read -p "Anthropic API Key (optional, Enter to skip): " ANTHROPIC_KEY
-echo "GEMINI_API_KEY=$GEMINI_KEY" > backend/.env
-[ -n "$ANTHROPIC_KEY" ] && echo "ANTHROPIC_API_KEY=$ANTHROPIC_KEY" >> backend/.env
-echo "=== Done! Run: pnpm dev ==="
+python3 -m venv backend/.venv
+source backend/.venv/bin/activate
+pip install -r backend/requirements.txt pyinstaller
+pnpm dev
 ```
 
-</details>
+### Useful commands
 
-<details>
-<summary>PowerShell 버전 (Windows)</summary>
-
-```powershell
-git clone https://github.com/dosigner/sasoo.git; cd sasoo
-pnpm install
-cd backend; python -m venv .venv; .\.venv\Scripts\Activate.ps1; pip install -r requirements.txt; cd ..
-$gemini = Read-Host "Gemini API Key"
-$anthropic = Read-Host "Anthropic API Key (optional)"
-"GEMINI_API_KEY=$gemini" | Out-File backend/.env -Encoding utf8
-if ($anthropic) { "ANTHROPIC_API_KEY=$anthropic" | Add-Content backend/.env }
-Write-Host "Done! Run: pnpm dev"
+```bash
+pnpm dev
+pnpm build:mac:release
+pnpm build:win:release
+pnpm build:linux
 ```
 
-</details>
+### Release references
 
-<br/>
+- GitHub Actions workflow: [`/.github/workflows/release.yml`](.github/workflows/release.yml)
+- Release checklist: [`/sasoo/docs/03-release/release-checklist.md`](sasoo/docs/03-release/release-checklist.md)
+- Electron build plan: [`/sasoo/docs/03-release/electron-build-plan.md`](sasoo/docs/03-release/electron-build-plan.md)
 
----
+## Repository Map
 
-<br/>
-
-## ⚗️ 4단계 분석 파이프라인
-
-<br/>
-
-<div align="center">
-<img src="sasoo/docs/assets/procedure.png" alt="4-Phase Analysis Pipeline" width="720" />
-</div>
-
-<br/>
-
-<div align="center">
-<table>
-<tr>
-<td align="center" width="220">
-<br/>
-<h3>Phase 1</h3>
-<h2>👀</h2>
-<h4>Screening</h4>
-<sub><b>간보기</b></sub><br/><br/>
-<code>Gemini Flash</code><br/>
-<sub>Thinking: 1K tokens</sub><br/><br/>
-<sub>📥 Abstract + Conclusion</sub><br/>
-<sub>📤 도메인 분류, 관련성 점수,<br/>핵심 주장, 빨간 깃발</sub>
-<br/><br/>
-<em>"일단 한번 훑어볼게"</em>
-<br/><br/>
-</td>
-<td align="center" width="220">
-<br/>
-<h3>Phase 2</h3>
-<h2>🖼️</h2>
-<h4>Visual Verification</h4>
-<sub><b>눈으로 확인</b></sub><br/><br/>
-<code>Gemini Flash</code><br/>
-<sub>Thinking: 4K tokens</sub><br/><br/>
-<sub>📥 Figures + Captions</sub><br/>
-<sub>📤 Figure별 품질 평가,<br/>축·에러바·데이터 품질</sub>
-<br/><br/>
-<em>"Figure 좀 볼게.<br/>이거 축이 뭐야?"</em>
-<br/><br/>
-</td>
-<td align="center" width="220">
-<br/>
-<h3>Phase 3</h3>
-<h2>🧾</h2>
-<h4>Recipe Extraction</h4>
-<sub><b>레시피 추출</b></sub><br/><br/>
-<code>Gemini Pro</code><br/>
-<sub>Thinking: 8K tokens</sub><br/><br/>
-<sub>📥 Methods 섹션</sub><br/>
-<sub>📤 파라미터 태깅,<br/>재현성 점수, 누락 경고</sub>
-<br/><br/>
-<em>"이거 내가<br/>따라할 수 있겠어?"</em>
-<br/><br/>
-</td>
-<td align="center" width="220">
-<br/>
-<h3>Phase 4</h3>
-<h2>🔬</h2>
-<h4>Deep Dive</h4>
-<sub><b>깊이 파기</b></sub><br/><br/>
-<code>Gemini Pro</code><br/>
-<sub>Thinking: 8K tokens</sub><br/><br/>
-<sub>📥 Intro + Results</sub><br/>
-<sub>📤 Claim↔Evidence,<br/>오류 전파, 한계점</sub>
-<br/><br/>
-<em>"이제 진짜 파보자"</em>
-<br/><br/>
-</td>
-</tr>
-</table>
-</div>
-
-<br/>
-
-<details>
-<summary><b>각 단계 상세 설명</b></summary>
-
-<br/>
-
-#### Phase 1: Screening
-
-Abstract와 Conclusion만 읽고 빠르게 판단한다. Gemini Flash + 최소 thinking으로 비용 절감:
-
-- 도메인 분류 (optics / biology / ai_ml / ee)
-- 관련성 점수 (0.0–1.0)
-- 핵심 주장 최대 5개
-- 방법론 유형 (experimental / computational / theoretical / review / mixed)
-- 빨간 깃발 (red flags)
-
-#### Phase 2: Visual Verification
-
-PDF에서 추출한 Figure 이미지를 **멀티모달**로 직접 분석:
-
-- Figure 유형 (graph, microscopy, schematic, photo 등)
-- 축 레이블·단위 확인
-- Error bar 유무
-- 데이터 품질 등급 (excellent / good / fair / poor)
-
-#### Phase 3: Recipe Extraction
-
-Methods 섹션에서 실험 파라미터를 추출하고 태그:
-
-- 🟢 `[EXPLICIT]` — 논문에 명시됨
-- 🟡 `[INFERRED]` — 문맥에서 추론
-- 🔴 `[MISSING]` — 누락, 재현 불가
-
-재현성 점수(0.0–1.0)와 누락 핵심 파라미터 목록 제공.
-
-#### Phase 4: Deep Dive
-
-Introduction과 Results & Discussion을 깊이 분석:
-
-- Claim vs Evidence 매핑 (strong / moderate / weak / unsupported)
-- Error propagation 분석
-- 물리적 제약 조건 검증
-- Novelty 평가
-- 종합 점수 (0.0–10.0)
-
-</details>
-
-<br/>
-
----
-
-<br/>
-
-## 🧑‍🔬 AI 에이전트 시스템
-
-<br/>
-
-### 에이전트 프로필
-
-각 에이전트는 `.md` 파일(YAML frontmatter + Markdown 프롬프트)로 정의되며, 4단계별 **전용 프롬프트**를 가진다. `MdAgent` 클래스가 모든 에이전트를 통합 로딩한다.
-
-<div align="center">
-<table>
-<tr>
-<th width="130">에이전트</th>
-<th width="200">도메인</th>
-<th width="100">성격</th>
-<th>Phase 3 체크 파라미터</th>
-</tr>
-<tr>
-<td align="center">🔴 <b>Photon</b></td>
-<td>광학, 레이저, FSO, 분광학</td>
-<td align="center">직설적 🔥</td>
-<td><code>wavelength</code> <code>aperture</code> <code>beam_quality</code> <code>focal_length</code> <code>power</code></td>
-</tr>
-<tr>
-<td align="center">🟢 <b>Cell</b></td>
-<td>세포생물학, 분자생물학, 생명공학</td>
-<td align="center">꼼꼼함 🔬</td>
-<td><code>cell_line</code> <code>passage_number</code> <code>antibody_dilution</code> <code>pcr_cycles</code></td>
-</tr>
-<tr>
-<td align="center">🟣 <b>Neural</b></td>
-<td>딥러닝, NLP, CV, 강화학습</td>
-<td align="center">분석적 🧠</td>
-<td><code>learning_rate</code> <code>batch_size</code> <code>num_epochs</code> <code>model_architecture</code></td>
-</tr>
-<tr>
-<td align="center">🟡 <b>Circuit</b></td>
-<td>회로 설계, 반도체, 신호처리</td>
-<td align="center">체계적 ⚡</td>
-<td><code>supply_voltage</code> <code>frequency</code> <code>gain</code> <code>impedance</code></td>
-</tr>
-</table>
-</div>
-
-<br/>
-
-### 듀얼 LLM 전략
-
-Sasoo는 **두 개의 LLM을 전략적으로 분업**시킨다:
-
-<div align="center">
-<table>
-<tr>
-<td align="center" width="380">
-<br/>
-<h3>🔷 Gemini 3.1 — 분석 엔진</h3>
-<sub>Flash (Phase 1-2) + Pro (Phase 3-4)</sub><br/><br/>
-멀티모달 (Figure 직접 분석)<br/>
-구조화 JSON 출력<br/>
-Thinking budget 조절<br/>
-비용 효율적
-<br/><br/>
-</td>
-<td align="center" width="380">
-<br/>
-<h3>🔶 Claude Sonnet 4.5 — 시각화 엔진</h3>
-<sub>Mermaid 다이어그램 전문</sub><br/><br/>
-복잡한 구조 → 정확한 코드 변환<br/>
-한국어 라벨 처리<br/>
-자동 문법 수정<br/>
-flowchart · sequence · state · class
-<br/><br/>
-</td>
-</tr>
-</table>
-</div>
-
-<br/>
-
-**Gemini Thinking Budget:**
-
-| 호출 | 모델 | Thinking | 이유 |
-|:-----|:------|:--------:|:-----|
-| Phase 1: Screening | Flash | `1,024` | 빠른 분류, 깊은 사고 불필요 |
-| Phase 2: Visual | Flash | `4,096` | 전체 Figure 품질 평가 (축·에러바·데이터 품질) |
-| Phase 3: Recipe | Pro | `8,192` | 파라미터 하나하나 꼼꼼한 추출 |
-| Phase 4: DeepDive | Pro | `8,192` | Claim↔Evidence 매핑, 비판적 분석 |
-| Viz Router | Flash | `4,096` | 시각화 유형 라우팅 |
-| Domain 분류 | Flash | `1,024` | 키워드 매칭 보조 (시맨틱 fallback) |
-| Figure 상세 설명 | Flash | `8,192` | 개별 Figure 전문가 해설 (on-demand, 캐싱) |
-
-> **Phase 2 vs Figure 상세 설명**: Phase 2는 전체 Figure를 한번에 훑으며 **데이터 품질을 평가**하는 단계이고, Figure 상세 설명은 FigureGallery에서 개별 Figure를 클릭했을 때 **논문 전체 맥락 + 에이전트 페르소나**로 깊이 해석하는 별도 API다. 후자는 입력 컨텍스트가 무겁고(전체 텍스트 + 분석 결과) 사용자 기대치가 높아 `high`(8,192)를 사용하며, DB에 캐싱되어 Figure당 1회만 비용 발생한다.
-
-<br/>
-
----
-
-<br/>
-
-## 🛠️ 기술 스택
-
-<br/>
-
-<div align="center">
-<table>
-<tr>
-<td align="center" width="130"><b>Frontend</b></td>
-<td>
-<img src="https://img.shields.io/badge/React_18-61DAFB?style=flat-square&logo=react&logoColor=black" />
-<img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" />
-<img src="https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite&logoColor=white" />
-<img src="https://img.shields.io/badge/Tailwind-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white" />
-</td>
-</tr>
-<tr>
-<td align="center"><b>Backend</b></td>
-<td>
-<img src="https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white" />
-<img src="https://img.shields.io/badge/Python_3.10+-3776AB?style=flat-square&logo=python&logoColor=white" />
-<img src="https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white" />
-</td>
-</tr>
-<tr>
-<td align="center"><b>Desktop</b></td>
-<td>
-<img src="https://img.shields.io/badge/Electron_28-47848F?style=flat-square&logo=electron&logoColor=white" />
-</td>
-</tr>
-<tr>
-<td align="center"><b>AI / LLM</b></td>
-<td>
-<img src="https://img.shields.io/badge/Gemini_3.1-8E75B2?style=flat-square&logo=google&logoColor=white" />
-<img src="https://img.shields.io/badge/Claude_4.5-D97757?style=flat-square&logo=anthropic&logoColor=white" />
-</td>
-</tr>
-<tr>
-<td align="center"><b>PDF</b></td>
-<td>
-<img src="https://img.shields.io/badge/PyMuPDF-2ea44f?style=flat-square" />
-<img src="https://img.shields.io/badge/pdfplumber-blue?style=flat-square" />
-</td>
-</tr>
-<tr>
-<td align="center"><b>시각화</b></td>
-<td>
-<img src="https://img.shields.io/badge/Mermaid-FF3670?style=flat-square&logo=mermaid&logoColor=white" />
-<img src="https://img.shields.io/badge/PaperBanana-FFD700?style=flat-square" />
-</td>
-</tr>
-</table>
-</div>
-
-<br/>
-
----
-
-<br/>
-
-## 📂 프로젝트 구조
-
-<details>
-<summary><b>디렉토리 트리 (클릭해서 펼치기)</b></summary>
-
-```
-sasoo/
-├── 📦 package.json                 # 루트 — Electron + 빌드 스크립트
-│
-├── 🐍 backend/
-│   ├── main.py                     # FastAPI 엔트리포인트 (:8000)
-│   ├── requirements.txt
-│   ├── agents/                     # .md 기반 에이전트 정의 파일
-│   │   ├── photon.md               # 🔴 광학 에이전트
-│   │   ├── cell.md                 # 🟢 바이오 에이전트
-│   │   ├── neural.md               # 🟣 AI/ML 에이전트
-│   │   └── circuit.md              # 🟡 전자공학 에이전트
-│   ├── api/
-│   │   ├── papers.py               # 논문 업로드·목록·삭제
-│   │   ├── analysis.py             # 분석 실행·결과 조회
-│   │   ├── analysis_routes.py      # WebSocket/스트리밍 진행률
-│   │   ├── analysis_helpers.py     # 분석 유틸리티
-│   │   ├── analysis_state.py       # 분석 상태 관리
-│   │   ├── agents.py               # 에이전트 CRUD API
-│   │   ├── figure_service.py       # Figure 상세 설명 API
-│   │   ├── report_service.py       # 보고서 생성 API
-│   │   └── settings.py             # API 키·테마 설정
-│   ├── models/
-│   │   ├── database.py             # SQLite 비동기 DB
-│   │   ├── paper.py                # ParsedPaper, Figure, Table
-│   │   └── schemas.py              # Pydantic 스키마
-│   └── services/
-│       ├── analysis_pipeline.py    # 4단계 오케스트레이터
-│       ├── domain_router.py        # 도메인 분류 + 에이전트 라우팅
-│       ├── pdf_parser.py           # PDF → 텍스트·Figure·테이블
-│       ├── pdf_cache.py            # PDF 텍스트 캐시
-│       ├── section_splitter.py     # 섹션 자동 분할
-│       ├── subfigure_detector.py   # Figure 자동 추출
-│       ├── naming_service.py       # 논문 명명 규칙
-│       ├── paper_library.py        # 라이브러리 관리
-│       ├── report_generator.py     # Markdown 보고서
-│       ├── pricing.py              # API 비용 추적
-│       ├── agents/
-│       │   ├── base_agent.py       # 에이전트 추상 클래스
-│       │   ├── md_agent.py         # 통합 Markdown 에이전트 클래스
-│       │   ├── md_loader.py        # YAML frontmatter 파서
-│       │   └── generator.py        # AI 에이전트 자동 생성 (Gemini)
-│       ├── llm/
-│       │   ├── gemini_client.py    # Gemini API 래퍼
-│       │   └── claude_client.py    # Claude API 래퍼
-│       └── viz/
-│           ├── viz_router.py       # 시각화 라우팅
-│           ├── mermaid_generator.py
-│           └── paperbanana_bridge.py
-│
-├── ⚛️ frontend/
-│   └── src/
-│       ├── App.tsx                 # 메인 앱 + 라우팅
-│       ├── assets/
-│       │   └── agents/             # 에이전트 캐릭터 이미지
-│       │       ├── photon.png
-│       │       ├── bio.png
-│       │       ├── neural.png
-│       │       └── circuit.png
-│       ├── pages/
-│       │   ├── Upload.tsx          # PDF 업로드 + 에이전트 카드
-│       │   ├── Workbench.tsx       # 분석 워크벤치
-│       │   ├── Library.tsx         # 논문 라이브러리
-│       │   ├── Agents.tsx          # 에이전트 관리 + 생성
-│       │   └── Settings.tsx        # 설정
-│       ├── components/
-│       │   ├── AnalysisPanel.tsx   # 분석 결과 + 에이전트 배지
-│       │   ├── ChatPanel.tsx       # 에이전트 채팅 (SSE 스트리밍)
-│       │   ├── ExperimentPlanTab.tsx # 실험 계획서 탭
-│       │   ├── PdfViewer.tsx       # PDF 뷰어
-│       │   ├── RecipeCard.tsx      # 레시피 카드
-│       │   ├── FigureGallery.tsx   # Figure 갤러리
-│       │   ├── MermaidRenderer.tsx # Mermaid 렌더러
-│       │   ├── CostDashboard.tsx   # 비용 대시보드
-│       │   ├── ProgressTracker.tsx # 진행률 표시기
-│       │   ├── ErrorBoundary.tsx   # 에러 핸들링
-│       │   └── Toast.tsx           # 토스트 알림
-│       ├── hooks/
-│       │   ├── useAnalysis.ts      # 분석 파이프라인 훅
-│       │   ├── usePapers.ts        # 논문 관리 훅
-│       │   └── useFocusTrap.ts     # 접근성 훅
-│       └── lib/
-│           ├── api.ts              # API 클라이언트
-│           └── agents.ts           # 에이전트 메타데이터 + 헬퍼
-│
-├── 🖥️ electron/
-│   ├── main.ts                     # Electron 메인 프로세스
-│   ├── preload.ts                  # IPC Bridge
-│   └── python-manager.ts           # Python 프로세스 관리
-│
-├── 📄 docs/
-│   └── assets/                     # 에이전트 캐릭터 + 다이어그램
-│
-└── 📚 library/                     # 논문 저장소 (자동 생성)
-    └── <Year>_<Author>_<Title>/
-        ├── paper.pdf
-        ├── figures/
-        ├── mermaid/
-        ├── paperbanana/
-        ├── analysis.md
-        └── recipe_card.md
+```text
+.
+├── README.md
+├── .github/workflows/release.yml
+└── sasoo/
+    ├── frontend/
+    │   ├── src/pages/
+    │   ├── src/components/
+    │   └── src/lib/
+    ├── backend/
+    │   ├── api/
+    │   ├── services/
+    │   ├── models/
+    │   └── agents/
+    ├── electron/
+    ├── scripts/
+    └── docs/03-release/
 ```
 
-</details>
+## Notes For Reviewers
 
-<br/>
+- 현재 공개 최신 릴리즈는 [`v0.6.6`](https://github.com/dosigner/sasoo/releases/tag/v0.6.6) 입니다.
+- `latest.yml`과 `latest-mac.yml`이 함께 배포되므로 auto-update 메타데이터도 릴리즈 자산에 포함됩니다.
+- 릴리즈 재태깅 상황에서는 GitHub 자동 changelog가 역방향 비교 링크를 만들 수 있으므로 본문을 수동 검토하는 편이 안전합니다.
 
-### 저장 경로 구조
+## License
 
-앱 내부 데이터(DB, 설정)와 사용자 데이터(논문)는 분리되어 저장된다.
-
-<div align="center">
-<table>
-<tr>
-<th width="130">구분</th>
-<th width="240">Production 경로</th>
-<th width="240">Development 경로</th>
-<th>내용</th>
-</tr>
-<tr>
-<td align="center"><b>앱 데이터</b><br/><sub>(고정)</sub></td>
-<td><code>%APPDATA%/Sasoo/</code></td>
-<td><code>backend/library/</code></td>
-<td><code>sasoo.db</code>, <code>config.json</code>, <code>agents/</code> (커스텀)</td>
-</tr>
-<tr>
-<td align="center"><b>논문 라이브러리</b><br/><sub>(사용자 지정 가능)</sub></td>
-<td><code>%APPDATA%/Sasoo/library/</code><br/><sub>또는 Settings에서 변경</sub></td>
-<td><code>backend/library/</code></td>
-<td>PDF, figures, 분석 결과 등</td>
-</tr>
-</table>
-</div>
-
-> **Settings > Library Storage Path**에서 논문 저장 경로를 변경할 수 있다.
-> 변경 후 앱 재시작 필요. 기존 파일은 자동으로 이동되지 않는다.
-
-<br/>
-
----
-
-<br/>
-
-## 📦 빌드 & 배포
-
-<br/>
-
-<div align="center">
-<table>
-<tr>
-<th width="120">플랫폼</th>
-<th width="260">명령어</th>
-<th>출력</th>
-</tr>
-<tr>
-<td align="center">🪟 Windows</td>
-<td><code>pnpm build:win:release</code></td>
-<td><code>.exe</code> + <code>latest.yml</code> + <code>.blockmap</code></td>
-</tr>
-<tr>
-<td align="center">🍎 macOS</td>
-<td><code>pnpm build:mac:release</code></td>
-<td><code>.zip</code> + <code>latest-mac.yml</code> + <code>.blockmap</code></td>
-</tr>
-<tr>
-<td align="center">🐧 Linux</td>
-<td><code>pnpm build:linux</code></td>
-<td><code>.AppImage</code> + <code>.deb</code></td>
-</tr>
-<tr>
-<td align="center">🐍 백엔드만</td>
-<td><code>pnpm build:backend</code></td>
-<td>PyInstaller 바이너리</td>
-</tr>
-</table>
-</div>
-
-> 빌드 시 백엔드는 PyInstaller로 단일 바이너리로 패키징되어 `extraResources`에 포함됨.
->
-> 로컬 검증은 현재 `macOS ARM`에서 `pnpm build:mac:release` 기준으로 진행하고, Windows 패키징은 `windows-latest` GitHub Actions 러너 또는 실제 Windows 머신에서 `pnpm build:win:release`로 수행합니다.
->
-> 릴리스 기준 Python은 `3.12`입니다. 로컬의 다른 Python 버전은 개발 검증용으로만 취급하세요.
->
-> GitHub 배포 자동화:
-> [release.yml](.github/workflows/release.yml)
->
-> Electron 빌드 계획:
-> [sasoo/docs/03-release/electron-build-plan.md](sasoo/docs/03-release/electron-build-plan.md)
->
-> 릴리스 체크리스트:
-> [docs/03-release/release-checklist.md](sasoo/docs/03-release/release-checklist.md)
-
-<br/>
-
----
-
-<br/>
-
-## 🗺️ 로드맵
-
-<br/>
-
-- [x] 4단계 분석 파이프라인
-- [x] Agent Photon (광학)
-- [x] Agent Cell (바이오)
-- [x] Agent Neural (AI/ML)
-- [x] Figure 자동 추출 + 캡션 매칭
-- [x] Mermaid 다이어그램 생성
-- [x] PaperBanana 일러스트 연동
-- [x] 비용 대시보드
-- [x] 다크/라이트 테마
-- [x] 에이전트 캐릭터 일러스트 + UI 통합
-- [x] Agent Circuit (전자공학)
-- [x] `.md` 기반 에이전트 시스템 마이그레이션
-- [x] 에이전트 생성 탭 + AI 자동 생성
-- [x] Gemini 3.1 Pro 업그레이드
-- [x] CSS-only UI 애니메이션
-- [x] 에이전트 채팅 (SSE 실시간 스트리밍)
-- [x] 실험 계획서 자동 생성 (Recipe Card 기반)
-- [x] 채팅 Markdown/GFM/KaTeX 수식 렌더링
-- [ ] 논문 간 비교 분석
-- [ ] Zotero 연동
-- [ ] 논문 추천 시스템
-- [ ] 협업 분석 (멀티 유저)
-- [ ] Obsidian 플러그인 내보내기
-
-<br/>
-
----
-
-<br/>
-
-## 🤝 기여 & 라이선스
-
-기여를 환영합니다! 새로운 도메인 에이전트를 추가하고 싶다면:
-
-> 1. `backend/agents/` 폴더에 `.md` 파일 생성 (예: `quantum.md`)
-> 2. YAML frontmatter에 에이전트 이름·도메인·성격·키워드 정의
-> 3. Markdown 섹션으로 4단계 프롬프트 작성 (screening, visual, recipe, deepdive)
-> 4. `domain_router.py`에 키워드·도메인 매핑 추가
-> 5. PR 제출
->
-> 또는 앱의 **Agents** 탭에서 AI 자동 생성 기능을 사용하여 `.md` 에이전트를 만들 수 있습니다.
-
-**MIT License** &copy; 2025 [dosigner](https://github.com/dosigner)
-
-<br/>
-
----
-
-<div align="center">
-
-<br/>
-
-**Sasoo** — 네 논문, 같이 읽어줄게. 궁금하면 물어봐.
-
-_Built with Gemini 3.1 + Claude Sonnet 4.5_
-
-<br/>
-
-</div>
+[MIT](LICENSE)
