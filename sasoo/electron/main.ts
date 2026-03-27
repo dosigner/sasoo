@@ -1,14 +1,21 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as net from 'net';
 import { PythonManager } from './python-manager';
-import { BACKEND_PORT, FRONTEND_DEV_URL } from './config';
+import {
+  BACKEND_FALLBACK_PORT_RANGE,
+  BACKEND_FALLBACK_PORT_START,
+  BACKEND_PORT,
+  FRONTEND_DEV_URL,
+} from './config';
 import { initAutoUpdater } from './updater';
 
 const isDev = !app.isPackaged;
 
 let mainWindow: BrowserWindow | null = null;
 let pythonManager: PythonManager | null = null;
+let currentBackendPort = BACKEND_PORT;
 
 function getPreloadPath(): string {
   return path.join(__dirname, 'preload.js');
@@ -38,6 +45,7 @@ async function createWindow(): Promise<void> {
       nodeIntegration: false,
       sandbox: false,
       webSecurity: true,
+      additionalArguments: [`--sasoo-backend-port=${currentBackendPort}`],
     },
   });
 
@@ -71,6 +79,62 @@ function getBackendPath(): string {
     return path.join(__dirname, '..', 'backend');
   }
   return path.join(process.resourcesPath, 'backend');
+}
+
+async function isHealthyBackendOnPort(port: number): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1200);
+    const response = await fetch(`http://127.0.0.1:${port}/health`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+
+    server.once('error', () => {
+      resolve(false);
+    });
+
+    server.once('listening', () => {
+      server.close(() => resolve(true));
+    });
+
+    server.listen(port, '127.0.0.1');
+  });
+}
+
+async function resolveBackendPort(): Promise<number> {
+  if (isDev) {
+    return BACKEND_PORT;
+  }
+
+  if (await isHealthyBackendOnPort(BACKEND_PORT)) {
+    console.log(`[Main] Reusing healthy backend already listening on preferred port ${BACKEND_PORT}`);
+    return BACKEND_PORT;
+  }
+
+  if (await isPortAvailable(BACKEND_PORT)) {
+    return BACKEND_PORT;
+  }
+
+  for (let offset = 0; offset < BACKEND_FALLBACK_PORT_RANGE; offset += 1) {
+    const candidate = BACKEND_FALLBACK_PORT_START + offset;
+    if (await isPortAvailable(candidate)) {
+      console.warn(`[Main] Preferred backend port ${BACKEND_PORT} is unavailable; using fallback port ${candidate}`);
+      return candidate;
+    }
+  }
+
+  console.warn(`[Main] No fallback backend port available; retrying preferred port ${BACKEND_PORT}`);
+  return BACKEND_PORT;
 }
 
 function registerIpcHandlers(): void {
@@ -205,6 +269,7 @@ function registerIpcHandlers(): void {
       arch: process.arch,
       electronVersion: process.versions.electron,
       nodeVersion: process.versions.node,
+      backendPort: currentBackendPort,
     };
   });
 
@@ -240,10 +305,13 @@ function registerIpcHandlers(): void {
 }
 
 async function initialize(): Promise<void> {
+  currentBackendPort = await resolveBackendPort();
+  console.log(`[Main] Selected backend port ${currentBackendPort}`);
+
   // Start Python backend
   pythonManager = new PythonManager({
     backendPath: getBackendPath(),
-    port: BACKEND_PORT,
+    port: currentBackendPort,
     isDev,
   });
 

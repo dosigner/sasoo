@@ -1,5 +1,16 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+const DEFAULT_BACKEND_PORT = 8000;
+
+function readBundledBackendPort(): number {
+  const prefix = '--sasoo-backend-port=';
+  const raw = process.argv.find((arg) => arg.startsWith(prefix));
+  const parsed = raw ? Number(raw.slice(prefix.length)) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_BACKEND_PORT;
+}
+
+const bundledBackendPort = readBundledBackendPort();
+
 // Type definitions for the exposed API
 export interface FileInfo {
   path: string;
@@ -46,6 +57,7 @@ export interface AppInfo {
   arch: string;
   electronVersion: string;
   nodeVersion: string;
+  backendPort: number;
 }
 
 export interface ElectronAPI {
@@ -72,6 +84,7 @@ export interface ElectronAPI {
 
   // Backend
   checkBackendHealth: () => Promise<{ healthy: boolean; error?: string }>;
+  getBackendPort: () => number;
 
   // App
   getAppInfo: () => Promise<AppInfo>;
@@ -105,6 +118,7 @@ const electronAPI: ElectronAPI = {
 
   // Backend
   checkBackendHealth: () => ipcRenderer.invoke('backend:health'),
+  getBackendPort: () => bundledBackendPort,
 
   // App
   getAppInfo: () => ipcRenderer.invoke('app:getInfo'),

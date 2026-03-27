@@ -3,6 +3,7 @@
 
 const BACKEND_PORT = 8000;
 const NETWORK_RETRY_DELAYS_MS = [300, 900, 1800];
+const ELECTRON_NETWORK_RETRY_DELAYS_MS = [500, 1000, 2000, 4000, 8000];
 
 // ---------------------------------------------------------------------------
 // Types
@@ -336,7 +337,12 @@ export class ApiError extends Error {
 // In development (http://), use relative URL (Vite proxy handles it)
 export function getApiBase(): string {
   const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
-  return isFileProtocol ? `http://127.0.0.1:${BACKEND_PORT}/api` : '/api';
+  if (!isFileProtocol) {
+    return '/api';
+  }
+
+  const bundledPort = window.electronAPI?.getBackendPort?.() || BACKEND_PORT;
+  return `http://127.0.0.1:${bundledPort}/api`;
 }
 
 // For static URL helper
@@ -351,6 +357,9 @@ async function request<T>(
   const url = `${getApiBase()}${endpoint}`;
   const method = (options.method ?? 'GET').toUpperCase();
   const shouldRetryNetworkError = method === 'GET' || method === 'HEAD';
+  const retryDelays = isFileProtocolCheck()
+    ? ELECTRON_NETWORK_RETRY_DELAYS_MS
+    : NETWORK_RETRY_DELAYS_MS;
 
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
@@ -371,7 +380,7 @@ async function request<T>(
       });
       break;
     } catch (error) {
-      const retryDelay = NETWORK_RETRY_DELAYS_MS[attempt];
+      const retryDelay = retryDelays[attempt];
       if (!shouldRetryNetworkError || retryDelay === undefined) {
         throw error;
       }
@@ -821,7 +830,8 @@ export function getStaticUrl(relativeUrl: string | null | undefined): string {
   if (!relativeUrl) return '';
   // In Electron production (file:// protocol), use absolute backend URL
   if (isFileProtocolCheck() && relativeUrl.startsWith('/static/')) {
-    return `http://127.0.0.1:${BACKEND_PORT}${relativeUrl}`;
+    const bundledPort = window.electronAPI?.getBackendPort?.() || BACKEND_PORT;
+    return `http://127.0.0.1:${bundledPort}${relativeUrl}`;
   }
   return relativeUrl;
 }
