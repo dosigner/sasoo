@@ -251,5 +251,6 @@ PY
             gh release create "$TAG" --draft --title "$TAG"
           fi
 
-          gh release edit "$TAG" --title "$TAG" --notes-file release-notes.md
+          NOTES="$(cat release-notes.md)"
+          gh release edit "$TAG" --title "$TAG" --notes "$NOTES"
           gh release upload "$TAG" release-assets/* --clobber
