@@ -20,6 +20,7 @@ from typing import Any, Optional
 import anthropic
 
 from services.pricing import calc_cost
+from services.crypto import decrypt_value
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +119,9 @@ def _load_api_key() -> str:
             row = cursor.fetchone()
             conn.close()
             if row and row[0]:
-                return row[0]
+                key = decrypt_value(str(row[0]))
+                if key:
+                    return key
         except Exception as e:
             logger.warning(f"Failed to load API key from database: {e}")
 
@@ -127,7 +130,7 @@ def _load_api_key() -> str:
         try:
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
                 config = json.load(f)
-            key = config.get("anthropic_api_key", "")
+            key = decrypt_value(str(config.get("anthropic_api_key", "")))
             if key:
                 return key
         except Exception as e:
