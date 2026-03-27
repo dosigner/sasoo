@@ -251,6 +251,15 @@ PY
             gh release create "$TAG" --draft --title "$TAG"
           fi
 
-          NOTES="$(cat release-notes.md)"
-          gh release edit "$TAG" --title "$TAG" --notes "$NOTES"
+          RELEASE_ID="$(gh api "repos/${{ github.repository }}/releases/tags/$TAG" --jq '.id')"
+          gh api \
+            --method PATCH \
+            "repos/${{ github.repository }}/releases/$RELEASE_ID" \
+            --input - <<EOF
+          {
+            "name": "$TAG",
+            "body": $(jq -Rs . < release-notes.md)
+          }
+          EOF
+
           gh release upload "$TAG" release-assets/* --clobber
