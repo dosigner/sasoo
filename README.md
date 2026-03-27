@@ -26,7 +26,7 @@ PDF 던져주면 4단계로 쪼개서 분석하고, 레시피 카드까지 뽑�
 <br/>
 
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.6.8-brightgreen?style=flat-square)](https://github.com/dosigner/sasoo/releases/tag/v0.6.8)
+[![Version](https://img.shields.io/badge/version-0.6.6-brightgreen?style=flat-square)](https://github.com/dosigner/sasoo/releases/tag/v0.6.6)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)]()
 [![Node](https://img.shields.io/badge/node-18%2B-339933?style=flat-square&logo=node.js&logoColor=white)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)]()
@@ -407,7 +407,7 @@ graph TB
 <br/>
 <h3>🪟 Windows</h3>
 <a href="https://github.com/dosigner/sasoo/releases/latest">
-<img src="https://img.shields.io/badge/Sasoo_Setup_0.6.8.exe-Download-2ea44f?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
+<img src="https://img.shields.io/badge/Sasoo_Setup_0.6.6.exe-Download-2ea44f?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
 </a>
 <br/><br/>
 <sub>Windows 10/11 · NSIS 인스톨러</sub>
@@ -432,7 +432,7 @@ graph TB
 
 <br/>
 
-> **현재 최신 태그**: [`v0.6.8`](https://github.com/dosigner/sasoo/releases/tag/v0.6.8)
+> **현재 최신 태그**: [`v0.6.6`](https://github.com/dosigner/sasoo/releases/tag/v0.6.6)
 > macOS Apple Silicon ZIP과 Windows NSIS 인스톨러 기준으로 배포됩니다.
 >
 > **API 키 필요**: 설치 후 Settings에서 Gemini API Key를 입력해야 분석 기능을 사용할 수 있습니다.
