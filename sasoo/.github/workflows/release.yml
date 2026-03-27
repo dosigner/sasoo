@@ -165,10 +165,79 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+          fetch-depth: 0
+
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
           merge-multiple: true
+
+      - name: Generate release notes
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+        shell: bash
+        run: |
+          PREV_TAG="$(
+            python3 - <<'PY'
+import os
+import re
+import subprocess
+
+target = os.environ["TAG"]
+match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", target)
+if not match:
+    raise SystemExit(0)
+
+current = tuple(int(part) for part in match.groups())
+tags = subprocess.check_output(["git", "tag"], text=True).splitlines()
+older = []
+
+for tag in tags:
+    parsed = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", tag)
+    if not parsed:
+        continue
+    version = tuple(int(part) for part in parsed.groups())
+    if version < current:
+        older.append((version, tag))
+
+if older:
+    print(max(older)[1])
+PY
+          )"
+
+          if [[ -n "$PREV_TAG" ]]; then
+            RANGE="$PREV_TAG..$TAG"
+            COMPARE_LINE="**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...$TAG"
+          else
+            RANGE="$TAG"
+            COMPARE_LINE=""
+          fi
+
+          git log --no-merges --pretty='- %s' "$RANGE" \
+            | grep -Ev '^- release: prepare ' \
+            > release-commits.md
+
+          if [[ ! -s release-commits.md ]]; then
+            git log -1 --pretty='- %s' "$TAG" > release-commits.md
+          fi
+
+          {
+            echo "## Included Changes"
+            echo
+            cat release-commits.md
+            echo
+            echo "## Install Notes"
+            echo
+            echo "- macOS: extract the ZIP, move \`Sasoo.app\` to \`/Applications\`, and if Gatekeeper blocks launch run \`xattr -dr com.apple.quarantine /Applications/Sasoo.app\`."
+            echo "- Windows: install with the bundled \`.exe\` installer. Auto-update metadata is published in \`latest.yml\`."
+            if [[ -n "$COMPARE_LINE" ]]; then
+              echo
+              echo "$COMPARE_LINE"
+            fi
+          } > release-notes.md
 
       - name: Create or update GitHub release
         env:
@@ -182,4 +251,5 @@ jobs:
             gh release create "$TAG" --draft --title "$TAG"
           fi
 
+          gh release edit "$TAG" --title "$TAG" --notes-file release-notes.md
           gh release upload "$TAG" release-assets/* --clobber
