@@ -45,7 +45,23 @@ function SettingPanel({
 // ---------------------------------------------------------------------------
 
 export default function Settings() {
-  const [settings, setSettings] = useState<SettingsType | null>(null);
+  const defaultSettings: SettingsType = {
+    gemini_api_key: '',
+    anthropic_api_key: '',
+    library_path: '',
+    default_domain: 'optics',
+    auto_analyze: false,
+    language: 'ko',
+    theme: 'light',
+    max_concurrent_analyses: 3,
+    gemini_model: 'gemini-3-flash-preview',
+    anthropic_model: 'claude-sonnet-4-20250514',
+    pdf_parser_mode: 'java',
+    extraction_pipeline_version: 'resolver_v1',
+    paperbanana_profile: 'fast',
+  };
+
+  const [baselineSettings, setBaselineSettings] = useState<SettingsType>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -79,7 +95,6 @@ export default function Settings() {
       try {
         const data = await getSettings();
         if (cancelled) return;
-        setSettings(data);
         // Store masked keys for status display, but DON'T populate inputs
         setGeminiKeyStatus(data.gemini_api_key || '');
         setClaudeKeyStatus(data.anthropic_api_key || '');
@@ -91,6 +106,7 @@ export default function Settings() {
         setAutoAnalyze(data.auto_analyze ?? false);
         setPdfParserMode(data.pdf_parser_mode || 'java');
         setExtractionPipelineVersion(data.extraction_pipeline_version || 'resolver_v1');
+        setBaselineSettings(data);
       } catch (err) {
         if (!cancelled) {
           if (err instanceof Error) console.warn('[settings] load error:', err.message);
@@ -142,7 +158,7 @@ export default function Settings() {
       if (claudeKey.trim()) payload.anthropic_api_key = claudeKey.trim();
 
       const updated = await updateSettings(payload);
-      setSettings(updated);
+      setBaselineSettings(updated);
       // Update status badges with new masked values
       setGeminiKeyStatus(updated.gemini_api_key || '');
       setClaudeKeyStatus(updated.anthropic_api_key || '');
@@ -199,28 +215,25 @@ export default function Settings() {
   const handleDiscard = useCallback(() => {
     setGeminiKey('');
     setClaudeKey('');
-    if (settings) {
-      setLibraryPath(settings.library_path || '');
-      setTheme(settings.theme || 'light');
-      setAutoAnalyze(settings.auto_analyze ?? false);
-      setPdfParserMode(settings.pdf_parser_mode || 'java');
-      setExtractionPipelineVersion(settings.extraction_pipeline_version || 'resolver_v1');
-    }
+    setLibraryPath(baselineSettings.library_path || '');
+    setTheme((baselineSettings.theme || 'light') as 'dark' | 'light');
+    setAutoAnalyze(baselineSettings.auto_analyze ?? false);
+    setPdfParserMode((baselineSettings.pdf_parser_mode || 'java') as 'java');
+    setExtractionPipelineVersion((baselineSettings.extraction_pipeline_version || 'resolver_v1') as 'legacy' | 'resolver_v1');
     setSaved(false);
-  }, [settings]);
+  }, [baselineSettings]);
 
   // -----------------------------------------------------------------------
   // Check for unsaved changes
   // -----------------------------------------------------------------------
   const hasChanges =
-    settings &&
-    (geminiKey.trim() !== '' ||
-      claudeKey.trim() !== '' ||
-      libraryPath !== (settings.library_path || '') ||
-      theme !== (settings.theme || 'light') ||
-      autoAnalyze !== (settings.auto_analyze ?? false) ||
-      pdfParserMode !== (settings.pdf_parser_mode || 'java') ||
-      extractionPipelineVersion !== (settings.extraction_pipeline_version || 'resolver_v1'));
+    geminiKey.trim() !== '' ||
+    claudeKey.trim() !== '' ||
+    libraryPath !== (baselineSettings.library_path || '') ||
+    theme !== (baselineSettings.theme || 'light') ||
+    autoAnalyze !== (baselineSettings.auto_analyze ?? false) ||
+    pdfParserMode !== (baselineSettings.pdf_parser_mode || 'java') ||
+    extractionPipelineVersion !== (baselineSettings.extraction_pipeline_version || 'resolver_v1');
 
   if (loading) {
     return (
@@ -327,6 +340,7 @@ export default function Settings() {
                   type={showGeminiKey ? 'text' : 'password'}
                   value={geminiKey}
                   onChange={(e) => setGeminiKey(e.target.value)}
+                  autoComplete="new-password"
                   placeholder={S.settings.enterNewKey}
                   className="input pr-10"
                 />
@@ -377,6 +391,7 @@ export default function Settings() {
                   type={showClaudeKey ? 'text' : 'password'}
                   value={claudeKey}
                   onChange={(e) => setClaudeKey(e.target.value)}
+                  autoComplete="new-password"
                   placeholder={S.settings.enterNewKey}
                   className="input pr-10"
                 />
