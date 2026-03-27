@@ -42,6 +42,13 @@ DEFAULT_SETTINGS: dict[str, str] = {
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+def _normalize_library_path_value(value: Any) -> str:
+    """Normalize configured library paths and recover from empty values."""
+    text = str(value or "").strip()
+    if not text:
+        return str(get_library_root())
+    return str(Path(text).expanduser().resolve(strict=False))
+
 async def _ensure_defaults() -> None:
     """Insert default settings for any missing keys, and sync library_path."""
     db = await get_db()
@@ -52,6 +59,14 @@ async def _ensure_defaults() -> None:
                 "INSERT INTO settings (key, value) VALUES (?, ?)",
                 (key, value),
             )
+        elif key == "library_path":
+            normalized_path = _normalize_library_path_value(existing.get("value"))
+            if str(existing.get("value") or "").strip() != normalized_path:
+                Path(normalized_path).mkdir(parents=True, exist_ok=True)
+                await db.execute(
+                    "UPDATE settings SET value = ?, updated_at = ? WHERE key = ?",
+                    (normalized_path, datetime.utcnow().isoformat(), key),
+                )
         elif key == "extraction_pipeline_version":
             fallback_row = await fetch_one(
                 "SELECT value FROM settings WHERE key = 'extraction_pipeline_force_fallback' LIMIT 1"
@@ -91,6 +106,11 @@ async def _get_all_settings() -> dict[str, str]:
     if result.get("extraction_pipeline_version") == "legacy" and result.get("extraction_pipeline_force_fallback", "false").lower() != "true":
         await _set_setting("extraction_pipeline_version", "resolver_v1")
         result["extraction_pipeline_version"] = "resolver_v1"
+    normalized_library_path = _normalize_library_path_value(result.get("library_path"))
+    if result.get("library_path") != normalized_library_path:
+        Path(normalized_library_path).mkdir(parents=True, exist_ok=True)
+        await _set_setting("library_path", normalized_library_path)
+        result["library_path"] = normalized_library_path
     return result
 
 
@@ -159,7 +179,7 @@ async def update_settings(update: SettingsUpdate):
         raise HTTPException(status_code=400, detail="No settings to update.")
 
     if "library_path" in update_data and update_data["library_path"] is not None:
-        new_path = Path(str(update_data["library_path"])).expanduser().resolve(strict=False)
+        new_path = Path(_normalize_library_path_value(update_data["library_path"]))
         new_path.mkdir(parents=True, exist_ok=True)
         update_data["library_path"] = str(new_path)
 

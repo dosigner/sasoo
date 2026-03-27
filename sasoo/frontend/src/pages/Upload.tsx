@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import logoImg from '@/assets/logo.png';
 import {
+  ApiError,
   getPapers,
   getSettings,
   uploadPaper,
@@ -224,10 +225,16 @@ export default function Upload() {
       setStage('classified');
       toast.success(S.toast.uploadSuccess);
     } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error && err.message
+            ? err.message
+            : S.upload.uploadFailed;
       setStage('error');
-      setError(S.upload.uploadFailed);
+      setError(message);
       if (err instanceof Error) console.warn('[upload] error:', err.message);
-      toast.error(S.toast.uploadFailed);
+      toast.error(message);
     }
   }, [selectedFile, toast]);
 

@@ -1,0 +1,185 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "GitHub release tag to upload assets to (for example v0.6.6)"
+        required: true
+        type: string
+      ref:
+        description: "Git ref to build from. Leave empty to build the tag itself."
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "20"
+  PNPM_VERSION: "10"
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.vars.outputs.tag }}
+      ref: ${{ steps.vars.outputs.ref }}
+
+    steps:
+      - id: vars
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ inputs.tag }}"
+            REF="${{ inputs.ref }}"
+            if [[ -z "$REF" ]]; then
+              REF="$TAG"
+            fi
+          else
+            TAG="${GITHUB_REF_NAME}"
+            REF="${GITHUB_REF}"
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
+  mac:
+    needs: resolve
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            frontend/pnpm-lock.yaml
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Prepare backend virtualenv
+        shell: bash
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/python -m pip install --upgrade pip setuptools wheel
+          backend/.venv/bin/python -m pip install pyinstaller
+          backend/.venv/bin/python -m pip install -r backend/requirements.txt
+
+      - name: Install Node dependencies
+        shell: bash
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build macOS release
+        shell: bash
+        run: pnpm build:mac:release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-mac
+          if-no-files-found: error
+          path: |
+            dist/*-mac.zip
+            dist/*-mac.zip.blockmap
+            dist/latest-mac.yml
+
+  windows:
+    needs: resolve
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            frontend/pnpm-lock.yaml
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Prepare backend virtualenv
+        shell: pwsh
+        run: |
+          python -m venv backend/.venv
+          .\backend\.venv\Scripts\python -m pip install --upgrade pip setuptools wheel
+          .\backend\.venv\Scripts\python -m pip install pyinstaller
+          .\backend\.venv\Scripts\python -m pip install -r backend/requirements.txt
+
+      - name: Install Node dependencies
+        shell: pwsh
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build Windows release
+        shell: pwsh
+        run: pnpm build:win:release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-win
+          if-no-files-found: error
+          path: |
+            dist/*.exe
+            dist/*.exe.blockmap
+            dist/latest.yml
+
+  publish:
+    needs:
+      - resolve
+      - mac
+      - windows
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        shell: bash
+        run: |
+          ls -la release-assets
+
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --draft --title "$TAG"
+          fi
+
+          gh release upload "$TAG" release-assets/* --clobber

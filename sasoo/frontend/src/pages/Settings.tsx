@@ -196,6 +196,19 @@ export default function Settings() {
     }
   }, [libraryPath, toast]);
 
+  const handleDiscard = useCallback(() => {
+    setGeminiKey('');
+    setClaudeKey('');
+    if (settings) {
+      setLibraryPath(settings.library_path || '');
+      setTheme(settings.theme || 'light');
+      setAutoAnalyze(settings.auto_analyze ?? false);
+      setPdfParserMode(settings.pdf_parser_mode || 'java');
+      setExtractionPipelineVersion(settings.extraction_pipeline_version || 'resolver_v1');
+    }
+    setSaved(false);
+  }, [settings]);
+
   // -----------------------------------------------------------------------
   // Check for unsaved changes
   // -----------------------------------------------------------------------
@@ -223,7 +236,7 @@ export default function Settings() {
   return (
     <div className="page-container-compact">
       <section className="archive-panel panel-compact mb-4">
-        <div className="page-header-dense">
+        <div className="page-header-dense gap-4 lg:flex lg:items-start lg:justify-between">
           <div>
             <div className="archive-kicker">{S.settings.heroKicker}</div>
             <h1 className="settings-hero-title mt-2 text-[1.8rem] font-semibold tracking-[-0.05em]">
@@ -242,6 +255,39 @@ export default function Settings() {
               <span className="archive-inline-status archive-inline-status-muted">
                 {S.settings.appearance} {theme === 'light' ? S.settings.light : S.settings.dark}
               </span>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-col items-stretch gap-2 lg:min-w-[14rem]">
+            {(hasChanges || saved) && (
+              <div className={saved ? 'archive-inline-status archive-inline-status-success' : 'archive-inline-status archive-inline-status-muted'}>
+                {saved ? (
+                  <AppIcon name="success" className="w-4 h-4" />
+                ) : (
+                  <AppIcon name="info" className="w-4 h-4" />
+                )}
+                {saved ? S.settings.saved : S.settings.unsavedChanges}
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleDiscard}
+                disabled={!hasChanges && !saved}
+                className="btn-ghost text-sm"
+              >
+                {S.settings.discard}
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving || !hasChanges}
+                className="btn-primary text-sm"
+              >
+                {saving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <AppIcon name="save" className="w-4 h-4" />
+                )}
+                {saving ? S.settings.saving : S.settings.save}
+              </button>
             </div>
           </div>
         </div>
@@ -373,13 +419,13 @@ export default function Settings() {
               <label className="text-xs text-surface-400 block mb-1.5">
                 {S.settings.libraryPath}
               </label>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <input
                   type="text"
                   value={libraryPath}
                   onChange={(e) => setLibraryPath(e.target.value)}
                   placeholder="/path/to/papers"
-                  className="input flex-1"
+                  className="input min-w-0 flex-1"
                 />
                 <button
                   type="button"
@@ -388,6 +434,19 @@ export default function Settings() {
                   title={S.settings.browseFolder}
                 >
                   <AppIcon name="folder" className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving || !hasChanges}
+                  className="btn-primary shrink-0 text-sm"
+                >
+                  {saving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <AppIcon name="save" className="w-4 h-4" />
+                  )}
+                  {saving ? S.settings.saving : S.settings.save}
                 </button>
               </div>
               <p className="text-2xs text-surface-600 mt-1">
@@ -478,52 +537,6 @@ export default function Settings() {
           <CostDashboard />
         </SettingPanel>
       </div>
-
-      {(hasChanges || saved) && (
-        <div className="settings-savebar fixed bottom-0 left-0 right-0 z-40 border-t px-5 py-3 backdrop-blur-xl">
-          <div className="mx-auto flex max-w-[96rem] items-center justify-between gap-4">
-            <div className={saved ? 'archive-inline-status archive-inline-status-success' : 'archive-inline-status archive-inline-status-muted'}>
-              {saved ? (
-                <AppIcon name="success" className="w-4 h-4" />
-              ) : (
-                <AppIcon name="info" className="w-4 h-4" />
-              )}
-              {saved ? S.settings.saved : S.settings.unsavedChanges}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  // Discard: reset to server values
-                  setGeminiKey('');
-                  setClaudeKey('');
-                  if (settings) {
-                    setLibraryPath(settings.library_path || '');
-                    setTheme(settings.theme || 'light');
-                    setAutoAnalyze(settings.auto_analyze ?? false);
-                    setPdfParserMode(settings.pdf_parser_mode || 'java');
-                    setExtractionPipelineVersion(settings.extraction_pipeline_version || 'resolver_v1');
-                  }
-                }}
-                className="btn-ghost text-sm"
-              >
-                {S.settings.discard}
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving || !hasChanges}
-                className="btn-primary text-sm"
-              >
-                {saving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <AppIcon name="save" className="w-4 h-4" />
-                )}
-                {S.settings.save}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
