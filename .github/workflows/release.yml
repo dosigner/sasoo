@@ -126,6 +126,7 @@ jobs:
       - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         shell: bash
         run: |
@@ -144,10 +145,10 @@ jobs:
           3. If launch is still blocked, right-click `Sasoo.app` and choose `Open`.
           EOF
 
-          if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release create "$TAG_NAME" --draft --title "$TAG_NAME" --notes-file release-notes.md
+          if ! gh release view "$TAG_NAME" -R "$GH_REPO" >/dev/null 2>&1; then
+            gh release create "$TAG_NAME" -R "$GH_REPO" --draft --title "$TAG_NAME" --notes-file release-notes.md
           else
-            gh release edit "$TAG_NAME" --title "$TAG_NAME" --draft --notes-file release-notes.md
+            gh release edit "$TAG_NAME" -R "$GH_REPO" --title "$TAG_NAME" --draft --notes-file release-notes.md
           fi
 
-          gh release upload "$TAG_NAME" artifacts/* --clobber
+          gh release upload "$TAG_NAME" -R "$GH_REPO" artifacts/* --clobber
