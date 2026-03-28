@@ -85,6 +85,16 @@ export default function Settings() {
   const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [showClaudeKey, setShowClaudeKey] = useState(false);
 
+  const applySettingsToForm = useCallback((data: SettingsType) => {
+    setLibraryPath(data.library_path || '');
+    setTheme((data.theme || 'light') as 'dark' | 'light');
+    setAutoAnalyze(data.auto_analyze ?? false);
+    setPdfParserMode((data.pdf_parser_mode || 'java') as 'java');
+    setExtractionPipelineVersion(
+      (data.extraction_pipeline_version || 'resolver_v1') as 'legacy' | 'resolver_v1'
+    );
+  }, []);
+
   // -----------------------------------------------------------------------
   // Load settings
   // -----------------------------------------------------------------------
@@ -101,11 +111,7 @@ export default function Settings() {
         // Key inputs start empty — user types new key only when they want to change
         setGeminiKey('');
         setClaudeKey('');
-        setLibraryPath(data.library_path || '');
-        setTheme(data.theme || 'light');
-        setAutoAnalyze(data.auto_analyze ?? false);
-        setPdfParserMode(data.pdf_parser_mode || 'java');
-        setExtractionPipelineVersion(data.extraction_pipeline_version || 'resolver_v1');
+        applySettingsToForm(data);
         setBaselineSettings(data);
       } catch (err) {
         if (!cancelled) {
@@ -121,7 +127,7 @@ export default function Settings() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [applySettingsToForm]);
 
   // -----------------------------------------------------------------------
   // Apply theme
@@ -159,6 +165,7 @@ export default function Settings() {
 
       const updated = await updateSettings(payload);
       setBaselineSettings(updated);
+      applySettingsToForm(updated);
       // Update status badges with new masked values
       setGeminiKeyStatus(updated.gemini_api_key || '');
       setClaudeKeyStatus(updated.anthropic_api_key || '');
@@ -175,7 +182,7 @@ export default function Settings() {
     } finally {
       setSaving(false);
     }
-  }, [geminiKey, claudeKey, libraryPath, theme, autoAnalyze, pdfParserMode, extractionPipelineVersion, toast]);
+  }, [geminiKey, claudeKey, libraryPath, theme, autoAnalyze, pdfParserMode, extractionPipelineVersion, toast, applySettingsToForm]);
 
   const handleBrowseDirectory = useCallback(async () => {
     if (!window.electronAPI?.openDirectory) {
