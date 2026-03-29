@@ -170,7 +170,7 @@ jobs:
             echo "No published release for $TAG_NAME; checking for an existing draft release"
             RELEASE_JSON="$(
               gh api "repos/$GH_REPO/releases?per_page=100" \
-                --jq '.[] | select(.draft and .tag_name == env.TAG_NAME) | @json' \
+                --jq '.[] | select(.draft and (.tag_name == env.TAG_NAME or .name == env.TAG_NAME)) | @json' \
                 | head -n 1
             )"
 
@@ -244,12 +244,17 @@ jobs:
           done
 
           if [[ "$CREATED_DRAFT_RELEASE" == "true" || "$EXISTING_RELEASE_WAS_DRAFT" == "true" ]]; then
+            RELEASE_PAYLOAD="$(jq -n \
+              --arg tag "$TAG_NAME" \
+              --arg name "$TAG_NAME" \
+              '{
+                tag_name: $tag,
+                name: $name,
+                draft: false
+              }'
+            )"
             gh api \
               --method PATCH \
               "repos/$GH_REPO/releases/$RELEASE_ID" \
-              --input - <<EOF
-          {
-            "draft": false
-          }
-          EOF
+              --input - <<<"$RELEASE_PAYLOAD"
           fi
