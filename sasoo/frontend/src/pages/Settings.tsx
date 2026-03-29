@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Loader2,
 } from 'lucide-react';
@@ -84,6 +84,15 @@ export default function Settings() {
   // Visibility toggles
   const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [showClaudeKey, setShowClaudeKey] = useState(false);
+  const geminiInputRef = useRef<HTMLInputElement | null>(null);
+  const claudeInputRef = useRef<HTMLInputElement | null>(null);
+
+  const clearApiKeyInputs = useCallback(() => {
+    setGeminiKey('');
+    setClaudeKey('');
+    if (geminiInputRef.current) geminiInputRef.current.value = '';
+    if (claudeInputRef.current) claudeInputRef.current.value = '';
+  }, []);
 
   const applySettingsToForm = useCallback((data: SettingsType) => {
     setLibraryPath(data.library_path || '');
@@ -109,8 +118,7 @@ export default function Settings() {
         setGeminiKeyStatus(data.gemini_api_key || '');
         setClaudeKeyStatus(data.anthropic_api_key || '');
         // Key inputs start empty — user types new key only when they want to change
-        setGeminiKey('');
-        setClaudeKey('');
+        clearApiKeyInputs();
         applySettingsToForm(data);
         setBaselineSettings(data);
       } catch (err) {
@@ -127,7 +135,7 @@ export default function Settings() {
     return () => {
       cancelled = true;
     };
-  }, [applySettingsToForm]);
+  }, [applySettingsToForm, clearApiKeyInputs]);
 
   // -----------------------------------------------------------------------
   // Apply theme
@@ -169,20 +177,20 @@ export default function Settings() {
       // Update status badges with new masked values
       setGeminiKeyStatus(updated.gemini_api_key || '');
       setClaudeKeyStatus(updated.anthropic_api_key || '');
-      // Clear key inputs after save
-      setGeminiKey('');
-      setClaudeKey('');
+      // Clear key inputs after save. This also fights password-manager autofill
+      // that can leave the settings screen permanently "dirty".
+      clearApiKeyInputs();
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
       toast.success(S.toast.settingsSaved);
     } catch (err) {
-      setError(S.settings.saveFailed);
+      setError(err instanceof Error ? err.message : S.settings.saveFailed);
       if (err instanceof Error) console.warn('[settings] save error:', err.message);
       toast.error(S.toast.settingsFailed);
     } finally {
       setSaving(false);
     }
-  }, [geminiKey, claudeKey, libraryPath, theme, autoAnalyze, pdfParserMode, extractionPipelineVersion, toast, applySettingsToForm]);
+  }, [geminiKey, claudeKey, libraryPath, theme, autoAnalyze, pdfParserMode, extractionPipelineVersion, toast, applySettingsToForm, clearApiKeyInputs]);
 
   const handleBrowseDirectory = useCallback(async () => {
     if (!window.electronAPI?.openDirectory) {
@@ -220,15 +228,14 @@ export default function Settings() {
   }, [libraryPath, toast]);
 
   const handleDiscard = useCallback(() => {
-    setGeminiKey('');
-    setClaudeKey('');
+    clearApiKeyInputs();
     setLibraryPath(baselineSettings.library_path || '');
     setTheme((baselineSettings.theme || 'light') as 'dark' | 'light');
     setAutoAnalyze(baselineSettings.auto_analyze ?? false);
     setPdfParserMode((baselineSettings.pdf_parser_mode || 'java') as 'java');
     setExtractionPipelineVersion((baselineSettings.extraction_pipeline_version || 'resolver_v1') as 'legacy' | 'resolver_v1');
     setSaved(false);
-  }, [baselineSettings]);
+  }, [baselineSettings, clearApiKeyInputs]);
 
   // -----------------------------------------------------------------------
   // Check for unsaved changes
@@ -344,10 +351,16 @@ export default function Settings() {
               </div>
               <div className="relative">
                 <input
+                  ref={geminiInputRef}
                   type={showGeminiKey ? 'text' : 'password'}
                   value={geminiKey}
                   onChange={(e) => setGeminiKey(e.target.value)}
-                  autoComplete="new-password"
+                  name="sasoo-gemini-api-key"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-bwignore="true"
+                  spellCheck={false}
                   placeholder={S.settings.enterNewKey}
                   className="input pr-10"
                 />
@@ -395,10 +408,16 @@ export default function Settings() {
               </div>
               <div className="relative">
                 <input
+                  ref={claudeInputRef}
                   type={showClaudeKey ? 'text' : 'password'}
                   value={claudeKey}
                   onChange={(e) => setClaudeKey(e.target.value)}
-                  autoComplete="new-password"
+                  name="sasoo-claude-api-key"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-bwignore="true"
+                  spellCheck={false}
                   placeholder={S.settings.enterNewKey}
                   className="input pr-10"
                 />
