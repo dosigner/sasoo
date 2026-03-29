@@ -248,19 +248,86 @@ PY
         run: |
           ls -la release-assets
 
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --draft --title "$TAG"
+          TARGET_COMMITISH="$(git rev-parse HEAD)"
+          RELEASE_JSON=""
+
+          if RELEASE_JSON="$(gh api "repos/${{ github.repository }}/releases/tags/$TAG" 2>/dev/null)"; then
+            echo "Found existing release for $TAG"
+          else
+            echo "No tagged release for $TAG; looking for a reusable draft release"
+            RELEASE_JSON="$(
+              gh api "repos/${{ github.repository }}/releases?per_page=100" \
+                --jq '.[] | select(.draft and .name == env.TAG) | @json' \
+                | head -n 1
+            )"
           fi
 
-          RELEASE_ID="$(gh api "repos/${{ github.repository }}/releases/tags/$TAG" --jq '.id')"
+          RELEASE_PAYLOAD="$(jq -n \
+            --arg tag "$TAG" \
+            --arg name "$TAG" \
+            --arg body "$(cat release-notes.md)" \
+            --arg target "$TARGET_COMMITISH" \
+            '{
+              tag_name: $tag,
+              target_commitish: $target,
+              name: $name,
+              body: $body,
+              draft: true
+            }'
+          )"
+
+          if [[ -n "$RELEASE_JSON" ]]; then
+            RELEASE_ID="$(jq -r '.id' <<<"$RELEASE_JSON")"
+            gh api \
+              --method PATCH \
+              "repos/${{ github.repository }}/releases/$RELEASE_ID" \
+              --input - <<<"$RELEASE_PAYLOAD" \
+              >/dev/null
+          else
+            RELEASE_JSON="$(
+              gh api \
+                --method POST \
+                "repos/${{ github.repository }}/releases" \
+                --input - <<<"$RELEASE_PAYLOAD"
+            )"
+            RELEASE_ID="$(jq -r '.id' <<<"$RELEASE_JSON")"
+          fi
+
+          RELEASE_JSON="$(gh api "repos/${{ github.repository }}/releases/$RELEASE_ID")"
+          UPLOAD_URL="$(jq -r '.upload_url' <<<"$RELEASE_JSON" | sed 's/{?name,label}//')"
+
+          for asset_path in release-assets/*; do
+            asset_name="$(basename "$asset_path")"
+            existing_asset_id="$(
+              jq -r --arg name "$asset_name" \
+                '.assets[]? | select(.name == $name) | .id' \
+                <<<"$RELEASE_JSON" \
+                | head -n 1
+            )"
+
+            if [[ -n "$existing_asset_id" ]]; then
+              gh api \
+                --method DELETE \
+                "repos/${{ github.repository }}/releases/assets/$existing_asset_id" \
+                >/dev/null
+            fi
+
+            encoded_name="$(jq -rn --arg v "$asset_name" '$v|@uri')"
+            content_type="$(file --brief --mime-type "$asset_path")"
+
+            gh api \
+              --method POST \
+              --header "Content-Type: $content_type" \
+              "${UPLOAD_URL}?name=${encoded_name}" \
+              --input "$asset_path" \
+              >/dev/null
+          done
+
           gh api \
             --method PATCH \
             "repos/${{ github.repository }}/releases/$RELEASE_ID" \
             --input - <<EOF
           {
-            "name": "$TAG",
-            "body": $(jq -Rs . < release-notes.md)
+            "draft": false
           }
           EOF
-
-          gh release upload "$TAG" release-assets/* --clobber
