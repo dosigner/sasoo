@@ -215,6 +215,7 @@ jobs:
 
           RELEASE_JSON="$(gh api "repos/$GH_REPO/releases/$RELEASE_ID")"
           UPLOAD_URL="$(jq -r '.upload_url' <<<"$RELEASE_JSON" | sed 's/{?name,label}//')"
+          [[ -n "$UPLOAD_URL" && "$UPLOAD_URL" != "null" ]] || { echo "UPLOAD_URL missing"; exit 1; }
 
           for asset_path in artifacts/*; do
             asset_name="$(basename "$asset_path")"
@@ -239,7 +240,7 @@ jobs:
               --method POST \
               --header "Content-Type: $content_type" \
               "${UPLOAD_URL}?name=${encoded_name}" \
-              --input "$asset_path" \
+              --input - < "$asset_path" \
               >/dev/null
           done
 
