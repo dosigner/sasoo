@@ -179,8 +179,12 @@ jobs:
               RELEASE_ID="$(jq -r '.id' <<<"$RELEASE_JSON")"
               EXISTING_RELEASE_WAS_DRAFT="true"
               RELEASE_PAYLOAD="$(jq -n \
+                --arg tag "$TAG_NAME" \
+                --arg name "$TAG_NAME" \
                 --arg body "$(cat release-notes.md)" \
                 '{
+                  tag_name: $tag,
+                  name: $name,
                   body: $body
                 }'
               )"
@@ -213,34 +217,10 @@ jobs:
             fi
           fi
 
-          RELEASE_JSON="$(gh api "repos/$GH_REPO/releases/$RELEASE_ID")"
-          UPLOAD_URL="$(jq -r '.upload_url' <<<"$RELEASE_JSON" | sed 's/{?name,label}//')"
-          [[ -n "$UPLOAD_URL" && "$UPLOAD_URL" != "null" ]] || { echo "UPLOAD_URL missing"; exit 1; }
-
           for asset_path in artifacts/*; do
-            asset_name="$(basename "$asset_path")"
-            existing_asset_id="$(
-              jq -r --arg name "$asset_name" \
-                '.assets[]? | select(.name == $name) | .id' \
-                <<<"$RELEASE_JSON" \
-                | head -n 1
-            )"
-
-            if [[ -n "$existing_asset_id" ]]; then
-              gh api \
-                --method DELETE \
-                "repos/$GH_REPO/releases/assets/$existing_asset_id" \
-                >/dev/null
-            fi
-
-            encoded_name="$(jq -rn --arg v "$asset_name" '$v|@uri')"
-            content_type="$(file --brief --mime-type "$asset_path")"
-
-            gh api \
-              --method POST \
-              --header "Content-Type: $content_type" \
-              "${UPLOAD_URL}?name=${encoded_name}" \
-              --input - < "$asset_path" \
+            gh release upload "$TAG_NAME" "$asset_path" \
+              --clobber \
+              -R "$GH_REPO" \
               >/dev/null
           done
 
