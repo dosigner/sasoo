@@ -7,8 +7,8 @@
 ### 논문을 읽기 전에 구조를 세우고, 읽는 동안 figure를 해석하고, 읽은 뒤에는 재현 파라미터까지 남기는 AI 연구 워크벤치
 
 <p>
-  <a href="https://github.com/dosigner/sasoo/releases/tag/v0.6.6">
-    <img src="https://img.shields.io/badge/version-v0.6.6-0f766e?style=for-the-badge" alt="Version v0.6.6" />
+  <a href="https://github.com/dosigner/sasoo/releases/tag/v0.6.7">
+    <img src="https://img.shields.io/badge/version-v0.6.7-0f766e?style=for-the-badge" alt="Version v0.6.7" />
   </a>
   <a href="https://github.com/dosigner/sasoo/releases/latest">
     <img src="https://img.shields.io/badge/release-latest-111827?style=for-the-badge" alt="Latest release" />
@@ -25,10 +25,10 @@
 </p>
 
 <p>
-  <a href="https://github.com/dosigner/sasoo/releases/download/v0.6.6/Sasoo.Setup.0.6.6.exe">
+  <a href="https://github.com/dosigner/sasoo/releases/download/v0.6.7/Sasoo.Setup.0.6.7.exe">
     <img src="https://img.shields.io/badge/Download-Windows%20Installer-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Download Windows installer" />
   </a>
-  <a href="https://github.com/dosigner/sasoo/releases/download/v0.6.6/Sasoo-0.6.6-arm64-mac.zip">
+  <a href="https://github.com/dosigner/sasoo/releases/download/v0.6.7/Sasoo-0.6.7-arm64-mac.zip">
     <img src="https://img.shields.io/badge/Download-macOS%20Apple%20Silicon-111827?style=for-the-badge&logo=apple&logoColor=white" alt="Download macOS zip" />
   </a>
 </p>
@@ -67,7 +67,7 @@
 
 ## Current Release
 
-`v0.6.6`은 지금 공개 배포 중인 최신 릴리즈입니다.
+`v0.6.7`은 지금 공개 배포 중인 최신 릴리즈입니다.
 
 - Windows NSIS 인스톨러와 macOS Apple Silicon ZIP이 함께 배포됩니다.
 - 데스크톱 설정 저장과 라이브러리 경로 처리 안정화가 반영됐습니다.
@@ -123,8 +123,8 @@ flowchart LR
 
 | Platform | Asset | Notes |
 | --- | --- | --- |
-| Windows 10/11 | [`Sasoo.Setup.0.6.6.exe`](https://github.com/dosigner/sasoo/releases/download/v0.6.6/Sasoo.Setup.0.6.6.exe) | NSIS installer |
-| macOS Apple Silicon | [`Sasoo-0.6.6-arm64-mac.zip`](https://github.com/dosigner/sasoo/releases/download/v0.6.6/Sasoo-0.6.6-arm64-mac.zip) | unsigned ZIP |
+| Windows 10/11 | [`Sasoo.Setup.0.6.7.exe`](https://github.com/dosigner/sasoo/releases/download/v0.6.7/Sasoo.Setup.0.6.7.exe) | NSIS installer |
+| macOS Apple Silicon | [`Sasoo-0.6.7-arm64-mac.zip`](https://github.com/dosigner/sasoo/releases/download/v0.6.7/Sasoo-0.6.7-arm64-mac.zip) | unsigned ZIP |
 | Linux | source build | 현재 GitHub release asset은 제공하지 않음 |
 
 ### macOS note
@@ -233,7 +233,7 @@ pnpm build:linux
 
 ## Notes For Reviewers
 
-- 현재 공개 최신 릴리즈는 [`v0.6.6`](https://github.com/dosigner/sasoo/releases/tag/v0.6.6) 입니다.
+- 현재 공개 최신 릴리즈는 [`v0.6.7`](https://github.com/dosigner/sasoo/releases/tag/v0.6.7) 입니다.
 - `latest.yml`과 `latest-mac.yml`이 함께 배포되므로 auto-update 메타데이터도 릴리즈 자산에 포함됩니다.
 - 릴리즈 재태깅 상황에서는 GitHub 자동 changelog가 역방향 비교 링크를 만들 수 있으므로 본문을 수동 검토하는 편이 안전합니다.
 
