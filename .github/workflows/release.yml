@@ -82,6 +82,14 @@ jobs:
         env:
           npm_config_frozen_lockfile: "false"
 
+      - name: Reinstall electron-builder binaries (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (Test-Path node_modules) { Remove-Item -Recurse -Force node_modules }
+          if (Test-Path "$env:LOCALAPPDATA\electron-builder\Cache") { Remove-Item -Recurse -Force "$env:LOCALAPPDATA\electron-builder\Cache" }
+          pnpm install --no-frozen-lockfile
+
       - name: Build (${{ runner.os }})
         shell: bash
         run: |

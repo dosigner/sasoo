@@ -145,13 +145,6 @@ jobs:
         shell: pwsh
         run: pnpm install --no-frozen-lockfile
 
-      - name: Reinstall electron-builder binaries (Windows)
-        shell: pwsh
-        run: |
-          if (Test-Path node_modules) { Remove-Item -Recurse -Force node_modules }
-          if (Test-Path "$env:LOCALAPPDATA\electron-builder\Cache") { Remove-Item -Recurse -Force "$env:LOCALAPPDATA\electron-builder\Cache" }
-          pnpm install --no-frozen-lockfile
-
       - name: Build Windows release
         shell: pwsh
         run: pnpm build:win:release
