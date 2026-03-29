@@ -7,276 +7,158 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: GitHub release tag to upload assets to (for example v0.6.6)
+        description: Existing tag to package and attach to a draft release
         required: true
-        type: string
-      ref:
-        description: Git ref to build from. Leave empty to build the tag itself.
-        required: false
-        default: ""
         type: string
 
 permissions:
   contents: write
 
-concurrency:
-  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-  cancel-in-progress: false
-
 env:
-  NODE_VERSION: "20"
-  PNPM_VERSION: "10"
-  PYTHON_VERSION: "3.12"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  resolve:
-    runs-on: ubuntu-latest
-    outputs:
-      tag: ${{ steps.vars.outputs.tag }}
-      ref: ${{ steps.vars.outputs.ref }}
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            builder_flag: --win
+          - os: macos-14
+            builder_flag: --mac
 
-    steps:
-      - id: vars
-        shell: bash
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            TAG="${{ inputs.tag }}"
-            REF="${{ inputs.ref }}"
-            if [[ -z "$REF" ]]; then
-              REF="$TAG"
-            fi
-          else
-            TAG="${GITHUB_REF_NAME}"
-            REF="${GITHUB_REF}"
-          fi
-
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "ref=$REF" >> "$GITHUB_OUTPUT"
-
-  mac:
-    needs: resolve
-    runs-on: macos-14
+    runs-on: ${{ matrix.os }}
+    env:
+      TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    defaults:
+      run:
+        working-directory: sasoo
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve.outputs.ref }}
+          ref: ${{ env.TAG_NAME }}
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
-          version: ${{ env.PNPM_VERSION }}
+          version: 10
 
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: 20
           cache: pnpm
           cache-dependency-path: sasoo/pnpm-lock.yaml
 
+      - name: Install Java for Windows packaging
+        if: runner.os == 'Windows'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: "3.12"
           cache: pip
           cache-dependency-path: sasoo/backend/requirements.txt
 
-      - name: Prepare backend virtualenv
+      - name: Install Python dependencies
         shell: bash
         run: |
-          cd sasoo
-          python -m venv backend/.venv
-          backend/.venv/bin/python -m pip install --upgrade pip setuptools wheel
-          backend/.venv/bin/python -m pip install pyinstaller
-          backend/.venv/bin/python -m pip install -r backend/requirements.txt
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            python -m venv backend/.venv
+            source backend/.venv/bin/activate
+            python -m pip install --upgrade pip
+            python -m pip install -r backend/requirements.txt pyinstaller
+          else
+            pip install -r backend/requirements.txt
+            pip install pyinstaller
+          fi
 
-      - name: Install Node dependencies
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+        env:
+          npm_config_frozen_lockfile: "false"
+
+      - name: Build (${{ runner.os }})
         shell: bash
         run: |
-          cd sasoo
-          pnpm install --no-frozen-lockfile
+          export PATH="/opt/homebrew/bin:$PATH"
 
-      - name: Build macOS release
-        shell: bash
-        run: |
-          cd sasoo
-          pnpm build:mac:release
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            pnpm build:mac:release
+          else
+            pnpm build:win:release
+          fi
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: release-mac
-          if-no-files-found: error
+          name: sasoo-${{ runner.os }}
           path: |
             sasoo/dist/*.exe
             sasoo/dist/*-mac.zip
-            sasoo/dist/latest-mac.yml
-            sasoo/dist/*-mac.zip.blockmap
-
-  windows:
-    needs: resolve
-    runs-on: windows-latest
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.resolve.outputs.ref }}
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-          cache-dependency-path: sasoo/pnpm-lock.yaml
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: sasoo/backend/requirements.txt
-
-      - name: Prepare backend virtualenv
-        shell: pwsh
-        run: |
-          Set-Location sasoo
-          python -m venv backend/.venv
-          .\backend\.venv\Scripts\python -m pip install --upgrade pip setuptools wheel
-          .\backend\.venv\Scripts\python -m pip install pyinstaller
-          .\backend\.venv\Scripts\python -m pip install -r backend/requirements.txt
-
-      - name: Install Node dependencies
-        shell: pwsh
-        run: |
-          Set-Location sasoo
-          pnpm install --no-frozen-lockfile
-
-      - name: Build Windows release
-        shell: pwsh
-        run: |
-          Set-Location sasoo
-          pnpm build:win:release
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-win
-          if-no-files-found: error
-          path: |
-            sasoo/dist/*.exe
-            sasoo/dist/*.exe.blockmap
+            sasoo/dist/*.blockmap
             sasoo/dist/latest.yml
+            sasoo/dist/latest-mac.yml
+          if-no-files-found: error
 
   release:
-    needs:
-      - resolve
-      - mac
-      - windows
+    needs: build
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.resolve.outputs.ref }}
-          fetch-depth: 0
-
       - uses: actions/download-artifact@v4
         with:
-          path: release-assets
+          path: artifacts
           merge-multiple: true
 
-      - name: Generate release notes
-        env:
-          TAG: ${{ needs.resolve.outputs.tag }}
-        shell: bash
-        run: |
-          PREV_TAG="$(
-            python3 - <<'PY'
-import os
-import re
-import subprocess
-
-target = os.environ["TAG"]
-match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", target)
-if not match:
-    raise SystemExit(0)
-
-current = tuple(int(part) for part in match.groups())
-tags = subprocess.check_output(["git", "tag"], text=True).splitlines()
-older = []
-
-for tag in tags:
-    parsed = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", tag)
-    if not parsed:
-        continue
-    version = tuple(int(part) for part in parsed.groups())
-    if version < current:
-        older.append((version, tag))
-
-if older:
-    print(max(older)[1])
-PY
-          )"
-
-          if [[ -n "$PREV_TAG" ]]; then
-            RANGE="$PREV_TAG..$TAG"
-            COMPARE_LINE="**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...$TAG"
-          else
-            RANGE="$TAG"
-            COMPARE_LINE=""
-          fi
-
-          git log --no-merges --pretty='- %s' "$RANGE" \
-            | grep -Ev '^- release: prepare ' \
-            > release-commits.md
-
-          if [[ ! -s release-commits.md ]]; then
-            git log -1 --pretty='- %s' "$TAG" > release-commits.md
-          fi
-
-          {
-            echo "## Included Changes"
-            echo
-            cat release-commits.md
-            echo
-            echo "## Install Notes"
-            echo
-            echo "- macOS: extract the ZIP, move \`Sasoo.app\` to \`/Applications\`, and if Gatekeeper blocks launch run \`xattr -dr com.apple.quarantine /Applications/Sasoo.app\`."
-            echo "- Windows: install with the bundled \`.exe\` installer. Auto-update metadata is published in \`latest.yml\`."
-            if [[ -n "$COMPARE_LINE" ]]; then
-              echo
-              echo "$COMPARE_LINE"
-            fi
-          } > release-notes.md
+      - name: List artifacts
+        run: ls -lhR artifacts/
 
       - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.resolve.outputs.tag }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         shell: bash
         run: |
-          ls -la release-assets
+          cat > release-notes.md <<'EOF'
+          ## macOS install note
 
-          TARGET_COMMITISH="$(git rev-parse HEAD)"
+          The macOS build is currently distributed as an unsigned ZIP.
+
+          1. Extract the ZIP and move `Sasoo.app` to `/Applications`.
+          2. If macOS says "`Sasoo` is damaged and can't be opened", run:
+
+             ```bash
+             xattr -dr com.apple.quarantine /Applications/Sasoo.app
+             ```
+
+          3. If launch is still blocked, right-click `Sasoo.app` and choose `Open`.
+          EOF
+
           RELEASE_JSON=""
 
-          if RELEASE_JSON="$(gh api "repos/${{ github.repository }}/releases/tags/$TAG" 2>/dev/null)"; then
-            echo "Found existing release for $TAG"
+          if RELEASE_JSON="$(gh api "repos/$GH_REPO/releases/tags/$TAG_NAME" 2>/dev/null)"; then
+            echo "Found existing release for $TAG_NAME"
           else
-            echo "No tagged release for $TAG; looking for a reusable draft release"
+            echo "No tagged release for $TAG_NAME; looking for a reusable draft release"
             RELEASE_JSON="$(
-              gh api "repos/${{ github.repository }}/releases?per_page=100" \
-                --jq '.[] | select(.draft and .name == env.TAG) | @json' \
+              gh api "repos/$GH_REPO/releases?per_page=100" \
+                --jq '.[] | select(.draft and .name == env.TAG_NAME) | @json' \
                 | head -n 1
             )"
           fi
 
           RELEASE_PAYLOAD="$(jq -n \
-            --arg tag "$TAG" \
-            --arg name "$TAG" \
+            --arg tag "$TAG_NAME" \
+            --arg name "$TAG_NAME" \
             --arg body "$(cat release-notes.md)" \
-            --arg target "$TARGET_COMMITISH" \
             '{
               tag_name: $tag,
-              target_commitish: $target,
               name: $name,
               body: $body,
               draft: true
@@ -287,23 +169,23 @@ PY
             RELEASE_ID="$(jq -r '.id' <<<"$RELEASE_JSON")"
             gh api \
               --method PATCH \
-              "repos/${{ github.repository }}/releases/$RELEASE_ID" \
+              "repos/$GH_REPO/releases/$RELEASE_ID" \
               --input - <<<"$RELEASE_PAYLOAD" \
               >/dev/null
           else
             RELEASE_JSON="$(
               gh api \
                 --method POST \
-                "repos/${{ github.repository }}/releases" \
+                "repos/$GH_REPO/releases" \
                 --input - <<<"$RELEASE_PAYLOAD"
             )"
             RELEASE_ID="$(jq -r '.id' <<<"$RELEASE_JSON")"
           fi
 
-          RELEASE_JSON="$(gh api "repos/${{ github.repository }}/releases/$RELEASE_ID")"
+          RELEASE_JSON="$(gh api "repos/$GH_REPO/releases/$RELEASE_ID")"
           UPLOAD_URL="$(jq -r '.upload_url' <<<"$RELEASE_JSON" | sed 's/{?name,label}//')"
 
-          for asset_path in release-assets/*; do
+          for asset_path in artifacts/*; do
             asset_name="$(basename "$asset_path")"
             existing_asset_id="$(
               jq -r --arg name "$asset_name" \
@@ -315,7 +197,7 @@ PY
             if [[ -n "$existing_asset_id" ]]; then
               gh api \
                 --method DELETE \
-                "repos/${{ github.repository }}/releases/assets/$existing_asset_id" \
+                "repos/$GH_REPO/releases/assets/$existing_asset_id" \
                 >/dev/null
             fi
 
@@ -332,7 +214,7 @@ PY
 
           gh api \
             --method PATCH \
-            "repos/${{ github.repository }}/releases/$RELEASE_ID" \
+            "repos/$GH_REPO/releases/$RELEASE_ID" \
             --input - <<EOF
           {
             "draft": false
