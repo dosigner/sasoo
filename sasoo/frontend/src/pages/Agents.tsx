@@ -9,6 +9,7 @@ import {
 } from '@/lib/api';
 import AgentAvatar from '@/components/AgentAvatar';
 import Modal from '@/components/ui/Modal';
+import Select from '@/components/ui/Select';
 import Toggle from '@/components/ui/Toggle';
 import {
   AlertTriangle,
@@ -92,11 +93,9 @@ const DEFAULT_FORM: AgentFormData = {
   },
 };
 
-const inputCls =
-  'w-full bg-surface-900 border border-surface-700 rounded-lg px-3 py-2 text-sm text-surface-200 focus:border-primary-500 focus:outline-none transition-colors placeholder-surface-600';
+const inputCls = 'input';
 
-const textareaCls =
-  'w-full bg-surface-900 border border-surface-700 rounded-lg px-3 py-2 text-sm text-surface-200 focus:border-primary-500 focus:outline-none transition-colors placeholder-surface-600 resize-none';
+const textareaCls = 'input resize-none';
 
 function emptyForm(): AgentFormData {
   return JSON.parse(JSON.stringify(DEFAULT_FORM));
@@ -218,17 +217,17 @@ function TagInput({ tags, onChange, placeholder }: TagInputProps) {
   }
 
   return (
-    <div className="flex min-h-[42px] flex-wrap gap-1.5 rounded-lg border border-surface-700 bg-surface-900 px-2 py-1.5 transition-colors focus-within:border-primary-500">
+    <div className="flex min-h-[42px] flex-wrap gap-1.5 rounded-lg border border-border bg-surface px-2 py-1.5 transition-colors focus-within:border-accent">
       {tags.map((tag) => (
         <span
           key={tag}
-          className="flex items-center gap-1 rounded-full bg-surface-700 px-2 py-0.5 text-xs text-surface-200"
+          className="flex items-center gap-1 rounded-full bg-surface-hover px-2 py-0.5 text-xs text-fg"
         >
           {tag}
           <button
             type="button"
             onClick={() => onChange(tags.filter((entry) => entry !== tag))}
-            className="text-surface-400 transition-colors hover:text-surface-100"
+            className="text-fg-muted transition-colors hover:text-fg"
           >
             <X className="h-3 w-3" />
           </button>
@@ -251,7 +250,7 @@ function TagInput({ tags, onChange, placeholder }: TagInputProps) {
           if (inputVal.trim()) addTag(inputVal);
         }}
         placeholder={tags.length === 0 ? placeholder : ''}
-        className="min-w-[120px] flex-1 bg-transparent py-0.5 text-sm text-surface-200 outline-none placeholder-surface-600"
+        className="min-w-[120px] flex-1 bg-transparent py-0.5 text-sm text-fg outline-none placeholder-fg-muted"
       />
     </div>
   );
@@ -268,9 +267,9 @@ function Field({
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-xs text-surface-400">{label}</label>
+      <label className="mb-1.5 block text-xs text-fg-muted">{label}</label>
       {children}
-      {help && <p className="mt-1 text-2xs text-surface-600">{help}</p>}
+      {help && <p className="mt-1 text-2xs text-fg-muted">{help}</p>}
     </div>
   );
 }
@@ -285,10 +284,10 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-surface-700/50 bg-surface-800/85 p-5">
+    <section className="rounded-2xl border border-border/50 bg-surface/85 p-5">
       <div className="mb-4">
-        <h2 className="text-sm font-semibold text-surface-100">{title}</h2>
-        {body && <p className="mt-1 text-xs leading-relaxed text-surface-500">{body}</p>}
+        <h2 className="text-sm font-semibold text-fg">{title}</h2>
+        {body && <p className="mt-1 text-xs leading-relaxed text-fg-muted">{body}</p>}
       </div>
       {children}
     </section>
@@ -304,7 +303,7 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (color: str
           type="button"
           onClick={() => onChange(color)}
           className={`h-7 w-7 rounded-full transition-transform hover:scale-110 ${
-            value === color ? 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-surface-900' : ''
+            value === color ? 'scale-110 ring-2 ring-fg ring-offset-2 ring-offset-surface' : ''
           }`}
           style={{ backgroundColor: color }}
           title={color}
@@ -314,10 +313,10 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (color: str
         type="color"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-7 w-7 cursor-pointer rounded-full border border-surface-600 bg-transparent"
+        className="h-7 w-7 cursor-pointer rounded-full border border-border bg-transparent"
         title="Custom color"
       />
-      <span className="font-mono text-xs text-surface-500">{value}</span>
+      <span className="font-mono text-xs text-fg-muted">{value}</span>
     </div>
   );
 }
@@ -330,10 +329,10 @@ function MetaBadge({
   tone?: 'neutral' | 'accent' | 'success' | 'warning';
 }) {
   const cls = {
-    neutral: 'border-surface-700/60 text-surface-400 bg-surface-900/40',
-    accent: 'border-primary-500/20 text-primary-300 bg-primary-500/10',
-    success: 'border-emerald-500/20 text-emerald-300 bg-emerald-500/10',
-    warning: 'border-amber-500/20 text-amber-300 bg-amber-500/10',
+    neutral: 'border-border/60 text-fg-secondary bg-surface-hover',
+    accent: 'border-accent/20 text-accent bg-accent/10',
+    success: 'border-success/20 text-success bg-success/10',
+    warning: 'border-warning/20 text-warning bg-warning/10',
   } as const;
 
   return (
@@ -633,10 +632,10 @@ export default function Agents() {
     } as AgentDetail);
 
     return (
-      <div className="rounded-2xl border border-surface-700/50 bg-surface-800/85 p-5">
+      <div className="rounded-2xl border border-border/50 bg-surface/85 p-5">
         <div className="mb-3">
-          <h2 className="text-sm font-semibold text-surface-100">보조 작업</h2>
-          <p className="mt-1 text-xs leading-relaxed text-surface-500">
+          <h2 className="text-sm font-semibold text-fg">보조 작업</h2>
+          <p className="mt-1 text-xs leading-relaxed text-fg-muted">
             기본 편집과 고급 편집 모두 같은 드래프트를 저장합니다. 복제, 내보내기, 삭제는 여기에서만 제공합니다.
           </p>
         </div>
@@ -646,7 +645,7 @@ export default function Agents() {
               <button
                 type="button"
                 onClick={() => void handleDuplicate(target)}
-                className="flex items-center gap-1.5 rounded-lg bg-surface-700 px-3 py-2 text-sm text-surface-200 transition-colors hover:bg-surface-600"
+                className="flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg transition-colors hover:bg-surface-hover"
               >
                 <Copy className="h-4 w-4" />
                 {S.agents.duplicate}
@@ -654,7 +653,7 @@ export default function Agents() {
               <button
                 type="button"
                 onClick={() => void handleExport(target)}
-                className="flex items-center gap-1.5 rounded-lg bg-surface-700 px-3 py-2 text-sm text-surface-200 transition-colors hover:bg-surface-600"
+                className="flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg transition-colors hover:bg-surface-hover"
               >
                 <Download className="h-4 w-4" />
                 {S.agents.export_}
@@ -663,7 +662,7 @@ export default function Agents() {
                 <button
                   type="button"
                   onClick={() => setDeleteTarget(target)}
-                  className="flex items-center gap-1.5 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-400 transition-colors hover:bg-red-500/20"
+                  className="flex items-center gap-1.5 rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger transition-colors hover:bg-danger/20"
                 >
                   <Trash2 className="h-4 w-4" />
                   {S.agents.delete_}
@@ -678,7 +677,7 @@ export default function Agents() {
                 setEditRawMd(rawPreview);
                 setRawDirty(false);
               }}
-              className="rounded-lg bg-surface-700 px-3 py-2 text-sm text-surface-200 transition-colors hover:bg-surface-600"
+              className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg transition-colors hover:bg-surface-hover"
             >
               폼 기준으로 raw 다시 생성
             </button>
@@ -693,8 +692,8 @@ export default function Agents() {
       {toast && (
         <div className={`fixed right-4 top-16 z-50 rounded-full border px-4 py-2 text-sm shadow-lg backdrop-blur-xl ${
           toast.type === 'success'
-            ? 'border-emerald-500/25 bg-emerald-500/12 text-emerald-100'
-            : 'border-amber-500/25 bg-amber-500/12 text-amber-100'
+            ? 'border-success/25 bg-success/10 text-success'
+            : 'border-danger/25 bg-danger/10 text-danger'
         }`}
         >
           {toast.message}
@@ -712,8 +711,8 @@ export default function Agents() {
       <Modal open={createChoiceOpen} onClose={() => setCreateChoiceOpen(false)} maxWidth="max-w-lg">
         <div className="space-y-5">
           <div>
-            <h2 className="text-lg font-semibold text-surface-100">새 에이전트 시작 방식</h2>
-            <p className="mt-1 text-sm text-surface-500">
+            <h2 className="text-lg font-semibold text-fg">새 에이전트 시작 방식</h2>
+            <p className="mt-1 text-sm text-fg-muted">
               직접 작성하거나, AI 초안으로 시작한 뒤 맡길 논문 범위와 답변 톤을 다듬을 수 있습니다.
             </p>
           </div>
@@ -721,26 +720,26 @@ export default function Agents() {
             <button
               type="button"
               onClick={() => enterCreate('direct')}
-              className="rounded-2xl border border-surface-700 bg-surface-900/60 p-4 text-left transition-colors hover:border-primary-500/30 hover:bg-surface-900"
+              className="rounded-2xl border border-border bg-surface p-4 text-left transition-colors hover:border-accent/30 hover:bg-surface-hover"
             >
-              <div className="mb-3 inline-flex rounded-full bg-surface-700 p-2 text-surface-200">
+              <div className="mb-3 inline-flex rounded-full bg-surface-hover p-2 text-fg">
                 <Edit3 className="h-4 w-4" />
               </div>
-              <div className="text-sm font-semibold text-surface-100">직접 작성</div>
-              <p className="mt-1 text-xs leading-relaxed text-surface-500">
+              <div className="text-sm font-semibold text-fg">직접 작성</div>
+              <p className="mt-1 text-xs leading-relaxed text-fg-muted">
                 빈 폼에서 바로 시작합니다. 연구 분야와 답변 성향을 직접 정하는 방식입니다.
               </p>
             </button>
             <button
               type="button"
               onClick={() => enterCreate('ai')}
-              className="rounded-2xl border border-primary-500/20 bg-primary-500/10 p-4 text-left transition-colors hover:bg-primary-500/15"
+              className="rounded-2xl border border-accent/20 bg-accent/10 p-4 text-left transition-colors hover:bg-accent/15"
             >
-              <div className="mb-3 inline-flex rounded-full bg-primary-500/15 p-2 text-primary-300">
+              <div className="mb-3 inline-flex rounded-full bg-accent/15 p-2 text-accent">
                 <Wand2 className="h-4 w-4" />
               </div>
-              <div className="text-sm font-semibold text-surface-100">AI 초안으로 시작</div>
-              <p className="mt-1 text-xs leading-relaxed text-surface-500">
+              <div className="text-sm font-semibold text-fg">AI 초안으로 시작</div>
+              <p className="mt-1 text-xs leading-relaxed text-fg-muted">
                 연구 분야 설명을 넣고 초안을 만든 뒤, 배정 기준과 톤을 검토합니다.
               </p>
             </button>
@@ -751,12 +750,12 @@ export default function Agents() {
       <Modal open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)} maxWidth="max-w-md">
         <div className="space-y-5">
           <div className="flex items-start gap-3">
-            <div className="rounded-full bg-red-500/10 p-2 text-red-400">
+            <div className="rounded-full bg-danger/10 p-2 text-danger">
               <Trash2 className="h-5 w-5" />
             </div>
             <div>
-              <p className="font-semibold text-surface-100">{S.agents.confirmDelete}</p>
-              <p className="mt-1 text-sm text-surface-500">
+              <p className="font-semibold text-fg">{S.agents.confirmDelete}</p>
+              <p className="mt-1 text-sm text-fg-muted">
                 {deleteTarget ? agentDisplayName(deleteTarget) : ''}
               </p>
             </div>
@@ -765,14 +764,14 @@ export default function Agents() {
             <button
               type="button"
               onClick={() => setDeleteTarget(null)}
-              className="rounded-lg bg-surface-700 px-4 py-2 text-sm text-surface-200 transition-colors hover:bg-surface-600"
+              className="rounded-lg border border-border bg-surface px-4 py-2 text-sm text-fg transition-colors hover:bg-surface-hover"
             >
               {S.agents.cancel}
             </button>
             <button
               type="button"
               onClick={() => void confirmDelete()}
-              className="rounded-lg bg-red-500 px-4 py-2 text-sm text-white transition-colors hover:bg-red-600"
+              className="rounded-lg bg-danger px-4 py-2 text-sm text-accent-fg transition-colors hover:bg-danger/90"
             >
               {S.agents.delete_}
             </button>
@@ -786,8 +785,8 @@ export default function Agents() {
             <div className="page-header-dense">
               <div>
                 <div className="archive-kicker">{S.agents.heroKicker}</div>
-                <h1 className="mt-2 text-[1.8rem] font-semibold tracking-[-0.05em] text-surface-100">{S.agents.title}</h1>
-                <p className="mt-2 text-sm leading-6 text-surface-400">{S.agents.heroBody}</p>
+                <h1 className="mt-2 text-[1.8rem] font-semibold tracking-[-0.05em] text-fg">{S.agents.title}</h1>
+                <p className="mt-2 text-sm leading-6 text-fg-muted">{S.agents.heroBody}</p>
                 <div className="page-status-strip mt-3">
                   <span className="archive-inline-status archive-inline-status-muted">
                     {S.agents.summaryAgents} {agents.length}
@@ -804,7 +803,7 @@ export default function Agents() {
                 <button
                   type="button"
                   onClick={handleImportClick}
-                  className="flex items-center gap-1.5 rounded-full border border-surface-700 bg-surface-900/70 px-4 py-2.5 text-sm text-surface-200 transition-colors hover:border-surface-500 hover:bg-surface-900"
+                  className="flex items-center gap-1.5 rounded-full border border-border bg-surface/70 px-4 py-2.5 text-sm text-fg transition-colors hover:border-fg-muted hover:bg-surface-hover"
                 >
                   <Upload className="h-4 w-4" />
                   {S.agents.import_}
@@ -812,7 +811,7 @@ export default function Agents() {
                 <button
                   type="button"
                   onClick={() => setCreateChoiceOpen(true)}
-                  className="flex items-center gap-1.5 rounded-full bg-primary-500 px-5 py-2.5 text-sm font-medium text-black transition-colors hover:bg-primary-400"
+                  className="flex items-center gap-1.5 rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-accent-fg transition-colors hover:bg-accent-hover"
                 >
                   <Plus className="h-4 w-4" />
                   {S.agents.createNew}
@@ -822,11 +821,11 @@ export default function Agents() {
           </section>
 
           {loading ? (
-            <div className="flex items-center justify-center py-24 text-sm text-surface-500">불러오는 중...</div>
+            <div className="flex items-center justify-center py-24 text-sm text-fg-muted">불러오는 중...</div>
           ) : agents.length === 0 ? (
             <div className="archive-panel flex flex-col items-center justify-center gap-3 px-6 py-20 text-center">
-              <p className="text-lg font-semibold text-surface-200">{S.agents.registryEmptyTitle}</p>
-              <p className="max-w-md text-sm leading-7 text-surface-500">{S.agents.registryEmptyBody}</p>
+              <p className="text-lg font-semibold text-fg">{S.agents.registryEmptyTitle}</p>
+              <p className="max-w-md text-sm leading-7 text-fg-muted">{S.agents.registryEmptyBody}</p>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -853,16 +852,16 @@ export default function Agents() {
                 {agents.map((agent) => (
                   <div
                     key={agent.name}
-                    className="rounded-[24px] border border-surface-800/80 bg-surface-950/55 p-5 transition-colors hover:border-surface-700"
+                    className="rounded-surface border border-border/80 bg-surface/55 p-5 transition-colors hover:border-fg-muted"
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex min-w-0 items-center gap-3">
                         <AgentAvatar name={agentDisplayName(agent)} color={agent.color} size="sm" />
                         <div className="min-w-0">
-                          <div className="truncate text-base font-semibold tracking-[-0.03em] text-surface-100">
+                          <div className="truncate text-base font-semibold tracking-[-0.03em] text-fg">
                             {agentDisplayName(agent)}
                           </div>
-                          <div className="mt-1 truncate text-xs text-surface-500">{agent.name}</div>
+                          <div className="mt-1 truncate text-xs text-fg-muted">{agent.name}</div>
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -876,26 +875,26 @@ export default function Agents() {
                     </div>
                     <div className="mt-5 grid gap-4 sm:grid-cols-2">
                       <div>
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-surface-600">담당 분야</div>
-                        <div className="mt-2 text-sm text-surface-200">
+                        <div className="text-2xs uppercase tracking-[0.2em] text-fg-muted">담당 분야</div>
+                        <div className="mt-2 text-sm text-fg">
                           {agent.domain_display_ko || agent.domain_display || agent.domain || '미정'}
                         </div>
                       </div>
                       <div>
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-surface-600">응답 태도</div>
-                        <div className="mt-2 line-clamp-2 text-sm text-surface-400">
+                        <div className="text-2xs uppercase tracking-[0.2em] text-fg-muted">응답 태도</div>
+                        <div className="mt-2 line-clamp-2 text-sm text-fg-muted">
                           {agent.personality || '설명 없음'}
                         </div>
                       </div>
                     </div>
-                    <div className="mt-5 flex items-center justify-between gap-3 border-t border-surface-800/80 pt-4">
-                      <p className="line-clamp-2 text-xs leading-6 text-surface-500">
+                    <div className="mt-5 flex items-center justify-between gap-3 border-t border-border/80 pt-4">
+                      <p className="line-clamp-2 text-xs leading-6 text-fg-muted">
                         {agent.quote || '대표 문장이 아직 비어 있습니다.'}
                       </p>
                       <button
                         type="button"
                         onClick={() => void enterEdit(agent)}
-                        className="flex shrink-0 items-center gap-1.5 rounded-full border border-surface-700 bg-surface-900/70 px-4 py-2 text-sm text-surface-200 transition-colors hover:border-surface-500 hover:bg-surface-900"
+                        className="flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-surface/70 px-4 py-2 text-sm text-fg transition-colors hover:border-fg-muted hover:bg-surface-hover"
                       >
                         <Edit3 className="h-4 w-4" />
                         {S.agents.edit}
@@ -916,14 +915,14 @@ export default function Agents() {
               <button
                 type="button"
                 onClick={() => setMode('list')}
-                className="mt-0.5 flex items-center gap-1.5 text-sm text-surface-400 transition-colors hover:text-surface-200"
+                className="mt-0.5 flex items-center gap-1.5 text-sm text-fg-muted transition-colors hover:text-fg"
               >
                 <ChevronLeft className="h-4 w-4" />
                 {S.agents.back}
               </button>
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-xl font-bold text-surface-100">{authorTitle}</h1>
+                  <h1 className="text-xl font-semibold text-fg">{authorTitle}</h1>
                   {isEditingBuiltin && <MetaBadge tone="warning">기본 에이전트</MetaBadge>}
                   {!isEditingBuiltin && authorMode === 'edit' && <MetaBadge>사용자 에이전트</MetaBadge>}
                   <MetaBadge tone={formData.enabled ? 'success' : 'neutral'}>
@@ -932,7 +931,7 @@ export default function Agents() {
                   {generatedDraft && <MetaBadge tone="accent">AI 초안 적용됨</MetaBadge>}
                   {saveUsesRaw && <MetaBadge tone="warning">raw draft 저장 중</MetaBadge>}
                 </div>
-                <p className="mt-1 text-sm text-surface-500">
+                <p className="mt-1 text-sm text-fg-muted">
                   {isAdvancedStep
                     ? '고급 편집에서는 프롬프트와 raw markdown를 다룹니다. 기본 구조 확인 후에만 수정하세요.'
                     : '이 에이전트가 맡을 논문 범위와 답변 톤을 먼저 정리한 뒤 저장하세요.'}
@@ -946,8 +945,8 @@ export default function Agents() {
                 onClick={() => setAuthorStep(isAdvancedStep ? 'basic' : 'advanced')}
                 className={`rounded-lg px-3 py-2 text-sm transition-colors ${
                   isAdvancedStep
-                    ? 'bg-surface-700 text-surface-200 hover:bg-surface-600'
-                    : 'border border-primary-500/20 bg-primary-500/10 text-primary-300 hover:bg-primary-500/20'
+                    ? 'border border-border bg-surface text-fg hover:bg-surface-hover'
+                    : 'border border-accent/20 bg-accent/10 text-accent hover:bg-accent/20'
                 }`}
               >
                 {isAdvancedStep ? '기본 편집으로 돌아가기' : '고급 편집 열기'}
@@ -955,7 +954,7 @@ export default function Agents() {
               <button
                 type="button"
                 onClick={() => setMode('list')}
-                className="rounded-lg bg-surface-700 px-3 py-2 text-sm text-surface-200 transition-colors hover:bg-surface-600"
+                className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg transition-colors hover:bg-surface-hover"
               >
                 {S.agents.cancel}
               </button>
@@ -963,7 +962,7 @@ export default function Agents() {
                 type="button"
                 onClick={() => void handleSave()}
                 disabled={submitting || authorLoading}
-                className="flex items-center gap-1.5 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600 disabled:opacity-60"
+                className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg transition-colors hover:bg-accent-hover disabled:opacity-60"
               >
                 <Check className="h-4 w-4" />
                 {submitting ? '...' : saveUsesRaw ? '검토 후 저장' : authorMode === 'create' ? S.agents.create : S.agents.save}
@@ -972,20 +971,20 @@ export default function Agents() {
           </div>
 
           {authorLoading ? (
-            <div className="flex items-center justify-center rounded-2xl border border-surface-700/50 bg-surface-800 p-12 text-sm text-surface-500">
+            <div className="flex items-center justify-center rounded-2xl border border-border/50 bg-surface p-12 text-sm text-fg-muted">
               불러오는 중...
             </div>
           ) : (
             <>
               {isEditingBuiltin && (
-                <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+                <div className="mb-4 flex items-center gap-2 rounded-lg border border-warning/20 bg-warning/10 px-4 py-3 text-sm text-warning">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
                   기본 에이전트를 저장하면 사용자 정의 override가 생성됩니다.
                 </div>
               )}
 
               {saveUsesRaw && !isAdvancedStep && (
-                <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+                <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-warning/20 bg-warning/10 px-4 py-3 text-sm text-warning">
                   <span>현재 저장 기준은 raw markdown입니다. 폼 변경만으로는 raw draft가 바뀌지 않습니다.</span>
                   <button
                     type="button"
@@ -993,7 +992,7 @@ export default function Agents() {
                       setEditRawMd(rawPreview);
                       setRawDirty(false);
                     }}
-                    className="shrink-0 rounded-lg bg-amber-500/15 px-3 py-1.5 text-xs text-amber-100 transition-colors hover:bg-amber-500/25"
+                    className="shrink-0 rounded-lg bg-warning/15 px-3 py-1.5 text-xs text-warning transition-colors hover:bg-warning/25"
                   >
                     폼 기준으로 되돌리기
                   </button>
@@ -1003,14 +1002,14 @@ export default function Agents() {
               {!isAdvancedStep && (
                 <div className="space-y-6">
                   {isCreateMode && createStartMode === 'ai' && (
-                    <div className="rounded-2xl border border-primary-500/15 bg-primary-500/8 p-5">
+                    <div className="rounded-2xl border border-accent/15 bg-accent/10 p-5">
                       <div className="mb-4 flex items-start gap-3">
-                        <div className="rounded-full bg-primary-500/15 p-2 text-primary-300">
+                        <div className="rounded-full bg-accent/15 p-2 text-accent">
                           <Sparkles className="h-4 w-4" />
                         </div>
                         <div>
-                          <div className="text-sm font-semibold text-surface-100">AI 초안은 시작점으로만 사용합니다</div>
-                          <p className="mt-1 text-xs leading-relaxed text-surface-500">
+                          <div className="text-sm font-semibold text-fg">AI 초안은 시작점으로만 사용합니다</div>
+                          <p className="mt-1 text-xs leading-relaxed text-fg-muted">
                             연구 분야를 설명하면 초안을 만들고, 이후 맡길 논문 범위와 답변 톤을 직접 검토합니다.
                           </p>
                         </div>
@@ -1046,7 +1045,7 @@ export default function Agents() {
                           type="button"
                           onClick={() => void handleGenerateDraft()}
                           disabled={generating}
-                          className="flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600 disabled:opacity-60"
+                          className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg transition-colors hover:bg-accent-hover disabled:opacity-60"
                         >
                           {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                           {generating ? S.agents.aiGenerating : 'AI 초안 적용'}
@@ -1056,13 +1055,13 @@ export default function Agents() {
                   )}
 
                   {generatedDraft && (
-                    <div className="flex items-center justify-between gap-3 rounded-lg border border-primary-500/20 bg-primary-500/10 px-4 py-3 text-sm text-primary-300">
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-accent/20 bg-accent/10 px-4 py-3 text-sm text-accent">
                       <span>AI 초안이 반영되었습니다. 저장 전 미리보기와 맡길 논문 범위를 먼저 확인하세요.</span>
                       <button
                         type="button"
                         onClick={() => void handleGenerateDraft()}
                         disabled={generating}
-                        className="shrink-0 rounded-lg bg-primary-500/15 px-3 py-1.5 text-xs text-primary-200 transition-colors hover:bg-primary-500/25 disabled:opacity-60"
+                        className="shrink-0 rounded-lg bg-accent/15 px-3 py-1.5 text-xs text-accent transition-colors hover:bg-accent/25 disabled:opacity-60"
                       >
                         다시 생성
                       </button>
@@ -1125,7 +1124,7 @@ export default function Agents() {
                             />
                           </Field>
                         </div>
-                        <div className="mt-4 rounded-xl border border-surface-700/50 bg-surface-900/55 p-4">
+                        <div className="mt-4 rounded-xl border border-border/50 bg-bg/55 p-4">
                           <Toggle
                             checked={formData.enabled}
                             onChange={(checked) => setField('enabled', checked)}
@@ -1196,14 +1195,15 @@ export default function Agents() {
                             />
                           </Field>
                           <Field label={S.agents.model}>
-                            <select
-                              className={inputCls}
+                            <Select
                               value={formData.model}
-                              onChange={(e) => setField('model', e.target.value)}
-                            >
-                              <option value="gemini-pro">Gemini Pro</option>
-                              <option value="gemini-flash">Gemini Flash</option>
-                            </select>
+                              onValueChange={(value) => setField('model', value)}
+                              aria-label={S.agents.model}
+                              options={[
+                                { value: 'gemini-pro', label: 'Gemini Pro' },
+                                { value: 'gemini-flash', label: 'Gemini Flash' },
+                              ]}
+                            />
                           </Field>
                         </div>
                       </Section>
@@ -1213,16 +1213,16 @@ export default function Agents() {
                         body="저장 전에 앱에서 어떻게 보일지, 어떤 논문을 맡을지, 어떤 톤으로 답할지를 빠르게 확인합니다."
                       >
                         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                          <div className="rounded-xl border border-surface-700/50 bg-surface-900/55 p-4">
-                            <div className="mb-2 text-2xs uppercase tracking-[0.16em] text-surface-500">Card Preview</div>
+                          <div className="rounded-xl border border-border/50 bg-bg/55 p-4">
+                            <div className="mb-2 text-2xs uppercase tracking-[0.16em] text-fg-muted">Card Preview</div>
                             <div className="flex items-center gap-3">
                               <AgentAvatar name={previewName} color={formData.color} size="lg" />
                               <div className="min-w-0">
-                                <p className="truncate font-semibold text-surface-100">{previewName}</p>
-                                <p className="truncate text-xs text-surface-500">{previewDomain}</p>
+                                <p className="truncate font-semibold text-fg">{previewName}</p>
+                                <p className="truncate text-xs text-fg-muted">{previewDomain}</p>
                               </div>
                             </div>
-                            <p className="mt-3 text-sm italic text-surface-400">
+                            <p className="mt-3 text-sm italic text-fg-muted">
                               "{formData.quote || '대표 대사를 아직 정하지 않았습니다.'}"
                             </p>
                             <div className="mt-3">
@@ -1232,40 +1232,40 @@ export default function Agents() {
                             </div>
                           </div>
 
-                          <div className="rounded-xl border border-surface-700/50 bg-surface-900/55 p-4">
-                            <div className="mb-2 text-2xs uppercase tracking-[0.16em] text-surface-500">Routing Summary</div>
-                            <p className="text-sm leading-relaxed text-surface-300">{routingSummary}</p>
+                          <div className="rounded-xl border border-border/50 bg-bg/55 p-4">
+                            <div className="mb-2 text-2xs uppercase tracking-[0.16em] text-fg-muted">Routing Summary</div>
+                            <p className="text-sm leading-relaxed text-fg-secondary">{routingSummary}</p>
                           </div>
 
-                          <div className="rounded-xl border border-surface-700/50 bg-surface-900/55 p-4">
-                            <div className="mb-2 text-2xs uppercase tracking-[0.16em] text-surface-500">Tone Preview</div>
-                            <p className="text-sm leading-relaxed text-surface-300">{tonePreview}</p>
-                            <div className="mt-4 text-2xs uppercase tracking-[0.16em] text-surface-500">Output Focus</div>
-                            <p className="mt-2 text-sm leading-relaxed text-surface-300">{outputSummary}</p>
+                          <div className="rounded-xl border border-border/50 bg-bg/55 p-4">
+                            <div className="mb-2 text-2xs uppercase tracking-[0.16em] text-fg-muted">Tone Preview</div>
+                            <p className="text-sm leading-relaxed text-fg-secondary">{tonePreview}</p>
+                            <div className="mt-4 text-2xs uppercase tracking-[0.16em] text-fg-muted">Output Focus</div>
+                            <p className="mt-2 text-sm leading-relaxed text-fg-secondary">{outputSummary}</p>
                           </div>
                         </div>
                       </Section>
                     </div>
 
                     <div className="space-y-4 xl:sticky xl:top-6 xl:self-start">
-                      <div className="rounded-2xl border border-surface-700/50 bg-surface-800/85 p-5">
-                        <div className="mb-2 text-2xs uppercase tracking-[0.18em] text-surface-500">Quick Checks</div>
+                      <div className="rounded-2xl border border-border/50 bg-surface/85 p-5">
+                        <div className="mb-2 text-2xs uppercase tracking-[0.18em] text-fg-muted">Quick Checks</div>
                         <div className="space-y-3 text-sm">
-                          <div className="rounded-xl bg-surface-900/60 px-3 py-3">
-                            <div className="text-2xs uppercase tracking-[0.16em] text-surface-500">이름</div>
-                            <div className="mt-1 text-surface-200">{previewName}</div>
+                          <div className="rounded-xl bg-bg/60 px-3 py-3">
+                            <div className="text-2xs uppercase tracking-[0.16em] text-fg-muted">이름</div>
+                            <div className="mt-1 text-fg">{previewName}</div>
                           </div>
-                          <div className="rounded-xl bg-surface-900/60 px-3 py-3">
-                            <div className="text-2xs uppercase tracking-[0.16em] text-surface-500">도메인</div>
-                            <div className="mt-1 text-surface-200">{formData.domain || '미정'}</div>
+                          <div className="rounded-xl bg-bg/60 px-3 py-3">
+                            <div className="text-2xs uppercase tracking-[0.16em] text-fg-muted">도메인</div>
+                            <div className="mt-1 text-fg">{formData.domain || '미정'}</div>
                           </div>
-                          <div className="rounded-xl bg-surface-900/60 px-3 py-3">
-                            <div className="text-2xs uppercase tracking-[0.16em] text-surface-500">상태</div>
-                            <div className="mt-1 text-surface-200">{formData.enabled ? '활성' : '비활성'}</div>
+                          <div className="rounded-xl bg-bg/60 px-3 py-3">
+                            <div className="text-2xs uppercase tracking-[0.16em] text-fg-muted">상태</div>
+                            <div className="mt-1 text-fg">{formData.enabled ? '활성' : '비활성'}</div>
                           </div>
-                          <div className="rounded-xl bg-surface-900/60 px-3 py-3">
-                            <div className="text-2xs uppercase tracking-[0.16em] text-surface-500">레시피 포커스</div>
-                            <div className="mt-1 text-surface-200">{formData.recipe_parameters.length}개 설정</div>
+                          <div className="rounded-xl bg-bg/60 px-3 py-3">
+                            <div className="text-2xs uppercase tracking-[0.16em] text-fg-muted">레시피 포커스</div>
+                            <div className="mt-1 text-fg">{formData.recipe_parameters.length}개 설정</div>
                           </div>
                         </div>
                       </div>
@@ -1277,22 +1277,22 @@ export default function Agents() {
 
               {isAdvancedStep && (
                 <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
-                  <div className="rounded-2xl border border-surface-700/50 bg-surface-800/85 p-5">
+                  <div className="rounded-2xl border border-border/50 bg-surface/85 p-5">
                     <div className="mb-5">
-                      <h2 className="text-sm font-semibold text-surface-100">고급 편집</h2>
-                      <p className="mt-1 text-xs leading-relaxed text-surface-500">
+                      <h2 className="text-sm font-semibold text-fg">고급 편집</h2>
+                      <p className="mt-1 text-xs leading-relaxed text-fg-muted">
                         프롬프트 조정과 raw markdown 편집은 고급 단계입니다. 기본 구조 확인 후에만 수정하세요.
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-1 rounded-lg border border-surface-700 bg-surface-900 p-1">
+                    <div className="flex items-center gap-1 rounded-lg border border-border bg-surface p-1">
                       <button
                         type="button"
                         onClick={() => setExpertView('prompts')}
                         className={`rounded-md px-3 py-1.5 text-xs transition-colors ${
                           expertView === 'prompts'
-                            ? 'bg-primary-500/20 text-primary-300'
-                            : 'text-surface-400 hover:text-surface-200'
+                            ? 'bg-accent/20 text-accent'
+                            : 'text-fg-muted hover:text-fg'
                         }`}
                       >
                         프롬프트
@@ -1302,8 +1302,8 @@ export default function Agents() {
                         onClick={() => setExpertView('raw')}
                         className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs transition-colors ${
                           expertView === 'raw'
-                            ? 'bg-primary-500/20 text-primary-300'
-                            : 'text-surface-400 hover:text-surface-200'
+                            ? 'bg-accent/20 text-accent'
+                            : 'text-fg-muted hover:text-fg'
                         }`}
                       >
                         <Code className="h-3.5 w-3.5" />
@@ -1313,7 +1313,7 @@ export default function Agents() {
 
                     {expertView === 'prompts' ? (
                       <div className="mt-4">
-                        <div className="mb-3 flex gap-1 rounded-lg border border-surface-700 bg-surface-900 p-1">
+                        <div className="mb-3 flex gap-1 rounded-lg border border-border bg-surface p-1">
                           {PROMPT_TABS.map((tab) => (
                             <button
                               key={tab.key}
@@ -1321,8 +1321,8 @@ export default function Agents() {
                               onClick={() => setExpertPromptTab(tab.key)}
                               className={`flex-1 rounded-md py-1.5 text-xs font-medium transition-colors ${
                                 expertPromptTab === tab.key
-                                  ? 'bg-primary-500/20 text-primary-300'
-                                  : 'text-surface-400 hover:text-surface-200'
+                                  ? 'bg-accent/20 text-accent'
+                                  : 'text-fg-muted hover:text-fg'
                               }`}
                             >
                               {tab.label}
@@ -1339,7 +1339,7 @@ export default function Agents() {
                     ) : (
                       <div className="mt-4">
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                          <p className="text-xs leading-relaxed text-surface-500">
+                          <p className="text-xs leading-relaxed text-fg-muted">
                             폼 구조를 우회하는 편집입니다. 검토 후 저장하세요.
                           </p>
                           <button
@@ -1348,7 +1348,7 @@ export default function Agents() {
                               setEditRawMd(rawPreview);
                               setRawDirty(false);
                             }}
-                            className="rounded-lg bg-surface-700 px-3 py-1.5 text-xs text-surface-200 transition-colors hover:bg-surface-600"
+                            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-fg transition-colors hover:bg-surface-hover"
                           >
                             폼 기준으로 다시 생성
                           </button>
@@ -1367,22 +1367,22 @@ export default function Agents() {
                   </div>
 
                   <div className="space-y-4 xl:sticky xl:top-6 xl:self-start">
-                    <div className="rounded-2xl border border-surface-700/50 bg-surface-800/85 p-5">
-                      <div className="mb-2 text-2xs uppercase tracking-[0.18em] text-surface-500">Advanced Checks</div>
+                    <div className="rounded-2xl border border-border/50 bg-surface/85 p-5">
+                      <div className="mb-2 text-2xs uppercase tracking-[0.18em] text-fg-muted">Advanced Checks</div>
                       <div className="space-y-3 text-sm">
-                        <div className="rounded-xl bg-surface-900/60 px-3 py-3">
-                          <div className="text-2xs uppercase tracking-[0.16em] text-surface-500">현재 편집</div>
-                          <div className="mt-1 text-surface-200">
+                        <div className="rounded-xl bg-bg/60 px-3 py-3">
+                          <div className="text-2xs uppercase tracking-[0.16em] text-fg-muted">현재 편집</div>
+                          <div className="mt-1 text-fg">
                             {expertView === 'raw' ? 'raw markdown' : PROMPT_TABS.find((tab) => tab.key === expertPromptTab)?.label}
                           </div>
                         </div>
-                        <div className="rounded-xl bg-surface-900/60 px-3 py-3">
-                          <div className="text-2xs uppercase tracking-[0.16em] text-surface-500">저장 기준</div>
-                          <div className="mt-1 text-surface-200">{saveUsesRaw ? 'raw draft' : '폼 구조'}</div>
+                        <div className="rounded-xl bg-bg/60 px-3 py-3">
+                          <div className="text-2xs uppercase tracking-[0.16em] text-fg-muted">저장 기준</div>
+                          <div className="mt-1 text-fg">{saveUsesRaw ? 'raw draft' : '폼 구조'}</div>
                         </div>
-                        <div className="rounded-xl bg-surface-900/60 px-3 py-3">
-                          <div className="text-2xs uppercase tracking-[0.16em] text-surface-500">배정 도메인</div>
-                          <div className="mt-1 text-surface-200">{previewDomain}</div>
+                        <div className="rounded-xl bg-bg/60 px-3 py-3">
+                          <div className="text-2xs uppercase tracking-[0.16em] text-fg-muted">배정 도메인</div>
+                          <div className="mt-1 text-fg">{previewDomain}</div>
                         </div>
                       </div>
                     </div>
