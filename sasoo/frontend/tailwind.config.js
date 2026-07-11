@@ -8,6 +8,22 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Semantic tokens — single source in :root/.light (see src/index.css)
+        bg: 'rgb(var(--bg) / <alpha-value>)',
+        border: 'rgb(var(--border) / <alpha-value>)',
+        fg: {
+          DEFAULT: 'rgb(var(--fg) / <alpha-value>)',
+          secondary: 'rgb(var(--fg-secondary) / <alpha-value>)',
+          muted: 'rgb(var(--fg-muted) / <alpha-value>)',
+        },
+        accent: {
+          DEFAULT: 'rgb(var(--accent) / <alpha-value>)',
+          hover: 'rgb(var(--accent-hover) / <alpha-value>)',
+          fg: 'rgb(var(--accent-fg) / <alpha-value>)',
+        },
+        danger: 'rgb(var(--danger) / <alpha-value>)',
+        warning: 'rgb(var(--warning) / <alpha-value>)',
+        success: 'rgb(var(--success) / <alpha-value>)',
         // Apple-style primary blue palette
         primary: {
           50:  '#e5f1ff',
@@ -22,8 +38,10 @@ export default {
           900: '#003a75',
           950: '#002952',
         },
-        // Apple neutral gray surface palette
+        // Apple neutral gray surface palette (legacy 50~950 kept for P4 migration)
         surface: {
+          DEFAULT: 'rgb(var(--surface) / <alpha-value>)',
+          hover: 'rgb(var(--surface-hover) / <alpha-value>)',
           50:  '#f5f5f7',  // Apple light secondary
           100: '#e8e8ed',
           200: '#d1d1d6',
@@ -108,6 +126,8 @@ export default {
       },
       borderRadius: {
         '4xl': '2rem',
+        control: 'var(--radius-control)',
+        surface: 'var(--radius-surface)',
       },
       backdropBlur: {
         xs: '2px',
