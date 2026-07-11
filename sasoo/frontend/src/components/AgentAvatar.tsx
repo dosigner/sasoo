@@ -26,7 +26,7 @@ export default function AgentAvatar({ name, color, size = 'md' }: AgentAvatarPro
       className={`${SIZE_CLASSES[size]} rounded-full flex items-center justify-center shrink-0`}
       style={{ backgroundColor: color }}
     >
-      <span className={`${FONT_CLASSES[size]} font-bold text-white select-none`}>
+      <span className={`${FONT_CLASSES[size]} font-semibold text-white select-none`}>
         {initial}
       </span>
     </div>

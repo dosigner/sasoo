@@ -24,9 +24,9 @@ const TONE_STYLES: Record<NonNullable<ContentStateProps['tone']>, {
     icon: 'text-accent',
   },
   error: {
-    shell: 'border-red-500/20 bg-red-500/5',
-    iconWrap: 'bg-red-500/10 border-red-500/10',
-    icon: 'text-red-400',
+    shell: 'border-danger/20 bg-danger/5',
+    iconWrap: 'bg-danger/10 border-danger/10',
+    icon: 'text-danger',
   },
   muted: {
     shell: 'border-border/45 bg-surface/35',

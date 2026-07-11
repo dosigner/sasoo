@@ -185,7 +185,7 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
           Recipe Card를 기반으로 실험 장비, 재료, 절차, 주의사항을 포함한 재현 가이드를 생성합니다.
         </p>
         {error && (
-          <div className="flex items-center gap-1.5 text-xs text-red-400 mb-3">
+          <div className="flex items-center gap-1.5 text-xs text-danger mb-3">
             <AlertCircle className="w-3.5 h-3.5" />
             {error}
           </div>
@@ -239,10 +239,10 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
         {content.estimated_difficulty && (
           <span className={`badge text-2xs ${
             content.estimated_difficulty === 'hard'
-              ? 'bg-red-500/10 text-red-400'
+              ? 'bg-danger/10 text-danger'
               : content.estimated_difficulty === 'moderate'
-                ? 'bg-yellow-500/10 text-yellow-400'
-                : 'bg-emerald-500/10 text-emerald-400'
+                ? 'bg-warning/10 text-warning'
+                : 'bg-success/10 text-success'
           }`}>
             난이도: {difficultyLabel[content.estimated_difficulty] || content.estimated_difficulty}
           </span>
@@ -257,7 +257,7 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
       {/* Warnings (shown prominently at top) */}
       {content.warnings && content.warnings.length > 0 && (
         <div className="space-y-1.5">
-          <h4 className="text-xs font-semibold text-yellow-400 flex items-center gap-1.5">
+          <h4 className="text-xs font-semibold text-warning flex items-center gap-1.5">
             <AlertTriangle className="w-3.5 h-3.5" />
             주의사항 ({content.warnings.length})
           </h4>
@@ -266,9 +266,9 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
               key={i}
               className={`flex items-start gap-2 px-3 py-2 rounded-lg text-xs ${
                 w.severity === 'high'
-                  ? 'bg-red-500/10 border border-red-500/20 text-red-300'
+                  ? 'bg-danger/10 border border-danger/20 text-danger'
                   : w.severity === 'medium'
-                    ? 'bg-yellow-500/10 border border-yellow-500/20 text-yellow-300'
+                    ? 'bg-warning/10 border border-warning/20 text-warning'
                     : 'bg-surface/50 border border-border text-fg-secondary'
               }`}
             >
@@ -348,7 +348,7 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
           <div className="space-y-3">
             {content.procedure_steps.map((step) => (
               <div key={step.step} className="flex gap-3">
-                <div className="shrink-0 w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-bold">
+                <div className="shrink-0 w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-semibold">
                   {step.step}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -367,7 +367,7 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
                   {step.critical_params && step.critical_params.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1">
                       {step.critical_params.map((p, j) => (
-                        <span key={j} className="badge text-2xs bg-yellow-500/10 text-yellow-400">
+                        <span key={j} className="badge text-2xs bg-warning/10 text-warning">
                           {p}
                         </span>
                       ))}

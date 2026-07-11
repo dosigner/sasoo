@@ -75,9 +75,9 @@ export default function UpdateBanner() {
         )}
         {state === 'ready' && (
           <>
-            <Download className="w-3.5 h-3.5 text-green-400 shrink-0" />
+            <Download className="w-3.5 h-3.5 text-success shrink-0" />
             <span className="text-fg">
-              <strong className="text-green-400">v{version}</strong> 다운로드 완료
+              <strong className="text-success">v{version}</strong> 다운로드 완료
             </span>
           </>
         )}
@@ -106,7 +106,7 @@ export default function UpdateBanner() {
         {state === 'ready' && (
           <button
             onClick={handleInstall}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-green-600 hover:bg-green-700 text-white text-xs font-medium transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-success text-accent-fg hover:bg-success/90 text-xs font-medium transition-colors"
           >
             <RefreshCw className="w-3 h-3" />
             재시작하여 설치
