@@ -93,6 +93,8 @@ class PaperUpdate(BaseModel):
     tags: Optional[str] = None
     notes: Optional[str] = None
     status: Optional[PaperStatus] = None
+    explanation_level: Optional[str] = None
+    analysis_focus: Optional[dict] = None
 
 
 class PaperResponse(BaseModel):
@@ -116,6 +118,10 @@ class PaperResponse(BaseModel):
     visual_state: VisualState = VisualState.PARTIAL
     visual_error: Optional[str] = None
     artifacts_ready: bool = False
+    explanation_level: Optional[str] = None
+    analysis_focus: Optional[str] = None
+    pdf_file_uri: Optional[str] = None
+    pdf_file_expires_at: Optional[str] = None
 
 
 class PaperListResponse(BaseModel):

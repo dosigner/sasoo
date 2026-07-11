@@ -772,6 +772,8 @@ async def update_paper(paper_id: int, update: PaperUpdate):
     set_parts: list[str] = []
     values: list = []
     for key, value in update_data.items():
+        if key == "analysis_focus" and isinstance(value, dict):
+            value = json.dumps(value, ensure_ascii=False)
         set_parts.append(f"{key} = ?")
         values.append(value.value if hasattr(value, "value") else value)
 
