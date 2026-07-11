@@ -13,6 +13,7 @@ Paths:
 """
 
 import os
+import re
 import sqlite3
 import sys
 import aiosqlite
@@ -69,8 +70,57 @@ def _get_default_library_root() -> Path:
     return Path(__file__).resolve().parent.parent / "library"
 
 
+LEGACY_LIBRARY_PATH_KEY = "library_path"
+
+
+def library_path_setting_key() -> str:
+    """
+    The settings key holding this machine's library path.
+
+    The library path is per-machine, so it is stored per-platform. A settings
+    database that travels between a Mac and a Windows box (synced, copied, or
+    restored from backup) must not hand one platform the other's path.
+    """
+    return f"library_path_{sys.platform}"
+
+
+_WINDOWS_PATH_MARKER = re.compile(r"[A-Za-z]:[\\/]|\\")
+
+
+def usable_library_path(raw: object) -> Optional[Path]:
+    """
+    Interpret a stored library path, or None if it is not usable here.
+
+    Two things make a stored path unusable on this machine.
+
+    It is not absolute here. "C:\\Users\\dongj\\..." is not an absolute path on
+    POSIX -- it is a perfectly legal *relative filename* whose backslashes carry
+    no meaning -- so Path.resolve() glues it onto the process's working
+    directory. The mirror image happens to a POSIX path read on Windows.
+
+    Or it carries the other platform's syntax. Rejecting non-absolute paths is
+    not enough, because an older build already did that gluing and persisted
+    the result:
+
+        /Users/dongj/dev/.../sasoo/backend/C:\\Users\\dongj\\...\\library
+
+    which *is* absolute on POSIX and would sail through, still pointing at a
+    directory that has never existed. A drive letter or a backslash anywhere in
+    a POSIX path means the value came from Windows, intact or mangled.
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return None
+
+    if sys.platform != "win32" and _WINDOWS_PATH_MARKER.search(text):
+        return None
+
+    candidate = Path(text).expanduser()
+    return candidate if candidate.is_absolute() else None
+
+
 def _read_configured_library_root() -> Optional[Path]:
-    """Read the configured library_path directly from SQLite if present."""
+    """Read this platform's configured library path from SQLite, if usable."""
     db_path = _get_app_data_root() / "sasoo.db"
     if not db_path.exists():
         return None
@@ -79,18 +129,24 @@ def _read_configured_library_root() -> Optional[Path]:
         conn = sqlite3.connect(str(db_path))
         try:
             cursor = conn.execute(
-                "SELECT value FROM settings WHERE key = 'library_path' LIMIT 1"
+                "SELECT key, value FROM settings WHERE key IN (?, ?)",
+                (library_path_setting_key(), LEGACY_LIBRARY_PATH_KEY),
             )
-            row = cursor.fetchone()
+            rows = {str(k): v for k, v in cursor.fetchall()}
         finally:
             conn.close()
     except Exception:
         return None
 
-    if not row or not row[0]:
-        return None
+    # This platform's own key wins. The legacy single-platform key is only a
+    # fallback, and only when it happens to be valid here -- on the machine it
+    # was written for, it will be; on any other, it will not.
+    for key in (library_path_setting_key(), LEGACY_LIBRARY_PATH_KEY):
+        resolved = usable_library_path(rows.get(key))
+        if resolved is not None:
+            return resolved
 
-    return Path(str(row[0])).expanduser()
+    return None
 
 
 def get_library_root() -> Path:

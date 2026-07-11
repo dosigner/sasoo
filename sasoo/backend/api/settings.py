@@ -11,7 +11,15 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from models.database import fetch_all, fetch_one, get_db, get_library_root
+from models.database import (
+    LEGACY_LIBRARY_PATH_KEY,
+    fetch_all,
+    fetch_one,
+    get_db,
+    get_library_root,
+    library_path_setting_key,
+    usable_library_path,
+)
 from models.schemas import SettingsModel, SettingsUpdate
 from services.crypto import decrypt_value, encrypt_value, is_encrypted, is_unreadable
 from services.models import MODEL_FLASH_HQ
@@ -22,9 +30,10 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 # Default settings
 # ---------------------------------------------------------------------------
 
+# library_path is deliberately absent: it is per-machine, so it lives under a
+# platform-scoped key and is seeded by _ensure_library_path() below.
 DEFAULT_SETTINGS: dict[str, str] = {
     "gemini_api_key": "",
-    "library_path": str(get_library_root()),
     "default_domain": "optics",
     "auto_analyze": "true",
     "language": "ko",
@@ -41,15 +50,37 @@ DEFAULT_SETTINGS: dict[str, str] = {
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _normalize_library_path_value(value: Any) -> str:
-    """Normalize configured library paths and recover from empty values."""
-    text = str(value or "").strip()
-    if not text:
-        return str(get_library_root())
-    return str(Path(text).expanduser().resolve(strict=False))
+async def _ensure_library_path(db) -> None:
+    """
+    Give this platform its own library path, and repair an unusable one.
+
+    get_library_root() resolves in order: this platform's key, then the legacy
+    single-platform key (only if it is absolute here), then the platform
+    default. So a Windows path found on a Mac -- or a stale value glued onto
+    the working directory by an older build -- is replaced rather than used.
+    """
+    key = library_path_setting_key()
+    row = await fetch_one("SELECT value FROM settings WHERE key = ?", (key,))
+    stored = str((row or {}).get("value") or "").strip()
+    resolved = str(get_library_root().resolve(strict=False))
+
+    if stored == resolved:
+        return
+
+    Path(resolved).mkdir(parents=True, exist_ok=True)
+    if row is None:
+        await db.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?)", (key, resolved)
+        )
+    else:
+        await db.execute(
+            "UPDATE settings SET value = ?, updated_at = ? WHERE key = ?",
+            (resolved, datetime.utcnow().isoformat(), key),
+        )
+
 
 async def _ensure_defaults() -> None:
-    """Insert default settings for any missing keys, and sync library_path."""
+    """Insert default settings for any missing keys, and sync the library path."""
     db = await get_db()
     for key, value in DEFAULT_SETTINGS.items():
         existing = await fetch_one("SELECT key, value FROM settings WHERE key = ?", (key,))
@@ -58,14 +89,6 @@ async def _ensure_defaults() -> None:
                 "INSERT INTO settings (key, value) VALUES (?, ?)",
                 (key, value),
             )
-        elif key == "library_path":
-            normalized_path = _normalize_library_path_value(existing.get("value"))
-            if str(existing.get("value") or "").strip() != normalized_path:
-                Path(normalized_path).mkdir(parents=True, exist_ok=True)
-                await db.execute(
-                    "UPDATE settings SET value = ?, updated_at = ? WHERE key = ?",
-                    (normalized_path, datetime.utcnow().isoformat(), key),
-                )
         elif key == "extraction_pipeline_version":
             fallback_row = await fetch_one(
                 "SELECT value FROM settings WHERE key = 'extraction_pipeline_force_fallback' LIMIT 1"
@@ -77,6 +100,7 @@ async def _ensure_defaults() -> None:
                     "UPDATE settings SET value = ?, updated_at = ? WHERE key = ?",
                     ("resolver_v1", datetime.utcnow().isoformat(), key),
                 )
+    await _ensure_library_path(db)
     await db.commit()
 
 
@@ -121,11 +145,9 @@ async def _get_all_settings() -> dict[str, str]:
     if result.get("extraction_pipeline_version") == "legacy" and result.get("extraction_pipeline_force_fallback", "false").lower() != "true":
         await _set_setting("extraction_pipeline_version", "resolver_v1")
         result["extraction_pipeline_version"] = "resolver_v1"
-    normalized_library_path = _normalize_library_path_value(result.get("library_path"))
-    if result.get("library_path") != normalized_library_path:
-        Path(normalized_library_path).mkdir(parents=True, exist_ok=True)
-        await _set_setting("library_path", normalized_library_path)
-        result["library_path"] = normalized_library_path
+    # The API always speaks of "library_path" -- the path for THIS machine --
+    # while storage keeps one per platform.
+    result["library_path"] = str(get_library_root())
     return result
 
 
@@ -194,9 +216,17 @@ async def update_settings(update: SettingsUpdate):
         raise HTTPException(status_code=400, detail="No settings to update.")
 
     if "library_path" in update_data and update_data["library_path"] is not None:
-        new_path = Path(_normalize_library_path_value(update_data["library_path"]))
+        candidate = usable_library_path(update_data.pop("library_path"))
+        if candidate is None:
+            raise HTTPException(
+                status_code=400,
+                detail="보관함 경로는 절대 경로여야 합니다. (예: /Users/이름/Documents/sasoo)",
+            )
+        new_path = candidate.resolve(strict=False)
         new_path.mkdir(parents=True, exist_ok=True)
-        update_data["library_path"] = str(new_path)
+        # Stored per platform, so a Mac and a Windows machine sharing this
+        # settings database each keep their own.
+        await _set_setting(library_path_setting_key(), str(new_path))
 
     for key, value in update_data.items():
         # Convert booleans and enums to string for storage
