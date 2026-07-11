@@ -13,7 +13,7 @@ import Titlebar from '@/components/Titlebar';
 import UpdateBanner from '@/components/UpdateBanner';
 import PageScaffold from '@/components/layout/PageScaffold';
 import WorkbenchScaffold from '@/components/layout/WorkbenchScaffold';
-import { ContentState } from '@/components/ui';
+import { ContentState, TooltipProvider } from '@/components/ui';
 
 // Pages
 const UploadPage = lazy(() => import('@/pages/Upload'));
@@ -110,55 +110,57 @@ function App() {
   }, []);
 
   return (
-    <ToastProvider>
-      <ErrorBoundary>
-        <div className="app-shell">
-          <Titlebar />
-          <UpdateBanner />
-          <div className="flex flex-1 min-h-0">
-            {!isWorkbench && (
-              <aside className="app-desktop-rail" aria-label={S.app.name}>
-                <div className="app-rail-brand" title={S.app.name}>
-                  <img src={logoImg} alt="Sasoo" className="h-8 w-8 rounded-xl" />
+    <TooltipProvider>
+      <ToastProvider>
+        <ErrorBoundary>
+          <div className="app-shell">
+            <Titlebar />
+            <UpdateBanner />
+            <div className="flex flex-1 min-h-0">
+              {!isWorkbench && (
+                <aside className="app-desktop-rail" aria-label={S.app.name}>
+                  <div className="app-rail-brand" title={S.app.name}>
+                    <img src={logoImg} alt="Sasoo" className="h-8 w-8 rounded-xl" />
+                  </div>
+
+                  <nav className="app-desktop-nav" aria-label="기본 내비게이션">
+                    {NAV_ITEMS.map((item) => (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        end={item.exact}
+                        className={({ isActive }) =>
+                          `app-nav-link ${isActive ? 'app-nav-link-active' : ''}`
+                        }
+                        title={item.label}
+                        aria-label={item.label}
+                      >
+                        <AppIcon name={item.icon} className="h-4 w-4 shrink-0" />
+                        <span className="app-nav-link-label">{item.label}</span>
+                      </NavLink>
+                    ))}
+                  </nav>
+                </aside>
+              )}
+
+              <main className="flex-1 min-w-0 overflow-hidden">
+                <div key={location.pathname} className="h-full w-full overflow-hidden animate-page-enter">
+                  <Suspense fallback={<RouteFallback />}>
+                    <Routes>
+                      <Route path="/" element={<PageScaffold variant="archive"><UploadPage /></PageScaffold>} />
+                      <Route path="/agents" element={<PageScaffold variant="control"><Agents /></PageScaffold>} />
+                      <Route path="/workbench/:id" element={<WorkbenchScaffold><Workbench /></WorkbenchScaffold>} />
+                      <Route path="/library" element={<PageScaffold variant="archive"><Library /></PageScaffold>} />
+                      <Route path="/settings" element={<PageScaffold variant="control"><SettingsPage /></PageScaffold>} />
+                    </Routes>
+                  </Suspense>
                 </div>
-
-                <nav className="app-desktop-nav" aria-label="기본 내비게이션">
-                  {NAV_ITEMS.map((item) => (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      end={item.exact}
-                      className={({ isActive }) =>
-                        `app-nav-link ${isActive ? 'app-nav-link-active' : ''}`
-                      }
-                      title={item.label}
-                      aria-label={item.label}
-                    >
-                      <AppIcon name={item.icon} className="h-4 w-4 shrink-0" />
-                      <span className="app-nav-link-label">{item.label}</span>
-                    </NavLink>
-                  ))}
-                </nav>
-              </aside>
-            )}
-
-            <main className="flex-1 min-w-0 overflow-hidden">
-              <div key={location.pathname} className="h-full w-full overflow-hidden animate-page-enter">
-                <Suspense fallback={<RouteFallback />}>
-                  <Routes>
-                    <Route path="/" element={<PageScaffold variant="archive"><UploadPage /></PageScaffold>} />
-                    <Route path="/agents" element={<PageScaffold variant="control"><Agents /></PageScaffold>} />
-                    <Route path="/workbench/:id" element={<WorkbenchScaffold><Workbench /></WorkbenchScaffold>} />
-                    <Route path="/library" element={<PageScaffold variant="archive"><Library /></PageScaffold>} />
-                    <Route path="/settings" element={<PageScaffold variant="control"><SettingsPage /></PageScaffold>} />
-                  </Routes>
-                </Suspense>
-              </div>
-            </main>
+              </main>
+            </div>
           </div>
-        </div>
-      </ErrorBoundary>
-    </ToastProvider>
+        </ErrorBoundary>
+      </ToastProvider>
+    </TooltipProvider>
   );
 }
 

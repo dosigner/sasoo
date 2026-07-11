@@ -26,8 +26,8 @@ export interface CitationMatch {
 //   1: page      2: figure(latin)  3: figure(그림)  4: table  5: table(표)
 // Korean tokens use a negative lookbehind so "발표 3" does not match "표 3".
 const CITATION_SOURCE =
-  '(?:\\bp\\.\\s?|\\bpage\\s+|(?<![가-힣])페이지\\s?)(\\d+)' +
-  '|(?:\\bfig\\.?\\s?|\\bfigure\\s+)(\\d+)' +
+  '(?:\\bp\\.\\s?|\\bpages?\\s+|(?<![가-힣])페이지\\s?)(\\d+)' +
+  '|(?:\\bfig\\.?\\s?|\\bfigures?\\s+)(\\d+)' +
   '|(?<![가-힣])그림\\s?(\\d+)' +
   '|(?:\\btable\\s+)(\\d+)' +
   '|(?<![가-힣])표\\s?(\\d+)';
