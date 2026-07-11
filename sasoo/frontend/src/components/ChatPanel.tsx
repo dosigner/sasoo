@@ -280,7 +280,7 @@ export default function ChatPanel({
                 <span className={`chat-launcher-badge ${ready ? 'chat-launcher-badge-ready' : 'chat-launcher-badge-pending'}`}>
                   {ready ? '준비됨' : '대기'}
                 </span>
-                <span className="truncate">{ready ? '논문 맥락으로 바로 질문' : '스크리닝 후 답변 준비'}</span>
+                <span className="truncate">{ready ? '논문 맥락으로 바로 질문해요' : '스크리닝이 끝나면 질문할 수 있어요'}</span>
               </span>
             </span>
           </button>
@@ -303,7 +303,7 @@ export default function ChatPanel({
                   </span>
                 </div>
                 <p className="text-2xs text-fg-muted">
-                  {ready ? '현재 논문 맥락을 유지한 채 질문을 이어갈 수 있습니다.' : readyMessage}
+                  {ready ? '현재 논문 맥락을 유지한 채 질문을 이어갈 수 있어요.' : readyMessage}
                 </p>
               </div>
 
@@ -323,7 +323,7 @@ export default function ChatPanel({
                   <MessageSquare className="h-5 w-5 text-fg-muted" />
                 </div>
                 <p className="text-sm font-medium text-fg">
-                  질문 도우미 준비 중
+                  질문 도우미를 준비하고 있어요
                 </p>
                 <p className="mt-2 text-xs leading-relaxed text-fg-muted">
                   {readyMessage}
@@ -359,7 +359,7 @@ export default function ChatPanel({
                       <div>
                         <p className="text-xs text-fg-secondary">논문을 읽으면서 바로 질문해 보세요.</p>
                         <p className="mt-1 text-2xs text-fg-muted">
-                          핵심 기여, Figure 해석, 재현 리스크처럼 작업형 질문에 최적화되어 있습니다.
+                          핵심 기여, Figure 해석, 재현 리스크처럼 작업형 질문에 최적화했어요.
                         </p>
                       </div>
                     </div>
@@ -459,7 +459,7 @@ export default function ChatPanel({
 
                 <div className="border-t border-border/45 px-4 py-3">
                   <div className="mb-2 flex items-center justify-between gap-3 text-2xs text-fg-muted">
-                    <span>{totalCost > 0 ? `누적 비용 $${totalCost.toFixed(4)}` : '대화 비용은 응답 후 집계됩니다.'}</span>
+                    <span>{totalCost > 0 ? `누적 비용 $${totalCost.toFixed(4)}` : '답변이 끝나면 대화 비용을 확인할 수 있어요.'}</span>
                     {hasMessages && (
                       <button
                         type="button"

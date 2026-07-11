@@ -80,12 +80,12 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
             {/* Error Title */}
             <h1 className="mb-3 text-center text-xl font-semibold text-fg">
-              오류가 발생했습니다
+              오류가 생겼어요
             </h1>
 
             {/* Error Message */}
             <p className="mb-6 break-words text-center text-sm text-fg-muted">
-              {error?.message || '알 수 없는 오류가 발생했습니다.'}
+              {error?.message || '알 수 없는 오류가 생겼어요.'}
             </p>
 
             {/* Action Buttons */}

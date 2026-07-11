@@ -390,26 +390,26 @@ export default function Agents() {
     const keywordCount = formData.keywords.length;
     const weightedCount = formData.weighted_keywords.length;
     if (!formData.domain && keywordCount === 0 && weightedCount === 0) {
-      return '아직 맡길 논문 범위가 정해지지 않았습니다. 도메인과 키워드를 먼저 채우면 배정 기준이 분명해집니다.';
+      return '아직 맡길 논문 범위를 정하지 않았어요. 도메인과 키워드를 먼저 채우면 배정 기준이 분명해져요.';
     }
     return [
-      formData.domain ? `${previewDomain} 분야 논문을 우선 검토합니다.` : '도메인 기준은 아직 비어 있습니다.',
-      keywordCount > 0 ? `일반 키워드 ${keywordCount}개로 넓은 분류를 잡습니다.` : '일반 키워드는 아직 없습니다.',
-      weightedCount > 0 ? `가중 키워드 ${weightedCount}개가 강한 배정 신호로 작동합니다.` : '가중 키워드는 아직 없습니다.',
+      formData.domain ? `${previewDomain} 분야 논문을 우선 검토해요.` : '도메인 기준은 아직 비어 있어요.',
+      keywordCount > 0 ? `일반 키워드 ${keywordCount}개로 넓은 분류를 잡아요.` : '일반 키워드는 아직 없어요.',
+      weightedCount > 0 ? `가중 키워드 ${weightedCount}개가 강한 배정 신호로 작동해요.` : '가중 키워드는 아직 없어요.',
     ].join(' ');
   }, [formData.domain, formData.keywords.length, formData.weighted_keywords.length, previewDomain]);
 
   const outputSummary = useMemo(() => {
     if (formData.recipe_parameters.length === 0) {
-      return '아직 강조할 실험 파라미터가 없습니다. 자주 확인해야 할 변수부터 넣으면 결과가 더 실용적입니다.';
+      return '아직 강조할 실험 파라미터가 없어요. 자주 확인해야 할 변수부터 넣으면 결과가 더 실용적이에요.';
     }
-    return `${formData.recipe_parameters.slice(0, 4).join(', ')} 중심으로 답변합니다${formData.recipe_parameters.length > 4 ? ` 외 ${formData.recipe_parameters.length - 4}개` : ''}.`;
+    return `${formData.recipe_parameters.slice(0, 4).join(', ')} 중심으로 답변해요${formData.recipe_parameters.length > 4 ? ` 외 ${formData.recipe_parameters.length - 4}개` : ''}.`;
   }, [formData.recipe_parameters]);
 
   const tonePreview = useMemo(() => {
     const personality = formData.personality || '차분하고 신뢰감 있는';
     const quote = formData.quote || '핵심부터 빠르게 정리해볼게요.';
-    return `${previewName}는 ${personality} 톤으로 답하고, 첫 문장은 "${quote}"에 가깝습니다.`;
+    return `${previewName}는 ${personality} 톤으로 답하고, 첫 문장은 "${quote}"에 가까워요.`;
   }, [formData.personality, formData.quote, previewName]);
 
   const authorTitle = authorMode === 'create'
@@ -440,7 +440,7 @@ export default function Agents() {
       setAgents(data);
       fetchAllAgents().catch(() => {});
     } catch (err) {
-      showToast(normalizeAgentError(err, '에이전트 편성 정보를 불러오지 못했습니다.'), 'error');
+      showToast(normalizeAgentError(err, '에이전트 편성 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.'), 'error');
     } finally {
       setLoading(false);
     }
@@ -503,7 +503,7 @@ export default function Agents() {
       setRawDirty(false);
       setEditRawMd(detail.raw_md || serializeAgentMarkdown(agentToForm(detail)));
     } catch (err) {
-      showToast(normalizeAgentError(err, '에이전트 초안을 열지 못했습니다.'), 'error');
+      showToast(normalizeAgentError(err, '에이전트 초안을 열지 못했어요. 잠시 후 다시 시도해 주세요.'), 'error');
     } finally {
       setAuthorLoading(false);
     }
@@ -527,7 +527,7 @@ export default function Agents() {
       setGeneratedDraft(true);
       setRawDirty(false);
       setEditRawMd(result.raw_md || serializeAgentMarkdown(nextForm));
-      showToast('AI 초안을 불러왔습니다. 맡길 논문 범위와 답변 톤을 먼저 검토하세요.');
+      showToast('AI 초안을 불러왔어요. 맡길 논문 범위와 답변 톤을 먼저 검토하세요.');
     } catch (err) {
       showToast(normalizeAgentError(err, S.agents.generateFailed), 'error');
     } finally {
@@ -562,7 +562,7 @@ export default function Agents() {
       setAuthorStep('basic');
       setRawDirty(false);
     } catch (err) {
-      showToast(normalizeAgentError(err, '에이전트를 저장하지 못했습니다.'), 'error');
+      showToast(normalizeAgentError(err, '에이전트를 저장하지 못했어요. 잠시 후 다시 시도해 주세요.'), 'error');
     } finally {
       setSubmitting(false);
     }
@@ -574,7 +574,7 @@ export default function Agents() {
       showToast(S.agents.duplicateSuccess);
       await loadAgents();
     } catch (err) {
-      showToast(normalizeAgentError(err, '에이전트를 복제하지 못했습니다.'), 'error');
+      showToast(normalizeAgentError(err, '에이전트를 복제하지 못했어요. 잠시 후 다시 시도해 주세요.'), 'error');
     }
   }
 
@@ -590,7 +590,7 @@ export default function Agents() {
       URL.revokeObjectURL(url);
       showToast(S.agents.exportSuccess);
     } catch (err) {
-      showToast(normalizeAgentError(err, '에이전트를 내보내지 못했습니다.'), 'error');
+      showToast(normalizeAgentError(err, '에이전트를 내보내지 못했어요. 잠시 후 다시 시도해 주세요.'), 'error');
     }
   }
 
@@ -603,7 +603,7 @@ export default function Agents() {
       setMode('list');
       await loadAgents();
     } catch (err) {
-      showToast(normalizeAgentError(err, '에이전트를 삭제하지 못했습니다.'), 'error');
+      showToast(normalizeAgentError(err, '에이전트를 삭제하지 못했어요. 잠시 후 다시 시도해 주세요.'), 'error');
     }
   }
 
@@ -636,7 +636,7 @@ export default function Agents() {
         <div className="mb-3">
           <h2 className="text-sm font-semibold text-fg">보조 작업</h2>
           <p className="mt-1 text-xs leading-relaxed text-fg-muted">
-            기본 편집과 고급 편집 모두 같은 드래프트를 저장합니다. 복제, 내보내기, 삭제는 여기에서만 제공합니다.
+            기본 편집과 고급 편집 모두 같은 드래프트를 저장해요. 복제, 내보내기, 삭제는 여기에서만 제공해요.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -713,7 +713,7 @@ export default function Agents() {
           <div>
             <h2 className="text-lg font-semibold text-fg">새 에이전트 시작 방식</h2>
             <p className="mt-1 text-sm text-fg-muted">
-              직접 작성하거나, AI 초안으로 시작한 뒤 맡길 논문 범위와 답변 톤을 다듬을 수 있습니다.
+              직접 작성하거나, AI 초안으로 시작한 뒤 맡길 논문 범위와 답변 톤을 다듬을 수 있어요.
             </p>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
@@ -727,7 +727,7 @@ export default function Agents() {
               </div>
               <div className="text-sm font-semibold text-fg">직접 작성</div>
               <p className="mt-1 text-xs leading-relaxed text-fg-muted">
-                빈 폼에서 바로 시작합니다. 연구 분야와 답변 성향을 직접 정하는 방식입니다.
+                빈 폼에서 바로 시작해요. 연구 분야와 답변 성향을 직접 정하는 방식이에요.
               </p>
             </button>
             <button
@@ -740,7 +740,7 @@ export default function Agents() {
               </div>
               <div className="text-sm font-semibold text-fg">AI 초안으로 시작</div>
               <p className="mt-1 text-xs leading-relaxed text-fg-muted">
-                연구 분야 설명을 넣고 초안을 만든 뒤, 배정 기준과 톤을 검토합니다.
+                연구 분야 설명을 넣고 초안을 만든 뒤, 배정 기준과 톤을 검토해요.
               </p>
             </button>
           </div>
@@ -821,7 +821,7 @@ export default function Agents() {
           </section>
 
           {loading ? (
-            <div className="flex items-center justify-center py-24 text-sm text-fg-muted">불러오는 중...</div>
+            <div className="flex items-center justify-center py-24 text-sm text-fg-muted">불러오고 있어요...</div>
           ) : agents.length === 0 ? (
             <div className="archive-panel flex flex-col items-center justify-center gap-3 px-6 py-20 text-center">
               <p className="text-lg font-semibold text-fg">{S.agents.registryEmptyTitle}</p>
@@ -889,7 +889,7 @@ export default function Agents() {
                     </div>
                     <div className="mt-5 flex items-center justify-between gap-3 border-t border-border/80 pt-4">
                       <p className="line-clamp-2 text-xs leading-6 text-fg-muted">
-                        {agent.quote || '대표 문장이 아직 비어 있습니다.'}
+                        {agent.quote || '대표 문장이 아직 비어 있어요.'}
                       </p>
                       <button
                         type="button"
@@ -933,7 +933,7 @@ export default function Agents() {
                 </div>
                 <p className="mt-1 text-sm text-fg-muted">
                   {isAdvancedStep
-                    ? '고급 편집에서는 프롬프트와 raw markdown를 다룹니다. 기본 구조 확인 후에만 수정하세요.'
+                    ? '고급 편집에서는 프롬프트와 raw markdown를 다뤄요. 기본 구조를 확인한 후에만 수정하세요.'
                     : '이 에이전트가 맡을 논문 범위와 답변 톤을 먼저 정리한 뒤 저장하세요.'}
                 </p>
               </div>
@@ -972,20 +972,20 @@ export default function Agents() {
 
           {authorLoading ? (
             <div className="flex items-center justify-center rounded-2xl border border-border/50 bg-surface p-12 text-sm text-fg-muted">
-              불러오는 중...
+              불러오고 있어요...
             </div>
           ) : (
             <>
               {isEditingBuiltin && (
                 <div className="mb-4 flex items-center gap-2 rounded-lg border border-warning/20 bg-warning/10 px-4 py-3 text-sm text-warning">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
-                  기본 에이전트를 저장하면 사용자 정의 override가 생성됩니다.
+                  기본 에이전트를 저장하면 사용자 정의 override를 만들어요.
                 </div>
               )}
 
               {saveUsesRaw && !isAdvancedStep && (
                 <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-warning/20 bg-warning/10 px-4 py-3 text-sm text-warning">
-                  <span>현재 저장 기준은 raw markdown입니다. 폼 변경만으로는 raw draft가 바뀌지 않습니다.</span>
+                  <span>현재 저장 기준은 raw markdown이에요. 폼 변경만으로는 raw draft가 바뀌지 않아요.</span>
                   <button
                     type="button"
                     onClick={() => {
@@ -1008,9 +1008,9 @@ export default function Agents() {
                           <Sparkles className="h-4 w-4" />
                         </div>
                         <div>
-                          <div className="text-sm font-semibold text-fg">AI 초안은 시작점으로만 사용합니다</div>
+                          <div className="text-sm font-semibold text-fg">AI 초안은 시작점으로만 사용해요</div>
                           <p className="mt-1 text-xs leading-relaxed text-fg-muted">
-                            연구 분야를 설명하면 초안을 만들고, 이후 맡길 논문 범위와 답변 톤을 직접 검토합니다.
+                            연구 분야를 설명하면 초안을 만들고, 이후 맡길 논문 범위와 답변 톤을 직접 검토해요.
                           </p>
                         </div>
                       </div>
@@ -1056,7 +1056,7 @@ export default function Agents() {
 
                   {generatedDraft && (
                     <div className="flex items-center justify-between gap-3 rounded-lg border border-accent/20 bg-accent/10 px-4 py-3 text-sm text-accent">
-                      <span>AI 초안이 반영되었습니다. 저장 전 미리보기와 맡길 논문 범위를 먼저 확인하세요.</span>
+                      <span>AI 초안을 반영했어요. 저장 전 미리보기와 맡길 논문 범위를 먼저 확인하세요.</span>
                       <button
                         type="button"
                         onClick={() => void handleGenerateDraft()}
@@ -1072,7 +1072,7 @@ export default function Agents() {
                     <div className="space-y-6">
                       <Section
                         title={S.agents.stepIdentity}
-                        body="앱에서 보일 이름, 첫인상, 기본 상태를 정합니다. 연구자가 바로 이해할 수 있는 이름과 대사를 먼저 맞추세요."
+                        body="앱에서 보일 이름, 첫인상, 기본 상태를 정해요. 연구자가 바로 이해할 수 있는 이름과 대사를 먼저 맞추세요."
                       >
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                           <Field label={S.agents.name} help={S.agents.nameHelp}>
@@ -1107,7 +1107,7 @@ export default function Agents() {
                           </Field>
                         </div>
                         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                          <Field label={S.agents.personality} help="답변 스타일을 한 문장으로 적으세요. 연구자가 받게 될 톤을 결정합니다.">
+                          <Field label={S.agents.personality} help="답변 스타일을 한 문장으로 적으세요. 연구자가 받게 될 톤을 결정해요.">
                             <input
                               className={inputCls}
                               value={formData.personality}
@@ -1115,7 +1115,7 @@ export default function Agents() {
                               placeholder="직설적이지만 설명은 차분하게 정리하는 톤"
                             />
                           </Field>
-                          <Field label={S.agents.quote} help="첫 응답에서 느껴질 대표 문장입니다. 너무 과장된 말보다 이해하기 쉬운 표현이 좋습니다.">
+                          <Field label={S.agents.quote} help="첫 응답에서 느껴질 대표 문장이에요. 너무 과장된 말보다 이해하기 쉬운 표현이 좋아요.">
                             <input
                               className={inputCls}
                               value={formData.quote}
@@ -1129,14 +1129,14 @@ export default function Agents() {
                             checked={formData.enabled}
                             onChange={(checked) => setField('enabled', checked)}
                             label="활성 상태로 저장"
-                            description={formData.enabled ? '저장 후 바로 배정 후보로 사용됩니다.' : '저장되지만 새 논문 배정에는 사용되지 않습니다.'}
+                            description={formData.enabled ? '저장 후 바로 배정 후보로 사용해요.' : '저장은 하지만 새 논문 배정에는 쓰지 않아요.'}
                           />
                         </div>
                       </Section>
 
                       <Section
                         title={S.agents.stepDomain}
-                        body="어떤 논문을 이 에이전트에게 맡길지 정합니다. 여기서 정한 도메인과 키워드가 배정 결과에 직접 영향을 줍니다."
+                        body="어떤 논문을 이 에이전트에게 맡길지 정해요. 여기서 정한 도메인과 키워드가 배정 결과에 직접 영향을 줘요."
                       >
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                           <Field label={S.agents.domain}>
@@ -1165,14 +1165,14 @@ export default function Agents() {
                           </Field>
                         </div>
                         <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
-                          <Field label={S.agents.keywords} help="넓은 범위의 배정 신호입니다. 많을수록 범위가 흐려질 수 있으니 핵심 용어만 남기세요.">
+                          <Field label={S.agents.keywords} help="넓은 범위의 배정 신호예요. 많을수록 범위가 흐려질 수 있으니 핵심 용어만 남기세요.">
                             <TagInput
                               tags={formData.keywords}
                               onChange={(tags) => setField('keywords', tags)}
                               placeholder="laser, photon, resonator"
                             />
                           </Field>
-                          <Field label={S.agents.weightedKeywords} help="강한 배정 신호입니다. 이 분야를 확실히 가르는 용어만 넣는 편이 안전합니다.">
+                          <Field label={S.agents.weightedKeywords} help="강한 배정 신호예요. 이 분야를 확실히 가르는 용어만 넣는 편이 안전해요.">
                             <TagInput
                               tags={formData.weighted_keywords}
                               onChange={(tags) => setField('weighted_keywords', tags)}
@@ -1184,7 +1184,7 @@ export default function Agents() {
 
                       <Section
                         title={S.agents.stepParameters}
-                        body="답변에서 특히 챙길 실험 파라미터를 정합니다. 재현성 요약과 레시피 추출의 강조점이 여기서 결정됩니다."
+                        body="답변에서 특히 챙길 실험 파라미터를 정해요. 재현성 요약과 레시피 추출의 강조점이 여기서 결정돼요."
                       >
                         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_12rem]">
                           <Field label={S.agents.recipeParameters} help="실험 조건, 장비 설정, 재료 수치처럼 반복해서 확인할 항목을 넣으세요.">
@@ -1210,7 +1210,7 @@ export default function Agents() {
 
                       <Section
                         title={S.agents.stepPreview}
-                        body="저장 전에 앱에서 어떻게 보일지, 어떤 논문을 맡을지, 어떤 톤으로 답할지를 빠르게 확인합니다."
+                        body="저장 전에 앱에서 어떻게 보일지, 어떤 논문을 맡을지, 어떤 톤으로 답할지를 빠르게 확인해요."
                       >
                         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                           <div className="rounded-xl border border-border/50 bg-bg/55 p-4">
@@ -1223,7 +1223,7 @@ export default function Agents() {
                               </div>
                             </div>
                             <p className="mt-3 text-sm italic text-fg-muted">
-                              "{formData.quote || '대표 대사를 아직 정하지 않았습니다.'}"
+                              "{formData.quote || '대표 대사를 아직 정하지 않았어요.'}"
                             </p>
                             <div className="mt-3">
                               <MetaBadge tone={formData.enabled ? 'success' : 'neutral'}>
@@ -1281,7 +1281,7 @@ export default function Agents() {
                     <div className="mb-5">
                       <h2 className="text-sm font-semibold text-fg">고급 편집</h2>
                       <p className="mt-1 text-xs leading-relaxed text-fg-muted">
-                        프롬프트 조정과 raw markdown 편집은 고급 단계입니다. 기본 구조 확인 후에만 수정하세요.
+                        프롬프트 조정과 raw markdown 편집은 고급 단계예요. 기본 구조를 확인한 후에만 수정하세요.
                       </p>
                     </div>
 
@@ -1340,7 +1340,7 @@ export default function Agents() {
                       <div className="mt-4">
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                           <p className="text-xs leading-relaxed text-fg-muted">
-                            폼 구조를 우회하는 편집입니다. 검토 후 저장하세요.
+                            폼 구조를 우회하는 편집이에요. 검토 후 저장하세요.
                           </p>
                           <button
                             type="button"

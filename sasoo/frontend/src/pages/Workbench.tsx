@@ -206,7 +206,7 @@ export default function Workbench() {
         <ContentState
           icon={(props) => <AppIcon name="spinner" {...props} />}
           title={S.workbench.loading}
-          description="논문 메타데이터와 분석 워크벤치를 준비하고 있습니다."
+          description="논문 메타데이터와 분석 워크벤치를 준비하고 있어요."
           loading
           tone="muted"
         />
@@ -257,7 +257,7 @@ export default function Workbench() {
       <Modal open={showAnalysisConfirm} onClose={() => setShowAnalysisConfirm(false)}>
         <h3 className="mb-2 text-lg font-semibold text-fg">분석을 시작할까요?</h3>
         <p className="mb-4 text-sm text-fg-muted">
-          논문 분석에 Gemini Pro + Claude Sonnet API를 사용합니다.
+          논문 분석에 Gemini Pro + Claude Sonnet API를 사용해요.
           예상 비용: <span className="font-medium text-accent">$0.5 ~ $2.0</span> / 논문
         </p>
         <div className="mb-4">
@@ -290,7 +290,7 @@ export default function Workbench() {
             onClick={() => setShowAnalysisConfirm(false)}
             className="btn-ghost flex-1 py-2 text-sm"
           >
-            나중에
+            닫기
           </button>
         </div>
       </Modal>
@@ -325,7 +325,7 @@ export default function Workbench() {
               fallback={
                 <PanelFallback
                   title={S.pdf.loading}
-                  description="문서 뷰어를 준비하고 있습니다."
+                  description="문서 뷰어를 준비하고 있어요."
                 />
               }
             >
@@ -366,7 +366,7 @@ export default function Workbench() {
               fallback={
                 <PanelFallback
                   title={S.analysis.loadingResults}
-                  description="분석 패널을 준비하고 있습니다."
+                  description="분석 패널을 준비하고 있어요."
                 />
               }
             >
@@ -409,8 +409,8 @@ export default function Workbench() {
       <Suspense
         fallback={
           <PanelFallback
-            title="채팅 불러오는 중..."
-            description="에이전트 채팅 패널을 준비하고 있습니다."
+            title="채팅 불러오고 있어요..."
+            description="에이전트 채팅 패널을 준비하고 있어요."
           />
         }
       >
