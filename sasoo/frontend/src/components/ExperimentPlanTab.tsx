@@ -152,11 +152,11 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
   if (!recipeAvailable) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center px-6">
-        <FlaskConical className="w-10 h-10 text-surface-500 mb-3" />
-        <h3 className="text-sm font-semibold text-surface-300 mb-1">
+        <FlaskConical className="w-10 h-10 text-fg-muted mb-3" />
+        <h3 className="text-sm font-semibold text-fg-secondary mb-1">
           실험 계획서를 생성하려면 분석이 필요합니다
         </h3>
-        <p className="text-xs text-surface-500">
+        <p className="text-xs text-fg-muted">
           Phase 3 (Recipe Extraction)이 완료된 후에 사용할 수 있습니다.
         </p>
       </div>
@@ -167,8 +167,8 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-5 h-5 text-primary-400 animate-spin" />
-        <span className="ml-2 text-sm text-surface-400">불러오는 중...</span>
+        <Loader2 className="w-5 h-5 text-accent animate-spin" />
+        <span className="ml-2 text-sm text-fg-muted">불러오는 중...</span>
       </div>
     );
   }
@@ -177,11 +177,11 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
   if (!plan) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center px-6">
-        <FlaskConical className="w-10 h-10 text-primary-400 mb-3" />
-        <h3 className="text-sm font-semibold text-surface-200 mb-1">
+        <FlaskConical className="w-10 h-10 text-accent mb-3" />
+        <h3 className="text-sm font-semibold text-fg mb-1">
           실험 재현 가이드 생성
         </h3>
-        <p className="text-xs text-surface-400 mb-4 max-w-sm">
+        <p className="text-xs text-fg-muted mb-4 max-w-sm">
           Recipe Card를 기반으로 실험 장비, 재료, 절차, 주의사항을 포함한 재현 가이드를 생성합니다.
         </p>
         {error && (
@@ -219,11 +219,11 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
       {/* Header */}
       {content.title && (
         <div>
-          <h3 className="text-base font-semibold text-surface-100">
+          <h3 className="text-base font-semibold text-fg">
             {content.title}
           </h3>
           {content.objective && (
-            <p className="text-xs text-surface-400 mt-1">{content.objective}</p>
+            <p className="text-xs text-fg-muted mt-1">{content.objective}</p>
           )}
         </div>
       )}
@@ -231,7 +231,7 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
       {/* Meta badges */}
       <div className="flex flex-wrap gap-2">
         {content.estimated_total_time && (
-          <span className="badge text-2xs bg-primary-500/10 text-primary-400">
+          <span className="badge text-2xs bg-accent/10 text-accent">
             <Clock className="w-3 h-3 mr-1" />
             {content.estimated_total_time}
           </span>
@@ -248,7 +248,7 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
           </span>
         )}
         {plan.cost_usd > 0 && (
-          <span className="badge text-2xs bg-surface-700 text-surface-400">
+          <span className="badge text-2xs bg-surface text-fg-muted">
             ${plan.cost_usd.toFixed(4)}
           </span>
         )}
@@ -269,7 +269,7 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
                   ? 'bg-red-500/10 border border-red-500/20 text-red-300'
                   : w.severity === 'medium'
                     ? 'bg-yellow-500/10 border border-yellow-500/20 text-yellow-300'
-                    : 'bg-surface-700/50 border border-surface-600 text-surface-300'
+                    : 'bg-surface/50 border border-border text-fg-secondary'
               }`}
             >
               <span className="shrink-0 mt-0.5">{severityEmoji[w.severity] || '🟡'}</span>
@@ -285,19 +285,19 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
       {/* Equipment checklist */}
       {content.equipment_checklist && content.equipment_checklist.length > 0 && (
         <div>
-          <h4 className="text-xs font-semibold text-surface-200 mb-2">
+          <h4 className="text-xs font-semibold text-fg mb-2">
             장비 체크리스트
           </h4>
           <div className="space-y-1">
             {content.equipment_checklist.map((eq, i) => (
               <div key={i} className="flex items-center gap-2 text-xs">
-                <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${eq.essential ? 'text-primary-400' : 'text-surface-500'}`} />
-                <span className="text-surface-200">{eq.name}</span>
+                <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${eq.essential ? 'text-accent' : 'text-fg-muted'}`} />
+                <span className="text-fg">{eq.name}</span>
                 {eq.specification && (
-                  <span className="text-surface-500">— {eq.specification}</span>
+                  <span className="text-fg-muted">— {eq.specification}</span>
                 )}
                 {eq.essential && (
-                  <span className="badge text-2xs bg-primary-500/10 text-primary-400">필수</span>
+                  <span className="badge text-2xs bg-accent/10 text-accent">필수</span>
                 )}
               </div>
             ))}
@@ -308,13 +308,13 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
       {/* Materials checklist */}
       {content.materials_checklist && content.materials_checklist.length > 0 && (
         <div>
-          <h4 className="text-xs font-semibold text-surface-200 mb-2">
+          <h4 className="text-xs font-semibold text-fg mb-2">
             재료/시약 체크리스트
           </h4>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-surface-400 border-b border-surface-700">
+                <tr className="text-fg-muted border-b border-border">
                   <th className="text-left py-1.5 pr-3">재료</th>
                   <th className="text-left py-1.5 pr-3">순도</th>
                   <th className="text-left py-1.5 pr-3">필요량</th>
@@ -323,14 +323,14 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
               </thead>
               <tbody>
                 {content.materials_checklist.map((m, i) => (
-                  <tr key={i} className="border-b border-surface-700/50">
-                    <td className="py-1.5 pr-3 text-surface-200">
+                  <tr key={i} className="border-b border-border/50">
+                    <td className="py-1.5 pr-3 text-fg">
                       {m.name}
-                      {m.essential && <span className="ml-1 text-primary-400">*</span>}
+                      {m.essential && <span className="ml-1 text-accent">*</span>}
                     </td>
-                    <td className="py-1.5 pr-3 text-surface-400">{m.purity || '-'}</td>
-                    <td className="py-1.5 pr-3 text-surface-400">{m.quantity || '-'}</td>
-                    <td className="py-1.5 text-surface-400">{m.supplier || '-'}</td>
+                    <td className="py-1.5 pr-3 text-fg-muted">{m.purity || '-'}</td>
+                    <td className="py-1.5 pr-3 text-fg-muted">{m.quantity || '-'}</td>
+                    <td className="py-1.5 text-fg-muted">{m.supplier || '-'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -342,26 +342,26 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
       {/* Procedure steps */}
       {content.procedure_steps && content.procedure_steps.length > 0 && (
         <div>
-          <h4 className="text-xs font-semibold text-surface-200 mb-2">
+          <h4 className="text-xs font-semibold text-fg mb-2">
             실험 절차
           </h4>
           <div className="space-y-3">
             {content.procedure_steps.map((step) => (
               <div key={step.step} className="flex gap-3">
-                <div className="shrink-0 w-6 h-6 rounded-full bg-primary-500/20 text-primary-400 flex items-center justify-center text-xs font-bold">
+                <div className="shrink-0 w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-bold">
                   {step.step}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-surface-200">{step.title}</span>
+                    <span className="text-xs font-medium text-fg">{step.title}</span>
                     {step.duration && (
-                      <span className="badge text-2xs bg-surface-700 text-surface-400">
+                      <span className="badge text-2xs bg-surface text-fg-muted">
                         <Clock className="w-2.5 h-2.5 mr-0.5" />
                         {step.duration}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-surface-400 mt-0.5 leading-relaxed">
+                  <p className="text-xs text-fg-muted mt-0.5 leading-relaxed">
                     {step.description}
                   </p>
                   {step.critical_params && step.critical_params.length > 0 && (
@@ -382,14 +382,14 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
 
       {/* Mentor comments */}
       {content.mentor_comments && content.mentor_comments.length > 0 && (
-        <div className="bg-surface-800/50 border border-surface-700 rounded-xl p-3">
-          <h4 className="text-xs font-semibold text-primary-400 mb-2 flex items-center gap-1.5">
+        <div className="bg-surface/50 border border-border rounded-xl p-3">
+          <h4 className="text-xs font-semibold text-accent mb-2 flex items-center gap-1.5">
             <MessageSquare className="w-3.5 h-3.5" />
             사수의 한마디
           </h4>
           <div className="space-y-1.5">
             {content.mentor_comments.map((comment, i) => (
-              <p key={i} className="text-xs text-surface-300 leading-relaxed">
+              <p key={i} className="text-xs text-fg-secondary leading-relaxed">
                 &ldquo;{comment}&rdquo;
               </p>
             ))}
@@ -398,11 +398,11 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
       )}
 
       {/* Regenerate button */}
-      <div className="pt-2 border-t border-surface-700/50">
+      <div className="pt-2 border-t border-border/50">
         <button
           onClick={handleGenerate}
           disabled={generating}
-          className="btn-ghost text-xs py-1.5 px-3 text-surface-400 hover:text-primary-400"
+          className="btn-ghost text-xs py-1.5 px-3 text-fg-muted hover:text-accent"
         >
           {generating ? (
             <>

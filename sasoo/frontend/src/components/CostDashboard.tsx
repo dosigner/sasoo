@@ -376,12 +376,12 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
                   {Object.entries(paper.phases).map(([phase, cost]) => (
                     <span
                       key={phase}
-                      className="text-2xs text-fg-muted bg-surface px-1.5 py-0.5 rounded"
+                      className="text-2xs text-fg-secondary bg-surface-hover px-1.5 py-0.5 rounded"
                     >
                       {phase}: {formatCurrency(cost)}
                     </span>
                   ))}
-                  <span className="text-2xs text-fg-muted bg-surface/50 px-1.5 py-0.5 rounded">
+                  <span className="text-2xs text-fg-secondary bg-surface-hover px-1.5 py-0.5 rounded">
                     {formatTokens(paper.tokens_in + paper.tokens_out)} tokens
                   </span>
                 </div>

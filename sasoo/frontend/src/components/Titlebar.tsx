@@ -37,14 +37,14 @@ export default function Titlebar() {
 
   return (
     <div
-      className="titlebar-drag flex items-center h-8 bg-surface-900/95 backdrop-blur-xl border-b border-surface-700/50 shrink-0 select-none"
+      className="titlebar-drag flex items-center h-8 bg-surface/95 backdrop-blur-xl border-b border-border/50 shrink-0 select-none"
       style={{ paddingLeft: isMac ? 76 : 12, paddingRight: isMac ? 12 : 0 }}
     >
       {/* Logo + Title (non-Mac) */}
       {!isMac && (
         <div className="flex items-center gap-2 mr-auto">
           <img src={logoImg} alt="Sasoo" className="w-4 h-4" />
-          <span className="text-xs font-medium text-surface-400">
+          <span className="text-xs font-medium text-fg-muted">
             {S.app.name}
           </span>
         </div>
@@ -53,7 +53,7 @@ export default function Titlebar() {
       {/* Mac: centered title */}
       {isMac && (
         <div className="flex-1 flex items-center justify-center">
-          <span className="text-xs font-medium text-surface-400">
+          <span className="text-xs font-medium text-fg-muted">
             {S.app.name}
           </span>
         </div>
@@ -64,7 +64,7 @@ export default function Titlebar() {
         <div className="titlebar-no-drag flex items-center h-full ml-auto">
           <button
             onClick={handleMinimize}
-            className="flex items-center justify-center w-11 h-full text-surface-400 hover:bg-surface-700/50 hover:text-surface-200 transition-colors"
+            className="flex items-center justify-center w-11 h-full text-fg-muted hover:bg-surface-hover/50 hover:text-fg transition-colors"
             title={S.titlebar.minimize}
             aria-label={S.titlebar.minimize}
           >
@@ -72,7 +72,7 @@ export default function Titlebar() {
           </button>
           <button
             onClick={handleMaximize}
-            className="flex items-center justify-center w-11 h-full text-surface-400 hover:bg-surface-700/50 hover:text-surface-200 transition-colors"
+            className="flex items-center justify-center w-11 h-full text-fg-muted hover:bg-surface-hover/50 hover:text-fg transition-colors"
             title={isMaximized ? S.titlebar.restore : S.titlebar.maximize}
             aria-label={isMaximized ? S.titlebar.restore : S.titlebar.maximize}
           >
@@ -84,7 +84,7 @@ export default function Titlebar() {
           </button>
           <button
             onClick={handleClose}
-            className="flex items-center justify-center w-11 h-full text-surface-400 hover:bg-red-600 hover:text-white transition-colors"
+            className="flex items-center justify-center w-11 h-full text-fg-muted hover:bg-red-600 hover:text-white transition-colors"
             title={S.titlebar.close}
             aria-label={S.titlebar.close}
           >
