@@ -283,7 +283,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         )
         captured = {}
 
-        async def _fake_call(prompt: str):
+        async def _fake_call(prompt: str, **kwargs):
             captured["prompt"] = prompt
             return {
                 "text": '{"title":"recipe","parameters":[],"steps":[],"materials":[],"equipment":[],"critical_notes":[],"confidence":0.8,"missing_info":[],"reproducibility_score":0.7}',
@@ -318,7 +318,6 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()) as insert_mock,
             patch("api.analysis_routes._call_gemini", new=AsyncMock(side_effect=AssertionError("LLM call should be skipped"))),
-            patch("api.analysis_routes._call_anthropic", new=AsyncMock(side_effect=AssertionError("LLM call should be skipped"))),
         ):
             result = await analysis_routes._run_recipe(
                 7,
@@ -353,7 +352,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         paper = {"id": 7, "title": "Paper", "folder_name": "folder"}
         captured = {}
 
-        async def _fake_call(prompt: str):
+        async def _fake_call(prompt: str, **kwargs):
             captured["prompt"] = prompt
             return {"text": "flowchart TD\nA-->B", "model": "gemini", "tokens_in": 1, "tokens_out": 1}
 
@@ -374,7 +373,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "materials"}
         captured = {}
 
-        async def _fake_call(prompt: str):
+        async def _fake_call(prompt: str, **kwargs):
             captured["prompt"] = prompt
             return {"text": '{"title":"plan"}', "model": "gemini", "tokens_in": 1, "tokens_out": 1}
 

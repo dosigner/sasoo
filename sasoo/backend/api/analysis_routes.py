@@ -75,11 +75,20 @@ from services.pricing import calc_cost
 from api.analysis_state import _running_analyses, _cancel_events, _analyses_lock
 from api.analysis_helpers import (
     _call_gemini,
-    _call_anthropic,
     _clean_llm_json,
     _is_error_result,
     _get_gemini_client,
     _SYSTEM_INSTRUCTION_KO,
+)
+from services.models import (
+    MODEL_SCREENING,
+    MODEL_CITATION,
+    MODEL_VISUAL,
+    MODEL_RECIPE,
+    MODEL_DEEP_DIVE,
+    MODEL_VIZ_PLANNING,
+    MODEL_MERMAID,
+    MODEL_CHAT,
 )
 from api.report_service import (
     _format_phase_data,
@@ -332,7 +341,7 @@ Return ONLY valid JSON (마크다운 펜스 없이):
         status.total_tokens_out += cached["tokens_out"]
         return cached
 
-    result = await _call_gemini(prompt, model="gemini-3.1-flash-lite-preview")
+    result = await _call_gemini(prompt, model=MODEL_SCREENING)
     # Clean markdown fences from JSON response
     cleaned_text = _clean_llm_json(result["text"])
 
@@ -463,7 +472,7 @@ Return ONLY valid JSON (마크다운 펜스 없이):
             return cached
 
         try:
-            result = await _call_gemini(llm_prompt)
+            result = await _call_gemini(llm_prompt, model=MODEL_CITATION)
             cleaned_text = _clean_llm_json(result["text"])
 
             try:
@@ -699,7 +708,7 @@ Return ONLY valid JSON (마크다운 펜스 없이):
         status.total_tokens_out += cached["tokens_out"]
         return cached
 
-    result = await _call_gemini(prompt)
+    result = await _call_gemini(prompt, model=MODEL_VISUAL)
     cleaned_text = _clean_llm_json(result["text"])
 
     # Validate JSON before storing
@@ -890,11 +899,7 @@ Return ONLY valid JSON (마크다운 펜스 없이, 설명 없이):
         status.total_tokens_out += cached["tokens_out"]
         return cached
 
-    try:
-        result = await _call_anthropic(prompt)
-    except Exception:
-        # Fallback to Gemini if Anthropic fails
-        result = await _call_gemini(prompt)
+    result = await _call_gemini(prompt, model=MODEL_RECIPE)
 
     cleaned_text = _clean_llm_json(result["text"])
 
@@ -940,7 +945,7 @@ async def _run_deep_dive(
     status: AnalysisStatus,
     screening_result_text: Optional[str] = None,
 ) -> dict:
-    """Phase 4: Deep dive - comprehensive analysis using Claude."""
+    """Phase 4: Deep dive - comprehensive analysis using Gemini Pro."""
     phase_status = PhaseStatus(
         phase=AnalysisPhase.DEEP_DIVE,
         status="running",
@@ -1003,10 +1008,7 @@ Return ONLY valid JSON (마크다운 펜스 없이):
         status.total_tokens_out += cached["tokens_out"]
         return cached
 
-    try:
-        result = await _call_anthropic(prompt)
-    except Exception:
-        result = await _call_gemini(prompt)
+    result = await _call_gemini(prompt, model=MODEL_DEEP_DIVE)
 
     cleaned_text = _clean_llm_json(result["text"])
 
@@ -1122,7 +1124,7 @@ Return ONLY valid JSON (마크다운 펜스 없이). 아래 구조를 정확히 
         except (json.JSONDecodeError, TypeError, AttributeError):
             return []
 
-    result = await _call_gemini(prompt, model="gemini-3.1-pro-preview")
+    result = await _call_gemini(prompt, model=MODEL_VIZ_PLANNING)
     cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
     status.total_cost_usd += cost
@@ -1203,7 +1205,7 @@ async def _generate_single_mermaid(
 다이어그램 타입 키워드로 시작하는 유효한 Mermaid 코드만 반환해.
 """
 
-    result = await _call_gemini(prompt, model="gemini-3.1-pro-preview")
+    result = await _call_gemini(prompt, model=MODEL_MERMAID)
 
     mermaid_code = result["text"].strip()
     # Remove markdown fences
@@ -1458,14 +1460,14 @@ async def _run_visualizations(
     viz_result = {
         "items": list(generated_items),
         "total_count": len(generated_items),
-        "model_used": "gemini-3.1-pro-preview",
+        "model_used": MODEL_VIZ_PLANNING,
         "planned_at": _utcnow_iso(),
     }
     await _insert_analysis_result(
         paper_id,
         "visualization",
         json.dumps(viz_result, ensure_ascii=False),
-        "gemini-3.1-pro-preview",
+        MODEL_VIZ_PLANNING,
         0,
         0,
         0.0,
@@ -2412,7 +2414,7 @@ async def get_experiment_plan(paper_id: int):
 # Agent Chat (SSE streaming)
 # ---------------------------------------------------------------------------
 
-_CHAT_MODEL = "gemini-3-flash-preview"
+_CHAT_MODEL = MODEL_CHAT
 
 
 @router.post("/{paper_id}/chat")

@@ -31,6 +31,7 @@ from services.analysis_results import get_latest_completed_phase_rows
 from services.document_context import load_or_build_document_context
 from services.pricing import calc_cost
 from api.analysis_helpers import _call_gemini
+from services.models import MODEL_FIGURE_EXPLAIN
 
 
 # ---------------------------------------------------------------------------
@@ -544,9 +545,9 @@ Be exhaustive. Do NOT summarize or abbreviate. Include every relevant numerical 
     image_paths_arg = [str(resolved_figure_image_path)] if resolved_figure_image_path and resolved_figure_image_path.exists() else None
 
     try:
-        result = await _call_gemini(prompt, model="gemini-3-flash-preview", thinking_level="high", image_paths=image_paths_arg)
+        result = await _call_gemini(prompt, model=MODEL_FIGURE_EXPLAIN, thinking_level="high", image_paths=image_paths_arg)
     except Exception:
-        result = await _call_gemini(prompt, model="gemini-3-flash-preview", image_paths=image_paths_arg)
+        result = await _call_gemini(prompt, model=MODEL_FIGURE_EXPLAIN, image_paths=image_paths_arg)
 
     explanation = result["text"].strip()
 

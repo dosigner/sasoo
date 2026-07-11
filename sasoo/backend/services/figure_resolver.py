@@ -17,6 +17,7 @@ from PIL import Image
 from api.analysis_helpers import _call_gemini, _clean_llm_json
 from models.paper import Figure as ParsedFigure
 from services.subfigure_detector import SubFigureDetector
+from services.models import MODEL_RESOLVER
 
 FIGURE_LABEL_PATTERN = re.compile(r"^\s*(?:Figure|Fig\.?)\s*(\d+[A-Za-z]?)\b", re.IGNORECASE)
 
@@ -276,7 +277,7 @@ async def _maybe_select_candidate(
     try:
         result = await _call_gemini(
             json.dumps(prompt, ensure_ascii=False),
-            model="gemini-3-flash-preview",
+            model=MODEL_RESOLVER,
             thinking_level="minimal",
             image_paths=[str((paper_dir / raster_path).resolve())],
         )
@@ -336,7 +337,7 @@ async def _maybe_rerank_caption(
     try:
         result = await _call_gemini(
             json.dumps(prompt, ensure_ascii=False),
-            model="gemini-3-flash-preview",
+            model=MODEL_RESOLVER,
             thinking_level="minimal",
             image_paths=[str((paper_dir / raster_path).resolve())],
         )

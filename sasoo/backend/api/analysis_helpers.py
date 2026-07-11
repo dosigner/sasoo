@@ -1,12 +1,22 @@
 """
 Sasoo - LLM client helpers.
-Shared utilities for calling Gemini and Anthropic APIs.
+Shared utilities for calling the Gemini API.
 """
 
 import asyncio
 import json
+import logging
 import os
 from pathlib import Path
+
+from services.models import MODEL_FLASH
+
+logger = logging.getLogger(__name__)
+
+# Transient failures (rate limits, 5xx) are common enough that a single-shot
+# call drops whole analysis phases. There is no cross-vendor fallback anymore,
+# so this retry is the only thing standing between a blip and a failed run.
+_MAX_ATTEMPTS = 3
 
 
 # ---------------------------------------------------------------------------
@@ -38,31 +48,20 @@ def _get_gemini_client():
         raise RuntimeError("google-genai package not installed")
 
 
-def _get_anthropic_client():
-    """Lazy-load Anthropic client."""
-    try:
-        import anthropic
-        api_key = os.getenv("ANTHROPIC_API_KEY", "")
-        if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY not set")
-        return anthropic.Anthropic(api_key=api_key)
-    except ImportError:
-        raise RuntimeError("anthropic package not installed")
-
-
 # ---------------------------------------------------------------------------
 # Gemini call helper
 # ---------------------------------------------------------------------------
 
 async def _call_gemini(
     prompt: str,
-    model: str = "gemini-3-flash-preview",
+    model: str = MODEL_FLASH,
     thinking_level: str | None = None,
     image_paths: list[str] | None = None,
 ) -> dict:
     """
     Call Gemini API and return parsed response with token counts.
     Runs synchronous SDK call in executor to avoid blocking.
+    Retries transient failures with exponential backoff.
 
     thinking_level: "minimal" (1024), "medium" (4096), "high" (8192), or None.
     image_paths: Optional list of absolute paths to images to include in the request.
@@ -121,35 +120,23 @@ async def _call_gemini(
         }
 
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _sync_call)
+    last_error: Exception | None = None
 
+    for attempt in range(_MAX_ATTEMPTS):
+        try:
+            return await loop.run_in_executor(None, _sync_call)
+        except Exception as exc:
+            last_error = exc
+            logger.warning(
+                "Gemini call failed (model=%s, attempt %d/%d): %s",
+                model, attempt + 1, _MAX_ATTEMPTS, exc,
+            )
+            if attempt < _MAX_ATTEMPTS - 1:
+                await asyncio.sleep(2 ** attempt)
 
-# ---------------------------------------------------------------------------
-# Anthropic call helper
-# ---------------------------------------------------------------------------
-
-async def _call_anthropic(prompt: str, model: str = "claude-sonnet-4-20250514") -> dict:
-    """
-    Call Anthropic API and return parsed response with token counts.
-    """
-    def _sync_call():
-        client = _get_anthropic_client()
-        message = client.messages.create(
-            model=model,
-            max_tokens=4096,
-            system=_SYSTEM_INSTRUCTION_KO,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = message.content[0].text if message.content else ""
-        return {
-            "text": text,
-            "model": model,
-            "tokens_in": message.usage.input_tokens,
-            "tokens_out": message.usage.output_tokens,
-        }
-
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _sync_call)
+    raise RuntimeError(
+        f"Gemini call failed after {_MAX_ATTEMPTS} attempts (model={model}): {last_error}"
+    ) from last_error
 
 
 # ---------------------------------------------------------------------------

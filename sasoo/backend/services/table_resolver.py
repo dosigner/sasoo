@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from api.analysis_helpers import _call_gemini, _clean_llm_json
+from services.models import MODEL_RESOLVER
 
 TABLE_LABEL_PATTERN = re.compile(r"^\s*(?:Table|Tbl\.?)\s*(\d+[A-Za-z]?)\b", re.IGNORECASE)
 
@@ -184,7 +185,7 @@ async def _repair_with_vlm(candidate: dict[str, Any], manifest: dict[str, Any], 
     try:
         result = await _call_gemini(
             json.dumps(prompt, ensure_ascii=False),
-            model="gemini-3-flash-preview",
+            model=MODEL_RESOLVER,
             thinking_level="minimal",
             image_paths=[str((paper_dir / page["raster_path"]).resolve())],
         )

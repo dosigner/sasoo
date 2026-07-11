@@ -16,6 +16,7 @@ import sys
 import traceback
 from pathlib import Path
 from typing import Any, Optional
+from services.models import MODEL_FLASH_HQ, MODEL_IMAGE
 
 logger = logging.getLogger(__name__)
 
@@ -185,8 +186,8 @@ class PaperBananaBridge:
             # so we MUST use the alias name in the constructor.
             settings_kwargs: dict[str, Any] = {
                 "GOOGLE_API_KEY": api_key,
-                "vlm_model": "gemini-3-flash-preview",
-                "image_model": "gemini-3.1-flash-image-preview",
+                "vlm_model": MODEL_FLASH_HQ,
+                "image_model": MODEL_IMAGE,
             }
 
             if _IS_FROZEN and _MEIPASS is not None:

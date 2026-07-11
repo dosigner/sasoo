@@ -12,6 +12,8 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from services.models import MODEL_FLASH_HQ
+
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -377,16 +379,8 @@ class FullAnalysisResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# VizRouter / Mermaid
+# Mermaid
 # ---------------------------------------------------------------------------
-
-class VizRouterResult(BaseModel):
-    """Result from the visualization router."""
-    paper_id: int
-    recommended_viz: list[str] = Field(default_factory=list)
-    mermaid_code: Optional[str] = None
-    chart_configs: list[dict] = Field(default_factory=list)
-
 
 class MermaidResult(BaseModel):
     """Mermaid diagram generated for a paper's process flow."""
@@ -416,15 +410,13 @@ class DomainResult(BaseModel):
 class SettingsModel(BaseModel):
     """Application settings."""
     gemini_api_key: Optional[str] = None
-    anthropic_api_key: Optional[str] = None
     library_path: str = "./library"
     default_domain: DomainType = DomainType.OPTICS
     auto_analyze: bool = True
     language: str = "ko"           # ko | en
     theme: str = "light"           # light | dark
     max_concurrent_analyses: int = 3
-    gemini_model: str = "gemini-3-flash-preview"
-    anthropic_model: str = "claude-sonnet-4-20250514"
+    gemini_model: str = MODEL_FLASH_HQ
     pdf_parser_mode: str = "java"
     extraction_pipeline_version: str = "resolver_v1"
 
@@ -440,7 +432,6 @@ class SettingsModel(BaseModel):
 class SettingsUpdate(BaseModel):
     """Partial settings update."""
     gemini_api_key: Optional[str] = None
-    anthropic_api_key: Optional[str] = None
     library_path: Optional[str] = None
     default_domain: Optional[DomainType] = None
     auto_analyze: Optional[bool] = None
@@ -448,7 +439,6 @@ class SettingsUpdate(BaseModel):
     theme: Optional[str] = None
     max_concurrent_analyses: Optional[int] = None
     gemini_model: Optional[str] = None
-    anthropic_model: Optional[str] = None
     pdf_parser_mode: Optional[str] = None
     extraction_pipeline_version: Optional[str] = None
 
