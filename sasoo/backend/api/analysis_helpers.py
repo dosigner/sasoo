@@ -1,6 +1,6 @@
 """
 Sasoo - LLM client helpers.
-Shared utilities for calling Gemini and Anthropic APIs.
+Shared utilities for calling Gemini APIs.
 """
 
 import asyncio

@@ -422,7 +422,6 @@ class DomainResult(BaseModel):
 class SettingsModel(BaseModel):
     """Application settings."""
     gemini_api_key: Optional[str] = None
-    anthropic_api_key: Optional[str] = None
     library_path: str = "./library"
     default_domain: DomainType = DomainType.OPTICS
     auto_analyze: bool = True
@@ -430,7 +429,6 @@ class SettingsModel(BaseModel):
     theme: str = "light"           # light | dark
     max_concurrent_analyses: int = 3
     gemini_model: str = "gemini-3-flash-preview"
-    anthropic_model: str = "claude-sonnet-4-20250514"
     pdf_parser_mode: str = "java"
     extraction_pipeline_version: str = "resolver_v1"
     research_context: str = ""
@@ -448,7 +446,6 @@ class SettingsModel(BaseModel):
 class SettingsUpdate(BaseModel):
     """Partial settings update."""
     gemini_api_key: Optional[str] = None
-    anthropic_api_key: Optional[str] = None
     library_path: Optional[str] = None
     default_domain: Optional[DomainType] = None
     auto_analyze: Optional[bool] = None
@@ -456,7 +453,6 @@ class SettingsUpdate(BaseModel):
     theme: Optional[str] = None
     max_concurrent_analyses: Optional[int] = None
     gemini_model: Optional[str] = None
-    anthropic_model: Optional[str] = None
     pdf_parser_mode: Optional[str] = None
     extraction_pipeline_version: Optional[str] = None
     research_context: Optional[str] = None
