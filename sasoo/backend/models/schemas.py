@@ -427,6 +427,8 @@ class SettingsModel(BaseModel):
     anthropic_model: str = "claude-sonnet-4-20250514"
     pdf_parser_mode: str = "java"
     extraction_pipeline_version: str = "resolver_v1"
+    research_context: str = ""
+    default_explanation_level: str = "masters"
 
     @field_validator("library_path", mode="before")
     @classmethod
@@ -451,6 +453,8 @@ class SettingsUpdate(BaseModel):
     anthropic_model: Optional[str] = None
     pdf_parser_mode: Optional[str] = None
     extraction_pipeline_version: Optional[str] = None
+    research_context: Optional[str] = None
+    default_explanation_level: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

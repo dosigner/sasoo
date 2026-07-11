@@ -35,6 +35,8 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "pdf_parser_mode": "java",
     "extraction_pipeline_version": "resolver_v1",
     "extraction_pipeline_force_fallback": "false",
+    "research_context": "",
+    "default_explanation_level": "masters",
 }
 
 
@@ -163,6 +165,8 @@ async def get_settings():
         anthropic_model=raw.get("anthropic_model", "claude-sonnet-4-20250514"),
         pdf_parser_mode=raw.get("pdf_parser_mode", "java"),
         extraction_pipeline_version=raw.get("extraction_pipeline_version", "resolver_v1"),
+        research_context=raw.get("research_context", ""),
+        default_explanation_level=raw.get("default_explanation_level", "masters"),
     )
 
 
