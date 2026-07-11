@@ -214,10 +214,15 @@ export const S = {
     // API Keys
     apiKeys: '모델 키',
     geminiKey: 'Google Gemini API 키',
-    claudeKey: 'Anthropic Claude API 키',
     geminiHelp: 'Gemini Flash 및 Gemini Pro 모델에 사용됩니다.',
-    claudeHelp: 'Claude Sonnet 고급 분석에 사용됩니다.',
     getKeyAt: (name: string) => `${name}에서 키를 발급받으세요.`,
+    // Researcher profile
+    researcherProfile: '연구자 프로필',
+    researcherProfileDesc: '분석 결과의 눈높이와 관점을 조정합니다.',
+    researchContext: '연구 분야 소개',
+    researchContextPlaceholder: '예: 페로브스카이트 태양전지 소자 물리를 연구합니다',
+    researchContextHelper: '한 줄이면 충분합니다. 분석 결과가 내 분야 관점으로 연결됩니다.',
+    defaultLevel: '기본 설명 수준',
     // Library
     librarySection: '보관함 경로',
     libraryPath: '논문 저장 경로',
