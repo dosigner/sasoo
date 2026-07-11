@@ -9,7 +9,7 @@ import {
 } from '@/lib/api';
 import CostDashboard from '@/components/CostDashboard';
 import { useToast } from '@/components/Toast';
-import { Toggle } from '@/components/ui';
+import { Select, Toggle } from '@/components/ui';
 import { S } from '@/lib/strings';
 import { AppIcon } from '@/components/icons';
 
@@ -253,8 +253,8 @@ export default function Settings() {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-6 h-6 text-primary-400 animate-spin" />
-          <span className="text-sm text-surface-400">{S.settings.loadingSettings}</span>
+          <Loader2 className="w-6 h-6 text-accent animate-spin" />
+          <span className="text-sm text-fg-muted">{S.settings.loadingSettings}</span>
         </div>
       </div>
     );
@@ -336,15 +336,15 @@ export default function Settings() {
           <div className="space-y-4">
             <div>
               <div className="flex items-center gap-2 mb-1.5">
-                <label className="text-xs text-surface-400">
+                <label className="text-xs text-fg-muted">
                   {S.settings.geminiKey}
                 </label>
                 {geminiKeyStatus ? (
-                  <span className="text-2xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
+                  <span className="text-2xs text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded">
                     {S.settings.keyConfigured} ({geminiKeyStatus})
                   </span>
                 ) : (
-                  <span className="text-2xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">
+                  <span className="text-2xs text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded">
                     {S.settings.keyNotConfigured}
                   </span>
                 )}
@@ -366,7 +366,7 @@ export default function Settings() {
                 />
                 <button
                   onClick={() => setShowGeminiKey(!showGeminiKey)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-surface-500 hover:text-surface-300 transition-colors"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-fg-muted hover:text-fg-secondary transition-colors"
                   style={{ borderRadius: 'var(--radius-control)' }}
                   type="button"
                 >
@@ -377,13 +377,13 @@ export default function Settings() {
                   )}
                 </button>
               </div>
-              <p className="text-2xs text-surface-600 mt-1">
+              <p className="text-2xs text-fg-muted mt-1">
                 {S.settings.geminiHelp}{' '}
                 <a
                   href="https://aistudio.google.com/api-keys"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-primary-400 hover:text-primary-300 underline underline-offset-2"
+                  className="text-accent hover:text-accent-hover underline underline-offset-2"
                 >
                   Google AI Studio
                 </a>
@@ -393,15 +393,15 @@ export default function Settings() {
 
             <div>
               <div className="flex items-center gap-2 mb-1.5">
-                <label className="text-xs text-surface-400">
+                <label className="text-xs text-fg-muted">
                   {S.settings.claudeKey}
                 </label>
                 {claudeKeyStatus ? (
-                  <span className="text-2xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
+                  <span className="text-2xs text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded">
                     {S.settings.keyConfigured} ({claudeKeyStatus})
                   </span>
                 ) : (
-                  <span className="text-2xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">
+                  <span className="text-2xs text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded">
                     {S.settings.keyNotConfigured}
                   </span>
                 )}
@@ -423,7 +423,7 @@ export default function Settings() {
                 />
                 <button
                   onClick={() => setShowClaudeKey(!showClaudeKey)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-surface-500 hover:text-surface-300 transition-colors"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-fg-muted hover:text-fg-secondary transition-colors"
                   style={{ borderRadius: 'var(--radius-control)' }}
                   type="button"
                 >
@@ -434,13 +434,13 @@ export default function Settings() {
                   )}
                 </button>
               </div>
-              <p className="text-2xs text-surface-600 mt-1">
+              <p className="text-2xs text-fg-muted mt-1">
                 {S.settings.claudeHelp}{' '}
                 <a
                   href="https://platform.claude.com/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-primary-400 hover:text-primary-300 underline underline-offset-2"
+                  className="text-accent hover:text-accent-hover underline underline-offset-2"
                 >
                   Anthropic Console
                 </a>
@@ -457,7 +457,7 @@ export default function Settings() {
         >
           <div className="space-y-4">
             <div>
-              <label className="text-xs text-surface-400 block mb-1.5">
+              <label className="text-xs text-fg-muted block mb-1.5">
                 {S.settings.libraryPath}
               </label>
               <div className="flex flex-wrap gap-2">
@@ -490,7 +490,7 @@ export default function Settings() {
                   {saving ? S.settings.saving : S.settings.save}
                 </button>
               </div>
-              <p className="text-2xs text-surface-600 mt-1">
+              <p className="text-2xs text-fg-muted mt-1">
                 {S.settings.libraryPathHelp}
               </p>
             </div>
@@ -503,34 +503,34 @@ export default function Settings() {
             />
 
             <div>
-              <label className="text-xs text-surface-400 block mb-1.5">
+              <label className="text-xs text-fg-muted block mb-1.5">
                 {S.settings.pdfParser}
               </label>
-              <select
+              <Select
                 value={pdfParserMode}
-                onChange={(e) => setPdfParserMode(e.target.value as 'java')}
-                className="input"
-              >
-                <option value="java">{S.settings.pdfParserJava}</option>
-              </select>
-              <p className="text-2xs text-surface-600 mt-1">
+                onValueChange={(value) => setPdfParserMode(value as 'java')}
+                aria-label={S.settings.pdfParser}
+                options={[{ value: 'java', label: S.settings.pdfParserJava }]}
+              />
+              <p className="text-2xs text-fg-muted mt-1">
                 {S.settings.pdfParserHelp}
               </p>
             </div>
 
             <div>
-              <label className="text-xs text-surface-400 block mb-1.5">
+              <label className="text-xs text-fg-muted block mb-1.5">
                 {S.settings.extractionPipeline}
               </label>
-              <select
+              <Select
                 value={extractionPipelineVersion}
-                onChange={(e) => setExtractionPipelineVersion(e.target.value as 'legacy' | 'resolver_v1')}
-                className="input"
-              >
-                <option value="legacy">{S.settings.extractionPipelineLegacy}</option>
-                <option value="resolver_v1">{S.settings.extractionPipelineResolverV1}</option>
-              </select>
-              <p className="text-2xs text-surface-600 mt-1">
+                onValueChange={(value) => setExtractionPipelineVersion(value as 'legacy' | 'resolver_v1')}
+                aria-label={S.settings.extractionPipeline}
+                options={[
+                  { value: 'legacy', label: S.settings.extractionPipelineLegacy },
+                  { value: 'resolver_v1', label: S.settings.extractionPipelineResolverV1 },
+                ]}
+              />
+              <p className="text-2xs text-fg-muted mt-1">
                 {S.settings.extractionPipelineHelp}
               </p>
             </div>
@@ -547,7 +547,7 @@ export default function Settings() {
               onClick={() => setTheme('dark')}
               className={`settings-appearance-option flex items-center gap-2 px-4 py-3 border transition-colors ${
                 theme === 'dark'
-                  ? 'settings-appearance-option-active border-primary-500 bg-primary-500/10 text-primary-400'
+                  ? 'settings-appearance-option-active border-accent bg-accent/10 text-accent'
                   : 'settings-appearance-option-inactive'
               }`}
               style={{ borderRadius: 'var(--radius-control)' }}
@@ -559,7 +559,7 @@ export default function Settings() {
               onClick={() => setTheme('light')}
               className={`settings-appearance-option flex items-center gap-2 px-4 py-3 border transition-colors ${
                 theme === 'light'
-                  ? 'settings-appearance-option-active border-primary-500 bg-primary-500/10 text-primary-400'
+                  ? 'settings-appearance-option-active border-accent bg-accent/10 text-accent'
                   : 'settings-appearance-option-inactive'
               }`}
               style={{ borderRadius: 'var(--radius-control)' }}

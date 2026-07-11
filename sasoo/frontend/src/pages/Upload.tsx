@@ -16,6 +16,7 @@ import { getAgentMeta, getAllAgents, agentBgStyle, agentBorderStyle } from '@/li
 import { useToast } from '@/components/Toast';
 import { S } from '@/lib/strings';
 import { AppIcon } from '@/components/icons';
+import { Select } from '@/components/ui';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const ACCEPTED_TYPES = ['application/pdf'];
@@ -52,14 +53,14 @@ function paperStatusLabel(status: Paper['status']): string {
 function paperStatusClass(status: Paper['status']): string {
   switch (status) {
     case 'completed':
-      return 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300';
+      return 'border-success/20 bg-success/10 text-success';
     case 'analyzing':
-      return 'border-sky-500/20 bg-sky-500/10 text-sky-300';
+      return 'border-accent/20 bg-accent/10 text-accent';
     case 'error':
-      return 'border-red-500/20 bg-red-500/10 text-red-300';
+      return 'border-danger/20 bg-danger/10 text-danger';
     case 'pending':
     default:
-      return 'border-amber-500/20 bg-amber-500/10 text-amber-300';
+      return 'border-warning/20 bg-warning/10 text-warning';
   }
 }
 
@@ -80,34 +81,34 @@ function RecentPaperRow({
     <button
       type="button"
       onClick={() => onOpen(String(paper.id))}
-      className="group w-full rounded-[20px] bg-surface-950/30 px-4 py-3.5 text-left transition-all duration-200 hover:bg-surface-950/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950 [.light_&]:bg-white/80 [.light_&]:hover:bg-white [.light_&]:focus-visible:ring-offset-surface-50"
+      className="group w-full rounded-surface bg-surface/30 px-4 py-3.5 text-left transition-all duration-200 hover:bg-surface/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
       aria-label={`${paper.title} 워크벤치 열기`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] ${paperStatusClass(paper.status)}`}>
+          <div className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-2xs ${paperStatusClass(paper.status)}`}>
             <span className="h-1.5 w-1.5 rounded-full bg-current" />
             {paperStatusLabel(paper.status)}
           </div>
-          <h3 className="mt-3 line-clamp-2 text-[15px] font-semibold leading-6 text-surface-100 transition-colors group-hover:text-white [.light_&]:group-hover:text-surface-900">
+          <h3 className="mt-3 line-clamp-2 text-base font-semibold leading-6 text-fg transition-colors group-hover:text-fg">
             {paper.title}
           </h3>
-          <p className="mt-1.5 line-clamp-1 text-[13px] leading-5 text-surface-500 [.light_&]:text-surface-600">
+          <p className="mt-1.5 line-clamp-1 text-sm leading-5 text-fg-muted">
             {paper.authors || paper.journal || paper.domain}
           </p>
         </div>
-        <span className="mt-0.5 shrink-0 rounded-full bg-surface-900/70 p-2 text-surface-400 transition-colors group-hover:text-surface-100 [.light_&]:bg-surface-100 [.light_&]:text-surface-600 [.light_&]:group-hover:text-surface-900">
+        <span className="mt-0.5 shrink-0 rounded-full bg-surface/70 p-2 text-fg-muted transition-colors group-hover:text-fg">
           <AppIcon name="arrow-right" className="h-3.5 w-3.5" />
         </span>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] leading-5 text-surface-500 [.light_&]:text-surface-600">
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm leading-5 text-fg-muted">
         <span>{metaLabel} {metaValue}</span>
-        <span className="h-1 w-1 rounded-full bg-surface-700" />
+        <span className="h-1 w-1 rounded-full bg-border" />
         <span>{paper.domain}</span>
         {agent && (
           <>
-            <span className="h-1 w-1 rounded-full bg-surface-700" />
+            <span className="h-1 w-1 rounded-full bg-border" />
             <span>{agent.nameKo}</span>
           </>
         )}
@@ -323,20 +324,20 @@ export default function Upload() {
         <div>
           <div className="archive-kicker">{S.upload.heroKicker}</div>
           <div className="mt-3 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-surface-800/80 bg-surface-950/85">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border/80 bg-surface/85">
               <img src={logoImg} alt="Sasoo" className="h-7 w-7 rounded-xl" />
             </div>
             <div>
-              <h1 className="text-[1.45rem] font-semibold tracking-[-0.05em] text-surface-100">
+              <h1 className="text-[1.45rem] font-semibold tracking-[-0.05em] text-fg">
                 {S.app.name}
               </h1>
-              <p className="text-sm text-surface-400">{S.upload.heroBody}</p>
+              <p className="text-sm text-fg-muted">{S.upload.heroBody}</p>
             </div>
           </div>
         </div>
         <div className="page-status-strip">
           <span className={systemStatusClass}>
-            <span className={`h-2 w-2 rounded-full ${systemReady ? 'bg-emerald-400' : systemReady === false ? 'bg-amber-300' : 'bg-surface-500'}`} />
+            <span className={`h-2 w-2 rounded-full ${systemReady ? 'bg-success' : systemReady === false ? 'bg-warning' : 'bg-fg-muted'}`} />
             {systemReady === null
               ? S.settings.loadingSettings
               : systemReady
@@ -353,16 +354,16 @@ export default function Upload() {
           onDragOver={handleDragOver}
           onDrop={handleDrop}
           className={`archive-panel panel-compact relative overflow-hidden ${
-            isDragging ? 'border-primary-500/40 bg-primary-500/10' : ''
+            isDragging ? 'border-accent/40 bg-accent/10' : ''
           }`}
         >
-          <div className="page-header-dense gap-3 border-b border-surface-800/70 pb-4">
+          <div className="page-header-dense gap-3 border-b border-border/70 pb-4">
             <div>
               <div className="archive-kicker">{S.upload.surfaceTitle}</div>
-              <h2 className="mt-2 text-[1.55rem] font-semibold tracking-[-0.04em] text-surface-50 [.light_&]:text-surface-900">
+              <h2 className="mt-2 text-[1.55rem] font-semibold tracking-[-0.04em] text-fg">
                 {selectedFile ? selectedFile.name : S.upload.dragDrop}
               </h2>
-              <p className="mt-2 max-w-xl text-sm leading-6 text-surface-400 [.light_&]:text-surface-600">
+              <p className="mt-2 max-w-xl text-sm leading-6 text-fg-muted">
                 {selectedFile ? formatFileSize(selectedFile.size) : S.upload.surfaceBody}
               </p>
             </div>
@@ -389,19 +390,19 @@ export default function Upload() {
           />
 
           {!selectedFile && (
-            <div className="mt-4 rounded-[18px] border border-dashed border-surface-700/80 bg-surface-950/40 px-4 py-5">
+            <div className="mt-4 rounded-surface border border-dashed border-border bg-surface/40 px-4 py-5 transition-colors hover:border-accent/50">
               <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-surface-800/80 bg-surface-900/90">
-                  <AppIcon name="upload" className="h-5 w-5 text-primary-400" />
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border/80 bg-surface/90">
+                  <AppIcon name="upload" className="h-5 w-5 text-accent" />
                 </div>
                 <div>
-                  <div className="text-sm font-medium text-surface-100 [.light_&]:text-surface-900">{S.upload.surfaceActionTitle}</div>
-                  <p className="mt-1 text-sm leading-6 text-surface-400 [.light_&]:text-surface-600">{S.upload.emptyHint}</p>
+                  <div className="text-sm font-medium text-fg">{S.upload.surfaceActionTitle}</div>
+                  <p className="mt-1 text-sm leading-6 text-fg-muted">{S.upload.emptyHint}</p>
                 </div>
               </div>
-              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-surface-500">
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-fg-muted">
                 <span>{S.upload.pdfOnly}</span>
-                <span className="h-1 w-1 rounded-full bg-surface-700" />
+                <span className="h-1 w-1 rounded-full bg-border" />
                 <span>{S.upload.maxSize(formatFileSize(MAX_FILE_SIZE))}</span>
               </div>
             </div>
@@ -409,19 +410,19 @@ export default function Upload() {
 
           {selectedFile && (
             <div className="mt-6 space-y-4">
-              <div className="rounded-[22px] border border-surface-800 bg-surface-950/60 p-4">
+              <div className="rounded-surface border border-border bg-surface/60 p-4">
                 <div className="flex items-start gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-surface-800 bg-surface-900">
-                    <AppIcon name="document" className="h-5 w-5 text-primary-400" />
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border bg-surface">
+                    <AppIcon name="document" className="h-5 w-5 text-accent" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-surface-100 [.light_&]:text-surface-900">{selectedFile.name}</div>
-                    <div className="mt-1 text-xs text-surface-500 [.light_&]:text-surface-600">{formatFileSize(selectedFile.size)}</div>
+                    <div className="truncate text-sm font-medium text-fg">{selectedFile.name}</div>
+                    <div className="mt-1 text-xs text-fg-muted">{formatFileSize(selectedFile.size)}</div>
                   </div>
                   {stage === 'idle' && (
                     <button
                       onClick={clearFile}
-                      className="rounded-full border border-surface-800 px-3 py-1.5 text-xs text-surface-400 transition-colors hover:border-surface-600 hover:text-surface-200"
+                      className="rounded-full border border-border px-3 py-1.5 text-xs text-fg-muted transition-colors hover:border-border hover:text-fg"
                     >
                       {S.upload.clear}
                     </button>
@@ -430,15 +431,15 @@ export default function Upload() {
               </div>
 
               {(stage === 'uploading' || stage === 'parsing') && (
-                <div className="rounded-[22px] border border-surface-800 bg-surface-950/60 p-4">
-                  <div className="h-2 overflow-hidden rounded-full bg-surface-800">
+                <div className="rounded-surface border border-border bg-surface/60 p-4">
+                  <div className="h-2 overflow-hidden rounded-full bg-surface">
                     <div
-                      className="h-full rounded-full bg-primary-500 transition-all duration-300"
+                      className="h-full rounded-full bg-accent transition-all duration-300"
                       style={{ width: stage === 'parsing' ? '100%' : `${uploadProgress}%` }}
                     />
                   </div>
-                  <div className="mt-3 flex items-center gap-2 text-sm text-surface-400">
-                    <Loader2 className="h-4 w-4 animate-spin text-primary-400" />
+                  <div className="mt-3 flex items-center gap-2 text-sm text-fg-muted">
+                    <Loader2 className="h-4 w-4 animate-spin text-accent" />
                     {stage === 'uploading' ? S.upload.uploading(uploadProgress) : S.upload.parsing}
                   </div>
                 </div>
@@ -451,11 +452,11 @@ export default function Upload() {
                     {S.upload.handoffTitle}
                   </div>
 
-                <div className="rounded-[22px] border border-surface-800 bg-surface-950/60 p-4">
-                  <div className="text-[11px] uppercase tracking-[0.22em] text-surface-500">
+                <div className="rounded-surface border border-border bg-surface/60 p-4">
+                  <div className="text-2xs uppercase tracking-[0.22em] text-fg-muted">
                     {S.upload.titleLabel}
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-surface-100 [.light_&]:text-surface-900">{uploadResult.title}</p>
+                    <p className="mt-2 text-sm leading-6 text-fg">{uploadResult.title}</p>
 
                     {(() => {
                       const agent = getAgentMeta(uploadResult.agent_used);
@@ -466,19 +467,19 @@ export default function Upload() {
 
                       return (
                         <div
-                          className="mt-5 rounded-[20px] border p-3"
+                          className="mt-5 rounded-surface border p-3"
                           style={{ ...agentBgStyle(displayColor), ...agentBorderStyle(displayColor) }}
                         >
                           <div className="flex items-center gap-3">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-900/80">
-                              <AppIcon name="agents" className="h-5 w-5 text-surface-400" />
+                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface/80">
+                              <AppIcon name="agents" className="h-5 w-5 text-fg-muted" />
                             </div>
                             <div className="min-w-0">
                               <div className="text-sm font-semibold" style={{ color: displayColor }}>
                                 {displayName}
                               </div>
-                              <div className="mt-1 text-xs text-surface-500">{displayPersonality}</div>
-                              <p className="mt-2 text-xs italic text-surface-300">"{displayQuote}"</p>
+                              <div className="mt-1 text-xs text-fg-muted">{displayPersonality}</div>
+                              <p className="mt-2 text-xs italic text-fg-secondary">"{displayQuote}"</p>
                             </div>
                           </div>
                         </div>
@@ -486,22 +487,20 @@ export default function Upload() {
                     })()}
 
                     <div className="mt-5">
-                      <label className="text-[11px] uppercase tracking-[0.22em] text-surface-500">
+                      <label className="text-2xs uppercase tracking-[0.22em] text-fg-muted">
                         {S.upload.domainConfirm}
                       </label>
-                      <select
+                      <Select
                         value={domainOverride}
-                        onChange={(e) => setDomainOverride(e.target.value)}
-                        className="input mt-2"
-                      >
-                        {getAllAgents().map((agent) => (
-                          <option key={agent.domain} value={agent.domain}>
-                            {agent.domain_display}
-                            {agent.domain === uploadResult.domain ? ` ${S.upload.detected}` : ''}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="mt-2 text-xs leading-6 text-surface-500">
+                        onValueChange={setDomainOverride}
+                        className="mt-2"
+                        aria-label={S.upload.domainConfirm}
+                        options={getAllAgents().map((agent) => ({
+                          value: agent.domain,
+                          label: `${agent.domain_display}${agent.domain === uploadResult.domain ? ` ${S.upload.detected}` : ''}`,
+                        }))}
+                      />
+                      <p className="mt-2 text-xs leading-6 text-fg-muted">
                         {S.upload.domainConfirmHelp}
                       </p>
                     </div>
@@ -563,7 +562,7 @@ export default function Upload() {
                   />
                 ))
               ) : (
-                <div className="rounded-[18px] bg-surface-950/30 px-4 py-5 text-sm leading-6 text-surface-500 [.light_&]:bg-white/72 [.light_&]:text-surface-600">
+                <div className="rounded-surface bg-surface/30 px-4 py-5 text-sm leading-6 text-fg-muted">
                   {S.upload.recentAnalysesEmpty}
                 </div>
               )}
@@ -584,7 +583,7 @@ export default function Upload() {
                   />
                 ))
               ) : (
-                <div className="rounded-[18px] bg-surface-950/30 px-4 py-5 text-sm leading-6 text-surface-500 [.light_&]:bg-white/72 [.light_&]:text-surface-600">
+                <div className="rounded-surface bg-surface/30 px-4 py-5 text-sm leading-6 text-fg-muted">
                   {S.upload.recentLibraryEmpty}
                 </div>
               )}
@@ -597,10 +596,10 @@ export default function Upload() {
               {systemSummary.map((item) => (
                 <div
                   key={item.label}
-                  className="flex items-center justify-between gap-4 rounded-[18px] bg-surface-950/30 px-4 py-3 [.light_&]:bg-white/72"
+                  className="flex items-center justify-between gap-4 rounded-surface bg-surface/30 px-4 py-3"
                 >
-                  <span className="text-[11px] uppercase tracking-[0.16em] text-surface-500 [.light_&]:text-surface-600">{item.label}</span>
-                  <span className="max-w-[65%] truncate text-right text-[15px] text-surface-100 [.light_&]:text-surface-900">{item.value}</span>
+                  <span className="text-2xs uppercase tracking-[0.16em] text-fg-muted">{item.label}</span>
+                  <span className="max-w-[65%] truncate text-right text-base text-fg">{item.value}</span>
                 </div>
               ))}
             </div>
