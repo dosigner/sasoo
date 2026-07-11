@@ -20,6 +20,8 @@ _SYSTEM_INSTRUCTION_KO = (
 _RETRY_DELAYS = [2, 8]  # 3회 시도, 지수 백오프
 _FILE_TTL = timedelta(hours=47)  # Files API 48h에서 1h 여유
 
+_upload_locks: dict[int, asyncio.Lock] = {}
+
 
 def _get_client():
     from google import genai
@@ -39,6 +41,9 @@ async def call_interaction(
     response_schema: dict | None = None,
     store: bool = True,
 ) -> dict:
+    if not store and previous_interaction_id:
+        raise ValueError("previous_interaction_id requires store=True")
+
     def _sync_call():
         client = _get_client()
         kwargs: dict = {
@@ -84,30 +89,51 @@ async def call_interaction(
     return await asyncio.get_event_loop().run_in_executor(None, _sync_call)
 
 
-async def upload_pdf_for_paper(paper_id: int, pdf_path: str) -> str:
-    """PDF를 Files API에 업로드하고 papers 테이블에 uri/만료를 캐시한다."""
-    from models.database import fetch_one, execute_update
+async def _cached_pdf_uri(paper_id: int) -> str | None:
+    """캐시된 pdf_file_uri가 아직 유효하면 반환, 아니면 None."""
+    from models.database import fetch_one
 
     row = await fetch_one(
         "SELECT pdf_file_uri, pdf_file_expires_at FROM papers WHERE id = ?", (paper_id,)
     )
-    now = datetime.now(timezone.utc)
     if row and row["pdf_file_uri"] and row["pdf_file_expires_at"]:
+        now = datetime.now(timezone.utc)
         try:
             expires = datetime.fromisoformat(row["pdf_file_expires_at"])
             if expires > now:
                 return row["pdf_file_uri"]
-        except ValueError:
+        except (ValueError, TypeError):
             pass
+    return None
 
-    def _sync_upload():
-        client = _get_client()
-        uploaded = client.files.upload(file=pdf_path)
-        return uploaded.uri
 
-    uri = await asyncio.get_event_loop().run_in_executor(None, _sync_upload)
-    await execute_update(
-        "UPDATE papers SET pdf_file_uri = ?, pdf_file_expires_at = ? WHERE id = ?",
-        (uri, (now + _FILE_TTL).isoformat(), paper_id),
-    )
-    return uri
+async def upload_pdf_for_paper(paper_id: int, pdf_path: str) -> str:
+    """PDF를 Files API에 업로드하고 papers 테이블에 uri/만료를 캐시한다.
+
+    같은 paper_id에 대한 동시 호출은 paper별 락으로 직렬화해 중복 업로드를 막는다.
+    """
+    from models.database import execute_update
+
+    cached = await _cached_pdf_uri(paper_id)
+    if cached:
+        return cached
+
+    lock = _upload_locks.setdefault(paper_id, asyncio.Lock())
+    async with lock:
+        # double-checked locking: 락 대기 중 다른 호출이 이미 업로드했을 수 있음
+        cached = await _cached_pdf_uri(paper_id)
+        if cached:
+            return cached
+
+        def _sync_upload():
+            client = _get_client()
+            uploaded = client.files.upload(file=pdf_path)
+            return uploaded.uri
+
+        uri = await asyncio.get_event_loop().run_in_executor(None, _sync_upload)
+        now = datetime.now(timezone.utc)
+        await execute_update(
+            "UPDATE papers SET pdf_file_uri = ?, pdf_file_expires_at = ? WHERE id = ?",
+            (uri, (now + _FILE_TTL).isoformat(), paper_id),
+        )
+        return uri
