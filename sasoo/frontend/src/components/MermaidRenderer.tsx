@@ -31,28 +31,28 @@ function initMermaid(isDark = true) {
     startOnLoad: false,
     theme,
     themeVariables: isDark ? {
-      primaryColor: '#0071e3',
-      primaryTextColor: '#e8e8ed',
-      primaryBorderColor: '#0a84ff',
-      lineColor: '#636366',
-      secondaryColor: '#1c1c1e',
-      tertiaryColor: '#3a3a3c',
-      noteTextColor: '#e8e8ed',
-      noteBkgColor: '#1c1c1e',
-      noteBorderColor: '#48484a',
+      primaryColor: '#5e6ad2',
+      primaryTextColor: '#f4f4f5',
+      primaryBorderColor: '#6e79dd',
+      lineColor: '#70707a',
+      secondaryColor: '#17171a',
+      tertiaryColor: '#202024',
+      noteTextColor: '#f4f4f5',
+      noteBkgColor: '#17171a',
+      noteBorderColor: '#2a2a30',
       fontFamily:
         '"SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif',
       fontSize: '12px',
     } : {
-      primaryColor: '#007aff',
-      primaryTextColor: '#1d1d1f',
-      primaryBorderColor: '#0071e3',
-      lineColor: '#aeaeb2',
-      secondaryColor: '#f5f5f7',
-      tertiaryColor: '#e8e8ed',
-      noteTextColor: '#1d1d1f',
-      noteBkgColor: '#f5f5f7',
-      noteBorderColor: '#d1d1d6',
+      primaryColor: '#5e6ad2',
+      primaryTextColor: '#18181b',
+      primaryBorderColor: '#4f5abf',
+      lineColor: '#8e8e96',
+      secondaryColor: '#ffffff',
+      tertiaryColor: '#f0f0f2',
+      noteTextColor: '#18181b',
+      noteBkgColor: '#ffffff',
+      noteBorderColor: '#e4e4e7',
       fontFamily:
         '"SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif',
       fontSize: '12px',
@@ -110,10 +110,10 @@ function MermaidSkeleton() {
   return (
     <div className="card animate-pulse">
       <div className="flex items-center gap-2 mb-4">
-        <div className="h-4 w-4 bg-surface-700 rounded" />
-        <div className="h-4 bg-surface-700 rounded w-36" />
+        <div className="h-4 w-4 bg-border rounded" />
+        <div className="h-4 bg-border rounded w-36" />
       </div>
-      <div className="aspect-[16/9] bg-surface-700 rounded-lg" />
+      <div className="aspect-[16/9] bg-border rounded-lg" />
     </div>
   );
 }
@@ -243,13 +243,13 @@ export default function MermaidRenderer({
   if (!diagram) {
     return (
       <div>
-        <h3 className="text-sm font-semibold text-surface-200 mb-3 flex items-center gap-2">
-          <GitBranch className="w-4 h-4 text-primary-400" />
+        <h3 className="text-sm font-semibold text-fg mb-3 flex items-center gap-2">
+          <GitBranch className="w-4 h-4 text-accent" />
           {S.mermaid.title}
         </h3>
         <div className="card flex flex-col items-center justify-center py-8 text-center">
-          <GitBranch className="w-8 h-8 text-surface-600 mb-2" />
-          <p className="text-sm text-surface-400">
+          <GitBranch className="w-8 h-8 text-fg-muted mb-2" />
+          <p className="text-sm text-fg-muted">
             {S.mermaid.notGenerated}
           </p>
         </div>
@@ -261,15 +261,15 @@ export default function MermaidRenderer({
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-surface-200 flex items-center gap-2">
-          <GitBranch className="w-4 h-4 text-primary-400" />
+        <h3 className="text-sm font-semibold text-fg flex items-center gap-2">
+          <GitBranch className="w-4 h-4 text-accent" />
           {S.mermaid.title}
         </h3>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setShowCode(!showCode)}
             className={`btn-ghost text-2xs px-2 py-1 ${
-              showCode ? 'bg-surface-700 text-primary-400' : ''
+              showCode ? 'bg-surface text-accent' : ''
             }`}
             title={showCode ? S.mermaid.preview : S.mermaid.code}
           >
@@ -291,7 +291,7 @@ export default function MermaidRenderer({
             title={S.mermaid.copy}
           >
             {copied ? (
-              <Check className="w-3 h-3 text-emerald-400" />
+              <Check className="w-3 h-3 text-success" />
             ) : (
               <Copy className="w-3 h-3" />
             )}
@@ -301,7 +301,7 @@ export default function MermaidRenderer({
 
       {/* Description */}
       {diagram.description && (
-        <p className="text-xs text-surface-400 mb-3 leading-relaxed">
+        <p className="text-xs text-fg-muted mb-3 leading-relaxed">
           {diagram.description}
         </p>
       )}
@@ -310,7 +310,7 @@ export default function MermaidRenderer({
       {showCode && (
         <div className="mb-3 fade-in-up">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-2xs text-surface-500 uppercase tracking-wider">
+            <span className="text-2xs text-fg-muted uppercase tracking-wider">
               {S.mermaid.mermaidCode}
             </span>
             <div className="flex items-center gap-1">
@@ -344,17 +344,17 @@ export default function MermaidRenderer({
       <div className="card p-0 overflow-hidden">
         {isRendering && (
           <div className="flex items-center justify-center py-12">
-            <RefreshCw className="w-5 h-5 text-primary-400 animate-spin" />
+            <RefreshCw className="w-5 h-5 text-accent animate-spin" />
           </div>
         )}
 
         {renderError && !isRendering && (
           <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
-            <AlertCircle className="w-6 h-6 text-red-400 mb-2" />
-            <p className="text-sm text-red-300 mb-1">
+            <AlertCircle className="w-6 h-6 text-danger mb-2" />
+            <p className="text-sm text-danger mb-1">
               {S.mermaid.renderFailed}
             </p>
-            <p className="text-2xs text-surface-500 max-w-md">
+            <p className="text-2xs text-fg-muted max-w-md">
               {renderError}
             </p>
           </div>
@@ -363,7 +363,7 @@ export default function MermaidRenderer({
         {svgContent && !isRendering && !renderError && (
           <div
             ref={containerRef}
-            className="p-4 bg-surface-800/50 overflow-x-auto [&>svg]:mx-auto [&>svg]:max-w-full fade-in-up"
+            className="p-4 bg-surface/50 overflow-x-auto [&>svg]:mx-auto [&>svg]:max-w-full fade-in-up"
             dangerouslySetInnerHTML={{ __html: svgContent }}
           />
         )}

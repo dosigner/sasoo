@@ -12,7 +12,7 @@ import { useToast } from '@/components/Toast';
 import { S } from '@/lib/strings';
 import { buildChatStarterPrompts, buildWorkbenchStatusSummary } from '@/lib/workbenchSummaries';
 import WorkbenchHeader from '@/components/workbench/WorkbenchHeader';
-import { ContentState, Modal } from '@/components/ui';
+import { ContentState, Modal, Select } from '@/components/ui';
 import { useWorkbenchLayout } from '@/hooks/useWorkbenchLayout';
 import { useWorkbenchAnalysisControls } from '@/hooks/useWorkbenchAnalysisControls';
 import { getAgentMeta } from '@/lib/agents';
@@ -209,30 +209,26 @@ export default function Workbench() {
   return (
     <div className="flex h-full flex-col">
       <Modal open={showAnalysisConfirm} onClose={() => setShowAnalysisConfirm(false)}>
-        <h3 className="mb-2 text-lg font-semibold text-surface-100">분석을 시작할까요?</h3>
-        <p className="mb-4 text-sm text-surface-400">
+        <h3 className="mb-2 text-lg font-semibold text-fg">분석을 시작할까요?</h3>
+        <p className="mb-4 text-sm text-fg-muted">
           논문 분석에 Gemini Pro + Claude Sonnet API를 사용합니다.
-          예상 비용: <span className="font-medium text-primary-400">$0.5 ~ $2.0</span> / 논문
+          예상 비용: <span className="font-medium text-accent">$0.5 ~ $2.0</span> / 논문
         </p>
         <div className="mb-4">
-          <label className="mb-1.5 block text-xs text-surface-400">
+          <label className="mb-1.5 block text-xs text-fg-muted">
             {S.workbench.paperbananaProfile}
           </label>
-          <select
+          <Select
             value={analysisProfileSelection}
-            onChange={(e) => setAnalysisProfileSelection(e.target.value as AnalysisProfileSelection)}
-            className="input w-full"
-          >
-            <option value="default">
-              {S.workbench.useDefaultProfile(getProfileLabel(defaultPaperBananaProfile))}
-            </option>
-            {ANALYSIS_PROFILE_OPTIONS.map((profile) => (
-              <option key={profile} value={profile}>
-                {getProfileLabel(profile)}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-2xs text-surface-500">
+            onValueChange={(value) => setAnalysisProfileSelection(value as AnalysisProfileSelection)}
+            className="w-full"
+            aria-label={S.workbench.paperbananaProfile}
+            options={[
+              { value: 'default', label: S.workbench.useDefaultProfile(getProfileLabel(defaultPaperBananaProfile)) },
+              ...ANALYSIS_PROFILE_OPTIONS.map((profile) => ({ value: profile, label: getProfileLabel(profile) })),
+            ]}
+          />
+          <p className="mt-1 text-2xs text-fg-muted">
             {S.workbench.paperbananaProfileHelp}
           </p>
         </div>
@@ -316,7 +312,7 @@ export default function Workbench() {
         )}
 
         <div
-          className="flex h-full overflow-hidden bg-surface-900"
+          className="flex h-full overflow-hidden bg-bg"
           style={{ width: pdfCollapsed ? '100%' : `${100 - splitPosition}%` }}
         >
           <div className="min-w-0 flex-1">

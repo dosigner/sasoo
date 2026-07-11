@@ -43,13 +43,13 @@ function qualityBadge(quality: string | null): {
 } {
   switch (quality) {
     case 'high':
-      return { label: S.figures.qualityHigh, classes: 'bg-emerald-500/10 text-emerald-400' };
+      return { label: S.figures.qualityHigh, classes: 'bg-success/10 text-success' };
     case 'medium':
-      return { label: S.figures.qualityMedium, classes: 'bg-amber-500/10 text-amber-400' };
+      return { label: S.figures.qualityMedium, classes: 'bg-warning/10 text-warning' };
     case 'low':
-      return { label: S.figures.qualityLow, classes: 'bg-red-500/10 text-red-400' };
+      return { label: S.figures.qualityLow, classes: 'bg-danger/10 text-danger' };
     default:
-      return { label: S.figures.qualityUnknown, classes: 'bg-surface-500/10 text-surface-400' };
+      return { label: S.figures.qualityUnknown, classes: 'bg-fg-muted/10 text-fg-muted' };
   }
 }
 
@@ -66,13 +66,13 @@ function buildStatusBadge(figure: Figure): { label: string; classes: string } {
   if (figure.extraction_status === 'uncertain') {
     return {
       label: S.figures.statusUncertain,
-      classes: 'bg-amber-500/10 text-amber-300 border border-amber-500/20',
+      classes: 'bg-warning/10 text-warning border border-warning/20',
     };
   }
 
   return {
     label: S.figures.statusReady,
-    classes: 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20',
+    classes: 'bg-success/10 text-success border border-success/20',
   };
 }
 
@@ -110,10 +110,10 @@ function buildFigureGroups(figures: Figure[]): FigureGroup[] {
 function FigureSkeleton() {
   return (
     <div className="card p-0 overflow-hidden animate-pulse">
-      <div className="aspect-[4/3] bg-surface-700" />
+      <div className="aspect-[4/3] bg-border" />
       <div className="p-3 space-y-2">
-        <div className="h-3 bg-surface-700 rounded w-3/4" />
-        <div className="h-3 bg-surface-700 rounded w-1/2" />
+        <div className="h-3 bg-border rounded w-3/4" />
+        <div className="h-3 bg-border rounded w-1/2" />
       </div>
     </div>
   );
@@ -123,30 +123,30 @@ function ExplanationSkeleton() {
   return (
     <div className="space-y-4 animate-pulse p-6">
       <div className="flex items-center gap-2 mb-6">
-        <div className="w-5 h-5 bg-primary-500/20 rounded" />
-        <div className="h-5 bg-surface-700 rounded w-48" />
+        <div className="w-5 h-5 bg-accent/20 rounded" />
+        <div className="h-5 bg-border rounded w-48" />
       </div>
       <div className="space-y-3">
-        <div className="h-4 bg-surface-700 rounded w-full" />
-        <div className="h-4 bg-surface-700 rounded w-5/6" />
-        <div className="h-4 bg-surface-700 rounded w-4/5" />
+        <div className="h-4 bg-border rounded w-full" />
+        <div className="h-4 bg-border rounded w-5/6" />
+        <div className="h-4 bg-border rounded w-4/5" />
       </div>
-      <div className="h-5 bg-surface-700 rounded w-36 mt-6" />
+      <div className="h-5 bg-border rounded w-36 mt-6" />
       <div className="space-y-3">
-        <div className="h-4 bg-surface-700 rounded w-full" />
-        <div className="h-4 bg-surface-700 rounded w-11/12" />
-        <div className="h-4 bg-surface-700 rounded w-4/5" />
-        <div className="h-4 bg-surface-700 rounded w-full" />
-        <div className="h-4 bg-surface-700 rounded w-3/4" />
+        <div className="h-4 bg-border rounded w-full" />
+        <div className="h-4 bg-border rounded w-11/12" />
+        <div className="h-4 bg-border rounded w-4/5" />
+        <div className="h-4 bg-border rounded w-full" />
+        <div className="h-4 bg-border rounded w-3/4" />
       </div>
-      <div className="h-5 bg-surface-700 rounded w-44 mt-6" />
+      <div className="h-5 bg-border rounded w-44 mt-6" />
       <div className="space-y-3">
-        <div className="h-4 bg-surface-700 rounded w-full" />
-        <div className="h-4 bg-surface-700 rounded w-5/6" />
-        <div className="h-4 bg-surface-700 rounded w-full" />
-        <div className="h-4 bg-surface-700 rounded w-2/3" />
+        <div className="h-4 bg-border rounded w-full" />
+        <div className="h-4 bg-border rounded w-5/6" />
+        <div className="h-4 bg-border rounded w-full" />
+        <div className="h-4 bg-border rounded w-2/3" />
       </div>
-      <div className="flex items-center gap-2 mt-8 text-surface-500">
+      <div className="flex items-center gap-2 mt-8 text-fg-muted">
         <Loader2 className="w-4 h-4 animate-spin" />
         <span className="text-xs">{S.figures.explanationLoading}</span>
       </div>
@@ -269,22 +269,22 @@ function Lightbox({
         role="dialog"
         aria-modal="true"
         aria-label={`그림 상세 보기: ${figure.figure_num || 'Figure'}`}
-        className={`figure-modal relative z-10 flex w-full max-w-[90vw] h-[85vh] bg-surface-900 border border-surface-700/60 rounded-2xl shadow-2xl overflow-hidden ${
+        className={`figure-modal relative z-10 flex w-full max-w-[90vw] h-[85vh] bg-surface border border-border/60 rounded-2xl shadow-2xl overflow-hidden ${
           isClosing ? 'animate-modal-out' : 'animate-modal-in'
         }`}
       >
         {/* Header bar */}
-        <div className="figure-modal-header absolute top-0 left-0 right-0 h-12 flex items-center justify-between px-4 bg-surface-900/95 backdrop-blur border-b border-surface-700/50 z-10">
+        <div className="figure-modal-header absolute top-0 left-0 right-0 h-12 flex items-center justify-between px-4 bg-surface/95 backdrop-blur border-b border-border/50 z-10">
           <div className="flex items-center gap-3">
-            <h4 className="text-sm font-semibold text-surface-200 flex items-center gap-2">
-              <AppIcon name="figures" className="w-4 h-4 text-primary-400" />
+            <h4 className="text-sm font-semibold text-fg flex items-center gap-2">
+              <AppIcon name="figures" className="w-4 h-4 text-accent" />
               {figure.figure_num || 'Figure'}
             </h4>
             <span className={`badge text-2xs ${badge.classes}`}>
               {badge.label}
             </span>
             {figure.caption && (
-              <span className="text-2xs text-surface-500 truncate max-w-[300px] hidden lg:inline">
+              <span className="text-2xs text-fg-muted truncate max-w-[300px] hidden lg:inline">
                 {figure.caption}
               </span>
             )}
@@ -295,18 +295,18 @@ function Lightbox({
               <button
                 onClick={onPrev}
                 disabled={currentIndex <= 0}
-                className="p-1.5 rounded-md text-surface-400 hover:text-white hover:bg-surface-700 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                className="p-1.5 rounded-md text-fg-muted hover:text-fg hover:bg-surface-hover transition-colors disabled:opacity-30 disabled:pointer-events-none"
                 aria-label="이전 그림"
               >
                 <AppIcon name="chevron-left" className="w-4 h-4" />
               </button>
-              <span className="text-2xs text-surface-500 tabular-nums min-w-[36px] text-center">
+              <span className="text-2xs text-fg-muted tabular-nums min-w-[36px] text-center">
                 {currentIndex + 1} / {figures.length}
               </span>
               <button
                 onClick={onNext}
                 disabled={currentIndex >= figures.length - 1}
-                className="p-1.5 rounded-md text-surface-400 hover:text-white hover:bg-surface-700 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                className="p-1.5 rounded-md text-fg-muted hover:text-fg hover:bg-surface-hover transition-colors disabled:opacity-30 disabled:pointer-events-none"
                 aria-label="다음 그림"
               >
                 <AppIcon name="chevron-right" className="w-4 h-4" />
@@ -315,7 +315,7 @@ function Lightbox({
             {/* Close */}
             <button
               onClick={onClose}
-              className="p-1.5 rounded-md text-surface-400 hover:text-white hover:bg-surface-700 transition-colors"
+              className="p-1.5 rounded-md text-fg-muted hover:text-fg hover:bg-surface-hover transition-colors"
               aria-label="닫기"
             >
               <AppIcon name="close" className="w-4 h-4" />
@@ -326,7 +326,7 @@ function Lightbox({
         {/* Body – two panels below header */}
         <div className="flex w-full h-full pt-12 min-h-0">
           {/* LEFT: Image */}
-          <div className="figure-modal-image w-[45%] flex-shrink-0 flex flex-col items-center justify-center p-6 bg-surface-950/50 min-w-0">
+          <div className="figure-modal-image w-[45%] flex-shrink-0 flex flex-col items-center justify-center p-6 bg-bg/50 min-w-0">
             <div className="flex-1 flex items-center justify-center w-full overflow-hidden">
               <img
                 src={getFigureImageUrl(figure)}
@@ -335,14 +335,14 @@ function Lightbox({
               />
             </div>
             {figure.caption && (
-              <p className="mt-3 text-xs text-surface-400 leading-relaxed text-center max-w-md line-clamp-3 lg:line-clamp-none">
+              <p className="mt-3 text-xs text-fg-muted leading-relaxed text-center max-w-md line-clamp-3 lg:line-clamp-none">
                 {figure.caption}
               </p>
             )}
           </div>
 
           {/* Divider */}
-          <div className="figure-modal-divider w-px bg-surface-700/40 flex-shrink-0" />
+          <div className="figure-modal-divider w-px bg-border/40 flex-shrink-0" />
 
           {/* RIGHT: Explanation */}
           <div
@@ -353,11 +353,11 @@ function Lightbox({
               <ExplanationSkeleton />
             ) : error ? (
               <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
-                  <AppIcon name="error" className="w-6 h-6 text-red-400" />
+                <div className="w-12 h-12 rounded-full bg-danger/10 flex items-center justify-center mb-4">
+                  <AppIcon name="error" className="w-6 h-6 text-danger" />
                 </div>
-                <p className="text-sm text-surface-300 mb-2">{S.figures.explanationFailed}</p>
-                <p className="text-xs text-surface-500 mb-4">{error}</p>
+                <p className="text-sm text-fg-secondary mb-2">{S.figures.explanationFailed}</p>
+                <p className="text-xs text-fg-muted mb-4">{error}</p>
                 <button
                   onClick={() => {
                     if (figure.id) {
@@ -388,13 +388,13 @@ function Lightbox({
               </div>
             ) : cached ? (
               <div className="p-6">
-                <div className="flex items-center gap-2 mb-5 pb-3 border-b border-surface-700/50">
-                  <AppIcon name="sparkles" className="w-4 h-4 text-primary-400" />
-                  <h3 className="text-sm font-semibold text-surface-200">
+                <div className="flex items-center gap-2 mb-5 pb-3 border-b border-border/50">
+                  <AppIcon name="sparkles" className="w-4 h-4 text-accent" />
+                  <h3 className="text-sm font-semibold text-fg">
                     {S.figures.expertExplanation}
                   </h3>
                   {cached.modelUsed && cached.modelUsed !== 'cached' && (
-                    <span className="badge text-2xs bg-primary-500/10 text-primary-400 ml-auto">
+                    <span className="badge text-2xs bg-accent/10 text-accent ml-auto">
                       {cached.modelUsed}
                     </span>
                   )}
@@ -407,8 +407,8 @@ function Lightbox({
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                <AppIcon name="library" className="w-10 h-10 text-surface-600 mb-3" />
-                <p className="text-sm text-surface-400">
+                <AppIcon name="library" className="w-10 h-10 text-fg-muted mb-3" />
+                <p className="text-sm text-fg-muted">
                   {S.figures.clickForExplanation}
                 </p>
               </div>
@@ -457,7 +457,7 @@ function FigureCard({
       }}
       aria-label={S.figures.viewDetail(figure.figure_num || 'Figure')}
     >
-      <div className="relative aspect-[4/3] overflow-hidden bg-surface-700">
+      <div className="relative aspect-[4/3] overflow-hidden bg-surface">
         <img
           src={getFigureImageUrl(figure)}
           alt={figure.caption || `Figure ${figure.figure_num}`}
@@ -480,22 +480,22 @@ function FigureCard({
       <div className="space-y-3 p-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h4 className="text-xs font-semibold text-surface-200">
+            <h4 className="text-xs font-semibold text-fg">
               {figure.figure_num || `Figure ${index + 1}`}
             </h4>
             {figure.is_composite && (
-              <span className="status-pill border-primary-500/20 bg-primary-500/10 text-primary-300">
+              <span className="status-pill border-accent/20 bg-accent/10 text-accent">
                 {S.figures.composite}
               </span>
             )}
             {childCount > 0 && (
-              <span className="status-pill border-surface-700/50 bg-surface-800/80 text-surface-300">
+              <span className="status-pill border-border/50 bg-surface/80 text-fg-secondary">
                 {S.figures.childGroup(childCount)}
               </span>
             )}
           </div>
           {figure.caption && (
-            <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-surface-400">
+            <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-fg-muted">
               {figure.caption}
             </p>
           )}
@@ -503,17 +503,17 @@ function FigureCard({
 
         <div className="flex flex-wrap gap-2">
           {confidenceLabel && (
-            <span className="status-pill border-primary-500/20 bg-primary-500/10 text-primary-300">
+            <span className="status-pill border-accent/20 bg-accent/10 text-accent">
               {S.figures.confidence(confidenceLabel)}
             </span>
           )}
           {figure.classifier_model && (
-            <span className="status-pill border-surface-700/50 bg-surface-800/80 text-surface-300">
+            <span className="status-pill border-border/50 bg-surface/80 text-fg-secondary">
               {S.figures.provenanceLabel(figure.classifier_model)}
             </span>
           )}
           {figure.resolver_version && (
-            <span className="status-pill border-surface-700/50 bg-surface-800/80 text-surface-400">
+            <span className="status-pill border-border/50 bg-surface/80 text-fg-muted">
               {figure.resolver_version}
             </span>
           )}
@@ -618,8 +618,8 @@ export default function FigureGallery({
   if (loading) {
     return (
       <div>
-        <h3 className="text-sm font-semibold text-surface-200 mb-3 flex items-center gap-2">
-          <AppIcon name="figures" className="w-4 h-4 text-primary-400" />
+        <h3 className="text-sm font-semibold text-fg mb-3 flex items-center gap-2">
+          <AppIcon name="figures" className="w-4 h-4 text-accent" />
           {S.figures.title}
         </h3>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
@@ -634,21 +634,21 @@ export default function FigureGallery({
   if (figures.length === 0) {
     return (
       <div>
-        <h3 className="text-sm font-semibold text-surface-200 mb-3 flex items-center gap-2">
-          <AppIcon name="figures" className="w-4 h-4 text-primary-400" />
+        <h3 className="text-sm font-semibold text-fg mb-3 flex items-center gap-2">
+          <AppIcon name="figures" className="w-4 h-4 text-accent" />
           {S.figures.title}
         </h3>
         <div className="card flex flex-col items-center justify-center py-8 text-center">
           {isPreparingArtifacts ? (
-            <Loader2 className="w-8 h-8 text-primary-400 mb-2 animate-spin" />
+            <Loader2 className="w-8 h-8 text-accent mb-2 animate-spin" />
           ) : hasArtifactError ? (
-            <AppIcon name="error" className="w-8 h-8 text-red-400 mb-2" />
+            <AppIcon name="error" className="w-8 h-8 text-danger mb-2" />
           ) : isPartialArtifacts ? (
-            <AppIcon name="warning" className="w-8 h-8 text-amber-400 mb-2" />
+            <AppIcon name="warning" className="w-8 h-8 text-warning mb-2" />
           ) : (
-            <AppIcon name="figures" className="w-8 h-8 text-surface-600 mb-2" />
+            <AppIcon name="figures" className="w-8 h-8 text-fg-muted mb-2" />
           )}
-          <p className="text-sm text-surface-400">
+          <p className="text-sm text-fg-muted">
             {isPreparingArtifacts
               ? S.figures.preparing
               : hasArtifactError
@@ -664,8 +664,8 @@ export default function FigureGallery({
 
   return (
     <div>
-      <h3 className="text-sm font-semibold text-surface-200 mb-3 flex items-center gap-2">
-        <AppIcon name="figures" className="w-4 h-4 text-primary-400" />
+      <h3 className="text-sm font-semibold text-fg mb-3 flex items-center gap-2">
+        <AppIcon name="figures" className="w-4 h-4 text-accent" />
         {S.figures.title}
         <span className="badge-primary text-2xs ml-1">
           {figures.length}
@@ -673,20 +673,20 @@ export default function FigureGallery({
       </h3>
 
       {hasArtifactError ? (
-        <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/8 px-3 py-2 text-xs text-red-200">
-          <AppIcon name="error" className="w-3.5 h-3.5 text-red-300" />
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-danger/20 bg-danger/8 px-3 py-2 text-xs text-danger">
+          <AppIcon name="error" className="w-3.5 h-3.5 text-danger" />
           <span>{effectiveError}</span>
         </div>
       ) : isPreparingArtifacts && (
-        <div className="mb-3 flex items-center gap-2 rounded-lg border border-primary-500/20 bg-primary-500/8 px-3 py-2 text-xs text-primary-200">
-          <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-400" />
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-accent/20 bg-accent/8 px-3 py-2 text-xs text-accent">
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-accent" />
           <span>{S.figures.syncing}</span>
         </div>
       )}
 
       {!hasArtifactError && !isPreparingArtifacts && isPartialArtifacts && (
-        <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-          <AppIcon name="warning" className="w-3.5 h-3.5 text-amber-300" />
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-warning/20 bg-warning/10 px-3 py-2 text-xs text-warning">
+          <AppIcon name="warning" className="w-3.5 h-3.5 text-warning" />
           <span>{S.figures.partialWarning}</span>
         </div>
       )}

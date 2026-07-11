@@ -116,26 +116,26 @@ function getPhaseStatusInfo(phaseStatus: PhaseStatusValue): {
       return {
         icon: <Check className="w-4 h-4" />,
         label: S.status.complete,
-        classes: 'text-emerald-400 bg-emerald-500/10',
+        classes: 'text-success bg-success/10',
       };
     case 'running':
       return {
         icon: <Loader2 className="w-4 h-4 animate-spin" />,
         label: S.status.running,
-        classes: 'text-primary-400 bg-primary-500/10',
+        classes: 'text-accent bg-accent/10',
       };
     case 'error':
       return {
         icon: <AlertCircle className="w-4 h-4" />,
         label: S.status.error,
-        classes: 'text-red-400 bg-red-500/8 border border-red-500/10',
+        classes: 'text-danger bg-danger/8 border border-danger/10',
       };
     case 'pending':
     default:
       return {
         icon: <Circle className="w-4 h-4" />,
         label: S.status.pending,
-        classes: 'text-surface-500 bg-surface-800/80 border border-surface-700/45',
+        classes: 'text-fg-muted bg-surface/80 border border-border/45',
       };
   }
 }
@@ -205,28 +205,28 @@ function PhaseSection({
   const Icon = meta.icon;
   const toneClasses =
     tone === 'primary'
-      ? 'text-surface-100'
+      ? 'text-fg'
       : tone === 'practical'
-        ? 'text-surface-200'
-        : 'text-surface-300';
+        ? 'text-fg'
+        : 'text-fg-secondary';
 
   return (
     <div
       className={`phase-section border-b last:border-b-0 ${
         phaseStatus === 'running'
-          ? 'border-primary-500/16'
+          ? 'border-accent/16'
           : phaseStatus === 'completed'
-            ? 'border-surface-700/38'
+            ? 'border-border/38'
             : phaseStatus === 'error'
-              ? 'border-red-500/16'
-              : 'border-surface-700/32'
+              ? 'border-danger/16'
+              : 'border-border/32'
       }`}
     >
       <button
         onClick={toggleExpanded}
         className={`w-full flex items-center gap-3 px-0 py-3 text-left transition-colors ${
           hasContent
-            ? 'hover:text-surface-100 cursor-pointer'
+            ? 'hover:text-fg cursor-pointer'
             : 'cursor-default opacity-60'
         }`}
         disabled={!hasContent}
@@ -235,19 +235,19 @@ function PhaseSection({
       >
         <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${
           isActive
-            ? 'border-primary-500/18 bg-primary-500/8'
+            ? 'border-accent/18 bg-accent/8'
             : phaseStatus === 'error'
-              ? 'border-red-500/18 bg-red-500/8'
-              : 'border-surface-700/45 bg-surface-900/75'
+              ? 'border-danger/18 bg-danger/8'
+              : 'border-border/45 bg-bg/75'
         }`}>
-          <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-primary-400' : phaseStatus === 'error' ? 'text-red-400' : 'text-surface-500'}`} />
+          <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-accent' : phaseStatus === 'error' ? 'text-danger' : 'text-fg-muted'}`} />
         </div>
 
         <div className="flex-1 min-w-0">
           <div className={`text-sm font-medium ${toneClasses}`}>
             {meta.label}
           </div>
-          <div className="mt-1 text-2xs text-surface-500">
+          <div className="mt-1 text-2xs text-fg-muted">
             {expanded ? meta.description : statusInfo.label}
           </div>
           {!expanded && collapsedMeta.length > 0 && (
@@ -277,7 +277,7 @@ function PhaseSection({
             </div>
           )}
           {!expanded && summaryLine && (
-            <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-surface-400">
+            <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-fg-muted">
               {summaryLine}
             </div>
           )}
@@ -288,7 +288,7 @@ function PhaseSection({
           <span className="ml-1 hidden sm:inline">{statusInfo.label}</span>
         </span>
 
-        <span className="text-surface-500 shrink-0">
+        <span className="text-fg-muted shrink-0">
           {expanded ? (
             <AppIcon name="chevron-down" className="w-4 h-4" />
           ) : (
@@ -301,8 +301,8 @@ function PhaseSection({
         <div className="pb-5">
           {phaseStatus === 'running' && !content && (
             <div className="flex items-center gap-2 py-4" role="status" aria-busy="true">
-              <Loader2 className="w-4 h-4 text-primary-400 animate-spin" />
-              <span className="text-xs text-surface-400">
+              <Loader2 className="w-4 h-4 text-accent animate-spin" />
+              <span className="text-xs text-fg-muted">
                 {S.analysis.analyzingDots}
               </span>
             </div>
@@ -310,8 +310,8 @@ function PhaseSection({
 
           {phaseStatus === 'completed' && !content && !children && (
             <div className="flex items-center gap-2 py-4" role="status" aria-busy="true">
-              <Loader2 className="w-4 h-4 text-surface-500 animate-spin" />
-              <span className="text-xs text-surface-400">
+              <Loader2 className="w-4 h-4 text-fg-muted animate-spin" />
+              <span className="text-xs text-fg-muted">
                 {S.analysis.loadingResults}
               </span>
             </div>
@@ -674,10 +674,10 @@ function PaperBananaViewer({ item }: { item: VisualizationItem }) {
   if (item.status === 'error') {
     return (
       <div className="flex flex-col items-center justify-center py-6 text-center">
-        <AlertCircle className="w-6 h-6 text-red-400 mb-2" />
-        <p className="text-sm text-red-300">{S.mermaid.illustrationFailed}</p>
+        <AlertCircle className="w-6 h-6 text-danger mb-2" />
+        <p className="text-sm text-danger">{S.mermaid.illustrationFailed}</p>
         {item.error_message && (
-          <p className="text-2xs text-surface-500 mt-1">{item.error_message}</p>
+          <p className="text-2xs text-fg-muted mt-1">{item.error_message}</p>
         )}
       </div>
     );
@@ -686,17 +686,17 @@ function PaperBananaViewer({ item }: { item: VisualizationItem }) {
   if (!item.image_url) {
     return (
       <div className="flex items-center justify-center py-8" role="status" aria-busy="true">
-        <Loader2 className="w-5 h-5 text-primary-400 animate-spin" />
+        <Loader2 className="w-5 h-5 text-accent animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-surface-700">
+    <div className="overflow-hidden rounded-lg border border-border">
       <img
         src={getStaticUrl(item.image_url)}
         alt={item.title}
-        className="w-full h-auto object-contain bg-surface-800"
+        className="w-full h-auto object-contain bg-surface"
         loading="lazy"
       />
     </div>
@@ -721,35 +721,35 @@ function VisualizationGallery({
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2 mb-2">
-          <AppIcon name="experiment" className="w-4 h-4 text-primary-400" />
-          <span className="text-sm font-semibold text-surface-200">
+          <AppIcon name="experiment" className="w-4 h-4 text-accent" />
+          <span className="text-sm font-semibold text-fg">
             {S.mermaid.visualizations}
           </span>
-          <span className="badge text-2xs bg-primary-500/10 text-primary-400">
+          <span className="badge text-2xs bg-accent/10 text-accent">
             {visualizations.items.length}
           </span>
         </div>
         {visualizations.items.map((item) => (
           <div key={item.id} className="space-y-2">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-surface-300">
+              <span className="text-xs font-medium text-fg-secondary">
                 {item.id}. {item.title}
               </span>
               <span className={`badge text-2xs ${
                 item.tool === 'mermaid'
-                  ? 'bg-indigo-500/10 text-indigo-400'
-                  : 'bg-amber-500/10 text-amber-400'
+                  ? 'bg-accent/10 text-accent'
+                  : 'bg-warning/10 text-warning'
               }`}>
                 {item.tool === 'mermaid' ? 'Mermaid' : 'PaperBanana'}
               </span>
             </div>
             {item.description && (
-              <p className="text-xs text-surface-500 leading-relaxed">
+              <p className="text-xs text-fg-muted leading-relaxed">
                 {item.description}
               </p>
             )}
             {item.tool === 'mermaid' && item.mermaid_code ? (
-              <Suspense fallback={<div className="flex items-center gap-2 py-4 justify-center"><Loader2 className="w-4 h-4 text-primary-400 animate-spin" /></div>}>
+              <Suspense fallback={<div className="flex items-center gap-2 py-4 justify-center"><Loader2 className="w-4 h-4 text-accent animate-spin" /></div>}>
                 <MermaidRenderer
                   diagram={{
                     paper_id: visualizations.paper_id,
@@ -763,13 +763,13 @@ function VisualizationGallery({
             ) : item.tool === 'paperbanana' ? (
               <PaperBananaViewer item={item} />
             ) : item.status === 'error' ? (
-              <div className="text-sm text-red-400 py-2">
+              <div className="text-sm text-danger py-2">
                 {item.error_message || S.mermaid.generationFailed}
               </div>
             ) : (
               <div className="flex items-center gap-2 py-4 justify-center" role="status" aria-busy="true">
-                <Loader2 className="w-4 h-4 text-primary-400 animate-spin" />
-                <span className="text-xs text-surface-400">{S.mermaid.generating}</span>
+                <Loader2 className="w-4 h-4 text-accent animate-spin" />
+                <span className="text-xs text-fg-muted">{S.mermaid.generating}</span>
               </div>
             )}
           </div>
@@ -782,16 +782,16 @@ function VisualizationGallery({
   if (!loading && !legacyMermaid) {
     return (
       <div>
-        <h3 className="text-sm font-semibold text-surface-200 mb-3 flex items-center gap-2">
-          <AppIcon name="experiment" className="w-4 h-4 text-primary-400" />
+        <h3 className="text-sm font-semibold text-fg mb-3 flex items-center gap-2">
+          <AppIcon name="experiment" className="w-4 h-4 text-accent" />
           {S.mermaid.visualizations}
         </h3>
         <div className="card flex flex-col items-center justify-center py-8 text-center">
-          <Loader2 className="w-6 h-6 text-primary-400 animate-spin mb-2" />
-          <p className="text-sm text-surface-400">
+          <Loader2 className="w-6 h-6 text-accent animate-spin mb-2" />
+          <p className="text-sm text-fg-muted">
             {S.mermaid.generating}
           </p>
-          <p className="text-2xs text-surface-500 mt-1">
+          <p className="text-2xs text-fg-muted mt-1">
             {S.mermaid.generatingTime}
           </p>
         </div>
@@ -801,7 +801,7 @@ function VisualizationGallery({
 
   // Fallback: legacy single mermaid diagram
   return (
-    <Suspense fallback={<div className="flex items-center gap-2 py-4 justify-center"><Loader2 className="w-4 h-4 text-primary-400 animate-spin" /></div>}>
+    <Suspense fallback={<div className="flex items-center gap-2 py-4 justify-center"><Loader2 className="w-4 h-4 text-accent animate-spin" /></div>}>
       <MermaidRenderer
         diagram={legacyMermaid}
         loading={loading}
@@ -899,32 +899,32 @@ export default function AnalysisPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="sticky top-0 z-20 border-b border-surface-700/45 bg-surface-900/95 backdrop-blur [.light_&]:bg-white/95">
+      <div className="sticky top-0 z-20 border-b border-border/45 bg-surface/95 backdrop-blur">
         <div className="px-5 py-4">
-          <div className="border border-surface-700/45 bg-surface-900/50 px-4 py-3 [.light_&]:bg-surface-50" style={{ borderRadius: 'var(--radius-surface)' }}>
+          <div className="border border-border/45 bg-surface/50 px-4 py-3" style={{ borderRadius: 'var(--radius-surface)' }}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="mb-1 flex items-center gap-2 text-[11px] tracking-[0.08em] text-surface-500">
-                  <AppIcon name="summary" className="h-3.5 w-3.5 text-primary-400" />
+                <div className="mb-1 flex items-center gap-2 text-2xs tracking-[0.08em] text-fg-muted">
+                  <AppIcon name="summary" className="h-3.5 w-3.5 text-accent" />
                   <span>{S.workbench.statusRailTitle}</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-semibold text-surface-100">
+                  <h3 className="text-sm font-semibold text-fg">
                     {workbenchStatus.runStateLabel}
                   </h3>
-                  <span className="status-pill border-surface-700/50 bg-surface-800/80 text-surface-300">
+                  <span className="status-pill border-border/50 bg-surface/80 text-fg-secondary">
                     {workbenchStatus.currentPhaseLabel}
                   </span>
-                  <span className="status-pill border-surface-700/50 bg-surface-800/80 text-surface-300">
+                  <span className="status-pill border-border/50 bg-surface/80 text-fg-secondary">
                     {workbenchStatus.completedCount}/{workbenchStatus.totalCount} 완료
                   </span>
-                  <span className="status-pill border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
+                  <span className="status-pill border-success/20 bg-success/10 text-success">
                     {workbenchStatus.trustStateLabel}
                   </span>
                 </div>
               </div>
 
-              <p className="max-w-md text-xs leading-relaxed text-surface-400">
+              <p className="max-w-md text-xs leading-relaxed text-fg-muted">
                 {workbenchStatus.nextActionLabel}
               </p>
             </div>
@@ -1010,14 +1010,14 @@ export default function AnalysisPanel({
 
         {visibleTab === 'figures' && (
           <div className="space-y-5">
-            <div className="border border-surface-700/45 bg-surface-900/40 px-4 py-4 [.light_&]:bg-white" style={{ borderRadius: 'var(--radius-surface)' }}>
+            <div className="border border-border/45 bg-surface/40 px-4 py-4" style={{ borderRadius: 'var(--radius-surface)' }}>
               <div className="flex items-center gap-2">
-                <AppIcon name="figures" className="w-4 h-4 text-primary-400" />
-                <h3 className="text-sm font-semibold text-surface-100">
+                <AppIcon name="figures" className="w-4 h-4 text-accent" />
+                <h3 className="text-sm font-semibold text-fg">
                   {S.workbench.figuresTab}
                 </h3>
               </div>
-              <p className="mt-2 text-xs leading-relaxed text-surface-400">
+              <p className="mt-2 text-xs leading-relaxed text-fg-muted">
                 {visualSummary.summaryLine || '시각 검증 결과와 Figure를 한곳에서 확인할 수 있습니다.'}
               </p>
             </div>
@@ -1037,14 +1037,14 @@ export default function AnalysisPanel({
 
         {visibleTab === 'tables' && (
           <div className="space-y-5">
-            <div className="border border-surface-700/45 bg-surface-900/40 px-4 py-4 [.light_&]:bg-white" style={{ borderRadius: 'var(--radius-surface)' }}>
+            <div className="border border-border/45 bg-surface/40 px-4 py-4" style={{ borderRadius: 'var(--radius-surface)' }}>
               <div className="flex items-center gap-2">
-                <AppIcon name="tables" className="w-4 h-4 text-primary-400" />
-                <h3 className="text-sm font-semibold text-surface-100">
+                <AppIcon name="tables" className="w-4 h-4 text-accent" />
+                <h3 className="text-sm font-semibold text-fg">
                   {S.workbench.tablesTab}
                 </h3>
               </div>
-              <p className="mt-2 text-xs leading-relaxed text-surface-400">
+              <p className="mt-2 text-xs leading-relaxed text-fg-muted">
                 {visualSummary.summaryLine || '복구된 Table 구조와 저장된 CSV/HTML 자산을 한곳에서 확인할 수 있습니다.'}
               </p>
             </div>
@@ -1063,14 +1063,14 @@ export default function AnalysisPanel({
 
         {visibleTab === 'recipe' && (
           <div className="space-y-5">
-            <div className="border border-surface-700/45 bg-surface-900/40 px-4 py-4 [.light_&]:bg-white" style={{ borderRadius: 'var(--radius-surface)' }}>
+            <div className="border border-border/45 bg-surface/40 px-4 py-4" style={{ borderRadius: 'var(--radius-surface)' }}>
               <div className="flex items-center gap-2">
-                <AppIcon name="recipe" className="w-4 h-4 text-primary-400" />
-                <h3 className="text-sm font-semibold text-surface-100">
+                <AppIcon name="recipe" className="w-4 h-4 text-accent" />
+                <h3 className="text-sm font-semibold text-fg">
                   {S.workbench.recipeTab}
                 </h3>
               </div>
-              <p className="mt-2 text-xs leading-relaxed text-surface-400">
+              <p className="mt-2 text-xs leading-relaxed text-fg-muted">
                 {recipeSummary.summaryLine || '재현 파라미터와 핵심 실험 정보를 먼저 검토하세요.'}
               </p>
             </div>
@@ -1085,10 +1085,10 @@ export default function AnalysisPanel({
         {visibleTab === 'experiment' && (
           <div className="space-y-5">
             {recipeReady && paperId ? (
-              <div className="border border-surface-700/45 bg-surface-900/40 px-4 py-4 [.light_&]:bg-white" style={{ borderRadius: 'var(--radius-surface)' }}>
+              <div className="border border-border/45 bg-surface/40 px-4 py-4" style={{ borderRadius: 'var(--radius-surface)' }}>
                 <div className="mb-3 flex items-center gap-2">
-                  <AppIcon name="experiment" className="w-4 h-4 text-emerald-400" />
-                  <span className="text-sm font-medium text-surface-200">
+                  <AppIcon name="experiment" className="w-4 h-4 text-success" />
+                  <span className="text-sm font-medium text-fg">
                     {S.workbench.experimentTab}
                   </span>
                 </div>

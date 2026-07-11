@@ -65,28 +65,28 @@ const PHASE_META: Record<AnalysisPhase, {
 function getStatusIcon(status: PhaseStatusValue): React.ReactNode {
   switch (status) {
     case 'completed':
-      return <Check className="w-4 h-4 text-emerald-400" />;
+      return <Check className="w-4 h-4 text-success" />;
     case 'running':
-      return <Loader2 className="w-4 h-4 text-primary-400 animate-spin" />;
+      return <Loader2 className="w-4 h-4 text-accent animate-spin" />;
     case 'error':
-      return <AlertCircle className="w-4 h-4 text-red-400" />;
+      return <AlertCircle className="w-4 h-4 text-danger" />;
     case 'pending':
     default:
-      return <Circle className="w-4 h-4 text-surface-500" />;
+      return <Circle className="w-4 h-4 text-fg-muted" />;
   }
 }
 
 function getPhaseClasses(status: PhaseStatusValue): string {
   switch (status) {
     case 'completed':
-      return 'border-emerald-500/30 bg-emerald-500/5';
+      return 'border-success/30 bg-success/5';
     case 'running':
-      return 'border-primary-500/50 bg-primary-500/5 ring-1 ring-primary-500/20';
+      return 'border-accent/50 bg-accent/5 ring-1 ring-accent/20';
     case 'error':
-      return 'border-red-500/30 bg-red-500/5';
+      return 'border-danger/30 bg-danger/5';
     case 'pending':
     default:
-      return 'border-surface-700 bg-surface-800/50';
+      return 'border-border bg-surface/50';
   }
 }
 
@@ -95,15 +95,15 @@ function getConnectorClasses(
   nextStatus: PhaseStatusValue
 ): string {
   if (currentStatus === 'completed') {
-    return 'bg-emerald-500';
+    return 'bg-success';
   }
   if (currentStatus === 'running') {
-    return 'bg-gradient-to-r from-primary-500 to-surface-600';
+    return 'bg-gradient-to-r from-accent to-border';
   }
   if (nextStatus !== 'pending') {
-    return 'bg-surface-500';
+    return 'bg-fg-muted';
   }
-  return 'bg-surface-700';
+  return 'bg-border';
 }
 
 // ---------------------------------------------------------------------------
@@ -123,12 +123,12 @@ export default function ProgressTracker({
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <h3 className="text-sm font-semibold text-surface-200">
+          <h3 className="text-sm font-semibold text-fg">
             {S.progressTracker.title}
           </h3>
           {isActive && (
             <span className="badge-primary text-2xs">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary-400 animate-pulse mr-1" />
+              <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse mr-1" />
               {S.status.running}
             </span>
           )}
@@ -137,7 +137,7 @@ export default function ProgressTracker({
           )}
         </div>
 
-        <div className="flex items-center gap-3 text-xs text-surface-400">
+        <div className="flex items-center gap-3 text-xs text-fg-muted">
           <span className="font-mono tabular-nums">
             {Math.round(overallProgress)}%
           </span>
@@ -145,14 +145,14 @@ export default function ProgressTracker({
       </div>
 
       {/* Overall progress bar */}
-      <div className="h-1 bg-surface-700 rounded-full mb-5 overflow-hidden">
+      <div className="h-1 bg-border rounded-full mb-5 overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-500 ease-out"
           style={{
             width: `${overallProgress}%`,
             background: isComplete
-              ? '#30d158'
-              : 'linear-gradient(90deg, #007aff, #0a84ff)',
+              ? 'rgb(var(--success))'
+              : 'linear-gradient(90deg, rgb(var(--accent)), rgb(var(--accent-hover)))',
           }}
         />
       </div>
@@ -173,20 +173,20 @@ export default function ProgressTracker({
               >
                 <div className="flex items-center gap-1.5">
                   {getStatusIcon(phase.status)}
-                  <Icon className="w-4 h-4 text-surface-300" />
+                  <Icon className="w-4 h-4 text-fg-secondary" />
                 </div>
                 <div className="text-center">
-                  <div className="text-2xs font-medium text-surface-300">
+                  <div className="text-2xs font-medium text-fg-secondary">
                     {meta.label}
                   </div>
-                  <div className="text-2xs text-surface-500 mt-0.5">
+                  <div className="text-2xs text-fg-muted mt-0.5">
                     {meta.description}
                   </div>
                 </div>
                 {phase.status === 'running' && (
-                  <div className="w-full h-0.5 bg-surface-700 rounded-full overflow-hidden">
+                  <div className="w-full h-0.5 bg-border rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-primary-500 rounded-full animate-pulse"
+                      className="h-full bg-accent rounded-full animate-pulse"
                     />
                   </div>
                 )}

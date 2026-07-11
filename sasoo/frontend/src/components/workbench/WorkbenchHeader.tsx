@@ -68,7 +68,7 @@ export default function WorkbenchHeader({
   ];
 
   return (
-    <div className="shrink-0 border-b border-surface-700/45 bg-surface-900/95 px-4 py-3 backdrop-blur [.light_&]:bg-white/95">
+    <div className="shrink-0 border-b border-border/45 bg-surface/95 px-4 py-3 backdrop-blur">
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-2.5">
           <button
@@ -95,14 +95,14 @@ export default function WorkbenchHeader({
           </button>
 
           <div className="min-w-0">
-            <h1 className="truncate text-sm font-semibold text-surface-100 tracking-apple-body [.light_&]:text-surface-900">
+            <h1 className="truncate text-sm font-semibold text-fg tracking-apple-body">
               {title}
             </h1>
-            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-surface-500">
-              {domain && <span className="status-pill border-primary-500/20 bg-primary-500/10 text-primary-300">{domain}</span>}
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-fg-muted">
+              {domain && <span className="status-pill border-accent/20 bg-accent/10 text-accent">{domain}</span>}
               {agentLabel && (
                 <span
-                  className={agentColor ? 'status-pill' : 'status-pill border-surface-700/50 bg-surface-800/80 text-surface-300'}
+                  className={agentColor ? 'status-pill' : 'status-pill border-border/50 bg-surface/80 text-fg-secondary'}
                   style={buildAgentPillStyle(agentColor)}
                 >
                   {agentColor && (
@@ -114,10 +114,10 @@ export default function WorkbenchHeader({
                   {agentLabel}
                 </span>
               )}
-              <span className="status-pill border-surface-700/50 bg-surface-800/80 text-surface-300">
+              <span className="status-pill border-border/50 bg-surface/80 text-fg-secondary">
                 {runStateLabel}
               </span>
-              <span className="status-pill border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
+              <span className="status-pill border-success/20 bg-success/10 text-success">
                 {trustStateLabel}
               </span>
             </div>
@@ -127,13 +127,13 @@ export default function WorkbenchHeader({
         <div className="flex shrink-0 items-start gap-2">
           <div className="flex items-center gap-2">
             {analysisError && (
-              <span className="flex items-center gap-1 text-2xs text-red-400">
+              <span className="flex items-center gap-1 text-2xs text-danger">
                 <AppIcon name="error" className="w-3 h-3" />
                 {analysisError}
               </span>
             )}
 
-            <div className="inline-flex items-center rounded-full border border-surface-700/60 bg-surface-800/80 p-1 [.light_&]:border-surface-200 [.light_&]:bg-surface-100">
+            <div className="inline-flex items-center rounded-full border border-border/60 bg-surface p-1">
               {splitPresets.map((preset) => {
                 const isActive = activeSplitPreset === preset.value;
                 return (
@@ -145,8 +145,8 @@ export default function WorkbenchHeader({
                     aria-pressed={isActive}
                     className={`rounded-full px-3 py-1.5 text-2xs font-medium transition-colors ${
                       isActive
-                        ? 'bg-primary-600 text-white'
-                        : 'text-surface-400 hover:bg-surface-700/80 hover:text-surface-100 [.light_&]:text-surface-600 [.light_&]:hover:bg-white [.light_&]:hover:text-surface-900'
+                        ? 'bg-accent text-accent-fg'
+                        : 'text-fg-muted hover:bg-surface-hover/80 hover:text-fg'
                     } disabled:cursor-not-allowed disabled:opacity-40`}
                   >
                     {preset.label}
@@ -168,7 +168,7 @@ export default function WorkbenchHeader({
             {isRunning && (
               <button
                 onClick={onCancelAnalysis}
-                className="btn-secondary border-red-500/20 px-3 py-2 text-xs text-red-300 hover:bg-red-500/10"
+                className="btn-secondary border-danger/20 px-3 py-2 text-xs text-danger hover:bg-danger/10"
                 title="분석 취소"
               >
                 <AppIcon name="stop" className="w-3 h-3" />
@@ -177,7 +177,7 @@ export default function WorkbenchHeader({
             )}
 
             {isRunning && (
-              <span className="flex items-center gap-1 text-xs text-primary-400">
+              <span className="flex items-center gap-1 text-xs text-accent">
                 <AppIcon name="spinner" className="w-4 h-4 animate-spin" />
                 실행 중
               </span>

@@ -1083,60 +1083,12 @@
     }
   }
 
-  /* ── Figure modal: Light theme ── */
-
-  .light .figure-modal {
-    @apply bg-white border-surface-200 shadow-xl;
-  }
-
-  .light .figure-modal-header {
-    @apply bg-white/95 border-surface-200;
-  }
-
-  .light .figure-modal-header h4 {
-    @apply text-surface-800;
-  }
-
-  .light .figure-modal-header button {
-    color: theme('colors.surface.500');
-  }
-
-  .light .figure-modal-header button:hover {
-    color: theme('colors.surface.800');
-    background-color: theme('colors.surface.100');
-  }
-
-  .light .figure-modal-header span {
-    color: theme('colors.surface.500');
-  }
-
-  .light .figure-modal-image {
-    @apply bg-surface-50;
-  }
-
-  .light .figure-modal-image p {
-    @apply text-surface-600;
-  }
-
-  .light .figure-modal-divider {
-    @apply bg-surface-200;
-  }
-
   .figure-stage-grid {
     grid-template-columns: minmax(0, 1fr) 26rem;
   }
 
   .figure-modal-inspector {
     background: linear-gradient(180deg, rgb(var(--surface) / 0.94), rgb(var(--bg) / 0.98));
-  }
-
-  /* Light theme: inner elements */
-  .light .figure-modal .animate-pulse div {
-    @apply bg-surface-200;
-  }
-
-  .light .figure-modal .border-b.border-border\/50 {
-    border-color: theme('colors.surface.200');
   }
 
 /* ── App Layout: Light theme ── */

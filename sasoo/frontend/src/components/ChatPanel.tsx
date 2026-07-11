@@ -51,7 +51,7 @@ export default function ChatPanel({
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const agent = agentName ? getAgentMeta(agentName) : null;
-  const agentColor = agent?.color || '#0a84ff';
+  const agentColor = agent?.color || '#5e6ad2';
   const hasMessages = messages.length > 0;
 
   useEffect(() => {
@@ -198,15 +198,15 @@ export default function ChatPanel({
           >
             <span
               className="flex h-11 w-11 items-center justify-center rounded-full"
-              style={{ backgroundColor: ready ? `${agentColor}20` : 'rgba(71, 85, 105, 0.2)' }}
+              style={{ backgroundColor: ready ? `${agentColor}20` : 'rgb(var(--fg-muted) / 0.2)' }}
             >
               <Bot className="h-5 w-5" style={ready ? { color: agentColor } : undefined} />
             </span>
             <span className="min-w-0 text-left">
-              <span className="block text-sm font-semibold text-surface-100">
+              <span className="block text-sm font-semibold text-fg">
                 질문 도우미
               </span>
-              <span className="mt-0.5 flex items-center gap-2 text-2xs text-surface-400">
+              <span className="mt-0.5 flex items-center gap-2 text-2xs text-fg-muted">
                 <span className={`chat-launcher-badge ${ready ? 'chat-launcher-badge-ready' : 'chat-launcher-badge-pending'}`}>
                   {ready ? '준비됨' : '대기'}
                 </span>
@@ -223,16 +223,16 @@ export default function ChatPanel({
                 <div className="mb-1 flex items-center gap-2">
                   <span
                     className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: ready ? agentColor : '#64748b' }}
+                    style={{ backgroundColor: ready ? agentColor : 'rgb(var(--fg-muted))' }}
                   />
-                  <span className="truncate text-sm font-semibold text-surface-100">
+                  <span className="truncate text-sm font-semibold text-fg">
                     {agent?.display_name_ko || '질문 도우미'}
                   </span>
                   <span className={`chat-launcher-badge ${ready ? 'chat-launcher-badge-ready' : 'chat-launcher-badge-pending'}`}>
                     {ready ? '준비됨' : '대기'}
                   </span>
                 </div>
-                <p className="text-2xs text-surface-500">
+                <p className="text-2xs text-fg-muted">
                   {ready ? '현재 논문 맥락을 유지한 채 질문을 이어갈 수 있습니다.' : readyMessage}
                 </p>
               </div>
@@ -249,20 +249,20 @@ export default function ChatPanel({
 
             {!ready ? (
               <div className="flex flex-1 flex-col items-center justify-center px-5 py-8 text-center">
-                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-surface-700/60 bg-surface-900/70">
-                  <MessageSquare className="h-5 w-5 text-surface-500" />
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-border/60 bg-bg/70">
+                  <MessageSquare className="h-5 w-5 text-fg-muted" />
                 </div>
-                <p className="text-sm font-medium text-surface-200">
+                <p className="text-sm font-medium text-fg">
                   질문 도우미 준비 중
                 </p>
-                <p className="mt-2 text-xs leading-relaxed text-surface-500">
+                <p className="mt-2 text-xs leading-relaxed text-fg-muted">
                   {readyMessage}
                 </p>
               </div>
             ) : (
               <>
-                <div className="border-b border-surface-700/45 px-4 py-3">
-                  <div className="mb-2 flex items-center gap-2 text-2xs uppercase tracking-[0.16em] text-surface-500">
+                <div className="border-b border-border/45 px-4 py-3">
+                  <div className="mb-2 flex items-center gap-2 text-2xs uppercase tracking-[0.16em] text-fg-muted">
                     <Sparkles className="h-3 w-3" />
                     추천 질문
                   </div>
@@ -284,11 +284,11 @@ export default function ChatPanel({
                   {!hasMessages && (
                     <div className="chat-empty-state">
                       <div className="chat-empty-icon">
-                        <MessageSquare className="h-4 w-4 text-surface-500" />
+                        <MessageSquare className="h-4 w-4 text-fg-muted" />
                       </div>
                       <div>
-                        <p className="text-xs text-surface-300">논문을 읽으면서 바로 질문해 보세요.</p>
-                        <p className="mt-1 text-2xs text-surface-500">
+                        <p className="text-xs text-fg-secondary">논문을 읽으면서 바로 질문해 보세요.</p>
+                        <p className="mt-1 text-2xs text-fg-muted">
                           핵심 기여, Figure 해석, 재현 리스크처럼 작업형 질문에 최적화되어 있습니다.
                         </p>
                       </div>
@@ -306,11 +306,11 @@ export default function ChatPanel({
                           className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                         >
                           <div className={`chat-bubble-wrap ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                            <div className="mb-1 flex items-center gap-1.5 px-1 text-2xs text-surface-500">
+                            <div className="mb-1 flex items-center gap-1.5 px-1 text-2xs text-fg-muted">
                               {msg.role === 'agent' ? (
                                 <>
                                   <span
-                                    className="flex h-5 w-5 items-center justify-center rounded-full border border-surface-700/55"
+                                    className="flex h-5 w-5 items-center justify-center rounded-full border border-border/55"
                                     style={{ backgroundColor: `${agentColor}20` }}
                                   >
                                     <Bot className="h-3 w-3" style={{ color: agentColor }} />
@@ -320,8 +320,8 @@ export default function ChatPanel({
                               ) : (
                                 <>
                                   <span>나</span>
-                                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-surface-700/55 bg-surface-800/90">
-                                    <User className="h-3 w-3 text-surface-400" />
+                                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-border/55 bg-surface/90">
+                                    <User className="h-3 w-3 text-fg-muted" />
                                   </span>
                                 </>
                               )}
@@ -341,7 +341,7 @@ export default function ChatPanel({
                                     </ReactMarkdown>
                                   )}
                                   {streaming && index === messages.length - 1 && (
-                                    <span className="ml-1 inline-block h-3.5 w-1.5 animate-pulse bg-primary-400 align-middle" />
+                                    <span className="ml-1 inline-block h-3.5 w-1.5 animate-pulse bg-accent align-middle" />
                                   )}
                                 </>
                               ) : (
@@ -381,20 +381,20 @@ export default function ChatPanel({
                 </div>
 
                 {error && (
-                  <div className="border-t border-surface-700/45 px-4 py-2 text-2xs text-red-400">
+                  <div className="border-t border-border/45 px-4 py-2 text-2xs text-danger">
                     {error}
                   </div>
                 )}
 
-                <div className="border-t border-surface-700/45 px-4 py-3">
-                  <div className="mb-2 flex items-center justify-between gap-3 text-2xs text-surface-500">
+                <div className="border-t border-border/45 px-4 py-3">
+                  <div className="mb-2 flex items-center justify-between gap-3 text-2xs text-fg-muted">
                     <span>{totalCost > 0 ? `누적 비용 $${totalCost.toFixed(4)}` : '대화 비용은 응답 후 집계됩니다.'}</span>
                     {hasMessages && (
                       <button
                         type="button"
                         onClick={clearConversation}
                         disabled={streaming}
-                        className="inline-flex items-center gap-1 text-surface-500 transition-colors hover:text-surface-300 disabled:opacity-40"
+                        className="inline-flex items-center gap-1 text-fg-muted transition-colors hover:text-fg-secondary disabled:opacity-40"
                       >
                         <Trash2 className="h-3 w-3" />
                         대화 초기화
