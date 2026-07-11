@@ -72,11 +72,15 @@ async def call_interaction(
                 # VERIFY(확인됨): interactions.md.txt 기준 usage.total_input_tokens / total_output_tokens.
                 tokens_in = getattr(usage, "total_input_tokens", 0) or 0
                 tokens_out = getattr(usage, "total_output_tokens", 0) or 0
+                # 비용 breakdown용으로만 기록 — output에 thinking 포함 여부가
+                # 라이브 확인 전이므로 tokens_out에 합산하지 않는다.
+                tokens_thought = getattr(usage, "total_thought_tokens", 0) or 0
                 return {
                     "text": interaction.output_text or "",
                     "model": model,
                     "tokens_in": tokens_in,
                     "tokens_out": tokens_out,
+                    "tokens_thought": tokens_thought,
                     "interaction_id": getattr(interaction, "id", None),
                 }
             except Exception as exc:  # noqa: BLE001 - 재시도 후 재던짐

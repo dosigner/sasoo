@@ -3,7 +3,7 @@ Sasoo - Visualization Router
 
 Determines visualization targets from Phase 3-4 analysis results and routes
 them to the appropriate renderer:
-  - Text/structural based  -> Mermaid (Claude Sonnet 4.5)
+  - Text/structural based  -> Mermaid (Gemini)
   - Physical/visual based  -> PaperBanana (Gemini Pro Image)
 """
 

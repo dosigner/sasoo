@@ -136,7 +136,7 @@ app = FastAPI(
         "Backend API for Sasoo, an AI Co-Scientist desktop application "
         "that analyzes research papers using a 4-phase engineering analysis strategy "
         "(Screening -> Visual Verification -> Recipe Extraction -> Deep Dive) "
-        "powered by Gemini 3.1 + Claude Sonnet 4.5 dual LLM."
+        "powered by the Gemini API (Interactions)."
     ),
     version="0.6.7",
     lifespan=lifespan,
