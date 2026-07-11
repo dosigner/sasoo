@@ -1289,6 +1289,7 @@ async def _store_visualization_progress(
     착각하고 덮어써버린다 — 새 실행은 반드시 새 행을 INSERT해야 한다.
     """
     input_hash = compute_input_hash(cache_input)
+    total_cost_usd = sum(it.get("cost_usd") or 0 for it in items)
     payload = json.dumps(
         {
             "items": sorted(items, key=lambda x: x.get("id", 0)),
@@ -1309,12 +1310,12 @@ async def _store_visualization_progress(
     )
     if row:
         await execute_update(
-            "UPDATE analysis_results SET result = ?, input_hash = ? WHERE id = ?",
-            (payload, input_hash, row["id"]),
+            "UPDATE analysis_results SET result = ?, input_hash = ?, cost_usd = ? WHERE id = ?",
+            (payload, input_hash, total_cost_usd, row["id"]),
         )
     else:
         await _insert_analysis_result(
-            paper_id, "visualization", payload, MODEL_VIZ_PLANNING, 0, 0, 0.0, cache_input,
+            paper_id, "visualization", payload, MODEL_VIZ_PLANNING, 0, 0, total_cost_usd, cache_input,
         )
 
 
@@ -1398,6 +1399,10 @@ async def _run_visualizations(
                     result_item["status"] = "completed"
                     if pb_result.get("provider"):
                         result_item["provider"] = pb_result["provider"]
+                    if pb_result.get("duration_s") is not None:
+                        result_item["duration_s"] = pb_result["duration_s"]
+                    if pb_result.get("cost_usd") is not None:
+                        result_item["cost_usd"] = pb_result["cost_usd"]
                 else:
                     result_item["status"] = "error"
                     result_item["error_message"] = pb_result.get("error", "generation failed")

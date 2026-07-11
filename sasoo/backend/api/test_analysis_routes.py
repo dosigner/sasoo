@@ -350,7 +350,10 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         insert_mock.assert_awaited_once()
 
     async def test_store_visualization_progress_updates_existing_row(self):
-        items = [{"id": 1, "title": "A", "status": "completed"}]
+        items = [
+            {"id": 1, "title": "A", "status": "completed", "cost_usd": 0.02},
+            {"id": 2, "title": "B", "status": "completed", "cost_usd": 0.03},
+        ]
 
         with (
             patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value={"id": 42})),
@@ -362,11 +365,16 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         update_mock.assert_awaited_once()
         args = update_mock.call_args.args
         self.assertIn("UPDATE analysis_results", args[0])
+        self.assertIn("cost_usd = ?", args[0])
         self.assertEqual(args[1][-1], 42)
+        self.assertAlmostEqual(args[1][-2], 0.05)
         insert_mock.assert_not_awaited()
 
     async def test_store_visualization_progress_inserts_when_no_row(self):
-        items = [{"id": 1, "title": "A", "status": "completed"}]
+        items = [
+            {"id": 1, "title": "A", "status": "completed", "cost_usd": 0.07},
+            {"id": 2, "title": "B", "status": "error"},
+        ]
 
         with (
             patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=None)),
@@ -378,6 +386,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         insert_mock.assert_awaited_once()
         self.assertEqual(insert_mock.call_args.args[0], 7)
         self.assertEqual(insert_mock.call_args.args[1], "visualization")
+        self.assertAlmostEqual(insert_mock.call_args.args[6], 0.07)
         update_mock.assert_not_awaited()
 
     async def test_store_visualization_progress_inserts_new_row_for_different_input_hash(self):

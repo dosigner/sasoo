@@ -190,7 +190,7 @@ async def generate_illustration(
         description = await _plan_description(viz_target)
     except Exception as exc:
         logger.warning("figure_gen planner failed for '%s': %s", viz_target.get("title"), exc)
-        return FigureGenResult(None, None, time.monotonic() - start, 0.0, f"planner: {exc}")
+        return FigureGenResult(None, None, round(time.monotonic() - start, 1), 0.0, f"planner: {exc}")
 
     errors: list[str] = []
     for provider in build_providers(preferred_provider, quality):
