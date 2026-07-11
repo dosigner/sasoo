@@ -19,6 +19,22 @@ export const S = {
     collapseSidebar: '사이드바 접기',
   },
 
+  // ── Home ──
+  home: {
+    greeting: '안녕하세요',
+    subGreeting: '오늘 분석할 논문을 올려주세요.',
+    quickActions: '바로가기',
+    actionAgents: '에이전트 편성',
+    actionAgentsDesc: '분석 에이전트를 관리합니다',
+    actionLibrary: '연구 보관함',
+    actionLibraryDesc: '보관된 논문을 둘러봅니다',
+    recentAnalyses: '최근 분석',
+    recentLibrary: '최근 추가',
+    recentEmpty: '아직 논문이 없습니다. 위에서 첫 논문을 올려보세요.',
+    costTitle: '이번 달 비용',
+    costOpenSettings: '자세히 보기',
+  },
+
   // ── Upload Page ──
   upload: {
     title: '연구 아카이브를 시작하세요',

@@ -16,7 +16,7 @@ import WorkbenchScaffold from '@/components/layout/WorkbenchScaffold';
 import { ContentState, TooltipProvider } from '@/components/ui';
 
 // Pages
-const UploadPage = lazy(() => import('@/pages/Upload'));
+const HomePage = lazy(() => import('@/pages/Home'));
 const Workbench = lazy(() => import('@/pages/Workbench'));
 const Library = lazy(() => import('@/pages/Library'));
 const SettingsPage = lazy(() => import('@/pages/Settings'));
@@ -112,7 +112,7 @@ function App() {
                 <div key={location.pathname} className="h-full w-full overflow-hidden animate-page-enter">
                   <Suspense fallback={<RouteFallback />}>
                     <Routes>
-                      <Route path="/" element={<PageScaffold variant="archive"><UploadPage /></PageScaffold>} />
+                      <Route path="/" element={<PageScaffold variant="archive"><HomePage /></PageScaffold>} />
                       <Route path="/agents" element={<PageScaffold variant="control"><Agents /></PageScaffold>} />
                       <Route path="/workbench/:id" element={<WorkbenchScaffold><Workbench /></WorkbenchScaffold>} />
                       <Route path="/library" element={<PageScaffold variant="archive"><Library /></PageScaffold>} />
