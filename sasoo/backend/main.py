@@ -98,17 +98,13 @@ async def lifespan(app: FastAPI):
     from models.database import fetch_all
     from services.crypto import decrypt_value
     try:
-        rows = await fetch_all("SELECT key, value FROM settings WHERE key IN ('gemini_api_key', 'anthropic_api_key')")
+        rows = await fetch_all("SELECT key, value FROM settings WHERE key = 'gemini_api_key'")
         for row in rows:
-            k, v = row["key"], row["value"]
-            if v:
-                decrypted = decrypt_value(v)
+            if row["value"]:
+                decrypted = decrypt_value(row["value"])
                 if decrypted:
-                    if k == "gemini_api_key":
-                        os.environ["GEMINI_API_KEY"] = decrypted
-                    elif k == "anthropic_api_key":
-                        os.environ["ANTHROPIC_API_KEY"] = decrypted
-        print("[Sasoo] API keys loaded from database into environment.")
+                    os.environ["GEMINI_API_KEY"] = decrypted
+        print("[Sasoo] API key loaded from database into environment.")
     except Exception as exc:
         print(f"[Sasoo] Warning: Could not load API keys from DB: {exc}")
 
@@ -139,7 +135,7 @@ app = FastAPI(
         "Backend API for Sasoo, an AI Co-Scientist desktop application "
         "that analyzes research papers using a 4-phase engineering analysis strategy "
         "(Screening -> Visual Verification -> Recipe Extraction -> Deep Dive) "
-        "powered by Gemini 3.1 + Claude Sonnet 4.5 dual LLM."
+        "powered by Gemini (3.1 Pro / 3.5 Flash / 3.1 Flash-Lite)."
     ),
     version="0.6.7",
     lifespan=lifespan,

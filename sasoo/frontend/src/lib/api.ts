@@ -257,7 +257,6 @@ export interface VisualizationPlan {
 // Settings types
 export interface Settings {
   gemini_api_key: string;
-  anthropic_api_key: string;
   library_path: string;
   theme: 'dark' | 'light';
   default_domain: string;
@@ -265,7 +264,6 @@ export interface Settings {
   language: string;
   max_concurrent_analyses: number;
   gemini_model: string;
-  anthropic_model: string;
   paperbanana_profile: PaperBananaProfile;
   pdf_parser_mode: 'java';
   extraction_pipeline_version: 'legacy' | 'resolver_v1';
