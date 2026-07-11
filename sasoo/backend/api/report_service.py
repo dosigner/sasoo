@@ -146,27 +146,14 @@ async def _generate_paperbanana_image(
     include_recipe: bool = True,
 ) -> str:
     """
-    Generate a PaperBanana-style visual summary image.
-    Falls back to a PIL-based generator if paperbanana package is unavailable.
+    Render the report's visual summary card with PIL.
+
+    Not to be confused with services/viz/paperbanana_bridge.py, which drives the
+    actual PaperBanana pipeline for in-paper diagrams. This one only draws the
+    report cover.
     """
     output_path = output_dir / f"summary_{paper['id']}.png"
 
-    # Try using paperbanana package first
-    try:
-        import paperbanana
-        # If paperbanana has a generate function, use it
-        if hasattr(paperbanana, "generate"):
-            paperbanana.generate(
-                title=paper.get("title", ""),
-                authors=paper.get("authors", ""),
-                summary=analysis_data.get("screening", {}).get("summary", ""),
-                output=str(output_path),
-            )
-            return str(output_path)
-    except (ImportError, Exception):
-        pass
-
-    # Fallback: Generate with PIL
     from PIL import Image, ImageDraw, ImageFont
 
     # Canvas dimensions
