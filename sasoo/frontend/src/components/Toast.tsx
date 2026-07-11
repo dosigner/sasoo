@@ -86,23 +86,23 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
   const config = {
     success: {
       icon: 'success' as const,
-      iconColor: 'text-emerald-500',
-      progressBg: 'bg-emerald-500',
+      iconColor: 'text-success',
+      progressBg: 'bg-success',
     },
     error: {
       icon: 'error' as const,
-      iconColor: 'text-red-500',
-      progressBg: 'bg-red-500',
+      iconColor: 'text-danger',
+      progressBg: 'bg-danger',
     },
     warning: {
       icon: 'warning' as const,
-      iconColor: 'text-amber-500',
-      progressBg: 'bg-amber-500',
+      iconColor: 'text-warning',
+      progressBg: 'bg-warning',
     },
     info: {
       icon: 'info' as const,
-      iconColor: 'text-primary-500',
-      progressBg: 'bg-primary-500',
+      iconColor: 'text-accent',
+      progressBg: 'bg-accent',
     },
   };
 
@@ -115,8 +115,7 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
         w-96 max-w-full
         transition-all duration-200
         ${isExiting ? 'opacity-0 translate-x-4' : 'opacity-100 translate-x-0 animate-slide-in-right'}
-        bg-surface-800/90 backdrop-blur-lg border-surface-700/50
-        [.light_&]:bg-white/90 [.light_&]:border-surface-200/60
+        bg-surface/90 backdrop-blur-lg border-border/50
       `}
     >
       {/* Content */}
@@ -129,11 +128,11 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
 
           {/* Text */}
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-surface-100 [.light_&]:text-surface-900">
+            <p className="text-sm font-medium text-fg">
               {toast.message}
             </p>
             {toast.description && (
-              <p className="mt-1 text-xs text-surface-400 [.light_&]:text-surface-600">
+              <p className="mt-1 text-xs text-fg-muted">
                 {toast.description}
               </p>
             )}
@@ -145,15 +144,14 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
       <button
         onClick={handleClose}
         className="absolute top-3 right-3 p-1 rounded transition-colors
-          text-surface-400 hover:text-surface-200 hover:bg-surface-700/50
-          [.light_&]:text-surface-500 [.light_&]:hover:text-surface-700 [.light_&]:hover:bg-surface-200"
+          text-fg-muted hover:text-fg hover:bg-surface-hover"
         aria-label="Close notification"
       >
         <AppIcon name="close" className="w-4 h-4" />
       </button>
 
       {/* Progress bar */}
-      <div className="absolute bottom-0 left-0 right-0 h-1 bg-surface-700/20 [.light_&]:bg-surface-200">
+      <div className="absolute bottom-0 left-0 right-0 h-1 bg-surface-hover/20">
         <div
           className={`h-full ${progressBg} transition-all duration-75 ease-linear`}
           style={{ width: `${progress}%` }}
