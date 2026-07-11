@@ -19,6 +19,7 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,7 @@ from services.document_context import (
 )
 from services.pricing import calc_cost
 from services.llm.interactions_client import call_interaction
+from api.analysis_context import EXPLANATION_LEVELS
 
 from api.analysis_state import _running_analyses, _cancel_events, _analyses_lock
 from api.analysis_helpers import (
@@ -88,6 +90,10 @@ from api.report_service import (
 from api.figure_service import explain_figure_handler
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
+
+# 재작성 엔드포인트는 논문 리소스 경로(/api/papers/{paper_id}/rewrite)에 노출한다.
+# analysis 라우터와 prefix가 다르므로 별도 라우터로 분리하고 main.py에서 함께 등록한다.
+rewrite_router = APIRouter(prefix="/api/papers", tags=["rewrite"])
 
 
 def _utcnow() -> datetime:
@@ -2880,3 +2886,103 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Section rewrite by explanation level (chain extension)
+# ---------------------------------------------------------------------------
+
+_REWRITABLE_PHASES = {"screening", "visual", "recipe", "deep_dive"}
+
+
+class RewriteRequest(BaseModel):
+    phase: str
+    level: str
+
+    @field_validator("phase")
+    @classmethod
+    def _phase_ok(cls, v):
+        if v not in _REWRITABLE_PHASES:
+            raise ValueError(f"phase must be one of {_REWRITABLE_PHASES}")
+        return v
+
+    @field_validator("level")
+    @classmethod
+    def _level_ok(cls, v):
+        if v not in EXPLANATION_LEVELS:
+            raise ValueError(f"level must be one of {set(EXPLANATION_LEVELS)}")
+        return v
+
+
+@rewrite_router.post("/{paper_id}/rewrite")
+async def rewrite_section(paper_id: int, req: RewriteRequest):
+    """분석 섹션을 다른 설명 수준으로 재작성한다.
+
+    수준 변경 = 체인 연장: 해당 논문의 가장 최근 non-null interaction_id를
+    previous_interaction_id로 이어받아(thinking_level="low", gemini-3.5-flash) 재작성한다.
+    체인 id가 없거나 만료(API 예외)면 원문을 프롬프트에 실어 stateless로 폴백한다.
+    결과는 phase=f"{phase}#level={level}"로 캐시하고, 재요청 시 즉시 반환한다.
+    """
+    cache_phase = f"{req.phase}#level={req.level}"
+    cached = await fetch_one(
+        "SELECT result FROM analysis_results WHERE paper_id = ? AND phase = ? "
+        "ORDER BY created_at DESC LIMIT 1",
+        (paper_id, cache_phase),
+    )
+    if cached:
+        return {"text": cached["result"], "level": req.level, "cached": True}
+
+    original = await fetch_one(
+        "SELECT result, interaction_id FROM analysis_results "
+        "WHERE paper_id = ? AND phase = ? ORDER BY created_at DESC LIMIT 1",
+        (paper_id, req.phase),
+    )
+    if original is None:
+        raise HTTPException(404, f"phase {req.phase} not analyzed yet")
+
+    level_instruction = EXPLANATION_LEVELS[req.level]
+    chain_id = None
+    row = await fetch_one(
+        "SELECT interaction_id FROM analysis_results WHERE paper_id = ? "
+        "AND interaction_id IS NOT NULL ORDER BY created_at DESC LIMIT 1",
+        (paper_id,),
+    )
+    if row:
+        chain_id = row["interaction_id"]
+
+    prompt = (
+        f"방금 분석한 논문의 {req.phase} 결과를 아래 수준으로 다시 설명해줘. "
+        f"{level_instruction} 마크다운 본문으로만 답해."
+    )
+    try:
+        if chain_id is None:
+            raise RuntimeError("no chain id")
+        result = await call_interaction(
+            prompt,
+            model="gemini-3.5-flash",
+            thinking_level="low",
+            previous_interaction_id=chain_id,
+        )
+    except Exception:
+        # 체인 만료(55일)·유실 폴백: 원문 포함 stateless 재작성
+        result = await call_interaction(
+            f"다음 논문 분석 결과를 읽고 아래 수준으로 다시 설명해줘. {level_instruction}\n\n"
+            f"분석 결과:\n{original['result']}",
+            model="gemini-3.5-flash",
+            thinking_level="low",
+            store=False,
+        )
+
+    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
+    await _insert_analysis_result(
+        paper_id,
+        cache_phase,
+        result["text"],
+        result["model"],
+        result["tokens_in"],
+        result["tokens_out"],
+        cost,
+        prompt,
+        interaction_id=result.get("interaction_id"),
+    )
+    return {"text": result["text"], "level": req.level, "cached": False}
