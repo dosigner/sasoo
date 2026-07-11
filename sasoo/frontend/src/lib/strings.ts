@@ -123,6 +123,12 @@ export const S = {
     loadFailed: 'PDF를 불러올 수 없습니다',
   },
 
+  // ── Explanation Level Slider ──
+  explanationLevel: {
+    title: '설명 수준',
+    help: '슬라이더를 움직여 초등학생부터 박사생까지 원하는 눈높이로 설명을 조정합니다.',
+  },
+
   // ── Library ──
   library: {
     title: '연구 보관함',
