@@ -95,11 +95,12 @@ export default {
         '128': '32rem',
       },
       animation: {
-        'fade-in': 'fadeIn 0.3s ease-out',
-        'fade-out': 'fadeOut 0.3s ease-out',
-        'slide-in-right': 'slideInRight 0.3s ease-out',
-        'slide-in-left': 'slideInLeft 0.3s ease-out',
-        'slide-up': 'slideUp 0.3s ease-out',
+        // ≤150ms per docs/04-design/design-tokens.md §5 (pulse-subtle is a decorative loop, exempt)
+        'fade-in': 'fadeIn 0.15s ease-out',
+        'fade-out': 'fadeOut 0.15s ease-out',
+        'slide-in-right': 'slideInRight 0.15s ease-out',
+        'slide-in-left': 'slideInLeft 0.15s ease-out',
+        'slide-up': 'slideUp 0.15s ease-out',
         'pulse-subtle': 'pulseSubtle 2s ease-in-out infinite',
       },
       keyframes: {

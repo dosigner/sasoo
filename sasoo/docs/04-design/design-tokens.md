@@ -113,5 +113,5 @@ Tailwind: `borderRadius: { control: 'var(--radius-control)', surface: 'var(--rad
 
 - 키보드로 트리거되는 액션(단축키·Enter 제출)에는 애니메이션 금지.
 - 모든 트랜지션 ≤ 200ms (`--transition-speed: 150ms` 재정의), `prefers-reduced-motion` 유지.
-- 포커스 링: `focus-visible` 시 `--accent` 2px ring — 전 인터랙티브 요소 공통.
+- 포커스 링: `focus-visible` 시 `--accent` 2px ring — 전 인터랙티브 요소 공통. 예외: 파괴적 액션 버튼(`.btn-danger`)은 `--danger` ring.
 - spacing 8px 배수 원칙 (4px는 아이콘-라벨 간격 등 미세 조정에만).
