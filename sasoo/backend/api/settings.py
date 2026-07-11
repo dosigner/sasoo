@@ -34,6 +34,9 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 # platform-scoped key and is seeded by _ensure_library_path() below.
 DEFAULT_SETTINGS: dict[str, str] = {
     "gemini_api_key": "",
+    "openai_api_key": "",
+    "image_provider": "openai",
+    "image_quality": "high",
     "default_domain": "optics",
     "auto_analyze": "true",
     "language": "ko",
@@ -104,7 +107,7 @@ async def _ensure_defaults() -> None:
     await db.commit()
 
 
-_API_KEY_FIELDS = {"gemini_api_key"}
+_API_KEY_FIELDS = {"gemini_api_key", "openai_api_key"}
 
 
 async def _unreadable_api_keys() -> set[str]:
@@ -191,6 +194,10 @@ async def get_settings():
     return SettingsModel(
         gemini_api_key=_mask_api_key(raw.get("gemini_api_key", "")),
         gemini_key_unreadable="gemini_api_key" in unreadable,
+        openai_api_key=_mask_api_key(raw.get("openai_api_key", "")),
+        openai_key_unreadable="openai_api_key" in unreadable,
+        image_provider=raw.get("image_provider", "openai"),
+        image_quality=raw.get("image_quality", "high"),
         library_path=raw.get("library_path", str(get_library_root())),
         default_domain=raw.get("default_domain", "optics"),
         auto_analyze=raw.get("auto_analyze", "true").lower() == "true",
@@ -257,6 +264,8 @@ async def update_settings(update: SettingsUpdate):
     if "gemini_api_key" in update_data and update_data["gemini_api_key"]:
         os.environ["GEMINI_API_KEY"] = update_data["gemini_api_key"]
         os.environ["GOOGLE_API_KEY"] = update_data["gemini_api_key"]  # PaperBanana uses this
+    if "openai_api_key" in update_data and update_data["openai_api_key"]:
+        os.environ["OPENAI_API_KEY"] = update_data["openai_api_key"]
 
     return await get_settings()
 
@@ -640,5 +649,10 @@ async def check_api_keys():
             "masked": _mask_api_key(gemini_key),
             # Stored, but the key it was encrypted with is gone.
             "unreadable": "gemini_api_key" in unreadable,
+        },
+        "openai": {
+            "configured": bool(raw.get("openai_api_key", "")),
+            "masked": _mask_api_key(raw.get("openai_api_key", "")),
+            "unreadable": "openai_api_key" in unreadable,
         },
     }

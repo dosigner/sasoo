@@ -86,6 +86,29 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
 
         db.execute.assert_not_awaited()
 
+    async def test_get_settings_includes_openai_fields_with_defaults(self) -> None:
+        """openai_api_key/image_provider/image_quality must appear even when unset in storage."""
+        platform_root = "/tmp/sasoo-library"
+        rows = [
+            {"key": "library_path", "value": ""},
+            {"key": "pdf_parser_mode", "value": "java"},
+            {"key": "extraction_pipeline_version", "value": "resolver_v1"},
+            {"key": "extraction_pipeline_force_fallback", "value": "false"},
+        ]
+
+        with (
+            patch("api.settings._ensure_defaults", new=AsyncMock()),
+            patch("api.settings.fetch_all", new=AsyncMock(return_value=rows)),
+            patch("api.settings._set_setting", new=AsyncMock()),
+            patch("api.settings.get_library_root", return_value=Path(platform_root)),
+        ):
+            response = await settings.get_settings()
+
+        self.assertEqual(response.openai_api_key, "")
+        self.assertFalse(response.openai_key_unreadable)
+        self.assertEqual(response.image_provider, "openai")
+        self.assertEqual(response.image_quality, "high")
+
 
 if __name__ == "__main__":
     unittest.main()

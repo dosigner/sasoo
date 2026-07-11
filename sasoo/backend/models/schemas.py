@@ -414,6 +414,10 @@ class SettingsModel(BaseModel):
     # Without this the UI shows a bare "not configured" and the user has no
     # way to tell that re-entering the key is what fixes it.
     gemini_key_unreadable: bool = False
+    openai_api_key: Optional[str] = None
+    openai_key_unreadable: bool = False
+    image_provider: str = "openai"      # openai | gemini
+    image_quality: str = "high"         # low | medium | high
     library_path: str = "./library"
     default_domain: DomainType = DomainType.OPTICS
     auto_analyze: bool = True
@@ -436,6 +440,9 @@ class SettingsModel(BaseModel):
 class SettingsUpdate(BaseModel):
     """Partial settings update."""
     gemini_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None
+    image_provider: Optional[str] = None
+    image_quality: Optional[str] = None
     library_path: Optional[str] = None
     default_domain: Optional[DomainType] = None
     auto_analyze: Optional[bool] = None

@@ -98,13 +98,14 @@ async def lifespan(app: FastAPI):
     from models.database import fetch_all
     from services.crypto import decrypt_value
     try:
-        rows = await fetch_all("SELECT key, value FROM settings WHERE key = 'gemini_api_key'")
+        rows = await fetch_all("SELECT key, value FROM settings WHERE key IN ('gemini_api_key', 'openai_api_key')")
+        env_names = {"gemini_api_key": "GEMINI_API_KEY", "openai_api_key": "OPENAI_API_KEY"}
         for row in rows:
             if row["value"]:
                 decrypted = decrypt_value(row["value"])
                 if decrypted:
-                    os.environ["GEMINI_API_KEY"] = decrypted
-        print("[Sasoo] API key loaded from database into environment.")
+                    os.environ[env_names[row["key"]]] = decrypted
+        print("[Sasoo] API keys loaded from database into environment.")
     except Exception as exc:
         print(f"[Sasoo] Warning: Could not load API keys from DB: {exc}")
 
