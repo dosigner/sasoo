@@ -13,9 +13,6 @@ opendataloader-pdf>=2.0.2
 google-genai>=1.0.0
 httpx>=0.27.0  # OpenAIImageProvider가 직접 사용 (figure_gen)
 
-# Paper visualization
-paperbanana>=0.1.0
-
 # Data / validation
 pydantic>=2.10.0
 pydantic-settings>=2.7.0

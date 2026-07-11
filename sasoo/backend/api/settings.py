@@ -7,7 +7,7 @@ import json
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -263,7 +263,6 @@ async def update_settings(update: SettingsUpdate):
     # (use original plaintext value, not encrypted)
     if "gemini_api_key" in update_data and update_data["gemini_api_key"]:
         os.environ["GEMINI_API_KEY"] = update_data["gemini_api_key"]
-        os.environ["GOOGLE_API_KEY"] = update_data["gemini_api_key"]  # PaperBanana uses this
     if "openai_api_key" in update_data and update_data["openai_api_key"]:
         os.environ["OPENAI_API_KEY"] = update_data["openai_api_key"]
 
@@ -476,160 +475,6 @@ async def get_cost_summary(
             "review_required_tables": review_required_tables,
         },
     }
-
-
-# ---------------------------------------------------------------------------
-# Debug endpoints (only available in development or when SASOO_DEBUG=1)
-# ---------------------------------------------------------------------------
-
-def _is_debug_enabled() -> bool:
-    """Check if debug endpoints should be available."""
-    return os.environ.get("SASOO_ENV") != "production" or os.environ.get("SASOO_DEBUG") == "1"
-
-
-if _is_debug_enabled():
-
-    @router.get("/debug/paperbanana")
-    async def debug_paperbanana():
-        """
-        Diagnostic endpoint: check PaperBanana availability and configuration.
-        Visit http://localhost:8000/api/settings/debug/paperbanana in browser.
-        """
-        import sys
-
-        from services.viz.paperbanana_bridge import (
-            _IS_FROZEN,
-            _IMPORT_ERROR_DETAIL,
-            _MEIPASS,
-            _PAPERBANANA_AVAILABLE,
-            PaperBananaBridge,
-        )
-
-        bridge = PaperBananaBridge()
-        pipeline_ok = bridge.is_available
-
-        result = {
-            "frozen": _IS_FROZEN,
-            "meipass": str(_MEIPASS) if _MEIPASS else None,
-            "import_ok": _PAPERBANANA_AVAILABLE,
-            "import_error": _IMPORT_ERROR_DETAIL[:500] if _IMPORT_ERROR_DETAIL else None,
-            "pipeline_ok": pipeline_ok,
-            "pipeline_error": bridge.last_error or None,
-            "env": {
-                "GEMINI_API_KEY": bool(os.environ.get("GEMINI_API_KEY")),
-                "GOOGLE_API_KEY": bool(os.environ.get("GOOGLE_API_KEY")),
-            },
-        }
-
-        # Check data file paths if frozen
-        if _IS_FROZEN and _MEIPASS:
-            meipass = Path(str(_MEIPASS))
-            result["data_files"] = {
-                "prompts_dir": str(meipass / "prompts"),
-                "prompts_exists": (meipass / "prompts").exists(),
-                "data_dir": str(meipass / "data"),
-                "data_exists": (meipass / "data").exists(),
-                "configs_dir": str(meipass / "configs"),
-                "configs_exists": (meipass / "configs").exists(),
-            }
-
-        return result
-
-
-    @router.get("/debug/paperbanana/test")
-    async def test_paperbanana_generation():
-        """
-        Actually test PaperBanana generation step-by-step.
-        Visit http://localhost:8000/api/settings/debug/paperbanana/test
-        """
-        import traceback
-
-        from services.viz.paperbanana_bridge import (
-            _IS_FROZEN,
-            _MEIPASS,
-            _PAPERBANANA_AVAILABLE,
-            PaperBananaBridge,
-        )
-
-        steps: dict[str, Any] = {}
-
-        # Step 1: Bridge availability
-        try:
-            bridge = PaperBananaBridge()
-            available = bridge.is_available
-            steps["1_bridge_available"] = available
-            if not available:
-                steps["1_error"] = bridge.last_error
-                return {"steps": steps, "conclusion": "Bridge not available"}
-        except Exception as exc:
-            steps["1_error"] = f"{exc.__class__.__name__}: {exc}"
-            return {"steps": steps, "conclusion": "Bridge init failed"}
-
-        # Step 2: Check prompt loading
-        try:
-            pipeline = bridge._pipeline
-            agent = pipeline.retriever
-            prompt_dir = agent.prompt_dir
-            steps["2_prompt_dir"] = str(prompt_dir)
-            steps["2_prompt_dir_exists"] = prompt_dir.exists() if hasattr(prompt_dir, 'exists') else "N/A"
-
-            # Try loading a prompt
-            prompt_text = agent.load_prompt("diagram")
-            steps["2_prompt_loaded"] = True
-            steps["2_prompt_length"] = len(prompt_text)
-        except Exception as exc:
-            steps["2_prompt_loaded"] = False
-            steps["2_error"] = f"{exc.__class__.__name__}: {exc}"
-            return {"steps": steps, "conclusion": f"Prompt loading failed: {exc}"}
-
-        # Step 3: Check VLM provider
-        try:
-            vlm = pipeline._vlm
-            steps["3_vlm_type"] = type(vlm).__name__
-            steps["3_vlm_model"] = getattr(vlm, '_model', 'unknown')
-            steps["3_vlm_has_key"] = bool(getattr(vlm, '_api_key', None))
-
-            # Try a minimal VLM call
-            vlm_result = await vlm.generate("Reply with just the word 'OK'.")
-            steps["3_vlm_test"] = True
-            steps["3_vlm_response"] = vlm_result[:100]
-        except Exception as exc:
-            steps["3_vlm_test"] = False
-            steps["3_error"] = f"{exc.__class__.__name__}: {exc}"
-            steps["3_traceback"] = traceback.format_exc()[-500:]
-            return {"steps": steps, "conclusion": f"VLM call failed: {exc}"}
-
-        # Step 4: Check image gen provider
-        try:
-            image_gen = pipeline._image_gen
-            steps["4_image_gen_type"] = type(image_gen).__name__
-            steps["4_image_gen_model"] = getattr(image_gen, '_model', 'unknown')
-            steps["4_image_gen_has_key"] = bool(getattr(image_gen, '_api_key', None))
-            steps["4_image_gen_available"] = image_gen.is_available()
-        except Exception as exc:
-            steps["4_error"] = f"{exc.__class__.__name__}: {exc}"
-
-        # Step 5: Check settings paths
-        try:
-            settings = pipeline.settings
-            steps["5_reference_set_path"] = settings.reference_set_path
-            steps["5_guidelines_path"] = settings.guidelines_path
-            steps["5_output_dir"] = settings.output_dir
-            steps["5_ref_exists"] = Path(settings.reference_set_path).exists()
-            steps["5_guide_exists"] = Path(settings.guidelines_path).exists()
-            steps["5_api_key_in_settings"] = bool(settings.google_api_key)
-        except Exception as exc:
-            steps["5_error"] = f"{exc.__class__.__name__}: {exc}"
-
-        # Step 6: Check reference store
-        try:
-            refs = pipeline.reference_store.get_all()
-            steps["6_reference_count"] = len(refs)
-        except Exception as exc:
-            steps["6_error"] = f"{exc.__class__.__name__}: {exc}"
-            steps["6_traceback"] = traceback.format_exc()[-500:]
-
-        return {"steps": steps, "conclusion": "All checks passed (VLM working)"}
 
 
 @router.get("/keys/status")

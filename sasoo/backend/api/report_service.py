@@ -148,9 +148,8 @@ async def _generate_paperbanana_image(
     """
     Render the report's visual summary card with PIL.
 
-    Not to be confused with services/viz/paperbanana_bridge.py, which drives the
-    actual PaperBanana pipeline for in-paper diagrams. This one only draws the
-    report cover.
+    Not to be confused with services/viz/figure_gen.py, which generates the
+    actual in-paper diagrams. This one only draws the report cover.
     """
     output_path = output_dir / f"summary_{paper['id']}.png"
 

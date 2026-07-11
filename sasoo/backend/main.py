@@ -109,11 +109,6 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         print(f"[Sasoo] Warning: Could not load API keys from DB: {exc}")
 
-    # Always sync GOOGLE_API_KEY with GEMINI_API_KEY (PaperBanana uses this)
-    gemini_key = os.environ.get("GEMINI_API_KEY", "")
-    if gemini_key:
-        os.environ["GOOGLE_API_KEY"] = gemini_key
-
     # 프로세스가 중간에 죽으면 papers.status가 'analyzing'으로 영구 고착된다.
     # 기동 시점에 살아있는 분석은 없으므로 전부 error로 정리한다.
     try:
