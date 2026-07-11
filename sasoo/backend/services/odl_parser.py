@@ -33,6 +33,8 @@ from services.figure_resolver import resolve_figure_candidates
 from services.table_candidates import build_table_candidates
 from services.table_resolver import resolve_table_candidates
 
+from services.concurrency import run_pipeline_blocking
+
 logger = logging.getLogger(__name__)
 
 LEGACY_PARSER_VERSION = "odl-v2"
@@ -1743,7 +1745,7 @@ async def ensure_parsed_artifacts_async(
     extraction_pipeline_version: str | None = None,
     force: bool = False,
 ) -> dict[str, Any]:
-    return await asyncio.to_thread(
+    return await run_pipeline_blocking(
         ensure_parsed_artifacts,
         paper_dir,
         mode,
@@ -1758,7 +1760,7 @@ async def ensure_text_artifacts_async(
     extraction_pipeline_version: str | None = None,
     force: bool = False,
 ) -> dict[str, Any]:
-    return await asyncio.to_thread(
+    return await run_pipeline_blocking(
         ensure_text_artifacts,
         paper_dir,
         mode,
@@ -1773,7 +1775,7 @@ async def ensure_visual_artifacts_async(
     extraction_pipeline_version: str | None = None,
     force: bool = False,
 ) -> dict[str, Any]:
-    return await asyncio.to_thread(
+    return await run_pipeline_blocking(
         ensure_visual_artifacts,
         paper_dir,
         mode,

@@ -9,6 +9,7 @@ import logging
 import os
 from pathlib import Path
 
+from services.concurrency import PIPELINE_EXECUTOR, PIPELINE_LLM_SEM
 from services.models import MODEL_FLASH
 
 logger = logging.getLogger(__name__)
@@ -119,12 +120,15 @@ async def _call_gemini(
             "tokens_out": tokens_out,
         }
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     last_error: Exception | None = None
 
     for attempt in range(_MAX_ATTEMPTS):
         try:
-            return await loop.run_in_executor(None, _sync_call)
+            # The semaphore bounds how many phase calls are in flight at once;
+            # the dedicated pool keeps them off the executor chat depends on.
+            async with PIPELINE_LLM_SEM:
+                return await loop.run_in_executor(PIPELINE_EXECUTOR, _sync_call)
         except Exception as exc:
             last_error = exc
             logger.warning(
