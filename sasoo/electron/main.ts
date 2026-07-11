@@ -36,7 +36,7 @@ async function createWindow(): Promise<void> {
     icon: getIconPath(),
     title: 'Sasoo',
     frame: false,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#0a0a0b',
     show: false,
     ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' } : {}),
     webPreferences: {

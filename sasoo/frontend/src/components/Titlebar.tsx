@@ -84,7 +84,7 @@ export default function Titlebar() {
           </button>
           <button
             onClick={handleClose}
-            className="flex items-center justify-center w-11 h-full text-fg-muted hover:bg-red-600 hover:text-white transition-colors"
+            className="flex items-center justify-center w-11 h-full text-fg-muted hover:bg-danger hover:text-white transition-colors"
             title={S.titlebar.close}
             aria-label={S.titlebar.close}
           >
