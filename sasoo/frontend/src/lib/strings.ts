@@ -247,6 +247,11 @@ export const S = {
     keyUnreadable: '읽을 수 없음 — 다시 입력하세요',
     keyUnreadableHelp: '저장된 키를 복호화할 수 없습니다. 암호화 키가 사라졌거나 다른 환경에서 저장된 키입니다. 새 키를 입력하면 덮어씁니다.',
     enterNewKey: '새 키를 입력하여 변경...',
+    // Image generation
+    imageProvider: '도해 생성 모델',
+    imageProviderOpenai: 'gpt-image-2 (기본)',
+    imageProviderGemini: 'Nano Banana 2 (Gemini)',
+    imageQuality: '도해 품질',
     // Cost
     usageCosts: '사용량과 비용',
     costLoadFailed: '비용 데이터를 불러올 수 없습니다',

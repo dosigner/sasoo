@@ -260,6 +260,8 @@ export interface Settings {
   gemini_key_unreadable: boolean;
   openai_api_key: string;
   openai_key_unreadable: boolean;
+  image_provider: 'openai' | 'gemini';
+  image_quality: 'low' | 'medium' | 'high';
   library_path: string;
   theme: 'dark' | 'light';
   default_domain: string;

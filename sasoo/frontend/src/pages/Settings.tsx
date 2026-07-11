@@ -50,6 +50,8 @@ export default function Settings() {
     gemini_key_unreadable: false,
     openai_api_key: '',
     openai_key_unreadable: false,
+    image_provider: 'openai',
+    image_quality: 'high',
     library_path: '',
     default_domain: 'optics',
     auto_analyze: false,
@@ -80,6 +82,8 @@ export default function Settings() {
   const [autoAnalyze, setAutoAnalyze] = useState(false);
   const [pdfParserMode, setPdfParserMode] = useState<'java'>('java');
   const [extractionPipelineVersion, setExtractionPipelineVersion] = useState<'legacy' | 'resolver_v1'>('resolver_v1');
+  const [imageProvider, setImageProvider] = useState<'openai' | 'gemini'>('openai');
+  const [imageQuality, setImageQuality] = useState<'low' | 'medium' | 'high'>('high');
 
   // API key status (masked value from server, for display only)
   const [geminiKeyStatus, setGeminiKeyStatus] = useState('');
@@ -108,6 +112,8 @@ export default function Settings() {
     setExtractionPipelineVersion(
       (data.extraction_pipeline_version || 'resolver_v1') as 'legacy' | 'resolver_v1'
     );
+    setImageProvider((data.image_provider || 'openai') as 'openai' | 'gemini');
+    setImageQuality((data.image_quality || 'high') as 'low' | 'medium' | 'high');
   }, []);
 
   // -----------------------------------------------------------------------
@@ -183,6 +189,8 @@ export default function Settings() {
         auto_analyze: autoAnalyze,
         pdf_parser_mode: pdfParserMode,
         extraction_pipeline_version: extractionPipelineVersion,
+        image_provider: imageProvider,
+        image_quality: imageQuality,
       };
       if (geminiKey.trim()) payload.gemini_api_key = geminiKey.trim();
       if (openaiKey.trim()) payload.openai_api_key = openaiKey.trim();
@@ -208,7 +216,7 @@ export default function Settings() {
     } finally {
       setSaving(false);
     }
-  }, [geminiKey, openaiKey, libraryPath, theme, autoAnalyze, pdfParserMode, extractionPipelineVersion, toast, applySettingsToForm, clearApiKeyInputs]);
+  }, [geminiKey, openaiKey, libraryPath, theme, autoAnalyze, pdfParserMode, extractionPipelineVersion, imageProvider, imageQuality, toast, applySettingsToForm, clearApiKeyInputs]);
 
   const handleBrowseDirectory = useCallback(async () => {
     if (!window.electronAPI?.openDirectory) {
@@ -252,6 +260,8 @@ export default function Settings() {
     setAutoAnalyze(baselineSettings.auto_analyze ?? false);
     setPdfParserMode((baselineSettings.pdf_parser_mode || 'java') as 'java');
     setExtractionPipelineVersion((baselineSettings.extraction_pipeline_version || 'resolver_v1') as 'legacy' | 'resolver_v1');
+    setImageProvider((baselineSettings.image_provider || 'openai') as 'openai' | 'gemini');
+    setImageQuality((baselineSettings.image_quality || 'high') as 'low' | 'medium' | 'high');
     setSaved(false);
   }, [baselineSettings, clearApiKeyInputs]);
 
@@ -265,7 +275,9 @@ export default function Settings() {
     theme !== (baselineSettings.theme || 'light') ||
     autoAnalyze !== (baselineSettings.auto_analyze ?? false) ||
     pdfParserMode !== (baselineSettings.pdf_parser_mode || 'java') ||
-    extractionPipelineVersion !== (baselineSettings.extraction_pipeline_version || 'resolver_v1');
+    extractionPipelineVersion !== (baselineSettings.extraction_pipeline_version || 'resolver_v1') ||
+    imageProvider !== (baselineSettings.image_provider || 'openai') ||
+    imageQuality !== (baselineSettings.image_quality || 'high');
 
   if (loading) {
     return (
@@ -482,6 +494,38 @@ export default function Settings() {
                 </a>
                 {S.settings.getKeyAt('')}
               </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs text-fg-muted mb-1.5 block">
+                  {S.settings.imageProvider}
+                </label>
+                <Select
+                  value={imageProvider}
+                  onValueChange={(value) => setImageProvider(value as 'openai' | 'gemini')}
+                  aria-label={S.settings.imageProvider}
+                  options={[
+                    { value: 'openai', label: S.settings.imageProviderOpenai },
+                    { value: 'gemini', label: S.settings.imageProviderGemini },
+                  ]}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-fg-muted mb-1.5 block">
+                  {S.settings.imageQuality}
+                </label>
+                <Select
+                  value={imageQuality}
+                  onValueChange={(value) => setImageQuality(value as 'low' | 'medium' | 'high')}
+                  aria-label={S.settings.imageQuality}
+                  options={[
+                    { value: 'high', label: 'high ($0.17/장)' },
+                    { value: 'medium', label: 'medium ($0.04/장)' },
+                    { value: 'low', label: 'low ($0.005/장)' },
+                  ]}
+                />
+              </div>
             </div>
 
           </div>
