@@ -149,6 +149,11 @@ export default function TableGallery({
           return (
             <div
               key={table.id ?? `${table.table_num ?? 'table'}-${index}`}
+              data-citation-anchor={
+                table.table_num?.match(/\d+/)?.[0]
+                  ? `table-${table.table_num.match(/\d+/)![0]}`
+                  : undefined
+              }
               className="card space-y-4 border border-border/40 bg-surface/30"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">

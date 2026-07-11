@@ -12,6 +12,8 @@ import { useToast } from '@/components/Toast';
 import { S } from '@/lib/strings';
 import { buildChatStarterPrompts, buildWorkbenchStatusSummary } from '@/lib/workbenchSummaries';
 import WorkbenchHeader from '@/components/workbench/WorkbenchHeader';
+import type { CitationFocus } from '@/components/AnalysisPanel';
+import type { CitationTarget } from '@/components/ChatPanel';
 import { ContentState, Modal, Select } from '@/components/ui';
 import { useWorkbenchLayout } from '@/hooks/useWorkbenchLayout';
 import { useWorkbenchAnalysisControls } from '@/hooks/useWorkbenchAnalysisControls';
@@ -47,6 +49,7 @@ export default function Workbench() {
   const [paperLoading, setPaperLoading] = useState(true);
   const [paperError, setPaperError] = useState<string | null>(null);
   const [navigationRequest, setNavigationRequest] = useState<PdfNavigationRequest | null>(null);
+  const [citationFocus, setCitationFocus] = useState<CitationFocus | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatDraft, setChatDraft] = useState('');
 
@@ -134,7 +137,50 @@ export default function Workbench() {
   useEffect(() => {
     setChatOpen(false);
     setChatDraft('');
+    setCitationFocus(null);
   }, [paper?.id]);
+
+  // Chat citation click-back → jump the PDF and/or focus a gallery item.
+  const handleCitationClick = useCallback((target: CitationTarget) => {
+    const stamp = Date.now();
+
+    if (target.type === 'page') {
+      setNavigationRequest({
+        page: target.n,
+        requestId: `cite-p${target.n}-${stamp}`,
+        source: 'citation',
+      });
+      return;
+    }
+
+    if (target.type === 'figure') {
+      const match = (figures?.figures ?? []).find(
+        (f) => f.figure_num?.match(/\d+/)?.[0] === String(target.n),
+      );
+      setCitationFocus({ tab: 'figures', anchor: `figure-${target.n}`, token: stamp });
+      if (match && typeof match.page_number === 'number') {
+        setNavigationRequest({
+          page: match.page_number,
+          requestId: `cite-f${target.n}-${stamp}`,
+          source: 'citation',
+        });
+      }
+      return;
+    }
+
+    // table
+    const match = (tables?.tables ?? []).find(
+      (t) => t.table_num?.match(/\d+/)?.[0] === String(target.n),
+    );
+    setCitationFocus({ tab: 'tables', anchor: `table-${target.n}`, token: stamp });
+    if (match && typeof match.page_number === 'number') {
+      setNavigationRequest({
+        page: match.page_number,
+        requestId: `cite-t${target.n}-${stamp}`,
+        source: 'citation',
+      });
+    }
+  }, [figures, tables]);
 
   const onConfirmAnalysis = useCallback(async (selection?: AnalysisProfileSelection) => {
     try {
@@ -337,6 +383,7 @@ export default function Workbench() {
                 agentName={paper.agent_used}
                 paperId={paperId}
                 terminalState={terminalState}
+                citationFocus={citationFocus}
                 onJumpToFigurePage={(figure) => {
                   if (typeof figure.page_number !== 'number') return;
                   setNavigationRequest({
@@ -377,6 +424,7 @@ export default function Workbench() {
           starters={chatStarters}
           onToggleOpen={() => setChatOpen((prev) => !prev)}
           onDraftChange={setChatDraft}
+          onCitationClick={handleCitationClick}
         />
       </Suspense>
     </div>

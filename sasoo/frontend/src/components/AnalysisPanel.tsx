@@ -55,7 +55,17 @@ interface AnalysisPanelProps {
   paperId?: string;
   onJumpToFigurePage?: (figure: Figure) => void;
   onJumpToTablePage?: (table: Table) => void;
+  citationFocus?: CitationFocus | null;
   terminalState?: 'cancelled' | null;
+}
+
+/** Signal from chat citation click: switch to a gallery tab and scroll to the item. */
+export interface CitationFocus {
+  tab: 'figures' | 'tables';
+  /** matches a `[data-citation-anchor]` value, e.g. "figure-3" / "table-2". */
+  anchor: string;
+  /** monotonically increasing token so repeated clicks re-trigger the effect. */
+  token: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -828,6 +838,7 @@ export default function AnalysisPanel({
   paperId,
   onJumpToFigurePage,
   onJumpToTablePage,
+  citationFocus,
   terminalState,
 }: AnalysisPanelProps) {
   const [activeTab, setActiveTab] = useState<'summary' | 'figures' | 'tables' | 'recipe' | 'experiment'>('summary');
@@ -835,6 +846,18 @@ export default function AnalysisPanel({
   useEffect(() => {
     setActiveTab('summary');
   }, [paperId]);
+
+  // Chat citation click-back: activate the target gallery tab, then scroll the
+  // referenced figure/table card into view once it has rendered.
+  useEffect(() => {
+    if (!citationFocus) return;
+    setActiveTab(citationFocus.tab);
+    const timer = window.setTimeout(() => {
+      const el = document.querySelector(`[data-citation-anchor="${citationFocus.anchor}"]`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [citationFocus]);
 
   // Determine phase statuses
   const getPhaseStatus = (phaseName: AnalysisPhase): PhaseStatusValue => {

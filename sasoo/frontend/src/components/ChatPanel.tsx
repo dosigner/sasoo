@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { Children, useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import {
   Bot,
   MessageSquare,
@@ -8,16 +8,58 @@ import {
   User,
   X,
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { chatWithAgent, type ChatDoneMeta, type ChatMessage } from '@/lib/api';
 import { getAgentMeta } from '@/lib/agents';
+import { detectCitations, type CitationType } from '@/lib/citations';
 
 const REMARK_PLUGINS = [remarkGfm, remarkMath];
 const REHYPE_PLUGINS = [rehypeKatex];
+
+export interface CitationTarget {
+  type: CitationType;
+  n: number;
+}
+
+type CitationHandler = (target: CitationTarget) => void;
+
+// Split a raw text run into plain segments + clickable citation chips.
+// Only string children are tokenized, so text inside <code>/<a> (rendered by
+// their own default components) is never turned into a chip.
+function tokenizeCitations(text: string, onCitation: CitationHandler): ReactNode {
+  const matches = detectCitations(text);
+  if (matches.length === 0) return text;
+
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  matches.forEach((match, i) => {
+    if (match.start > cursor) nodes.push(text.slice(cursor, match.start));
+    nodes.push(
+      <button
+        key={`cite-${i}-${match.start}`}
+        type="button"
+        className="citation-chip"
+        onClick={() => onCitation({ type: match.type, n: match.n })}
+        title={`${match.raw}로 이동`}
+      >
+        {match.raw}
+      </button>,
+    );
+    cursor = match.end;
+  });
+  if (cursor < text.length) nodes.push(text.slice(cursor));
+  return nodes;
+}
+
+function processCitationChildren(children: ReactNode, onCitation: CitationHandler): ReactNode {
+  return Children.map(children, (child) =>
+    typeof child === 'string' ? tokenizeCitations(child, onCitation) : child,
+  );
+}
 
 interface ChatPanelProps {
   paperId: string;
@@ -29,6 +71,7 @@ interface ChatPanelProps {
   starters: string[];
   onToggleOpen: () => void;
   onDraftChange: (value: string) => void;
+  onCitationClick?: CitationHandler;
 }
 
 export default function ChatPanel({
@@ -41,6 +84,7 @@ export default function ChatPanel({
   starters,
   onToggleOpen,
   onDraftChange,
+  onCitationClick,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
@@ -96,6 +140,32 @@ export default function ChatPanel({
     () => [...messages].reverse().find((msg) => msg.role === 'user')?.content ?? '',
     [messages],
   );
+
+  // react-markdown component overrides that turn "p. 5" / "Fig. 3" / "표 2"
+  // style references into clickable citation chips. Only text-bearing block and
+  // inline containers are overridden; <a>/<code> keep their defaults so their
+  // inner text is never linkified.
+  const markdownComponents = useMemo<Components | undefined>(() => {
+    if (!onCitationClick) return undefined;
+    const wrap =
+      (Tag: 'p' | 'li' | 'td' | 'th' | 'strong' | 'em' | 'blockquote' | 'h1' | 'h2' | 'h3' | 'h4') =>
+      ({ node: _node, children, ...props }: { node?: unknown; children?: ReactNode }) => (
+        <Tag {...props}>{processCitationChildren(children, onCitationClick)}</Tag>
+      );
+    return {
+      p: wrap('p'),
+      li: wrap('li'),
+      td: wrap('td'),
+      th: wrap('th'),
+      strong: wrap('strong'),
+      em: wrap('em'),
+      blockquote: wrap('blockquote'),
+      h1: wrap('h1'),
+      h2: wrap('h2'),
+      h3: wrap('h3'),
+      h4: wrap('h4'),
+    };
+  }, [onCitationClick]);
 
   const sendText = useCallback(async (rawText: string) => {
     const text = rawText.trim();
@@ -336,6 +406,7 @@ export default function ChatPanel({
                                       className="chat-markdown"
                                       remarkPlugins={REMARK_PLUGINS}
                                       rehypePlugins={REHYPE_PLUGINS}
+                                      components={markdownComponents}
                                     >
                                       {msg.content}
                                     </ReactMarkdown>
