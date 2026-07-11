@@ -93,7 +93,6 @@ from services.models import (
 from api.report_service import (
     _format_phase_data,
     _generate_paperbanana_image,
-    _wrap_text,
 )
 from api.figure_service import explain_figure_handler
 
@@ -1235,14 +1234,14 @@ async def _generate_single_paperbanana(
 ) -> dict:
     """
     Generate a PaperBanana illustration for a single visualization item.
-    Returns {"image_url": ..., "image_path": ...} or empty dict on failure.
+    Returns {"image_path": ..., "image_url": ..., "provider": ..., "duration_s": ...,
+    "cost_usd": ...} on success, or {"error": ...} on failure.
     """
     import logging as _logging
     _logger = _logging.getLogger(__name__)
 
     title = viz_item.get("title", "Illustration")
     description = viz_item.get("description", "")
-    category = viz_item.get("category", "conceptual_illustration")
     enriched_item = dict(viz_item)
     context_parts = [description]
     if recipe_result:
@@ -1253,101 +1252,60 @@ async def _generate_single_paperbanana(
         context_parts.append(f"Paper context: {visualization_input[:2200]}")
     enriched_item["description"] = "\n\n".join(part for part in context_parts if part)
 
-    # Try using the PaperBanana bridge.
-    # NOTE: We directly await the bridge's async generate method on the
-    # current event loop. This keeps the google-genai SDK's httpx/gRPC
-    # clients on the same loop they were created on (moving to a worker
-    # thread via asyncio.to_thread caused silent SDK failures → purple
-    # placeholders).
-    try:
-        from services.viz.paperbanana_bridge import PaperBananaBridge
-        bridge = PaperBananaBridge()
-        _logger.info("PaperBanana bridge.is_available: %s for '%s'", bridge.is_available, title)
-        if not bridge.is_available:
-            _logger.warning("PaperBanana bridge not available: %s", bridge.last_error)
-        else:
-            paper_dir = str(get_paper_dir(folder_name))
+    from services.viz.figure_gen import generate_illustration
+    from api.settings import _get_all_settings
 
-            path = await asyncio.wait_for(
-                bridge.generate_illustration(enriched_item, paper_dir),
-                timeout=300.0,  # 5 minute timeout per illustration
-            )
-            if path:
-                # Bridge saves to library/{folder}/paperbanana/{file}
-                url = f"/static/library/{folder_name}/paperbanana/{Path(path).name}"
-                return {"image_path": path, "image_url": url}
-    except asyncio.TimeoutError:
-        _logger.warning("PaperBanana generation timed out for '%s'", title)
-    except Exception as exc:
-        _logger.warning("PaperBanana bridge failed for '%s': %s", title, exc)
-        _logger.warning("Traceback: %s", traceback.format_exc())
+    settings = await _get_all_settings()
+    result = await generate_illustration(
+        enriched_item,
+        str(get_paper_dir(folder_name)),
+        preferred_provider=settings.get("image_provider", "openai"),
+        quality=settings.get("image_quality", "high"),
+    )
+    if result.path:
+        url = f"/static/library/{folder_name}/paperbanana/{Path(result.path).name}"
+        _logger.info(
+            "figure_gen ok '%s' via %s in %.1fs ($%.3f)",
+            title, result.provider, result.duration_s, result.cost_usd,
+        )
+        return {
+            "image_path": result.path,
+            "image_url": url,
+            "provider": result.provider,
+            "duration_s": result.duration_s,
+            "cost_usd": result.cost_usd,
+        }
+    _logger.warning("figure_gen failed for '%s': %s", title, result.error)
+    return {"error": result.error or "generation failed"}
 
-    # Fallback: Generate with PIL (simple diagram placeholder)
-    _logger.info("Using PIL fallback for '%s'", title)
-    try:
-        output_dir = get_paperbanana_dir(folder_name)
-        output_dir.mkdir(parents=True, exist_ok=True)
 
-        from PIL import Image, ImageDraw, ImageFont
-        import re as _re
-
-        safe_title = _re.sub(r"[^\w\s-]", "", title).strip()
-        safe_title = _re.sub(r"[-\s]+", "_", safe_title).lower() or "illustration"
-        output_path = output_dir / f"{safe_title}_{paper_id}.png"
-
-        width, height = 800, 600
-        img = Image.new("RGB", (width, height), (30, 41, 59))
-        draw = ImageDraw.Draw(img)
-
-        # Try fonts with Korean support (platform-specific)
-        font_lg = None
-        font_sm = None
-        font_candidates = [
-            # Windows (Malgun Gothic - all Korean Windows)
-            "C:/Windows/Fonts/malgunbd.ttf",
-            "C:/Windows/Fonts/malgun.ttf",
-            # macOS
-            "/System/Library/Fonts/AppleSDGothicNeo.ttc",
-            # Linux
-            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        ]
-        for fpath in font_candidates:
-            try:
-                font_lg = ImageFont.truetype(fpath, 24)
-                font_sm = ImageFont.truetype(fpath, 16)
-                break
-            except (OSError, IOError):
-                continue
-        if font_lg is None:
-            font_lg = ImageFont.load_default()
-            font_sm = ImageFont.load_default()
-
-        # Header
-        draw.rectangle([(0, 0), (width, 60)], fill=(79, 70, 229))
-        draw.text((20, 16), f"PaperBanana: {title[:40]}", fill=(255, 255, 255), font=font_lg)
-
-        # Category badge
-        draw.text((20, 80), f"Category: {category}", fill=(148, 163, 184), font=font_sm)
-
-        # Description
-        y = 120
-        for line in _wrap_text(description, font_sm, width - 40):
-            draw.text((20, y), line, fill=(226, 232, 240), font=font_sm)
-            y += 24
-            if y > height - 60:
-                break
-
-        # Footer
-        draw.rectangle([(0, height - 40), (width, height)], fill=(79, 70, 229))
-        draw.text((20, height - 32), "Generated by Sasoo (placeholder)", fill=(200, 200, 255), font=font_sm)
-
-        img.save(str(output_path), "PNG")
-        # PIL fallback saves to library/{folder}/paperbanana/ — use /static/library/ mount
-        url = f"/static/library/{folder_name}/paperbanana/{output_path.name}"
-        return {"image_path": str(output_path), "image_url": url}
-    except Exception:
-        return {}
+async def _store_visualization_progress(
+    paper_id: int, items: list[dict], cache_input: str, done: bool
+) -> None:
+    """항목이 하나 끝날 때마다 visualization 행을 갱신한다 (중간 사망 시 유실 방지)."""
+    payload = json.dumps(
+        {
+            "items": sorted(items, key=lambda x: x.get("id", 0)),
+            "total_count": len(items),
+            "model_used": MODEL_VIZ_PLANNING,
+            "planned_at": _utcnow_iso(),
+            "complete": done,
+        },
+        ensure_ascii=False,
+    )
+    row = await fetch_one(
+        "SELECT id FROM analysis_results WHERE paper_id = ? AND phase = 'visualization' ORDER BY id DESC LIMIT 1",
+        (paper_id,),
+    )
+    if row:
+        await execute_update(
+            "UPDATE analysis_results SET result = ?, input_hash = ? WHERE id = ?",
+            (payload, compute_input_hash(cache_input), row["id"]),
+        )
+    else:
+        await _insert_analysis_result(
+            paper_id, "visualization", payload, MODEL_VIZ_PLANNING, 0, 0, 0.0, cache_input,
+        )
 
 
 async def _run_visualizations(
@@ -1420,7 +1378,13 @@ async def _run_visualizations(
                 )
                 result_item["image_url"] = pb_result.get("image_url")
                 result_item["image_path"] = pb_result.get("image_path")
-                result_item["status"] = "completed" if pb_result else "error"
+                if pb_result.get("image_path"):
+                    result_item["status"] = "completed"
+                    if pb_result.get("provider"):
+                        result_item["provider"] = pb_result["provider"]
+                else:
+                    result_item["status"] = "error"
+                    result_item["error_message"] = pb_result.get("error", "generation failed")
             else:
                 result_item["status"] = "error"
                 result_item["error_message"] = f"Unknown tool: {tool}"
@@ -1435,15 +1399,23 @@ async def _run_visualizations(
     other_items = [(i, item) for i, item in enumerate(viz_plan)
                    if item.get("tool") not in ("mermaid", "paperbanana")]
 
+    # Accumulates completed items so far, so a mid-run crash doesn't lose progress.
+    accumulated: list[dict] = []
+
     # Run mermaid generations in parallel
     mermaid_tasks = [generate_one(i, item) for i, item in mermaid_items]
     mermaid_results = await asyncio.gather(*mermaid_tasks, return_exceptions=False) if mermaid_tasks else []
+    if mermaid_results:
+        accumulated.extend(mermaid_results)
+        await _store_visualization_progress(paper_id, accumulated, visualization_cache_input, done=False)
 
     # Run paperbanana generations sequentially to avoid API rate limits
     paperbanana_results = []
     for idx, (i, item) in enumerate(paperbanana_items):
         result = await generate_one(i, item)
         paperbanana_results.append(result)
+        accumulated.append(result)
+        await _store_visualization_progress(paper_id, accumulated, visualization_cache_input, done=False)
         # Small delay between PaperBanana calls to avoid rate limiting
         if idx < len(paperbanana_items) - 1:
             await asyncio.sleep(2.0)
@@ -1451,28 +1423,16 @@ async def _run_visualizations(
     # Run other tool types in parallel
     other_tasks = [generate_one(i, item) for i, item in other_items]
     other_results = await asyncio.gather(*other_tasks, return_exceptions=False) if other_tasks else []
+    if other_results:
+        accumulated.extend(other_results)
+        await _store_visualization_progress(paper_id, accumulated, visualization_cache_input, done=False)
 
     # Combine and sort by original index
     all_results = list(mermaid_results) + paperbanana_results + list(other_results)
     generated_items = sorted(all_results, key=lambda x: x.get("id", 0))
 
-    # Step 3: Store all visualization results in DB
-    viz_result = {
-        "items": list(generated_items),
-        "total_count": len(generated_items),
-        "model_used": MODEL_VIZ_PLANNING,
-        "planned_at": _utcnow_iso(),
-    }
-    await _insert_analysis_result(
-        paper_id,
-        "visualization",
-        json.dumps(viz_result, ensure_ascii=False),
-        MODEL_VIZ_PLANNING,
-        0,
-        0,
-        0.0,
-        visualization_cache_input,
-    )
+    # Step 3: Store all visualization results in DB (final, complete=True)
+    await _store_visualization_progress(paper_id, generated_items, visualization_cache_input, done=True)
 
     # Visualization complete — set progress to 100%
     status.progress_pct = 100.0

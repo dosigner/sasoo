@@ -348,6 +348,37 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["model"], "gemini-cache")
         insert_mock.assert_awaited_once()
 
+    async def test_store_visualization_progress_updates_existing_row(self):
+        items = [{"id": 1, "title": "A", "status": "completed"}]
+
+        with (
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value={"id": 42})),
+            patch("api.analysis_routes.execute_update", new=AsyncMock(return_value=1)) as update_mock,
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()) as insert_mock,
+        ):
+            await analysis_routes._store_visualization_progress(7, items, "cache-input", done=False)
+
+        update_mock.assert_awaited_once()
+        args = update_mock.call_args.args
+        self.assertIn("UPDATE analysis_results", args[0])
+        self.assertEqual(args[1][-1], 42)
+        insert_mock.assert_not_awaited()
+
+    async def test_store_visualization_progress_inserts_when_no_row(self):
+        items = [{"id": 1, "title": "A", "status": "completed"}]
+
+        with (
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.execute_update", new=AsyncMock()) as update_mock,
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()) as insert_mock,
+        ):
+            await analysis_routes._store_visualization_progress(7, items, "cache-input", done=True)
+
+        insert_mock.assert_awaited_once()
+        self.assertEqual(insert_mock.call_args.args[0], 7)
+        self.assertEqual(insert_mock.call_args.args[1], "visualization")
+        update_mock.assert_not_awaited()
+
     async def test_mermaid_uses_visualization_context_and_latest_recipe_row(self):
         paper = {"id": 7, "title": "Paper", "folder_name": "folder"}
         captured = {}

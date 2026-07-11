@@ -114,6 +114,18 @@ async def lifespan(app: FastAPI):
     if gemini_key:
         os.environ["GOOGLE_API_KEY"] = gemini_key
 
+    # 프로세스가 중간에 죽으면 papers.status가 'analyzing'으로 영구 고착된다.
+    # 기동 시점에 살아있는 분석은 없으므로 전부 error로 정리한다.
+    try:
+        from models.database import execute_update
+        n = await execute_update(
+            "UPDATE papers SET status = 'error' WHERE status = 'analyzing'"
+        )
+        if n:
+            print(f"[Sasoo] Recovered {n} paper(s) stuck in 'analyzing'.")
+    except Exception as exc:
+        print(f"[Sasoo] Warning: stuck-analysis recovery failed: {exc}")
+
     # Load .md agent profiles and initialize domain router
     from services.agents import load_all_agents
     load_all_agents()
