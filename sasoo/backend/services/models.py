@@ -11,9 +11,9 @@ Model choice rationale (2026-07, Gemini-only stack):
                 MMMU-Pro 83.6% / CharXiv 84.2%, which beats PRO on vision.
                 Used wherever we search a full paper or read a figure.
   PRO         - deepest reasoning (GPQA 94.3%); recipe, deep dive, planning.
-  IMAGE       - Nano Banana Pro. Only image model with a published
-                text-rendering error rate (<10% single-line), which is what
-                decides whether axis labels and equations survive.
+  IMAGE       - Nano Banana 2 as the Gemini-side renderer; gpt-image-2
+                (Arena text-to-image #1) is the default. Provider choice and
+                fallback live in services/viz/figure_gen.py.
 """
 
 # Text models
@@ -22,8 +22,9 @@ MODEL_FLASH = "gemini-3-flash-preview"
 MODEL_FLASH_HQ = "gemini-3.5-flash"
 MODEL_PRO = "gemini-3.1-pro-preview"
 
-# Image generation (PaperBanana)
-MODEL_IMAGE = "gemini-3-pro-image"
+# Image generation
+MODEL_IMAGE = "gemini-3.1-flash-image"   # Nano Banana 2 ($0.067/장)
+MODEL_IMAGE_OPENAI = "gpt-image-2"
 
 # ---------------------------------------------------------------------------
 # Phase -> model mapping (the analysis pipeline)
