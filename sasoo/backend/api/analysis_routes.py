@@ -71,6 +71,7 @@ from services.document_context import (
     load_or_build_document_context,
 )
 from services.pricing import calc_cost
+from services.llm.interactions_client import call_interaction
 
 from api.analysis_state import _running_analyses, _cancel_events, _analyses_lock
 from api.analysis_helpers import (
@@ -241,12 +242,13 @@ async def _insert_analysis_result(
     tokens_out: int,
     cost_usd: float,
     input_text: str,
+    interaction_id: str | None = None,
 ) -> None:
     await execute_insert(
         """
         INSERT INTO analysis_results
-            (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd, input_hash)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd, input_hash, interaction_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             paper_id,
@@ -257,6 +259,7 @@ async def _insert_analysis_result(
             tokens_out,
             cost_usd,
             compute_input_hash(input_text),
+            interaction_id,
         ),
     )
 
@@ -287,6 +290,23 @@ async def _get_visual_contract(
 # Phase execution functions
 # ---------------------------------------------------------------------------
 
+_SCREENING_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "domain": {"type": "string", "enum": ["optics", "materials", "bio", "energy", "quantum", "general"]},
+        "agent_recommended": {"type": "string"},
+        "relevance_score": {"type": "number"},
+        "key_topics": {"type": "array", "items": {"type": "string"}},
+        "methodology_type": {"type": "string", "enum": ["experimental", "computational", "theoretical", "review"]},
+        "summary": {"type": "string"},
+        "is_experimental": {"type": "boolean"},
+        "has_figures": {"type": "boolean"},
+        "estimated_complexity": {"type": "string", "enum": ["low", "medium", "high"]},
+    },
+    "required": ["domain", "summary", "relevance_score"],
+}
+
+
 async def _run_screening(paper_id: int, screening_input: str, status: AnalysisStatus) -> dict:
     """Phase 1: Screening - classify domain, score relevance, extract topics."""
     phase_status = PhaseStatus(
@@ -301,18 +321,16 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
 모든 텍스트 내용(summary, key_topics 등)은 반드시 한국어로 작성해.
 JSON key 이름만 영어로 유지하고, value는 전부 한국어로 써줘.
 
-Return ONLY valid JSON (마크다운 펜스 없이):
-{{
-  "domain": "optics|materials|bio|energy|quantum|general",
-  "agent_recommended": "photon|crystal|helix|volt|qubit|atlas",
-  "relevance_score": 0.0-1.0,
-  "key_topics": ["주제1", "주제2", ...],
-  "methodology_type": "experimental|computational|theoretical|review",
-  "summary": "2-3문장 요약 (한국어)",
-  "is_experimental": true/false,
-  "has_figures": true/false,
-  "estimated_complexity": "low|medium|high"
-}}
+평가 항목:
+- domain: optics|materials|bio|energy|quantum|general 중 하나
+- agent_recommended: photon|crystal|helix|volt|qubit|atlas 중 하나
+- relevance_score: 0.0~1.0
+- key_topics: 핵심 주제 리스트
+- methodology_type: experimental|computational|theoretical|review 중 하나
+- summary: 2-3문장 요약 (한국어)
+- is_experimental: 실험 논문 여부
+- has_figures: 그림 포함 여부
+- estimated_complexity: low|medium|high 중 하나
 
 논문 텍스트:
 {screening_input}
@@ -332,8 +350,14 @@ Return ONLY valid JSON (마크다운 펜스 없이):
         status.total_tokens_out += cached["tokens_out"]
         return cached
 
-    result = await _call_gemini(prompt, model="gemini-3.1-flash-lite-preview")
-    # Clean markdown fences from JSON response
+    result = await call_interaction(
+        prompt,
+        model="gemini-3.1-flash-lite",
+        thinking_level="minimal",
+        response_schema=_SCREENING_SCHEMA,
+        store=False,
+    )
+    # structured output 실패 대비 안전망: 마크다운 펜스 제거 후 JSON 검증
     cleaned_text = _clean_llm_json(result["text"])
 
     # Validate JSON before storing
@@ -356,6 +380,7 @@ Return ONLY valid JSON (마크다운 펜스 없이):
         result["tokens_out"],
         cost,
         prompt,
+        interaction_id=result.get("interaction_id"),
     )
 
     # Update status

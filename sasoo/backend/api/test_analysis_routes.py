@@ -349,6 +349,48 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["model"], "gemini-cache")
         insert_mock.assert_awaited_once()
 
+    async def test_screening_uses_interactions_stateless(self):
+        status = AnalysisStatus(
+            paper_id=7,
+            overall_status="running",
+            phases=[],
+            progress_pct=0.0,
+        )
+        calls = {}
+
+        async def _fake_call(prompt, **kwargs):
+            calls["prompt"] = prompt
+            calls.update(kwargs)
+            return {
+                "text": '{"domain": "optics", "agent_recommended": "photon", '
+                        '"relevance_score": 0.9, "key_topics": [], '
+                        '"methodology_type": "experimental", "summary": "요약", '
+                        '"is_experimental": true, "has_figures": true, '
+                        '"estimated_complexity": "low"}',
+                "model": "gemini-3.1-flash-lite",
+                "tokens_in": 10,
+                "tokens_out": 10,
+                "interaction_id": None,
+            }
+
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()) as insert_mock,
+        ):
+            result = await analysis_routes._run_screening(7, "논문 텍스트", status)
+
+        self.assertEqual(calls["model"], "gemini-3.1-flash-lite")
+        self.assertEqual(calls["thinking_level"], "minimal")
+        self.assertIs(calls["store"], False)
+        self.assertIn("domain", calls["response_schema"]["properties"])
+        # 프롬프트에서 JSON 골격/펜스 지시는 제거되었지만 논문 텍스트는 유지
+        self.assertIn("논문 텍스트", calls["prompt"])
+        self.assertNotIn("Return ONLY valid JSON", calls["prompt"])
+        self.assertEqual(result["model"], "gemini-3.1-flash-lite")
+        self.assertEqual(result["interaction_id"], None)
+        insert_mock.assert_awaited_once()
+
     async def test_mermaid_uses_visualization_context_and_latest_recipe_row(self):
         paper = {"id": 7, "title": "Paper", "folder_name": "folder"}
         captured = {}
