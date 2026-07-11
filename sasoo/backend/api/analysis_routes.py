@@ -1070,7 +1070,7 @@ async def _plan_visualizations(
     status: AnalysisStatus,
 ) -> list[dict]:
     """
-    Use Gemini Pro 3 to decide which visualizations (up to 5) will best help
+    Use Gemini Pro 3 to decide which visualizations (up to 10) will best help
     understand the paper's methodology. Returns a plan as a list of dicts.
     """
     phase_status = PhaseStatus(
@@ -1087,7 +1087,9 @@ async def _plan_visualizations(
 아래 분석 결과를 모두 읽고, 이 논문의 방법론과 기여를 완전히 이해하는 데
 가장 도움이 될 다이어그램/그림을 결정해줘.
 
-반드시 3~5개의 시각화 항목을 반환해. 가장 임팩트 있는 것을 선택해.
+반드시 6~10개의 시각화 항목을 반환해. 가장 임팩트 있는 것을 선택해.
+논문의 핵심 개념과 작동 원리를 시각적으로 설명하는 일러스트(paperbanana 개념도)를
+충분히 포함해 — 방법론 다이어그램만으로 채우지 마.
 
 각 시각화를 두 가지 도구 중 하나로 분류해:
 - "mermaid": 구조적/논리적 다이어그램 (플로우차트, 시퀀스, 마인드맵, 타임라인, 비교)
@@ -1151,8 +1153,8 @@ Return ONLY valid JSON (마크다운 펜스 없이). 아래 구조를 정확히 
             "category": "experimental_protocol",
         }]
 
-    # Cap at 5
-    items = items[:5]
+    # Cap at 10
+    items = items[:10]
 
     # Store the plan in DB
     result_text = json.dumps({"visualizations": items}, ensure_ascii=False)
@@ -1330,7 +1332,7 @@ async def _run_visualizations(
 ) -> list[dict]:
     """
     Full visualization pipeline:
-    1. Gemini Pro 3 plans up to 5 visualizations
+    1. Gemini Pro 3 plans up to 10 visualizations
     2. Generate each (Mermaid or PaperBanana) in parallel
     3. Store results in DB
     """
@@ -1602,7 +1604,7 @@ async def _run_full_analysis(paper_id: int):
             previous.append(r4["text"])
 
         # Phase 6: Visualization Planning & Generation (Gemini Pro 3)
-        # Gemini Pro 3 decides up to 5 visualizations, each Mermaid or PaperBanana
+        # Gemini Pro 3 decides up to 10 visualizations, each Mermaid or PaperBanana
         all_results = []
         if r1.get("text") and not _is_error_result(r1["text"]):
             all_results.append(r1["text"])
@@ -2058,7 +2060,7 @@ Return ONLY valid Mermaid syntax starting with "flowchart TD" or "flowchart LR".
 async def get_visualizations(paper_id: int):
     """
     Get the visualization plan and generated diagrams/figures for a paper.
-    Gemini Pro 3 plans up to 5 visualizations (Mermaid + PaperBanana mix).
+    Gemini Pro 3 plans up to 10 visualizations (Mermaid + PaperBanana mix).
     """
     paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
     if paper is None:
