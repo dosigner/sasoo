@@ -20,7 +20,6 @@ const UploadPage = lazy(() => import('@/pages/Upload'));
 const Workbench = lazy(() => import('@/pages/Workbench'));
 const Library = lazy(() => import('@/pages/Library'));
 const SettingsPage = lazy(() => import('@/pages/Settings'));
-const Agents = lazy(() => import('@/pages/Agents'));
 
 // ---------------------------------------------------------------------------
 // Navigation items
@@ -29,7 +28,6 @@ const Agents = lazy(() => import('@/pages/Agents'));
 const NAV_ITEMS = [
   { to: '/', icon: 'upload' as AppIconName, label: S.app.upload, exact: true },
   { to: '/library', icon: 'library' as AppIconName, label: S.app.library, exact: false },
-  { to: '/agents', icon: 'agents' as AppIconName, label: S.app.agents, exact: false },
   { to: '/settings', icon: 'settings' as AppIconName, label: S.app.settings, exact: false },
 ];
 
@@ -140,7 +138,6 @@ function App() {
                 <Suspense fallback={<RouteFallback />}>
                   <Routes>
                     <Route path="/" element={<PageScaffold variant="archive"><UploadPage /></PageScaffold>} />
-                    <Route path="/agents" element={<PageScaffold variant="control"><Agents /></PageScaffold>} />
                     <Route path="/workbench/:id" element={<WorkbenchScaffold><Workbench /></WorkbenchScaffold>} />
                     <Route path="/library" element={<PageScaffold variant="archive"><Library /></PageScaffold>} />
                     <Route path="/settings" element={<PageScaffold variant="control"><SettingsPage /></PageScaffold>} />
