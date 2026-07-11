@@ -57,8 +57,7 @@ export default {
       },
       fontFamily: {
         sans: [
-          '"SF Pro Display"',
-          '"SF Pro Text"',
+          '"Pretendard Variable"',
           '-apple-system',
           'BlinkMacSystemFont',
           '"Apple SD Gothic Neo"',
@@ -78,7 +77,12 @@ export default {
         ],
       },
       fontSize: {
-        '2xs': ['0.625rem', { lineHeight: '0.875rem' }],
+        // ref docs/04-design/design-tokens.md §3
+        '2xs': ['0.6875rem', { lineHeight: '1rem' }],      // 11px/16px
+        'xs':  ['0.75rem',   { lineHeight: '1rem' }],      // 12px/16px
+        'sm':  ['0.8125rem', { lineHeight: '1.25rem' }],   // 13px/20px
+        'base':['0.9375rem', { lineHeight: '1.375rem' }],  // 15px/22px
+        'lg':  ['1.0625rem', { lineHeight: '1.625rem' }],  // 17px/26px
       },
       letterSpacing: {
         'apple-tight': '-0.025em',
