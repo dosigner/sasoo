@@ -50,6 +50,7 @@ function AgentBadgeDropdown({
   const [activeIndex, setActiveIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const listboxId = useId();
 
   const selectedIndex = agents.findIndex(
@@ -80,6 +81,7 @@ function AgentBadgeDropdown({
     const agent = agents[index];
     if (agent) onSelect(agent);
     setOpen(false);
+    triggerRef.current?.focus();
   }
 
   function handleListKeyDown(e: React.KeyboardEvent) {
@@ -108,6 +110,7 @@ function AgentBadgeDropdown({
       case 'Escape':
       case 'Tab':
         setOpen(false);
+        triggerRef.current?.focus();
         break;
       default:
         break;

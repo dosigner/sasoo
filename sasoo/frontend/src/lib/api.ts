@@ -18,7 +18,7 @@ export interface Paper {
   doi: string | null;
   domain: string;
   agent_used: string;
-  explanation_level?: string;
+  explanation_level?: string | null;
   folder_name: string;
   tags: string | null;
   status: PaperStatus;

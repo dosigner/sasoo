@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
+import { useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -56,7 +56,7 @@ interface AnalysisPanelProps {
   isRunning: boolean;
   agentName?: string;
   paperId?: string;
-  paperLevel?: string;
+  paperLevel?: string | null;
   onJumpToFigurePage?: (figure: Figure) => void;
   onJumpToTablePage?: (table: Table) => void;
   terminalState?: 'cancelled' | null;
@@ -900,9 +900,12 @@ export default function AnalysisPanel({
   const [viewLevel, setViewLevel] = useState<string>(originalLevel);
   const [rewrites, setRewrites] = useState<Record<string, string>>({}); // level → text
   const [rewriting, setRewriting] = useState(false);
+  // 연타 경쟁 조건 방지용 요청 시퀀스 카운터: 응답 처리 시 "여전히 최신 요청인지" 확인
+  const levelRequestSeqRef = useRef(0);
 
   // 논문(또는 원본 수준)이 바뀌면 재작성 상태 초기화
   useEffect(() => {
+    levelRequestSeqRef.current += 1; // 진행 중인 이전 요청을 무효화
     setViewLevel(originalLevel);
     setRewrites({});
     setRewriting(false);
@@ -911,16 +914,22 @@ export default function AnalysisPanel({
   const handleLevelChange = useCallback(async (level: string) => {
     setViewLevel(level);
     if (level === originalLevel || rewrites[level] !== undefined || !paperId) return; // 원본/캐시
+    const seq = ++levelRequestSeqRef.current; // 이 요청의 토큰
     setRewriting(true);
     try {
       const r = await rewriteSection(Number(paperId), 'deep_dive', level);
+      // 캐시 저장은 낡은 응답이라도 무해하므로 항상 반영
       setRewrites((prev) => ({ ...prev, [level]: r.text }));
+      if (seq !== levelRequestSeqRef.current) return; // 더 최신 요청이 있으면 뷰 상태는 건드리지 않음
     } catch {
+      if (seq !== levelRequestSeqRef.current) return; // 낡은 실패 응답이 최신 선택을 되돌리지 않도록
       // 실패 시 원본 유지 + 한국어 에러 토스트
       setViewLevel(originalLevel);
       toast.error(S.analysis.rewriteFailed);
     } finally {
-      setRewriting(false);
+      if (seq === levelRequestSeqRef.current) {
+        setRewriting(false);
+      }
     }
   }, [originalLevel, rewrites, paperId, toast]);
 
