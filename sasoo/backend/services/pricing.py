@@ -45,6 +45,10 @@ IMAGE_PRICING: dict[str, float] = {
     "gemini-3-pro-image-preview": 0.134,
     "gemini-3.1-flash-image": 0.067,
     "gemini-3.1-flash-image-preview": 0.067,
+    # gpt-image-2, 1536x1024 (quality별 출력 토큰 차이로 장당 가격이 갈린다)
+    "gpt-image-2:low": 0.005,
+    "gpt-image-2:medium": 0.041,
+    "gpt-image-2:high": 0.165,
 }
 
 _FALLBACK = "gemini-3-flash-preview"
