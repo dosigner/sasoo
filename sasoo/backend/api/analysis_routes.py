@@ -1282,7 +1282,13 @@ async def _generate_single_paperbanana(
 async def _store_visualization_progress(
     paper_id: int, items: list[dict], cache_input: str, done: bool
 ) -> None:
-    """항목이 하나 끝날 때마다 visualization 행을 갱신한다 (중간 사망 시 유실 방지)."""
+    """항목이 하나 끝날 때마다 visualization 행을 갱신한다 (중간 사망 시 유실 방지).
+
+    UPDATE 대상 SELECT는 input_hash까지 걸어 같은 실행(run)의 행만 찾는다. paper_id+phase
+    최신 1건만 보면, 재분석(다른 input_hash로 재실행)이 이전 실행의 완료된 행을 이어달리기로
+    착각하고 덮어써버린다 — 새 실행은 반드시 새 행을 INSERT해야 한다.
+    """
+    input_hash = compute_input_hash(cache_input)
     payload = json.dumps(
         {
             "items": sorted(items, key=lambda x: x.get("id", 0)),
@@ -1294,13 +1300,17 @@ async def _store_visualization_progress(
         ensure_ascii=False,
     )
     row = await fetch_one(
-        "SELECT id FROM analysis_results WHERE paper_id = ? AND phase = 'visualization' ORDER BY id DESC LIMIT 1",
-        (paper_id,),
+        """
+        SELECT id FROM analysis_results
+        WHERE paper_id = ? AND phase = 'visualization' AND input_hash = ?
+        ORDER BY id DESC LIMIT 1
+        """,
+        (paper_id, input_hash),
     )
     if row:
         await execute_update(
             "UPDATE analysis_results SET result = ?, input_hash = ? WHERE id = ?",
-            (payload, compute_input_hash(cache_input), row["id"]),
+            (payload, input_hash, row["id"]),
         )
     else:
         await _insert_analysis_result(
@@ -1337,8 +1347,14 @@ async def _run_visualizations(
     if cached is not None:
         try:
             cached_data = json.loads(cached["text"])
-            status.progress_pct = 100.0
-            return list(cached_data.get("items", []))
+            # `complete` was introduced with per-item checkpointing (f577fe2): a mid-run
+            # crash can leave behind a partial checkpoint row (complete=False) that shares
+            # the same input_hash as a full run. Rows written before checkpointing existed
+            # have no `complete` field at all, but every one of them was a final save, so
+            # default to True for those and only reject an explicit complete=False.
+            if cached_data.get("complete", True) is not False:
+                status.progress_pct = 100.0
+                return list(cached_data.get("items", []))
         except (json.JSONDecodeError, TypeError, AttributeError):
             pass
 

@@ -1,3 +1,4 @@
+import json
 import sys
 import types
 import unittest
@@ -378,6 +379,60 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(insert_mock.call_args.args[0], 7)
         self.assertEqual(insert_mock.call_args.args[1], "visualization")
         update_mock.assert_not_awaited()
+
+    async def test_store_visualization_progress_inserts_new_row_for_different_input_hash(self):
+        # An existing row belongs to a *different* run (different input_hash). The UPDATE
+        # SELECT must not find it, so the store call falls through to INSERT instead of
+        # overwriting the previous run's (possibly completed) row.
+        items = [{"id": 1, "title": "A", "status": "completed"}]
+
+        with (
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=None)) as fetch_one_mock,
+            patch("api.analysis_routes.execute_update", new=AsyncMock()) as update_mock,
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()) as insert_mock,
+        ):
+            await analysis_routes._store_visualization_progress(7, items, "new-run-cache-input", done=False)
+
+        fetch_one_mock.assert_awaited_once()
+        query, params = fetch_one_mock.call_args.args
+        self.assertIn("input_hash = ?", query)
+        self.assertEqual(params[0], 7)
+        insert_mock.assert_awaited_once()
+        self.assertEqual(insert_mock.call_args.args[0], 7)
+        self.assertEqual(insert_mock.call_args.args[1], "visualization")
+        update_mock.assert_not_awaited()
+
+    async def test_run_visualizations_ignores_incomplete_cache_hit(self):
+        # A checkpoint row saved mid-run (complete=False) shares the same input_hash as a
+        # full run. Treating it as a cache hit would report a crashed/partial run as done.
+        status = AnalysisStatus(
+            paper_id=7,
+            overall_status="running",
+            phases=[],
+            progress_pct=0.0,
+        )
+        stale_partial_payload = json.dumps(
+            {"items": [{"id": 1, "title": "stale partial", "status": "completed"}], "complete": False}
+        )
+
+        with (
+            patch(
+                "api.analysis_routes._get_cached_phase_result",
+                new=AsyncMock(return_value={"text": stale_partial_payload}),
+            ),
+            patch("api.analysis_routes._plan_visualizations", new=AsyncMock(return_value=[])) as plan_mock,
+            patch("api.analysis_routes._store_visualization_progress", new=AsyncMock()) as store_mock,
+        ):
+            result = await analysis_routes._run_visualizations(
+                7, "viz input", "folder", [], "recipe result", "deep dive result", status,
+            )
+
+        # Cache was rejected, so the regeneration path (plan → store final) ran instead of
+        # short-circuiting with the stale cached items.
+        plan_mock.assert_awaited_once()
+        self.assertEqual(result, [])
+        store_mock.assert_awaited_once()
+        self.assertEqual(store_mock.call_args.kwargs.get("done"), True)  # done=True final save
 
     async def test_mermaid_uses_visualization_context_and_latest_recipe_row(self):
         paper = {"id": 7, "title": "Paper", "folder_name": "folder"}
