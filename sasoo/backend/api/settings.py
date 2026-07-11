@@ -116,6 +116,14 @@ async def _get_all_settings() -> dict[str, str]:
     return result
 
 
+async def get_raw_settings() -> dict:
+    """Return all settings as a flat dict without masking (internal use only, not a route).
+
+    API keys are decrypted transparently. Callers must not expose this over the API.
+    """
+    return await _get_all_settings()
+
+
 async def _set_setting(key: str, value: str) -> None:
     """Upsert a single setting."""
     db = await get_db()
