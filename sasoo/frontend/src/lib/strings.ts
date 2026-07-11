@@ -209,8 +209,10 @@ export const S = {
     // API Keys
     apiKeys: '모델 키',
     geminiKey: 'Google Gemini API 키',
+    openaiKey: 'OpenAI API 키',
     claudeKey: 'Anthropic Claude API 키',
     geminiHelp: 'Gemini Flash 및 Gemini Pro 모델에 사용됩니다.',
+    openaiHelp: 'GPT 이미지 생성(figure_gen) 등 OpenAI 모델에 사용됩니다.',
     claudeHelp: 'Claude Sonnet 고급 분석에 사용됩니다.',
     getKeyAt: (name: string) => `${name}에서 키를 발급받으세요.`,
     // Library

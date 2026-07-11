@@ -258,6 +258,8 @@ export interface VisualizationPlan {
 export interface Settings {
   gemini_api_key: string;
   gemini_key_unreadable: boolean;
+  openai_api_key: string;
+  openai_key_unreadable: boolean;
   library_path: string;
   theme: 'dark' | 'light';
   default_domain: string;
