@@ -38,18 +38,6 @@ def _get_gemini_client():
         raise RuntimeError("google-genai package not installed")
 
 
-def _get_anthropic_client():
-    """Lazy-load Anthropic client."""
-    try:
-        import anthropic
-        api_key = os.getenv("ANTHROPIC_API_KEY", "")
-        if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY not set")
-        return anthropic.Anthropic(api_key=api_key)
-    except ImportError:
-        raise RuntimeError("anthropic package not installed")
-
-
 # ---------------------------------------------------------------------------
 # Gemini call helper
 # ---------------------------------------------------------------------------
@@ -118,34 +106,6 @@ async def _call_gemini(
             "model": model,
             "tokens_in": tokens_in,
             "tokens_out": tokens_out,
-        }
-
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _sync_call)
-
-
-# ---------------------------------------------------------------------------
-# Anthropic call helper
-# ---------------------------------------------------------------------------
-
-async def _call_anthropic(prompt: str, model: str = "claude-sonnet-4-20250514") -> dict:
-    """
-    Call Anthropic API and return parsed response with token counts.
-    """
-    def _sync_call():
-        client = _get_anthropic_client()
-        message = client.messages.create(
-            model=model,
-            max_tokens=4096,
-            system=_SYSTEM_INSTRUCTION_KO,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = message.content[0].text if message.content else ""
-        return {
-            "text": text,
-            "model": model,
-            "tokens_in": message.usage.input_tokens,
-            "tokens_out": message.usage.output_tokens,
         }
 
     loop = asyncio.get_event_loop()
