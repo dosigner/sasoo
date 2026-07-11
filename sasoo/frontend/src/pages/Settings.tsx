@@ -48,6 +48,8 @@ export default function Settings() {
   const defaultSettings: SettingsType = {
     gemini_api_key: '',
     gemini_key_unreadable: false,
+    openai_api_key: '',
+    openai_key_unreadable: false,
     library_path: '',
     default_domain: 'optics',
     auto_analyze: false,
@@ -69,6 +71,7 @@ export default function Settings() {
 
   // Form state
   const [geminiKey, setGeminiKey] = useState('');
+  const [openaiKey, setOpenaiKey] = useState('');
   const [libraryPath, setLibraryPath] = useState('');
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
   const [density, setDensity] = useState<'comfortable' | 'compact'>(
@@ -81,14 +84,20 @@ export default function Settings() {
   // API key status (masked value from server, for display only)
   const [geminiKeyStatus, setGeminiKeyStatus] = useState('');
   const [geminiKeyUnreadable, setGeminiKeyUnreadable] = useState(false);
+  const [openaiKeyStatus, setOpenaiKeyStatus] = useState('');
+  const [openaiKeyUnreadable, setOpenaiKeyUnreadable] = useState(false);
 
   // Visibility toggles
   const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [showOpenaiKey, setShowOpenaiKey] = useState(false);
   const geminiInputRef = useRef<HTMLInputElement | null>(null);
+  const openaiInputRef = useRef<HTMLInputElement | null>(null);
 
   const clearApiKeyInputs = useCallback(() => {
     setGeminiKey('');
     if (geminiInputRef.current) geminiInputRef.current.value = '';
+    setOpenaiKey('');
+    if (openaiInputRef.current) openaiInputRef.current.value = '';
   }, []);
 
   const applySettingsToForm = useCallback((data: SettingsType) => {
@@ -114,6 +123,8 @@ export default function Settings() {
         // Store masked keys for status display, but DON'T populate inputs
         setGeminiKeyStatus(data.gemini_api_key || '');
         setGeminiKeyUnreadable(data.gemini_key_unreadable ?? false);
+        setOpenaiKeyStatus(data.openai_api_key || '');
+        setOpenaiKeyUnreadable(data.openai_key_unreadable ?? false);
         // Key inputs start empty — user types new key only when they want to change
         clearApiKeyInputs();
         applySettingsToForm(data);
@@ -174,6 +185,7 @@ export default function Settings() {
         extraction_pipeline_version: extractionPipelineVersion,
       };
       if (geminiKey.trim()) payload.gemini_api_key = geminiKey.trim();
+      if (openaiKey.trim()) payload.openai_api_key = openaiKey.trim();
 
       const updated = await updateSettings(payload);
       setBaselineSettings(updated);
@@ -181,6 +193,8 @@ export default function Settings() {
       // Update status badges with new masked values
       setGeminiKeyStatus(updated.gemini_api_key || '');
       setGeminiKeyUnreadable(updated.gemini_key_unreadable ?? false);
+      setOpenaiKeyStatus(updated.openai_api_key || '');
+      setOpenaiKeyUnreadable(updated.openai_key_unreadable ?? false);
       // Clear key inputs after save. This also fights password-manager autofill
       // that can leave the settings screen permanently "dirty".
       clearApiKeyInputs();
@@ -194,7 +208,7 @@ export default function Settings() {
     } finally {
       setSaving(false);
     }
-  }, [geminiKey, libraryPath, theme, autoAnalyze, pdfParserMode, extractionPipelineVersion, toast, applySettingsToForm, clearApiKeyInputs]);
+  }, [geminiKey, openaiKey, libraryPath, theme, autoAnalyze, pdfParserMode, extractionPipelineVersion, toast, applySettingsToForm, clearApiKeyInputs]);
 
   const handleBrowseDirectory = useCallback(async () => {
     if (!window.electronAPI?.openDirectory) {
@@ -246,6 +260,7 @@ export default function Settings() {
   // -----------------------------------------------------------------------
   const hasChanges =
     geminiKey.trim() !== '' ||
+    openaiKey.trim() !== '' ||
     libraryPath !== (baselineSettings.library_path || '') ||
     theme !== (baselineSettings.theme || 'light') ||
     autoAnalyze !== (baselineSettings.auto_analyze ?? false) ||
@@ -398,6 +413,72 @@ export default function Settings() {
                   className="text-accent hover:text-accent-hover underline underline-offset-2"
                 >
                   Google AI Studio
+                </a>
+                {S.settings.getKeyAt('')}
+              </p>
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2 mb-1.5">
+                <label className="text-xs text-fg-muted">
+                  {S.settings.openaiKey}
+                </label>
+                {openaiKeyStatus ? (
+                  <span className="text-2xs text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded">
+                    {S.settings.keyConfigured} ({openaiKeyStatus})
+                  </span>
+                ) : openaiKeyUnreadable ? (
+                  <span className="text-2xs text-danger bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded">
+                    {S.settings.keyUnreadable}
+                  </span>
+                ) : (
+                  <span className="text-2xs text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded">
+                    {S.settings.keyNotConfigured}
+                  </span>
+                )}
+              </div>
+              {openaiKeyUnreadable && (
+                <p className="text-2xs text-danger mb-1.5">
+                  {S.settings.keyUnreadableHelp}
+                </p>
+              )}
+              <div className="relative">
+                <input
+                  ref={openaiInputRef}
+                  type={showOpenaiKey ? 'text' : 'password'}
+                  value={openaiKey}
+                  onChange={(e) => setOpenaiKey(e.target.value)}
+                  name="sasoo-openai-api-key"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-bwignore="true"
+                  spellCheck={false}
+                  placeholder={S.settings.enterNewKey}
+                  className="input pr-10"
+                />
+                <button
+                  onClick={() => setShowOpenaiKey(!showOpenaiKey)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-fg-muted hover:text-fg-secondary transition-colors"
+                  style={{ borderRadius: 'var(--radius-control)' }}
+                  type="button"
+                >
+                  {showOpenaiKey ? (
+                    <AppIcon name="eye-off" className="w-4 h-4" />
+                  ) : (
+                    <AppIcon name="eye" className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+              <p className="text-2xs text-fg-muted mt-1">
+                {S.settings.openaiHelp}{' '}
+                <a
+                  href="https://platform.openai.com/api-keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent hover:text-accent-hover underline underline-offset-2"
+                >
+                  OpenAI Platform
                 </a>
                 {S.settings.getKeyAt('')}
               </p>
