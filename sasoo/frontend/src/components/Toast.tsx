@@ -151,7 +151,7 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
       </button>
 
       {/* Progress bar */}
-      <div className="absolute bottom-0 left-0 right-0 h-1 bg-surface-hover/20">
+      <div className="absolute bottom-0 left-0 right-0 h-1 bg-surface/20">
         <div
           className={`h-full ${progressBg} transition-all duration-75 ease-linear`}
           style={{ width: `${progress}%` }}

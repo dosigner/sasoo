@@ -104,6 +104,7 @@ Tailwind: `borderRadius: { control: 'var(--radius-control)', surface: 'var(--rad
 | 위 매핑을 적용한 뒤 짝을 이루던 `[.light_&]:*` | **삭제** |
 
 규칙:
+- **§1 용도 열 우선**: 입력 필드·세그먼트/토글 트랙·드롭다운 패널처럼 §1이 surface로 규정한 요소는 레거시 팔레트 값이 900/950이었더라도 bg-surface로 매핑한다. §4 표의 bg-bg 매핑은 페이지/섹션 배경에만 적용.
 - hover/포커스 상태 배경은 무조건 `surface-hover`.
 - 의미(성공/경고/위험)가 있는 색은 시맨틱 상태 토큰, 장식 색은 accent로 수렴 — 판단이 애매하면 무채색.
 - `lib/agents.ts`의 동적 에이전트 hex는 데이터이므로 인라인 style 유지.

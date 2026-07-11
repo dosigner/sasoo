@@ -130,7 +130,7 @@ function RowMenu({ paper, onDelete, menuOpen, onToggleMenu }: RowMenuProps) {
       </button>
       {menuOpen && (
         <div
-          className="absolute right-0 top-11 z-20 min-w-[9rem] border border-border/50 bg-bg/95 p-1.5 shadow-2xl backdrop-blur"
+          className="absolute right-0 top-11 z-20 min-w-[9rem] border border-border/50 bg-surface/95 p-1.5 shadow-2xl backdrop-blur"
           style={{ borderRadius: 'var(--radius-surface)' }}
         >
           <button
@@ -157,7 +157,7 @@ function PaperShelfRow({ paper, onOpen, onDelete, menuOpen, onToggleMenu }: Pape
       role="button"
       tabIndex={0}
       aria-label={`${paper.title} 워크벤치 열기`}
-      className={`library-shelf-row ${rowToneClass} group relative grid cursor-pointer gap-3 border-b border-border/65 px-4 py-3.5 transition-colors hover:bg-bg/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-inset md:grid-cols-[10px_minmax(0,1.8fr)_minmax(9rem,0.85fr)_minmax(9rem,0.72fr)_auto] md:items-center md:px-6`}
+      className={`library-shelf-row ${rowToneClass} group relative grid cursor-pointer gap-3 border-b border-border/65 px-4 py-3.5 transition-colors hover:bg-surface-hover/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-inset md:grid-cols-[10px_minmax(0,1.8fr)_minmax(9rem,0.85fr)_minmax(9rem,0.72fr)_auto] md:items-center md:px-6`}
       onClick={() => onOpen(String(paper.id))}
       onKeyDown={(event) => handleInteractiveKeyDown(event, () => onOpen(String(paper.id)))}
     >
@@ -605,7 +605,7 @@ export default function Library() {
                       year: e.target.value ? parseInt(e.target.value, 10) : undefined,
                     })
                   }
-                  className="w-full rounded-full border border-border bg-bg px-4 py-3 text-sm text-fg outline-none transition-colors placeholder:text-fg-muted focus:border-fg-muted"
+                  className="w-full rounded-full border border-border bg-surface px-4 py-3 text-sm text-fg outline-none transition-colors placeholder:text-fg-muted focus:border-fg-muted"
                 />
               </div>
 
