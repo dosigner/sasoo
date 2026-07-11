@@ -56,6 +56,8 @@ export interface PaperUpdateData {
   tags?: string;
   domain?: string;
   notes?: string;
+  explanation_level?: string;
+  analysis_focus?: { chips: string[]; note: string };
 }
 
 interface PaginatedResponse {
