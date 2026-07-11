@@ -593,5 +593,48 @@ class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.explanation, "설명")
 
 
+class SanitizeMermaidCodeTests(unittest.TestCase):
+    def test_strips_fences_frontmatter_and_acc_lines(self):
+        raw = (
+            "```mermaid\n"
+            "---\ntitle: t\n---\n"
+            "flowchart TD\n"
+            "    accTitle: acc\n"
+            "    accDescr: desc\n"
+            '    A["시작"] --> B\n'
+            "```"
+        )
+        cleaned = analysis_routes._sanitize_mermaid_code(raw)
+        self.assertTrue(cleaned.startswith("flowchart TD"))
+        self.assertNotIn("accTitle", cleaned)
+        self.assertNotIn("accDescr", cleaned)
+        self.assertNotIn("```", cleaned)
+        self.assertNotIn("---", cleaned)
+
+    def test_strips_init_directive(self):
+        raw = '%%{init: {"theme": "forest"}}%%\nflowchart LR\n    A --> B'
+        cleaned = analysis_routes._sanitize_mermaid_code(raw)
+        self.assertTrue(cleaned.startswith("flowchart LR"))
+        self.assertNotIn("%%{init", cleaned)
+
+    def test_drops_prose_before_diagram_keyword(self):
+        raw = "다음은 다이어그램입니다:\n\nflowchart TD\n    A --> B"
+        cleaned = analysis_routes._sanitize_mermaid_code(raw)
+        self.assertTrue(cleaned.startswith("flowchart TD"))
+
+    def test_preserves_styling_statements(self):
+        raw = (
+            "flowchart TD\n"
+            '    A["입력"]:::data ==> B["처리"]:::process\n'
+            "    classDef data fill:#1e3a5f,stroke:#4a9eff,stroke-width:2px,color:#e8f4ff\n"
+            "    classDef process fill:#3b2a5f,stroke:#a78bfa,stroke-width:2px,color:#f3e8ff"
+        )
+        self.assertEqual(analysis_routes._sanitize_mermaid_code(raw), raw)
+
+    def test_plain_code_passes_through(self):
+        raw = "flowchart TD\nA-->B"
+        self.assertEqual(analysis_routes._sanitize_mermaid_code(raw), raw)
+
+
 if __name__ == "__main__":
     unittest.main()

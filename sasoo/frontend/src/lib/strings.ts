@@ -570,6 +570,7 @@ export const S = {
     mermaidCode: 'Mermaid 코드',
     renderFailed: '다이어그램 렌더링 실패',
     emptyCode: '정리 후 빈 다이어그램 코드',
+    styleFallback: '스타일 구문 오류로 일부 스타일을 제거하고 렌더링했습니다',
     visualizations: '시각화',
     generating: '시각화 생성 중...',
     generatingTime: '1-2분 소요될 수 있습니다',

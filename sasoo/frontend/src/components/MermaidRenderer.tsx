@@ -91,15 +91,48 @@ function sanitizeMermaidCode(code: string): string {
     cleaned = cleaned.slice(fmMatch[0].length);
   }
 
-  // 3. Remove accTitle / accDescr lines
+  // 3. Remove accTitle / accDescr lines and init directives
   cleaned = cleaned.replace(/^\s*accTitle\s*:.*$/gm, '');
   cleaned = cleaned.replace(/^\s*accDescr\s*:.*$/gm, '');
   cleaned = cleaned.replace(/^\s*accDescr\s*\{[^}]*\}/gms, '');
+  cleaned = cleaned.replace(/%%\{init:[\s\S]*?\}%%\s*/g, '');
 
   // 4. Trim leading/trailing whitespace
   cleaned = cleaned.trim();
 
   return cleaned;
+}
+
+// Styling statements (classDef/linkStyle/…) are additive decoration on
+// flowcharts. When the fully styled code fails to parse, retry with the risky
+// parts removed before surfacing an error to the user.
+
+function isFlowchart(code: string): boolean {
+  return /^\s*(flowchart|graph)\b/.test(code);
+}
+
+function stripLinkStyles(code: string): string {
+  // Numbered linkStyle lines fail hard when an index is out of range.
+  return code.replace(/^\s*linkStyle\s+.*$/gm, '').trim();
+}
+
+function stripAllStyling(code: string): string {
+  return code
+    .replace(/^\s*(classDef|class|style|linkStyle)\s+.*$/gm, '')
+    .replace(/:::[A-Za-z0-9_-]+/g, '')
+    .trim();
+}
+
+function buildRenderCandidates(code: string): string[] {
+  const candidates = [code];
+  if (isFlowchart(code)) {
+    for (const variant of [stripLinkStyles(code), stripAllStyling(code)]) {
+      if (variant && !candidates.includes(variant)) {
+        candidates.push(variant);
+      }
+    }
+  }
+  return candidates;
 }
 
 // ---------------------------------------------------------------------------
@@ -130,6 +163,7 @@ export default function MermaidRenderer({
   const [editableCode, setEditableCode] = useState('');
   const [svgContent, setSvgContent] = useState('');
   const [renderError, setRenderError] = useState<string | null>(null);
+  const [styleDegraded, setStyleDegraded] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
   const [copied, setCopied] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -155,25 +189,40 @@ export default function MermaidRenderer({
         return;
       }
 
-      try {
-        const diagramId = `mermaid-${Date.now()}-${currentRenderId}`;
-        const { svg } = await mermaid.render(diagramId, sanitized);
+      // Try the styled code first; on parse failure fall back to versions
+      // with linkStyle, then all styling, stripped.
+      const candidates = buildRenderCandidates(sanitized);
+      let lastError: unknown = null;
 
-        // Only update if this is still the latest render
-        if (currentRenderId === renderIdRef.current) {
-          setSvgContent(svg);
-          setRenderError(null);
+      for (let i = 0; i < candidates.length; i++) {
+        try {
+          const diagramId = `mermaid-${Date.now()}-${currentRenderId}-${i}`;
+          const { svg } = await mermaid.render(diagramId, candidates[i]);
+
+          // Only update if this is still the latest render
+          if (currentRenderId === renderIdRef.current) {
+            setSvgContent(svg);
+            setRenderError(null);
+            setStyleDegraded(i > 0);
+            setIsRendering(false);
+            if (i > 0) {
+              console.warn(
+                `Mermaid: rendered with styling stripped (fallback stage ${i})`
+              );
+            }
+          }
+          return;
+        } catch (err) {
+          lastError = err;
         }
-      } catch (err) {
-        if (currentRenderId === renderIdRef.current) {
-          setRenderError(
-            err instanceof Error ? err.message : S.mermaid.renderFailed
-          );
-        }
-      } finally {
-        if (currentRenderId === renderIdRef.current) {
-          setIsRendering(false);
-        }
+      }
+
+      if (currentRenderId === renderIdRef.current) {
+        setStyleDegraded(false);
+        setRenderError(
+          lastError instanceof Error ? lastError.message : S.mermaid.renderFailed
+        );
+        setIsRendering(false);
       }
     },
     []
@@ -361,11 +410,19 @@ export default function MermaidRenderer({
         )}
 
         {svgContent && !isRendering && !renderError && (
-          <div
-            ref={containerRef}
-            className="p-4 bg-surface/50 overflow-x-auto [&>svg]:mx-auto [&>svg]:max-w-full fade-in-up"
-            dangerouslySetInnerHTML={{ __html: svgContent }}
-          />
+          <>
+            {styleDegraded && (
+              <p className="text-2xs text-fg-muted px-4 pt-3 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {S.mermaid.styleFallback}
+              </p>
+            )}
+            <div
+              ref={containerRef}
+              className="p-4 bg-surface/50 overflow-x-auto [&>svg]:mx-auto [&>svg]:max-w-full fade-in-up"
+              dangerouslySetInnerHTML={{ __html: svgContent }}
+            />
+          </>
         )}
       </div>
     </div>

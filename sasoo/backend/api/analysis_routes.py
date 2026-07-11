@@ -12,6 +12,7 @@ Phases:
 import asyncio
 import json
 import logging
+import re
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1053,14 +1054,125 @@ Return ONLY valid JSON (마크다운 펜스 없이):
 
 _MERMAID_SYNTAX_RULES = """CRITICAL RULES (Mermaid v10.x compatibility):
 1. Start with the diagram type keyword (flowchart TD, flowchart LR, sequenceDiagram, mindmap, etc.).
-2. NEVER use --- frontmatter blocks or accTitle/accDescr.
+2. NEVER use --- frontmatter blocks, accTitle/accDescr, or %%{init: ...}%% directives.
 3. Use simple alphanumeric node IDs (A, B, step1). NEVER use Korean in node IDs.
 4. ALWAYS wrap labels containing special characters in double quotes: A["레이저 소스 (1064nm)"].
 5. Special characters that MUST be quoted: parentheses (), colons :, semicolons ;, pipes |, angles <>.
 6. For edge labels use: A -->|"label text"| B
 7. Keep labels concise (under 30 chars). Use Korean for all labels.
 8. Do NOT use HTML tags except <br/> for line breaks.
-9. Return ONLY the Mermaid code. No markdown fences, no explanation."""
+9. NEVER use the `A & B --> C` multi-link shorthand — write each edge on its own line.
+10. Return ONLY the Mermaid code. No markdown fences, no explanation."""
+
+_MERMAID_STYLE_RULES = """STYLING RULES — make the diagram visually rich and easy to scan (색·모양·화살표로 의미를 구분해):
+
+A. Flowchart (flowchart TD/LR) — ALWAYS apply styling:
+   - Give EVERY node a semantic class with :::className, e.g. A["입력 데이터"]:::data
+   - Define all classDefs at the END of the diagram. Use this theme-safe palette
+     (dark fill + bright stroke + pale text — readable on dark AND light backgrounds):
+       classDef data fill:#1e3a5f,stroke:#4a9eff,stroke-width:2px,color:#e8f4ff
+       classDef process fill:#3b2a5f,stroke:#a78bfa,stroke-width:2px,color:#f3e8ff
+       classDef measure fill:#134e4a,stroke:#2dd4bf,stroke-width:2px,color:#e0fffb
+       classDef decision fill:#5f4a1e,stroke:#fbbf24,stroke-width:2px,color:#fff7e0
+       classDef result fill:#1e5f3a,stroke:#34d399,stroke-width:2px,color:#e0fff0
+       classDef caution fill:#5f1e2a,stroke:#fb7185,stroke-width:2px,color:#ffe8ec
+     Only define the classes you actually use. You may add more classes in the
+     same format (keep fill dark, color pale).
+   - Vary node shapes by meaning: ["단계"] 일반, ("시작/끝"), {"판단"}, [("데이터 저장")], (("핵심 개념")), [["서브루틴"]]
+   - Vary arrow styles by meaning:
+       ==>   핵심 주 흐름 (굵은 선)
+       -->   일반 흐름
+       -.->  피드백 / 반복 / 선택적 경로
+       --o   참조 / 데이터 연결
+       --x   실패 / 배제 경로
+       <-->  양방향 상호작용
+   - Group related steps with subgraphs (alphanumeric id + quoted title), then style them:
+       subgraph SG1["학습 파이프라인"] ... end
+       style SG1 fill:transparent,stroke:#8b5cf6,stroke-width:1.5px,stroke-dasharray:5 5
+   - linkStyle: ONLY use it when you are certain of the 0-based edge index
+     (index must be < total number of edges). When unsure, omit linkStyle entirely.
+
+B. sequenceDiagram:
+   - Use autonumber and participant aliases: participant A as 레이저 소스
+   - Group phases with translucent backgrounds (alpha <= 0.2 so both themes stay readable):
+       rect rgba(94, 106, 210, 0.15) ... end
+   - Vary arrows: ->> 요청/명령, -->> 응답(점선), -x 실패, -) 비동기
+   - Use Note over/left of/right of for annotations.
+   - classDef/linkStyle are NOT supported here — do not use them.
+
+C. mindmap / timeline:
+   - classDef, style, linkStyle are NOT supported — never emit them.
+   - For mindmap, vary node shapes instead: root((중심)), (둥근), [사각], ((원)).
+
+EXAMPLE (flowchart pattern to imitate — structure, shapes, arrows, classes):
+flowchart TD
+    A("논문 입력"):::data ==> B["전처리"]:::process
+    B --> C{"품질 충족?"}:::decision
+    C -->|"예"| D[["모델 학습"]]:::process
+    C -.->|"아니오"| B
+    D --o E[("결과 DB")]:::data
+    D ==> F["성능 평가"]:::measure
+    F --x G["과적합 사례"]:::caution
+    F ==> H(("최종 모델")):::result
+    subgraph SG1["학습 루프"]
+        B
+        C
+        D
+    end
+    style SG1 fill:transparent,stroke:#8b5cf6,stroke-width:1.5px,stroke-dasharray:5 5
+    classDef data fill:#1e3a5f,stroke:#4a9eff,stroke-width:2px,color:#e8f4ff
+    classDef process fill:#3b2a5f,stroke:#a78bfa,stroke-width:2px,color:#f3e8ff
+    classDef measure fill:#134e4a,stroke:#2dd4bf,stroke-width:2px,color:#e0fffb
+    classDef decision fill:#5f4a1e,stroke:#fbbf24,stroke-width:2px,color:#fff7e0
+    classDef result fill:#1e5f3a,stroke:#34d399,stroke-width:2px,color:#e0fff0
+    classDef caution fill:#5f1e2a,stroke:#fb7185,stroke-width:2px,color:#ffe8ec"""
+
+_MERMAID_KEYWORDS = (
+    "flowchart",
+    "graph",
+    "sequenceDiagram",
+    "mindmap",
+    "timeline",
+    "classDiagram",
+    "stateDiagram",
+    "erDiagram",
+    "gantt",
+    "pie",
+    "quadrantChart",
+    "journey",
+)
+
+
+def _sanitize_mermaid_code(raw: str) -> str:
+    """Best-effort cleanup of LLM-generated Mermaid code (v10.x compatibility)."""
+    code = raw.strip()
+
+    # Strip markdown fences
+    if code.startswith("```"):
+        code = "\n".join(
+            line for line in code.split("\n") if not line.strip().startswith("```")
+        ).strip()
+
+    # Strip YAML frontmatter block
+    fm_match = re.match(r"^\s*---\s*\n.*?\n\s*---\s*\n?", code, re.DOTALL)
+    if fm_match:
+        code = code[fm_match.end():]
+
+    # Strip init directives and accessibility lines (not supported / theme conflicts)
+    code = re.sub(r"%%\{init:.*?\}%%\s*", "", code, flags=re.DOTALL)
+    code = re.sub(r"^\s*accTitle\s*:.*$", "", code, flags=re.MULTILINE)
+    code = re.sub(r"^\s*accDescr\s*:.*$", "", code, flags=re.MULTILINE)
+    code = code.strip()
+
+    # Drop any prose before the first diagram keyword line
+    lines = code.split("\n")
+    if lines and not lines[0].strip().startswith(_MERMAID_KEYWORDS):
+        for i, line in enumerate(lines):
+            if line.strip().startswith(_MERMAID_KEYWORDS):
+                code = "\n".join(lines[i:])
+                break
+
+    return code.strip()
 
 
 async def _plan_visualizations(
@@ -1179,8 +1291,6 @@ async def _generate_single_mermaid(
     previous_results: list[str],
 ) -> str:
     """Generate Mermaid code for a single visualization item using Gemini Pro 3."""
-    import re as _re
-
     title = viz_item.get("title", "Diagram")
     diagram_type = viz_item.get("diagram_type", "flowchart")
     description = viz_item.get("description", "")
@@ -1193,6 +1303,9 @@ async def _generate_single_mermaid(
 설명: {description}
 
 {_MERMAID_SYNTAX_RULES}
+
+{_MERMAID_STYLE_RULES}
+
 추가 규칙: 모든 노드 레이블과 엣지 레이블을 반드시 한국어로 작성해.
 
 분석 데이터와 논문 텍스트를 소스로 사용해:
@@ -1208,22 +1321,7 @@ async def _generate_single_mermaid(
 
     result = await _call_gemini(prompt, model=MODEL_MERMAID)
 
-    mermaid_code = result["text"].strip()
-    # Remove markdown fences
-    if mermaid_code.startswith("```"):
-        lines = mermaid_code.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        mermaid_code = "\n".join(lines).strip()
-
-    # Sanitize: remove frontmatter + accTitle
-    fm_match = _re.match(r"^\s*---\s*\n.*?\n\s*---\s*\n?", mermaid_code, _re.DOTALL)
-    if fm_match:
-        mermaid_code = mermaid_code[fm_match.end():]
-    mermaid_code = _re.sub(r"^\s*accTitle\s*:.*$", "", mermaid_code, flags=_re.MULTILINE)
-    mermaid_code = _re.sub(r"^\s*accDescr\s*:.*$", "", mermaid_code, flags=_re.MULTILINE)
-    mermaid_code = mermaid_code.strip()
-
-    return mermaid_code
+    return _sanitize_mermaid_code(result["text"])
 
 
 async def _generate_single_paperbanana(
@@ -2006,16 +2104,11 @@ async def get_mermaid(paper_id: int):
 
     prompt = f"""Generate a Mermaid flowchart diagram that shows the experimental process/methodology flow of this research paper.
 
-CRITICAL RULES (Mermaid v10.x compatibility):
-1. Return ONLY the Mermaid code. No markdown fences, no explanation.
-2. Start with "flowchart TD" or "flowchart LR". Do NOT use "graph TD".
-3. NEVER use --- frontmatter blocks or accTitle/accDescr.
-4. Use simple alphanumeric node IDs (A, B, step1, step2). NEVER use Korean in node IDs.
-5. ALWAYS wrap labels containing special characters in double quotes: A["레이저 소스 (1064nm)"]
-6. Special characters that MUST be quoted: parentheses (), colons :, semicolons ;, pipes |, angles <>.
-7. For edge labels use: A -->|"label text"| B
-8. Keep labels concise (under 30 chars).
-9. Do NOT use HTML tags in labels except <br/> for line breaks.
+{_MERMAID_SYNTAX_RULES}
+
+{_MERMAID_STYLE_RULES}
+
+추가 규칙: 모든 노드 레이블과 엣지 레이블을 반드시 한국어로 작성해.
 
 Paper title: {paper['title']}
 {recipe_text}
@@ -2028,25 +2121,7 @@ Return ONLY valid Mermaid syntax starting with "flowchart TD" or "flowchart LR".
 
     result = await _call_gemini(prompt)
 
-    # Clean up the mermaid code
-    mermaid_code = result["text"].strip()
-    # Remove markdown code fence if present
-    if mermaid_code.startswith("```"):
-        lines = mermaid_code.split("\n")
-        # Remove first and last line (fences)
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        mermaid_code = "\n".join(lines).strip()
-
-    # Sanitize: remove frontmatter and accTitle if LLM included them anyway
-    import re as _re
-    # Strip --- frontmatter block
-    fm_match = _re.match(r"^\s*---\s*\n.*?\n\s*---\s*\n?", mermaid_code, _re.DOTALL)
-    if fm_match:
-        mermaid_code = mermaid_code[fm_match.end():]
-    # Strip accTitle/accDescr lines
-    mermaid_code = _re.sub(r"^\s*accTitle\s*:.*$", "", mermaid_code, flags=_re.MULTILINE)
-    mermaid_code = _re.sub(r"^\s*accDescr\s*:.*$", "", mermaid_code, flags=_re.MULTILINE)
-    mermaid_code = mermaid_code.strip()
+    mermaid_code = _sanitize_mermaid_code(result["text"])
 
     return MermaidResult(
         paper_id=paper_id,
