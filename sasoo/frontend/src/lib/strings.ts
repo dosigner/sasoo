@@ -325,6 +325,9 @@ export const S = {
     phase5Desc: '프로세스 다이어그램 및 시각적 요약 생성',
     analyzingDots: '분석 중...',
     loadingResults: '결과 불러오는 중...',
+    rewriteLevel: '설명 수준',
+    rewriting: '수준에 맞게 다시 쓰는 중...',
+    rewriteFailed: '재작성에 실패했습니다. 다시 시도해주세요.',
     // formatPhaseAsMarkdown labels
     md: {
       domain: '분야',
@@ -500,6 +503,8 @@ export const S = {
     csvExported: 'CSV 파일이 다운로드되었습니다',
     copied: '클립보드에 복사되었습니다',
     domainUpdated: '분야가 변경되었습니다',
+    agentChanged: '담당 에이전트를 변경했습니다',
+    agentChangeFailed: '에이전트를 변경하지 못했습니다',
   },
 
   // ── Error / Fallback ──

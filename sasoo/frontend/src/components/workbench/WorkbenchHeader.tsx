@@ -1,4 +1,7 @@
+import { useEffect, useId, useRef, useState } from 'react';
 import { AppIcon } from '@/components/icons';
+import AgentAvatar from '@/components/AgentAvatar';
+import type { AgentMeta } from '@/lib/agents';
 import type { WorkbenchSplitPreset } from '@/hooks/useWorkbenchLayout';
 
 function rgbaFromHex(color: string, alpha: number): string {
@@ -22,11 +25,167 @@ function buildAgentPillStyle(color?: string | null): React.CSSProperties | undef
   };
 }
 
+// ---------------------------------------------------------------------------
+// Persona badge dropdown — 담당 에이전트 변경
+// ---------------------------------------------------------------------------
+
+interface AgentBadgeDropdownProps {
+  agentLabel: string;
+  agentColor?: string | null;
+  agents: AgentMeta[];
+  currentAgentKey?: string | null;
+  changing?: boolean;
+  onSelect: (agent: AgentMeta) => void;
+}
+
+function AgentBadgeDropdown({
+  agentLabel,
+  agentColor,
+  agents,
+  currentAgentKey,
+  changing = false,
+  onSelect,
+}: AgentBadgeDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const listboxId = useId();
+
+  const selectedIndex = agents.findIndex(
+    (a) => a.key.toLowerCase() === (currentAgentKey ?? '').toLowerCase(),
+  );
+
+  // 열릴 때 현재 선택 항목으로 활성 인덱스 초기화 + 리스트 포커스
+  useEffect(() => {
+    if (open) {
+      setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
+      listRef.current?.focus();
+    }
+  }, [open, selectedIndex]);
+
+  // 바깥 클릭 시 닫기
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [open]);
+
+  function commit(index: number) {
+    const agent = agents[index];
+    if (agent) onSelect(agent);
+    setOpen(false);
+  }
+
+  function handleListKeyDown(e: React.KeyboardEvent) {
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setActiveIndex((i) => Math.min(agents.length - 1, i + 1));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setActiveIndex((i) => Math.max(0, i - 1));
+        break;
+      case 'Home':
+        e.preventDefault();
+        setActiveIndex(0);
+        break;
+      case 'End':
+        e.preventDefault();
+        setActiveIndex(agents.length - 1);
+        break;
+      case 'Enter':
+      case ' ':
+        e.preventDefault();
+        commit(activeIndex);
+        break;
+      case 'Escape':
+      case 'Tab':
+        setOpen(false);
+        break;
+      default:
+        break;
+    }
+  }
+
+  const canOpen = agents.length > 0 && !changing;
+
+  return (
+    <div ref={containerRef} className="relative inline-flex">
+      <button
+        type="button"
+        onClick={() => canOpen && setOpen((o) => !o)}
+        disabled={!canOpen}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`담당 에이전트: ${agentLabel}. 변경하려면 여세요`}
+        className={agentColor ? 'status-pill cursor-pointer' : 'status-pill cursor-pointer border-surface-700/50 bg-surface-800/80 text-surface-300'}
+        style={buildAgentPillStyle(agentColor)}
+      >
+        {changing ? (
+          <AppIcon name="spinner" className="h-3 w-3 animate-spin" />
+        ) : agentColor ? (
+          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: agentColor }} />
+        ) : null}
+        {agentLabel}
+        {canOpen && <AppIcon name="chevron-down" className="h-3 w-3 opacity-70" />}
+      </button>
+
+      {open && (
+        <ul
+          ref={listRef}
+          id={listboxId}
+          role="listbox"
+          tabIndex={-1}
+          aria-label="담당 에이전트 선택"
+          aria-activedescendant={`${listboxId}-opt-${activeIndex}`}
+          onKeyDown={handleListKeyDown}
+          className="absolute left-0 top-full z-30 mt-1.5 max-h-72 w-56 overflow-y-auto rounded-lg border border-surface-700/60 bg-surface-900/98 p-1 shadow-lg backdrop-blur focus:outline-none [.light_&]:border-surface-200 [.light_&]:bg-white"
+        >
+          {agents.map((agent, index) => {
+            const isSelected = index === selectedIndex;
+            const isActive = index === activeIndex;
+            return (
+              <li
+                key={agent.key}
+                id={`${listboxId}-opt-${index}`}
+                role="option"
+                aria-selected={isSelected}
+                onMouseEnter={() => setActiveIndex(index)}
+                onClick={() => commit(index)}
+                className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs ${
+                  isActive
+                    ? 'bg-surface-700/70 text-surface-100 [.light_&]:bg-surface-100'
+                    : 'text-surface-300 [.light_&]:text-surface-600'
+                }`}
+              >
+                <AgentAvatar name={agent.nameKo || agent.name} color={agent.color} size="sm" />
+                <span className="min-w-0 flex-1 truncate">{agent.nameKo || agent.name}</span>
+                {isSelected && <AppIcon name="success" className="h-3.5 w-3.5 text-primary-400" />}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 interface WorkbenchHeaderProps {
   title: string;
   domain?: string | null;
   agentLabel?: string | null;
   agentColor?: string | null;
+  agents?: AgentMeta[];
+  currentAgentKey?: string | null;
+  agentChanging?: boolean;
+  onSelectAgent?: (agent: AgentMeta) => void;
   pdfCollapsed: boolean;
   activeSplitPreset: WorkbenchSplitPreset | null;
   runStateLabel: string;
@@ -47,6 +206,10 @@ export default function WorkbenchHeader({
   domain,
   agentLabel,
   agentColor,
+  agents,
+  currentAgentKey,
+  agentChanging,
+  onSelectAgent,
   pdfCollapsed,
   activeSplitPreset,
   runStateLabel,
@@ -101,18 +264,29 @@ export default function WorkbenchHeader({
             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-surface-500">
               {domain && <span className="status-pill border-primary-500/20 bg-primary-500/10 text-primary-300">{domain}</span>}
               {agentLabel && (
-                <span
-                  className={agentColor ? 'status-pill' : 'status-pill border-surface-700/50 bg-surface-800/80 text-surface-300'}
-                  style={buildAgentPillStyle(agentColor)}
-                >
-                  {agentColor && (
-                    <span
-                      className="h-1.5 w-1.5 rounded-full"
-                      style={{ backgroundColor: agentColor }}
-                    />
-                  )}
-                  {agentLabel}
-                </span>
+                onSelectAgent && agents && agents.length > 0 ? (
+                  <AgentBadgeDropdown
+                    agentLabel={agentLabel}
+                    agentColor={agentColor}
+                    agents={agents}
+                    currentAgentKey={currentAgentKey}
+                    changing={agentChanging}
+                    onSelect={onSelectAgent}
+                  />
+                ) : (
+                  <span
+                    className={agentColor ? 'status-pill' : 'status-pill border-surface-700/50 bg-surface-800/80 text-surface-300'}
+                    style={buildAgentPillStyle(agentColor)}
+                  >
+                    {agentColor && (
+                      <span
+                        className="h-1.5 w-1.5 rounded-full"
+                        style={{ backgroundColor: agentColor }}
+                      />
+                    )}
+                    {agentLabel}
+                  </span>
+                )
               )}
               <span className="status-pill border-surface-700/50 bg-surface-800/80 text-surface-300">
                 {runStateLabel}

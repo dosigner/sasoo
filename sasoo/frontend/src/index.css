@@ -1895,6 +1895,11 @@
   width: 100%;
 }
 
+.level-slider.is-disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .level-slider input[type='range'] {
   -webkit-appearance: none;
   appearance: none;

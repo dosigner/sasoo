@@ -22,14 +22,15 @@ interface Props {
   value: string;
   onChange: (key: LevelKey) => void;
   compact?: boolean; // true면 프리뷰 문장 숨김 (결과 화면용)
+  disabled?: boolean; // true면 상호작용 차단 (재작성 로딩 중)
 }
 
-export default function LevelSlider({ value, onChange, compact = false }: Props) {
+export default function LevelSlider({ value, onChange, compact = false, disabled = false }: Props) {
   const id = useId();
   const index = Math.max(0, LEVEL_ORDER.indexOf(value as LevelKey));
   const current = LEVEL_ORDER[index];
   return (
-    <div className="level-slider">
+    <div className={disabled ? 'level-slider is-disabled' : 'level-slider'}>
       <input
         id={id}
         type="range"
@@ -38,6 +39,7 @@ export default function LevelSlider({ value, onChange, compact = false }: Props)
         step={1}
         value={index}
         onChange={(e) => onChange(LEVEL_ORDER[Number(e.target.value)])}
+        disabled={disabled}
         aria-label="설명 수준"
         aria-valuetext={LEVEL_LABELS[current]}
         list={`${id}-ticks`}
@@ -47,6 +49,7 @@ export default function LevelSlider({ value, onChange, compact = false }: Props)
           <button
             key={key}
             type="button"
+            disabled={disabled}
             className={key === current ? 'level-label active' : 'level-label'}
             onClick={() => onChange(key)}
           >

@@ -18,6 +18,7 @@ export interface Paper {
   doi: string | null;
   domain: string;
   agent_used: string;
+  explanation_level?: string;
   folder_name: string;
   tags: string | null;
   status: PaperStatus;
@@ -506,6 +507,19 @@ export async function updatePaper(
   return request<Paper>(`/papers/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(data),
+  });
+}
+
+export interface RewriteResponse {
+  text: string;
+  level: string;
+  cached: boolean;
+}
+
+export function rewriteSection(paperId: number, phase: string, level: string): Promise<RewriteResponse> {
+  return request<RewriteResponse>(`/papers/${paperId}/rewrite`, {
+    method: 'POST',
+    body: JSON.stringify({ phase, level }),
   });
 }
 
