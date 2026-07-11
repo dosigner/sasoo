@@ -198,7 +198,7 @@ export default function TableGallery({
               </div>
 
               {(table.review_required || table.repair_attempted) && (
-                <div className="rounded-xl bg-surface/40 px-4 py-3">
+                <div className="rounded-xl bg-bg/40 px-4 py-3">
                   <div className="flex flex-wrap items-center gap-2 text-2xs text-fg-muted">
                     {table.review_required && (
                       <span className="status-pill border-warning/20 bg-warning/10 text-warning">
@@ -225,7 +225,7 @@ export default function TableGallery({
               )}
 
               {table.markdown_text && (
-                <div className="rounded-xl border border-border/30 bg-surface/50 px-4 py-3">
+                <div className="rounded-xl border border-border/30 bg-bg/50 px-4 py-3">
                   <div className="mb-2 flex items-center gap-2 text-2xs font-medium uppercase tracking-[0.14em] text-fg-muted">
                     <AppIcon name="tables" className="h-3.5 w-3.5 text-accent" />
                     {S.tables.markdownPreview}

@@ -108,6 +108,7 @@ Tailwind: `borderRadius: { control: 'var(--radius-control)', surface: 'var(--rad
 - hover/포커스 상태 배경은 무조건 `surface-hover`.
 - 의미(성공/경고/위험)가 있는 색은 시맨틱 상태 토큰, 장식 색은 accent로 수렴 — 판단이 애매하면 무채색.
 - `lib/agents.ts`의 동적 에이전트 hex는 데이터이므로 인라인 style 유지.
+- 이미지 위 오버레이 크롬(text-white, bg-black/NN 딤·그라디언트)은 테마와 무관하므로 예외로 유지한다.
 - 매핑에 없는 케이스는 "이 요소의 의미가 무엇인가"로 판단해 13개 토큰 중 선택.
 
 ## 5. 모션·상호작용 원칙

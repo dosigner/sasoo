@@ -177,7 +177,7 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
           </div>
           <div className="flex gap-2 mt-1 text-2xs text-fg-muted">
             <span>{S.cost.tokensIn} {formatTokens(costData.totals.total_tokens_in)}</span>
-            <span className="text-border">|</span>
+            <span className="text-fg-muted">|</span>
             <span>{S.cost.tokensOut} {formatTokens(costData.totals.total_tokens_out)}</span>
           </div>
         </div>
@@ -205,7 +205,7 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
           {S.cost.efficiencyMetrics}
         </h4>
         <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-surface bg-surface/40 px-4 py-3">
+          <div className="rounded-surface bg-bg/40 px-4 py-3">
             <div className="text-2xs uppercase tracking-[0.14em] text-fg-muted">
               {S.cost.cacheSavings}
             </div>
@@ -220,7 +220,7 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
             </div>
           </div>
 
-          <div className="rounded-surface bg-surface/40 px-4 py-3">
+          <div className="rounded-surface bg-bg/40 px-4 py-3">
             <div className="text-2xs uppercase tracking-[0.14em] text-fg-muted">
               {S.cost.phaseCalls}
             </div>
@@ -237,7 +237,7 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
             </div>
           </div>
 
-          <div className="rounded-surface bg-surface/40 px-4 py-3">
+          <div className="rounded-surface bg-bg/40 px-4 py-3">
             <div className="text-2xs uppercase tracking-[0.14em] text-fg-muted">
               {S.cost.tableReviewQueue}
             </div>
