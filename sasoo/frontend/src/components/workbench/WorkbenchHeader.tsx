@@ -122,6 +122,7 @@ function AgentBadgeDropdown({
   return (
     <div ref={containerRef} className="relative inline-flex">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => canOpen && setOpen((o) => !o)}
         disabled={!canOpen}
