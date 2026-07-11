@@ -9,6 +9,7 @@ import {
   Circle,
   AlertCircle,
   RefreshCw,
+  FolderDown,
 } from 'lucide-react';
 import {
   type ArtifactStatus,
@@ -734,6 +735,24 @@ function VisualizationGallery({
   const [itemOverrides, setItemOverrides] = useState<Record<number, VisualizationItem>>({});
   const [regeneratingIds, setRegeneratingIds] = useState<Record<number, boolean>>({});
   const [regenerateErrors, setRegenerateErrors] = useState<Record<number, string>>({});
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
+
+  const handleExportAll = useCallback(
+    async (paperId: number, items: VisualizationItem[]) => {
+      setExporting(true);
+      setExportError('');
+      try {
+        const { exportVisualizationsZip } = await import('@/lib/vizExport');
+        await exportVisualizationsZip(paperId, items);
+      } catch {
+        setExportError(S.mermaid.exportFailed);
+      } finally {
+        setExporting(false);
+      }
+    },
+    []
+  );
 
   const handleRegenerate = useCallback(
     async (paperId: number, vizId: number) => {
@@ -783,7 +802,26 @@ function VisualizationGallery({
           <span className="badge text-2xs bg-accent/10 text-accent">
             {visualizations.items.length}
           </span>
+          <button
+            onClick={() =>
+              handleExportAll(
+                visualizations.paper_id,
+                visualizations.items.map((it) => itemOverrides[it.id] ?? it)
+              )
+            }
+            disabled={exporting}
+            className="btn-ghost text-2xs px-2 py-0.5 ml-auto"
+            title={S.mermaid.exportAll}
+          >
+            {exporting ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <FolderDown className="w-3 h-3" />
+            )}
+            {exporting ? S.mermaid.exporting : S.mermaid.exportAll}
+          </button>
         </div>
+        {exportError && <p className="text-2xs text-danger">{exportError}</p>}
         {visualizations.items.map((rawItem) => {
           const item = itemOverrides[rawItem.id] ?? rawItem;
           const isRegenerating = !!regeneratingIds[item.id];

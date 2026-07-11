@@ -1090,8 +1090,11 @@ A. Flowchart (flowchart TD/LR) — ALWAYS apply styling:
    - Group related steps with subgraphs (alphanumeric id + quoted title), then style them:
        subgraph SG1["학습 파이프라인"] ... end
        style SG1 fill:transparent,stroke:#8b5cf6,stroke-width:1.5px,stroke-dasharray:5 5
-   - linkStyle: ONLY use it when you are certain of the 0-based edge index
-     (index must be < total number of edges). When unsure, omit linkStyle entirely.
+   - Color important arrows with linkStyle (0-based edge index, counted in
+     order of appearance from the top). Use bright strokes from the palette:
+       linkStyle 0,3 stroke:#4a9eff,stroke-width:2.5px
+       linkStyle 1 stroke:#fb7185,stroke-width:2px
+     e.g. 주 흐름=파랑, 피드백=보라, 실패 경로=장미. Count indices carefully.
 
 B. sequenceDiagram:
    - Use autonumber and participant aliases: participant A as 레이저 소스
@@ -1144,6 +1147,63 @@ _MERMAID_KEYWORDS = (
 )
 
 
+# Flowchart edge connectors: -->, ---, -.->, ==>, ===, --o, --x, <-->, ~~~ …
+# Greedy quantifiers collapse long forms (---->) into a single match.
+_MERMAID_LINK_RE = re.compile(r"<?(?:-{2,}[>ox]?|={2,}[>x]?|-\.+->?|~{3,})")
+
+_MERMAID_NON_EDGE_PREFIXES = (
+    "classDef",
+    "class ",
+    "style ",
+    "linkStyle",
+    "subgraph",
+    "direction",
+    "%%",
+)
+
+
+def _filter_out_of_range_linkstyles(code: str) -> str:
+    """Drop numbered linkStyle lines whose edge index cannot exist.
+
+    Mermaid hard-fails the whole diagram on an out-of-range linkStyle index,
+    so guarding here lets the prompt use per-edge colors freely. Counting is
+    done on quote-stripped non-style lines; `&` multi-links make the count
+    ambiguous, in which case every numbered linkStyle is dropped.
+    """
+    lines = code.split("\n")
+    first = lines[0].strip() if lines else ""
+    if not first.startswith(("flowchart", "graph")):
+        return code
+
+    edge_count = 0
+    ambiguous = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith(_MERMAID_NON_EDGE_PREFIXES):
+            continue
+        unquoted = re.sub(r'"[^"]*"', '""', stripped)
+        if "&" in unquoted:
+            ambiguous = True
+        edge_count += len(_MERMAID_LINK_RE.findall(unquoted))
+
+    kept: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped.startswith("linkStyle"):
+            kept.append(line)
+            continue
+        if stripped.startswith("linkStyle default"):
+            kept.append(line)
+            continue
+        match = re.match(r"linkStyle\s+((?:\d+\s*,\s*)*\d+)\b", stripped)
+        if match is None or ambiguous:
+            continue
+        indices = [int(n) for n in re.findall(r"\d+", match.group(1))]
+        if all(i < edge_count for i in indices):
+            kept.append(line)
+    return "\n".join(kept)
+
+
 def _sanitize_mermaid_code(raw: str) -> str:
     """Best-effort cleanup of LLM-generated Mermaid code (v10.x compatibility)."""
     code = raw.strip()
@@ -1173,7 +1233,7 @@ def _sanitize_mermaid_code(raw: str) -> str:
                 code = "\n".join(lines[i:])
                 break
 
-    return code.strip()
+    return _filter_out_of_range_linkstyles(code.strip()).strip()
 
 
 async def _plan_visualizations(

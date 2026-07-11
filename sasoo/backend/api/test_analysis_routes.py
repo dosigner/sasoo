@@ -748,6 +748,66 @@ class SanitizeMermaidCodeTests(unittest.TestCase):
         raw = "flowchart TD\nA-->B"
         self.assertEqual(analysis_routes._sanitize_mermaid_code(raw), raw)
 
+    def test_keeps_linkstyle_with_valid_indices(self):
+        raw = (
+            "flowchart TD\n"
+            '    A["시작 (1단계)"] --> B\n'
+            "    B ==> C\n"
+            "    C -.-> A\n"
+            "    linkStyle 0,2 stroke:#4a9eff,stroke-width:2.5px\n"
+            "    linkStyle default stroke:#888"
+        )
+        self.assertEqual(analysis_routes._sanitize_mermaid_code(raw), raw)
+
+    def test_drops_out_of_range_linkstyle_lines(self):
+        raw = (
+            "flowchart TD\n"
+            "    A --> B\n"
+            "    B --o C\n"
+            "    linkStyle 1 stroke:#4a9eff\n"
+            "    linkStyle 5 stroke:#fb7185\n"
+            "    linkStyle default stroke:#888"
+        )
+        cleaned = analysis_routes._sanitize_mermaid_code(raw)
+        self.assertIn("linkStyle 1 stroke:#4a9eff", cleaned)
+        self.assertNotIn("linkStyle 5", cleaned)
+        self.assertIn("linkStyle default", cleaned)
+
+    def test_counts_multiple_edges_per_line_and_long_arrows(self):
+        raw = (
+            "flowchart LR\n"
+            "    A --> B ---> C\n"
+            '    C <-->|"교환"| D\n'
+            "    linkStyle 2 stroke:#34d399\n"
+            "    linkStyle 3 stroke:#fb7185"
+        )
+        cleaned = analysis_routes._sanitize_mermaid_code(raw)
+        self.assertIn("linkStyle 2", cleaned)  # 3 edges → index 2 valid
+        self.assertNotIn("linkStyle 3", cleaned)
+
+    def test_drops_numbered_linkstyle_when_ampersand_makes_count_ambiguous(self):
+        raw = (
+            "flowchart TD\n"
+            "    A & B --> C\n"
+            "    linkStyle 0 stroke:#4a9eff\n"
+            "    linkStyle default stroke:#888"
+        )
+        cleaned = analysis_routes._sanitize_mermaid_code(raw)
+        self.assertNotIn("linkStyle 0", cleaned)
+        self.assertIn("linkStyle default", cleaned)
+
+    def test_linkstyle_untouched_for_non_flowchart(self):
+        raw = "sequenceDiagram\n    A->>B: 요청\n    B-->>A: 응답"
+        self.assertEqual(analysis_routes._sanitize_mermaid_code(raw), raw)
+
+    def test_edge_count_ignores_arrows_inside_quoted_labels(self):
+        raw = (
+            "flowchart TD\n"
+            '    A["증가 --> 감소"] --> B\n'
+            "    linkStyle 0 stroke:#4a9eff"
+        )
+        self.assertEqual(analysis_routes._sanitize_mermaid_code(raw), raw)
+
 
 if __name__ == "__main__":
     unittest.main()

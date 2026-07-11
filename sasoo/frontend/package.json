@@ -16,6 +16,7 @@
     "@radix-ui/react-popover": "^1.1.19",
     "@radix-ui/react-select": "^2.3.3",
     "@radix-ui/react-tooltip": "^1.2.12",
+    "jszip": "^3.10.1",
     "katex": "^0.16.38",
     "lucide-react": "^0.312.0",
     "mermaid": "^11.16.0",

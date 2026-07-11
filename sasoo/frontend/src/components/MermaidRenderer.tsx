@@ -169,11 +169,11 @@ function buildRenderCandidates(code: string): string[] {
 // Download helpers
 // ---------------------------------------------------------------------------
 
-function safeFilename(name: string): string {
+export function safeFilename(name: string): string {
   return (name || 'diagram').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 60);
 }
 
-function downloadBlob(filename: string, blob: Blob) {
+export function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -207,7 +207,7 @@ function downloadSvg(svg: string, name: string) {
   );
 }
 
-async function downloadPng(svg: string, name: string, scale = 2) {
+export async function svgToPngBlob(svg: string, scale = 2): Promise<Blob | null> {
   const { svg: sized, width, height } = svgWithPixelSize(svg);
   const img = new Image();
   await new Promise<void>((resolve, reject) => {
@@ -219,16 +219,20 @@ async function downloadPng(svg: string, name: string, scale = 2) {
   canvas.width = width * scale;
   canvas.height = height * scale;
   const ctx = canvas.getContext('2d');
-  if (!ctx) return;
+  if (!ctx) return null;
   // Pale diagram text disappears on a transparent PNG viewed on white — bake
   // the app background in.
   ctx.fillStyle = isDarkTheme() ? '#0f0f11' : '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.scale(scale, scale);
   ctx.drawImage(img, 0, 0, width, height);
-  const blob = await new Promise<Blob | null>((resolve) =>
+  return new Promise<Blob | null>((resolve) =>
     canvas.toBlob(resolve, 'image/png')
   );
+}
+
+async function downloadPng(svg: string, name: string, scale = 2) {
+  const blob = await svgToPngBlob(svg, scale);
   if (blob) downloadBlob(`${safeFilename(name)}.png`, blob);
 }
 
@@ -380,6 +384,18 @@ function MermaidSkeleton() {
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
+
+// Sanitize + render, using the same fallback ladder as the component. For
+// programmatic use (e.g. bulk export) outside the renderer UI.
+let exportRenderSeq = 0;
+export async function renderMermaidSvg(
+  code: string
+): Promise<{ svg: string; degraded: boolean } | { error: string }> {
+  const sanitized = sanitizeMermaidCode(code);
+  if (!sanitized) return { error: S.mermaid.emptyCode };
+  exportRenderSeq += 1;
+  return attemptRender(sanitized, 100000 + exportRenderSeq);
+}
 
 // Try candidates × layouts; returns the first successful SVG.
 async function attemptRender(
