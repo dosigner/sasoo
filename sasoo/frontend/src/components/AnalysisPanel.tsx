@@ -8,10 +8,13 @@ import {
   Loader2,
   Circle,
   AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import {
   type ArtifactStatus,
   getStaticUrl,
+  repairMermaid,
+  regenerateVisualization,
   type AnalysisResults,
   type AnalysisStatus,
   type FigureListResponse,
@@ -726,6 +729,48 @@ function VisualizationGallery({
   legacyMermaid: MermaidDiagram | null;
   loading: boolean;
 }) {
+  // Locally regenerated/repaired items override the fetched plan until the
+  // next reload (the backend persists them too).
+  const [itemOverrides, setItemOverrides] = useState<Record<number, VisualizationItem>>({});
+  const [regeneratingIds, setRegeneratingIds] = useState<Record<number, boolean>>({});
+  const [regenerateErrors, setRegenerateErrors] = useState<Record<number, string>>({});
+
+  const handleRegenerate = useCallback(
+    async (paperId: number, vizId: number) => {
+      setRegeneratingIds((prev) => ({ ...prev, [vizId]: true }));
+      setRegenerateErrors((prev) => ({ ...prev, [vizId]: '' }));
+      try {
+        const updated = await regenerateVisualization(paperId, vizId);
+        setItemOverrides((prev) => ({ ...prev, [vizId]: updated }));
+      } catch {
+        setRegenerateErrors((prev) => ({
+          ...prev,
+          [vizId]: S.mermaid.regenerateFailed,
+        }));
+      } finally {
+        setRegeneratingIds((prev) => ({ ...prev, [vizId]: false }));
+      }
+    },
+    []
+  );
+
+  const makeRepairHandler = useCallback(
+    (paperId: number, vizId: number | null) =>
+      async (code: string, errorMessage: string): Promise<string | null> => {
+        try {
+          const result = await repairMermaid(paperId, {
+            mermaid_code: code,
+            error_message: errorMessage,
+            viz_id: vizId,
+          });
+          return result.mermaid_code || null;
+        } catch {
+          return null;
+        }
+      },
+    []
+  );
+
   // If we have the new visualization plan, use it
   if (visualizations && visualizations.items.length > 0) {
     return (
@@ -739,7 +784,10 @@ function VisualizationGallery({
             {visualizations.items.length}
           </span>
         </div>
-        {visualizations.items.map((item) => (
+        {visualizations.items.map((rawItem) => {
+          const item = itemOverrides[rawItem.id] ?? rawItem;
+          const isRegenerating = !!regeneratingIds[item.id];
+          return (
           <div key={item.id} className="space-y-2">
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-fg-secondary">
@@ -752,7 +800,23 @@ function VisualizationGallery({
               }`}>
                 {item.tool === 'mermaid' ? 'Mermaid' : 'PaperBanana'}
               </span>
+              {item.tool === 'mermaid' && (
+                <button
+                  onClick={() => handleRegenerate(visualizations.paper_id, item.id)}
+                  disabled={isRegenerating}
+                  className="btn-ghost text-2xs px-2 py-0.5 ml-auto"
+                  title={S.mermaid.regenerate}
+                >
+                  <RefreshCw
+                    className={`w-3 h-3 ${isRegenerating ? 'animate-spin' : ''}`}
+                  />
+                  {isRegenerating ? S.mermaid.regenerating : S.mermaid.regenerate}
+                </button>
+              )}
             </div>
+            {regenerateErrors[item.id] && (
+              <p className="text-2xs text-danger">{regenerateErrors[item.id]}</p>
+            )}
             {item.description && (
               <p className="text-xs text-fg-muted leading-relaxed">
                 {item.description}
@@ -768,6 +832,8 @@ function VisualizationGallery({
                     description: item.description,
                   }}
                   loading={false}
+                  title={item.title}
+                  onRepair={makeRepairHandler(visualizations.paper_id, item.id)}
                 />
               </Suspense>
             ) : item.tool === 'paperbanana' ? (
@@ -783,7 +849,8 @@ function VisualizationGallery({
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
     );
   }
@@ -815,6 +882,11 @@ function VisualizationGallery({
       <MermaidRenderer
         diagram={legacyMermaid}
         loading={loading}
+        onRepair={
+          legacyMermaid
+            ? makeRepairHandler(legacyMermaid.paper_id, null)
+            : undefined
+        }
       />
     </Suspense>
   );

@@ -40,6 +40,7 @@ from models.schemas import (
     FigureInfo,
     FigureListResponse,
     FullAnalysisResponse,
+    MermaidRepairRequest,
     MermaidResult,
     PaperBananaRequest,
     PaperBananaResponse,
@@ -2160,6 +2161,155 @@ async def get_visualizations(paper_id: int):
         )
     except (json.JSONDecodeError, TypeError):
         return VisualizationPlanResponse(paper_id=paper_id)
+
+
+async def _update_stored_visualization_item(
+    paper_id: int, viz_id: int, new_fields: dict
+) -> Optional[dict]:
+    """Patch one item inside the latest stored visualization row.
+
+    Returns the updated item dict, or None when no stored row/item matches.
+    """
+    viz_row = await get_latest_completed_phase_row(paper_id, "visualization")
+    if viz_row is None:
+        return None
+    data = viz_row.get("parsed_result")
+    if not isinstance(data, dict):
+        return None
+    items = data.get("items")
+    if not isinstance(items, list):
+        return None
+
+    updated_item = None
+    for item in items:
+        if isinstance(item, dict) and item.get("id") == viz_id:
+            item.update(new_fields)
+            updated_item = item
+            break
+    if updated_item is None:
+        return None
+
+    await execute_update(
+        "UPDATE analysis_results SET result = ? WHERE id = ?",
+        (json.dumps(data, ensure_ascii=False), viz_row["id"]),
+    )
+    return updated_item
+
+
+@router.post("/{paper_id}/mermaid/repair", response_model=MermaidResult)
+async def repair_mermaid(paper_id: int, request: MermaidRepairRequest):
+    """
+    Self-heal a Mermaid diagram that failed to parse in the renderer.
+
+    The client sends the failing code plus the parser error message; Gemini
+    fixes the code while keeping the content and styling. When viz_id is
+    given, the repaired code is persisted into the stored visualization row.
+    """
+    paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
+    if paper is None:
+        raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
+
+    prompt = f"""아래 Mermaid 코드가 파서 오류로 렌더링에 실패했어. 오류를 고친 전체 코드를 반환해줘.
+
+{_MERMAID_SYNTAX_RULES}
+
+파서 오류 메시지:
+{request.error_message[:500]}
+
+실패한 코드:
+{request.mermaid_code[:6000]}
+
+지침:
+- 다이어그램의 내용(노드, 엣지, 레이블)과 스타일(classDef 색상, 화살표 종류)은 최대한 유지해.
+- 파서 오류의 원인만 최소한으로 고쳐.
+- linkStyle 인덱스가 엣지 수를 벗어나면 해당 linkStyle 줄을 삭제해.
+- 수정된 전체 Mermaid 코드만 반환해. 설명 금지."""
+
+    result = await _call_gemini(prompt, model=MODEL_MERMAID)
+    repaired = _sanitize_mermaid_code(result["text"])
+    if not repaired:
+        raise HTTPException(status_code=502, detail="Repair produced empty Mermaid code.")
+
+    if request.viz_id is not None:
+        await _update_stored_visualization_item(
+            paper_id,
+            request.viz_id,
+            {"mermaid_code": repaired, "status": "completed", "error_message": None},
+        )
+
+    return MermaidResult(
+        paper_id=paper_id,
+        mermaid_code=repaired,
+        diagram_type="flowchart",
+        description=None,
+    )
+
+
+@router.post(
+    "/{paper_id}/visualizations/{viz_id}/regenerate",
+    response_model=VisualizationItem,
+)
+async def regenerate_visualization(paper_id: int, viz_id: int):
+    """
+    Regenerate a single Mermaid visualization item with the current prompt
+    (styling rules included) and persist it, without re-running the analysis.
+    """
+    paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
+    if paper is None:
+        raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
+
+    viz_row = await get_latest_completed_phase_row(paper_id, "visualization")
+    data = (viz_row or {}).get("parsed_result") or {}
+    items = data.get("items") if isinstance(data, dict) else None
+    stored_item = next(
+        (it for it in items or [] if isinstance(it, dict) and it.get("id") == viz_id),
+        None,
+    )
+    if stored_item is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Visualization {viz_id} not found for paper {paper_id}.",
+        )
+    if stored_item.get("tool") != "mermaid":
+        raise HTTPException(
+            status_code=400,
+            detail="Only mermaid visualizations can be regenerated here.",
+        )
+
+    # Rebuild the generation contexts the pipeline used
+    visualization_input = ""
+    try:
+        document_context = await asyncio.to_thread(
+            load_or_build_document_context, get_paper_dir(paper["folder_name"])
+        )
+        visualization_input = str(
+            document_context.get("phase_inputs", {}).get("visualization", "")
+        )
+    except FileNotFoundError:
+        pass
+
+    phase_rows = await get_latest_completed_phase_rows(
+        paper_id,
+        phases=["screening", "citation", "visual", "recipe", "deep_dive"],
+    )
+    previous_results = [
+        _phase_result_snippet(phase_rows[phase], 3000)
+        for phase in ["screening", "citation", "visual", "recipe", "deep_dive"]
+        if phase in phase_rows
+    ]
+
+    code = await _generate_single_mermaid(
+        paper_id, stored_item, visualization_input, previous_results
+    )
+    if not code:
+        raise HTTPException(status_code=502, detail="Regeneration produced empty Mermaid code.")
+
+    updated = await _update_stored_visualization_item(
+        paper_id,
+        viz_id,
+        {"mermaid_code": code, "status": "completed", "error_message": None},
+    )
+    return VisualizationItem(**(updated or {**stored_item, "mermaid_code": code}))
 
 
 @router.get("/{paper_id}/report", response_model=ReportResponse)

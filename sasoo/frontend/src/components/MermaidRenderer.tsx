@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import mermaid from 'mermaid';
+import elkLayouts from '@mermaid-js/layout-elk';
 import {
   GitBranch,
   Code2,
@@ -8,9 +9,17 @@ import {
   Copy,
   Check,
   AlertCircle,
+  Download,
+  Maximize2,
+  Wand2,
+  X,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import type { MermaidDiagram } from '@/lib/api';
 import { S } from '@/lib/strings';
+
+mermaid.registerLayoutLoaders(elkLayouts);
 
 // ---------------------------------------------------------------------------
 // Types
@@ -19,17 +28,38 @@ import { S } from '@/lib/strings';
 interface MermaidRendererProps {
   diagram: MermaidDiagram | null;
   loading?: boolean;
+  /** Used for download filenames. */
+  title?: string;
+  /**
+   * Self-heal hook: given failing code + parser error, return repaired code
+   * (or null when repair is unavailable/failed). Called at most once per
+   * diagram source.
+   */
+  onRepair?: (code: string, errorMessage: string) => Promise<string | null>;
 }
 
 // ---------------------------------------------------------------------------
 // Mermaid initialization
 // ---------------------------------------------------------------------------
 
-function initMermaid(isDark = true) {
+type MermaidLayout = 'elk' | 'dagre';
+
+// ELK produces much cleaner layouts for dense flowcharts; dagre stays as the
+// fallback when the ELK engine rejects a graph.
+const LAYOUTS: MermaidLayout[] = ['elk', 'dagre'];
+
+function isDarkTheme(): boolean {
+  return !document.documentElement.classList.contains('light');
+}
+
+function initMermaid(isDark = true, layout: MermaidLayout = 'elk') {
   const theme = isDark ? 'dark' : 'default';
   mermaid.initialize({
     startOnLoad: false,
     theme,
+    layout,
+    // Multi-stage fallback re-renders on failure; don't inject error SVGs.
+    suppressErrorRendering: true,
     themeVariables: isDark ? {
       primaryColor: '#5e6ad2',
       primaryTextColor: '#f4f4f5',
@@ -136,6 +166,202 @@ function buildRenderCandidates(code: string): string[] {
 }
 
 // ---------------------------------------------------------------------------
+// Download helpers
+// ---------------------------------------------------------------------------
+
+function safeFilename(name: string): string {
+  return (name || 'diagram').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 60);
+}
+
+function downloadBlob(filename: string, blob: Blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Mermaid SVGs carry viewBox + max-width style but no pixel size; pin one for export. */
+function svgWithPixelSize(svg: string): { svg: string; width: number; height: number } {
+  const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+  const el = doc.documentElement;
+  let width = parseFloat(el.getAttribute('width') || '');
+  let height = parseFloat(el.getAttribute('height') || '');
+  const viewBox = (el.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
+  if ((!width || Number.isNaN(width)) && viewBox.length === 4) width = viewBox[2];
+  if ((!height || Number.isNaN(height)) && viewBox.length === 4) height = viewBox[3];
+  width = Math.ceil(width || 1200);
+  height = Math.ceil(height || 800);
+  el.setAttribute('width', String(width));
+  el.setAttribute('height', String(height));
+  el.removeAttribute('style');
+  return { svg: new XMLSerializer().serializeToString(el), width, height };
+}
+
+function downloadSvg(svg: string, name: string) {
+  const { svg: sized } = svgWithPixelSize(svg);
+  downloadBlob(
+    `${safeFilename(name)}.svg`,
+    new Blob([sized], { type: 'image/svg+xml;charset=utf-8' })
+  );
+}
+
+async function downloadPng(svg: string, name: string, scale = 2) {
+  const { svg: sized, width, height } = svgWithPixelSize(svg);
+  const img = new Image();
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error('SVG image load failed'));
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sized)}`;
+  });
+  const canvas = document.createElement('canvas');
+  canvas.width = width * scale;
+  canvas.height = height * scale;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  // Pale diagram text disappears on a transparent PNG viewed on white — bake
+  // the app background in.
+  ctx.fillStyle = isDarkTheme() ? '#0f0f11' : '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.scale(scale, scale);
+  ctx.drawImage(img, 0, 0, width, height);
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, 'image/png')
+  );
+  if (blob) downloadBlob(`${safeFilename(name)}.png`, blob);
+}
+
+// ---------------------------------------------------------------------------
+// Fullscreen modal with zoom/pan
+// ---------------------------------------------------------------------------
+
+const ZOOM_MIN = 0.2;
+const ZOOM_MAX = 8;
+
+function MermaidModal({
+  svg,
+  title,
+  onClose,
+}: {
+  svg: string;
+  title: string;
+  onClose: () => void;
+}) {
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+
+  const zoomBy = useCallback((factor: number) => {
+    setScale((s) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, s * factor)));
+  }, []);
+
+  const resetView = useCallback(() => {
+    setScale(1);
+    setOffset({ x: 0, y: 0 });
+  }, []);
+
+  // Wheel zoom needs a non-passive listener to preventDefault page scroll.
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      zoomBy(e.deltaY < 0 ? 1.12 : 1 / 1.12);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [zoomBy]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex flex-col"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
+      {/* Toolbar */}
+      <div
+        className="flex items-center gap-2 px-4 py-2 bg-bg/90 border-b border-border"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <GitBranch className="w-4 h-4 text-accent shrink-0" />
+        <span className="text-sm font-medium text-fg truncate flex-1">{title}</span>
+        <button onClick={() => zoomBy(1 / 1.25)} className="btn-ghost text-2xs px-2 py-1" title={S.mermaid.zoomOut}>
+          <ZoomOut className="w-3.5 h-3.5" />
+        </button>
+        <span className="text-2xs text-fg-muted w-12 text-center tabular-nums">
+          {Math.round(scale * 100)}%
+        </span>
+        <button onClick={() => zoomBy(1.25)} className="btn-ghost text-2xs px-2 py-1" title={S.mermaid.zoomIn}>
+          <ZoomIn className="w-3.5 h-3.5" />
+        </button>
+        <button onClick={resetView} className="btn-ghost text-2xs px-2 py-1" title={S.mermaid.zoomReset}>
+          {S.mermaid.zoomReset}
+        </button>
+        <button
+          onClick={() => downloadSvg(svg, title)}
+          className="btn-ghost text-2xs px-2 py-1"
+          title={`${S.mermaid.download} SVG`}
+        >
+          <Download className="w-3.5 h-3.5" />
+          SVG
+        </button>
+        <button
+          onClick={() => { void downloadPng(svg, title); }}
+          className="btn-ghost text-2xs px-2 py-1"
+          title={`${S.mermaid.download} PNG`}
+        >
+          <Download className="w-3.5 h-3.5" />
+          PNG
+        </button>
+        <button onClick={onClose} className="btn-ghost text-2xs px-2 py-1" title={S.mermaid.close}>
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Zoom/pan viewport */}
+      <div
+        ref={viewportRef}
+        className="flex-1 overflow-hidden cursor-grab active:cursor-grabbing"
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          dragRef.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
+        }}
+        onPointerMove={(e) => {
+          const drag = dragRef.current;
+          if (!drag) return;
+          setOffset({ x: drag.ox + (e.clientX - drag.x), y: drag.oy + (e.clientY - drag.y) });
+        }}
+        onPointerUp={() => { dragRef.current = null; }}
+        onPointerCancel={() => { dragRef.current = null; }}
+        onDoubleClick={resetView}
+      >
+        <div
+          className="w-full h-full flex items-center justify-center [&>svg]:max-w-none select-none"
+          style={{
+            transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+            transformOrigin: 'center center',
+          }}
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Skeleton
 // ---------------------------------------------------------------------------
 
@@ -155,19 +381,57 @@ function MermaidSkeleton() {
 // Component
 // ---------------------------------------------------------------------------
 
+// Try candidates × layouts; returns the first successful SVG.
+async function attemptRender(
+  code: string,
+  renderId: number
+): Promise<{ svg: string; degraded: boolean } | { error: string }> {
+  const candidates = buildRenderCandidates(code);
+  let lastError: unknown = null;
+
+  for (let i = 0; i < candidates.length; i++) {
+    for (const layout of LAYOUTS) {
+      try {
+        initMermaid(isDarkTheme(), layout);
+        const diagramId = `mermaid-${Date.now()}-${renderId}-${i}-${layout}`;
+        const { svg } = await mermaid.render(diagramId, candidates[i]);
+        if (i > 0) {
+          console.warn(
+            `Mermaid: rendered with styling stripped (fallback stage ${i})`
+          );
+        }
+        return { svg, degraded: i > 0 };
+      } catch (err) {
+        lastError = err;
+      }
+    }
+  }
+  return {
+    error:
+      lastError instanceof Error ? lastError.message : S.mermaid.renderFailed,
+  };
+}
+
 export default function MermaidRenderer({
   diagram,
   loading = false,
+  title,
+  onRepair,
 }: MermaidRendererProps) {
   const [showCode, setShowCode] = useState(false);
   const [editableCode, setEditableCode] = useState('');
   const [svgContent, setSvgContent] = useState('');
   const [renderError, setRenderError] = useState<string | null>(null);
   const [styleDegraded, setStyleDegraded] = useState(false);
+  const [wasRepaired, setWasRepaired] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
+  const [isRepairing, setIsRepairing] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const [copied, setCopied] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderIdRef = useRef(0);
+  // Last source we already asked the LLM to repair — one attempt per source.
+  const repairAttemptedForRef = useRef<string | null>(null);
 
   // Render the mermaid diagram
   const renderDiagram = useCallback(
@@ -189,60 +453,58 @@ export default function MermaidRenderer({
         return;
       }
 
-      // Try the styled code first; on parse failure fall back to versions
-      // with linkStyle, then all styling, stripped.
-      const candidates = buildRenderCandidates(sanitized);
-      let lastError: unknown = null;
+      let outcome = await attemptRender(sanitized, currentRenderId);
+      let repaired = false;
 
-      for (let i = 0; i < candidates.length; i++) {
+      // Local fallbacks exhausted → ask the LLM to fix the code, once per source.
+      if (
+        'error' in outcome &&
+        onRepair &&
+        repairAttemptedForRef.current !== sanitized
+      ) {
+        repairAttemptedForRef.current = sanitized;
+        if (currentRenderId === renderIdRef.current) setIsRepairing(true);
         try {
-          const diagramId = `mermaid-${Date.now()}-${currentRenderId}-${i}`;
-          const { svg } = await mermaid.render(diagramId, candidates[i]);
-
-          // Only update if this is still the latest render
-          if (currentRenderId === renderIdRef.current) {
-            setSvgContent(svg);
-            setRenderError(null);
-            setStyleDegraded(i > 0);
-            setIsRendering(false);
-            if (i > 0) {
-              console.warn(
-                `Mermaid: rendered with styling stripped (fallback stage ${i})`
-              );
+          const fixed = await onRepair(sanitized, outcome.error);
+          const fixedSanitized = fixed ? sanitizeMermaidCode(fixed) : '';
+          if (fixedSanitized) {
+            const second = await attemptRender(fixedSanitized, currentRenderId);
+            if (!('error' in second)) {
+              outcome = second;
+              repaired = true;
+              if (currentRenderId === renderIdRef.current) {
+                setEditableCode(fixedSanitized);
+              }
             }
           }
-          return;
         } catch (err) {
-          lastError = err;
+          console.warn('Mermaid repair failed:', err);
         }
+        if (currentRenderId === renderIdRef.current) setIsRepairing(false);
       }
 
-      if (currentRenderId === renderIdRef.current) {
+      // Only update if this is still the latest render
+      if (currentRenderId !== renderIdRef.current) return;
+
+      if ('error' in outcome) {
         setStyleDegraded(false);
-        setRenderError(
-          lastError instanceof Error ? lastError.message : S.mermaid.renderFailed
-        );
-        setIsRendering(false);
+        setWasRepaired(false);
+        setRenderError(outcome.error);
+      } else {
+        setSvgContent(outcome.svg);
+        setRenderError(null);
+        setStyleDegraded(outcome.degraded);
+        setWasRepaired(repaired);
       }
+      setIsRendering(false);
     },
-    []
+    [onRepair]
   );
 
-  // Initialize/reinitialize mermaid when theme changes
-  useEffect(() => {
-    const isDark = !document.documentElement.classList.contains('light');
-    initMermaid(isDark);
-    // Re-render if we have content
-    if (editableCode) {
-      renderDiagram(editableCode);
-    }
-  }, []);
-
-  // Watch for theme changes
+  // Re-render when the theme changes (attemptRender re-reads the theme on
+  // every pass, so a plain re-render is enough).
   useEffect(() => {
     const observer = new MutationObserver(() => {
-      const isDark = !document.documentElement.classList.contains('light');
-      initMermaid(isDark);
       if (editableCode) {
         renderDiagram(editableCode);
       }
@@ -345,6 +607,33 @@ export default function MermaidRenderer({
               <Copy className="w-3 h-3" />
             )}
           </button>
+          {svgContent && !renderError && (
+            <>
+              <button
+                onClick={() => downloadSvg(svgContent, title || S.mermaid.title)}
+                className="btn-ghost text-2xs px-2 py-1"
+                title={`${S.mermaid.download} SVG`}
+              >
+                <Download className="w-3 h-3" />
+                SVG
+              </button>
+              <button
+                onClick={() => { void downloadPng(svgContent, title || S.mermaid.title); }}
+                className="btn-ghost text-2xs px-2 py-1"
+                title={`${S.mermaid.download} PNG`}
+              >
+                <Download className="w-3 h-3" />
+                PNG
+              </button>
+              <button
+                onClick={() => setShowModal(true)}
+                className="btn-ghost text-2xs px-2 py-1"
+                title={S.mermaid.expand}
+              >
+                <Maximize2 className="w-3 h-3" />
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -392,8 +681,15 @@ export default function MermaidRenderer({
       {/* Rendered diagram */}
       <div className="card p-0 overflow-hidden">
         {isRendering && (
-          <div className="flex items-center justify-center py-12">
-            <RefreshCw className="w-5 h-5 text-accent animate-spin" />
+          <div className="flex flex-col items-center justify-center py-12 gap-2">
+            {isRepairing ? (
+              <>
+                <Wand2 className="w-5 h-5 text-accent animate-pulse" />
+                <span className="text-xs text-fg-muted">{S.mermaid.repairing}</span>
+              </>
+            ) : (
+              <RefreshCw className="w-5 h-5 text-accent animate-spin" />
+            )}
           </div>
         )}
 
@@ -411,6 +707,12 @@ export default function MermaidRenderer({
 
         {svgContent && !isRendering && !renderError && (
           <>
+            {wasRepaired && (
+              <p className="text-2xs text-fg-muted px-4 pt-3 flex items-center gap-1">
+                <Wand2 className="w-3 h-3 text-accent" />
+                {S.mermaid.repairedNotice}
+              </p>
+            )}
             {styleDegraded && (
               <p className="text-2xs text-fg-muted px-4 pt-3 flex items-center gap-1">
                 <AlertCircle className="w-3 h-3" />
@@ -419,12 +721,21 @@ export default function MermaidRenderer({
             )}
             <div
               ref={containerRef}
-              className="p-4 bg-surface/50 overflow-x-auto [&>svg]:mx-auto [&>svg]:max-w-full fade-in-up"
+              className="p-4 bg-surface/50 overflow-x-auto [&>svg]:mx-auto [&>svg]:max-w-full fade-in-up cursor-zoom-in"
+              onClick={() => setShowModal(true)}
               dangerouslySetInnerHTML={{ __html: svgContent }}
             />
           </>
         )}
       </div>
+
+      {showModal && svgContent && (
+        <MermaidModal
+          svg={svgContent}
+          title={title || S.mermaid.title}
+          onClose={() => setShowModal(false)}
+        />
+      )}
     </div>
   );
 }

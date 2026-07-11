@@ -573,6 +573,32 @@ export async function getMermaid(paperId: string): Promise<MermaidDiagram> {
 }
 
 
+export interface MermaidRepairRequest {
+  mermaid_code: string;
+  error_message: string;
+  viz_id?: number | null;
+}
+
+export async function repairMermaid(
+  paperId: string | number,
+  data: MermaidRepairRequest
+): Promise<MermaidDiagram> {
+  return request<MermaidDiagram>(`/analysis/${paperId}/mermaid/repair`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function regenerateVisualization(
+  paperId: string | number,
+  vizId: number
+): Promise<VisualizationItem> {
+  return request<VisualizationItem>(
+    `/analysis/${paperId}/visualizations/${vizId}/regenerate`,
+    { method: 'POST' }
+  );
+}
+
 export async function getVisualizations(
   paperId: string
 ): Promise<VisualizationPlan> {
