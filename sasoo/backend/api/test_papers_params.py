@@ -116,5 +116,65 @@ class UpdatePaperAnalysisParamsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.notes, "업데이트된 메모")
 
 
+class UpdatePaperDomainSyncsAgentUsedTests(unittest.IsolatedAsyncioTestCase):
+    async def test_patch_domain_recomputes_agent_used(self) -> None:
+        """Task 13: PATCH {domain} must also refresh agent_used to match."""
+        paper_id = 3
+        existing_row = _base_paper_row(paper_id)  # domain=optics, agent_used=photon
+
+        updated_row = dict(existing_row)
+        updated_row["domain"] = "materials"
+        updated_row["agent_used"] = "crystal"
+
+        update = PaperUpdate(domain="materials")
+
+        fake_agent = type("FakeAgent", (), {"name": "crystal"})()
+
+        with (
+            patch("api.papers.fetch_one", new=AsyncMock(side_effect=[existing_row, updated_row])),
+            patch("api.papers.execute_update", new=AsyncMock()) as execute_update_mock,
+            patch("api.papers._get_visual_row_counts", new=AsyncMock(return_value=(0, 0))),
+            patch("api.papers.resolve_artifact_status_contract", new=AsyncMock(return_value=_FAKE_ARTIFACT_STATUS)),
+            patch("api.papers.get_paper_dir", return_value=Path("/tmp/sasoo-test-nonexistent-paper-dir")),
+            patch("services.agents.get_agent_for_domain", return_value=fake_agent) as get_agent_mock,
+        ):
+            response = await papers.update_paper(paper_id, update)
+
+        # agent_used must be derived from the new domain, not left stale.
+        get_agent_mock.assert_called_once_with("materials")
+        sql, params = execute_update_mock.await_args.args
+        self.assertIn("domain = ?", sql)
+        self.assertIn("agent_used = ?", sql)
+        self.assertIn("crystal", params)
+        self.assertEqual(response.agent_used, "crystal")
+        self.assertEqual(response.domain, "materials")
+
+    async def test_patch_explicit_agent_used_not_overridden(self) -> None:
+        """If the caller explicitly sets agent_used, domain-based recompute must not clobber it."""
+        paper_id = 4
+        existing_row = _base_paper_row(paper_id)
+
+        updated_row = dict(existing_row)
+        updated_row["domain"] = "materials"
+        updated_row["agent_used"] = "atlas"
+
+        update = PaperUpdate(domain="materials", agent_used="atlas")
+
+        with (
+            patch("api.papers.fetch_one", new=AsyncMock(side_effect=[existing_row, updated_row])),
+            patch("api.papers.execute_update", new=AsyncMock()) as execute_update_mock,
+            patch("api.papers._get_visual_row_counts", new=AsyncMock(return_value=(0, 0))),
+            patch("api.papers.resolve_artifact_status_contract", new=AsyncMock(return_value=_FAKE_ARTIFACT_STATUS)),
+            patch("api.papers.get_paper_dir", return_value=Path("/tmp/sasoo-test-nonexistent-paper-dir")),
+            patch("services.agents.get_agent_for_domain") as get_agent_mock,
+        ):
+            response = await papers.update_paper(paper_id, update)
+
+        get_agent_mock.assert_not_called()
+        sql, params = execute_update_mock.await_args.args
+        self.assertIn("atlas", params)
+        self.assertEqual(response.agent_used, "atlas")
+
+
 if __name__ == "__main__":
     unittest.main()
