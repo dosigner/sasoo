@@ -75,7 +75,9 @@ export default function Settings() {
   const [geminiKey, setGeminiKey] = useState('');
   const [openaiKey, setOpenaiKey] = useState('');
   const [libraryPath, setLibraryPath] = useState('');
-  const [theme, setTheme] = useState<'dark' | 'light'>('light');
+  const [theme, setTheme] = useState<'dark' | 'light'>(
+    () => (localStorage.getItem('sasoo-theme') === 'dark' ? 'dark' : 'light')
+  );
   const [density, setDensity] = useState<'comfortable' | 'compact'>(
     () => (localStorage.getItem('sasoo-density') === 'compact' ? 'compact' : 'comfortable')
   );
@@ -106,7 +108,14 @@ export default function Settings() {
 
   const applySettingsToForm = useCallback((data: SettingsType) => {
     setLibraryPath(data.library_path || '');
-    setTheme((data.theme || 'light') as 'dark' | 'light');
+    // Theme is already initialized from localStorage (the live, instantly-applied
+    // preference) and kept in sync by the effect below. Only fall back to the
+    // backend value on a true first run, where no local preference exists yet —
+    // otherwise a stale/unsaved backend value would silently revert an
+    // already-applied theme toggle on every settings reload.
+    if (!localStorage.getItem('sasoo-theme') && data.theme) {
+      setTheme(data.theme as 'dark' | 'light');
+    }
     setAutoAnalyze(data.auto_analyze ?? false);
     setPdfParserMode((data.pdf_parser_mode || 'java') as 'java');
     setExtractionPipelineVersion(

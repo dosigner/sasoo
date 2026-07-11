@@ -62,15 +62,21 @@ function App() {
     const cached = localStorage.getItem('sasoo-theme');
     applyTheme(cached || 'light');
 
-    // Phase 2: sync with backend as source of truth
-    getSettings()
-      .then((data) => {
-        if (data?.theme && data.theme !== cached) {
-          localStorage.setItem('sasoo-theme', data.theme);
-          applyTheme(data.theme);
-        }
-      })
-      .catch(() => {});
+    // Phase 2: sync with backend only when no local preference exists yet
+    // (first run / new profile). A cached value already reflects the user's
+    // latest toggle — Settings.tsx writes it immediately on click, before the
+    // backend is necessarily saved — so it must win over a stale backend
+    // value, otherwise reloading right after toggling silently reverts theme.
+    if (!cached) {
+      getSettings()
+        .then((data) => {
+          if (data?.theme) {
+            localStorage.setItem('sasoo-theme', data.theme);
+            applyTheme(data.theme);
+          }
+        })
+        .catch(() => {});
+    }
 
     // Phase 3: populate agent cache for all pages
     fetchAllAgents().catch(() => {});
