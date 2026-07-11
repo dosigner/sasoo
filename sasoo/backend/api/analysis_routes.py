@@ -64,6 +64,7 @@ from services.analysis_results import (
     get_latest_completed_phase_rows,
 )
 from services.artifact_status import resolve_artifact_status_contract
+from services.concurrency import run_chat_blocking, run_pipeline_blocking
 from services.document_context import (
     build_visual_partial_cache_input,
     compute_input_hash,
@@ -1501,7 +1502,7 @@ async def _run_full_analysis(paper_id: int):
         folder_name = paper["folder_name"]
         paper_dir = get_paper_dir(folder_name)
 
-        document_context = await asyncio.to_thread(load_or_build_document_context, paper_dir)
+        document_context = await run_pipeline_blocking(load_or_build_document_context, paper_dir)
         phase_inputs = document_context.get("phase_inputs", {})
         sections = document_context.get("sections", {})
         try:
@@ -1996,7 +1997,7 @@ async def get_mermaid(paper_id: int):
     visualization_input = ""
     recipe_text = ""
     try:
-        document_context = await asyncio.to_thread(load_or_build_document_context, paper_dir)
+        document_context = await run_pipeline_blocking(load_or_build_document_context, paper_dir)
         visualization_input = str(document_context.get("phase_inputs", {}).get("visualization", ""))
     except FileNotFoundError:
         pass
@@ -2278,7 +2279,7 @@ async def _generate_experiment_plan_impl(paper_id: int):
     paper_dir = get_paper_dir(paper["folder_name"])
     recipe_context = ""
     try:
-        document_context = await asyncio.to_thread(load_or_build_document_context, paper_dir)
+        document_context = await run_pipeline_blocking(load_or_build_document_context, paper_dir)
         recipe_context = str(document_context.get("phase_inputs", {}).get("recipe", ""))
     except FileNotFoundError:
         pass
@@ -2399,6 +2400,10 @@ async def get_experiment_plan(paper_id: int):
 
 _CHAT_MODEL = MODEL_CHAT
 
+# The analysis path already retries transient failures; chat used to fail on the
+# first blip, which is exactly when the pipeline is hammering the same quota.
+_CHAT_MAX_ATTEMPTS = 3
+
 
 @router.post("/{paper_id}/chat")
 async def chat_with_agent(paper_id: int, request: Request):
@@ -2431,10 +2436,15 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
     paper_dir = get_paper_dir(paper["folder_name"])
     chat_context = ""
     try:
-        document_context = await asyncio.to_thread(load_or_build_document_context, paper_dir)
+        # Reserved pool: the pipeline must never be able to queue a question
+        # behind its own fan-out.
+        document_context = await run_chat_blocking(load_or_build_document_context, paper_dir)
         chat_context = str(document_context.get("phase_inputs", {}).get("chat", ""))
-    except FileNotFoundError:
-        pass
+    except (FileNotFoundError, RuntimeError) as exc:
+        # A `force` artifact refresh deletes and rebuilds the text sidecar; a chat
+        # request landing inside that window raises rather than 404s. Answer from
+        # the phase snippets alone instead of failing the turn.
+        logger.warning("Chat context unavailable for paper %s: %s", paper_id, exc)
 
     latest_phase_rows = await get_latest_completed_phase_rows(
         paper_id,
@@ -2497,54 +2507,67 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
         _gtypes.Content(role="user", parts=[_gtypes.Part.from_text(text=message)])
     )
 
-    # 6. Stream via SSE
-    q: asyncio.Queue = asyncio.Queue()
-    loop = asyncio.get_running_loop()
-
-    def _sync_stream():
-        try:
-            client = _get_gemini_client()
-            config = _gtypes.GenerateContentConfig(system_instruction=system_prompt)
-            response_stream = client.models.generate_content_stream(
-                model=_CHAT_MODEL,
-                contents=contents,
-                config=config,
-            )
-            tokens_in = 0
-            tokens_out = 0
-            for chunk in response_stream:
-                text = chunk.text or ""
-                if text:
-                    asyncio.run_coroutine_threadsafe(q.put(("token", text)), loop)
-                usage = getattr(chunk, "usage_metadata", None)
-                if usage:
-                    t_in = getattr(usage, "prompt_token_count", 0)
-                    t_out = getattr(usage, "candidates_token_count", 0)
-                    if t_in:
-                        tokens_in = t_in
-                    if t_out:
-                        tokens_out = t_out
-            asyncio.run_coroutine_threadsafe(
-                q.put(("done", {"tokens_in": tokens_in, "tokens_out": tokens_out})), loop
-            )
-        except Exception as exc:
-            logger.error("Chat stream error: %s", exc)
-            asyncio.run_coroutine_threadsafe(q.put(("error", str(exc))), loop)
-
-    loop.run_in_executor(None, _sync_stream)
-
+    # 6. Stream via SSE, entirely on the event loop through the async SDK client.
+    #
+    # The previous implementation drove the sync stream from asyncio's default
+    # thread pool and bridged chunks back with run_coroutine_threadsafe. When the
+    # visualization phase filled that pool the bridge thread never started, and
+    # the consumer below had no timeout — so the response opened, emitted nothing,
+    # and hung forever. Taking no thread at all removes the failure mode instead
+    # of tuning around it.
     async def event_generator():
-        while True:
-            msg_type, data = await q.get()
-            if msg_type == "token":
-                yield f"data: {json.dumps({'type': 'token', 'content': data}, ensure_ascii=False)}\n\n"
-            elif msg_type == "done":
-                cost = calc_cost(_CHAT_MODEL, data["tokens_in"], data["tokens_out"])
-                yield f"data: {json.dumps({'type': 'done', 'tokens_in': data['tokens_in'], 'tokens_out': data['tokens_out'], 'cost_usd': cost}, ensure_ascii=False)}\n\n"
-                break
-            elif msg_type == "error":
-                yield f"data: {json.dumps({'type': 'error', 'message': data}, ensure_ascii=False)}\n\n"
-                break
+        tokens_in = 0
+        tokens_out = 0
+        streamed_any = False
+        last_error: Exception | None = None
+
+        for attempt in range(_CHAT_MAX_ATTEMPTS):
+            try:
+                client = _get_gemini_client()
+                config = _gtypes.GenerateContentConfig(system_instruction=system_prompt)
+                stream = await client.aio.models.generate_content_stream(
+                    model=_CHAT_MODEL,
+                    contents=contents,
+                    config=config,
+                )
+
+                async for chunk in stream:
+                    if await request.is_disconnected():
+                        logger.info(
+                            "Chat client disconnected for paper %s; abandoning stream", paper_id
+                        )
+                        return
+
+                    text = chunk.text or ""
+                    if text:
+                        streamed_any = True
+                        yield f"data: {json.dumps({'type': 'token', 'content': text}, ensure_ascii=False)}\n\n"
+
+                    usage = getattr(chunk, "usage_metadata", None)
+                    if usage:
+                        tokens_in = getattr(usage, "prompt_token_count", 0) or tokens_in
+                        tokens_out = getattr(usage, "candidates_token_count", 0) or tokens_out
+
+                cost = calc_cost(_CHAT_MODEL, tokens_in, tokens_out)
+                yield f"data: {json.dumps({'type': 'done', 'tokens_in': tokens_in, 'tokens_out': tokens_out, 'cost_usd': cost}, ensure_ascii=False)}\n\n"
+                return
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "Chat stream failed for paper %s (attempt %d/%d): %s",
+                    paper_id, attempt + 1, _CHAT_MAX_ATTEMPTS, exc,
+                )
+                # Once tokens are on the wire the answer cannot be restarted, so a
+                # mid-stream failure is terminal no matter how many attempts remain.
+                if streamed_any or attempt == _CHAT_MAX_ATTEMPTS - 1:
+                    break
+                await asyncio.sleep(2 ** attempt)
+
+        logger.error("Chat stream error for paper %s: %s", paper_id, last_error)
+        yield f"data: {json.dumps({'type': 'error', 'message': str(last_error)}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         event_generator(),
