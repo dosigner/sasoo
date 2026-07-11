@@ -109,6 +109,18 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.image_provider, "openai")
         self.assertEqual(response.image_quality, "high")
 
+    def test_image_settings_reject_invalid_values(self) -> None:
+        """SettingsUpdate should reject invalid image_provider and image_quality values."""
+        import pydantic
+        from models.schemas import SettingsUpdate
+
+        with self.assertRaises(pydantic.ValidationError):
+            SettingsUpdate(image_provider="dall-e")
+        with self.assertRaises(pydantic.ValidationError):
+            SettingsUpdate(image_quality="ultra")
+        # Valid values should pass
+        SettingsUpdate(image_provider="gemini", image_quality="medium")
+
 
 if __name__ == "__main__":
     unittest.main()
