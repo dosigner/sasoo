@@ -257,6 +257,7 @@ export interface VisualizationPlan {
 // Settings types
 export interface Settings {
   gemini_api_key: string;
+  gemini_key_unreadable: boolean;
   library_path: string;
   theme: 'dark' | 'light';
   default_domain: string;

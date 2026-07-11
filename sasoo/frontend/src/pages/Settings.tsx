@@ -47,6 +47,7 @@ function SettingPanel({
 export default function Settings() {
   const defaultSettings: SettingsType = {
     gemini_api_key: '',
+    gemini_key_unreadable: false,
     library_path: '',
     default_domain: 'optics',
     auto_analyze: false,
@@ -76,6 +77,7 @@ export default function Settings() {
 
   // API key status (masked value from server, for display only)
   const [geminiKeyStatus, setGeminiKeyStatus] = useState('');
+  const [geminiKeyUnreadable, setGeminiKeyUnreadable] = useState(false);
 
   // Visibility toggles
   const [showGeminiKey, setShowGeminiKey] = useState(false);
@@ -108,6 +110,7 @@ export default function Settings() {
         if (cancelled) return;
         // Store masked keys for status display, but DON'T populate inputs
         setGeminiKeyStatus(data.gemini_api_key || '');
+        setGeminiKeyUnreadable(data.gemini_key_unreadable ?? false);
         // Key inputs start empty — user types new key only when they want to change
         clearApiKeyInputs();
         applySettingsToForm(data);
@@ -166,6 +169,7 @@ export default function Settings() {
       applySettingsToForm(updated);
       // Update status badges with new masked values
       setGeminiKeyStatus(updated.gemini_api_key || '');
+      setGeminiKeyUnreadable(updated.gemini_key_unreadable ?? false);
       // Clear key inputs after save. This also fights password-manager autofill
       // that can leave the settings screen permanently "dirty".
       clearApiKeyInputs();
@@ -331,12 +335,21 @@ export default function Settings() {
                   <span className="text-2xs text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded">
                     {S.settings.keyConfigured} ({geminiKeyStatus})
                   </span>
+                ) : geminiKeyUnreadable ? (
+                  <span className="text-2xs text-danger bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded">
+                    {S.settings.keyUnreadable}
+                  </span>
                 ) : (
                   <span className="text-2xs text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded">
                     {S.settings.keyNotConfigured}
                   </span>
                 )}
               </div>
+              {geminiKeyUnreadable && (
+                <p className="text-2xs text-danger mb-1.5">
+                  {S.settings.keyUnreadableHelp}
+                </p>
+              )}
               <div className="relative">
                 <input
                   ref={geminiInputRef}

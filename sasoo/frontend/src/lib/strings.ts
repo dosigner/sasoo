@@ -238,6 +238,8 @@ export const S = {
     // API Key status
     keyConfigured: '설정됨',
     keyNotConfigured: '미설정',
+    keyUnreadable: '읽을 수 없음 — 다시 입력하세요',
+    keyUnreadableHelp: '저장된 키를 복호화할 수 없습니다. 암호화 키가 사라졌거나 다른 환경에서 저장된 키입니다. 새 키를 입력하면 덮어씁니다.',
     enterNewKey: '새 키를 입력하여 변경...',
     // Cost
     usageCosts: '사용량과 비용',

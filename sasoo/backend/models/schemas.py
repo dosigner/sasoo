@@ -410,6 +410,10 @@ class DomainResult(BaseModel):
 class SettingsModel(BaseModel):
     """Application settings."""
     gemini_api_key: Optional[str] = None
+    # True when a key IS stored but no available encryption key opens it.
+    # Without this the UI shows a bare "not configured" and the user has no
+    # way to tell that re-entering the key is what fixes it.
+    gemini_key_unreadable: bool = False
     library_path: str = "./library"
     default_domain: DomainType = DomainType.OPTICS
     auto_analyze: bool = True

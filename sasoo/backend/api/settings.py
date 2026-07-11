@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from models.database import fetch_all, fetch_one, get_db, get_library_root
 from models.schemas import SettingsModel, SettingsUpdate
-from services.crypto import decrypt_value, encrypt_value, is_encrypted
+from services.crypto import decrypt_value, encrypt_value, is_encrypted, is_unreadable
 from services.models import MODEL_FLASH_HQ
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -83,6 +83,22 @@ async def _ensure_defaults() -> None:
 _API_KEY_FIELDS = {"gemini_api_key"}
 
 
+async def _unreadable_api_keys() -> set[str]:
+    """
+    API keys that are stored but cannot be decrypted.
+
+    From the outside this looks exactly like "no key configured", which is why
+    a lost encryption key used to be undiagnosable. Callers surface it so the
+    user is told to re-enter the key rather than left guessing.
+    """
+    rows = await fetch_all("SELECT key, value FROM settings")
+    return {
+        row["key"]
+        for row in rows
+        if row["key"] in _API_KEY_FIELDS and is_unreadable(row["value"])
+    }
+
+
 async def _get_all_settings() -> dict[str, str]:
     """Fetch all settings as a flat dict. API keys are decrypted transparently."""
     await _ensure_defaults()
@@ -148,9 +164,11 @@ async def get_settings():
     API keys are masked for security.
     """
     raw = await _get_all_settings()
+    unreadable = await _unreadable_api_keys()
 
     return SettingsModel(
         gemini_api_key=_mask_api_key(raw.get("gemini_api_key", "")),
+        gemini_key_unreadable="gemini_api_key" in unreadable,
         library_path=raw.get("library_path", str(get_library_root())),
         default_domain=raw.get("default_domain", "optics"),
         auto_analyze=raw.get("auto_analyze", "true").lower() == "true",
@@ -582,6 +600,7 @@ async def check_api_keys():
     Useful for the frontend to show setup status.
     """
     raw = await _get_all_settings()
+    unreadable = await _unreadable_api_keys()
 
     gemini_key = raw.get("gemini_api_key", "")
 
@@ -589,5 +608,7 @@ async def check_api_keys():
         "gemini": {
             "configured": bool(gemini_key),
             "masked": _mask_api_key(gemini_key),
+            # Stored, but the key it was encrypted with is gone.
+            "unreadable": "gemini_api_key" in unreadable,
         },
     }
