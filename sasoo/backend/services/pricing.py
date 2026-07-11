@@ -13,14 +13,8 @@ PRICING: dict[str, dict[str, float]] = {
     "gemini-3-pro-image-preview": {"input": 2.00, "output": 12.00},
     "gemini-3.1-flash-lite-preview": {"input": 0.02, "output": 0.30},
     "gemini-3.1-flash-image-preview": {"input": 0.10, "output": 0.40},
-
-    # Gemini 2.x models
-    "gemini-2.5-flash-preview-05-20": {"input": 0.15, "output": 0.60},
-    "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
-
-    # Claude models
-    "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
-    "claude-sonnet-4-5-20250929": {"input": 3.00, "output": 15.00},
+    "gemini-3.5-flash": {"input": 1.50, "output": 9.00},
+    "gemini-3.1-flash-lite": {"input": 0.25, "output": 1.50},
 }
 
 
@@ -36,7 +30,7 @@ def calc_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     Returns:
         Total cost in USD, rounded to 8 decimal places
     """
-    pricing = PRICING.get(model, PRICING["gemini-3-flash-preview"])
+    pricing = PRICING.get(model, PRICING["gemini-3.5-flash"])
     cost = (input_tokens / 1_000_000) * pricing["input"] + \
            (output_tokens / 1_000_000) * pricing["output"]
     return round(cost, 8)
