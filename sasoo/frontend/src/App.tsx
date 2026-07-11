@@ -87,6 +87,13 @@ function App() {
     fetchAllAgents().catch(() => {});
   }, []);
 
+  // Load density: localStorage-backed UI preference (no backend field), applied
+  // the same way as theme so there is no flash on first paint.
+  useEffect(() => {
+    const cachedDensity = localStorage.getItem('sasoo-density');
+    document.documentElement.classList.toggle('density-compact', cachedDensity === 'compact');
+  }, []);
+
   // Forward Python backend logs to DevTools console
   useEffect(() => {
     if (!window.electronAPI?.on) return;

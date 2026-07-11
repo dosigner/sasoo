@@ -71,6 +71,9 @@ export default function Settings() {
   const [geminiKey, setGeminiKey] = useState('');
   const [libraryPath, setLibraryPath] = useState('');
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
+  const [density, setDensity] = useState<'comfortable' | 'compact'>(
+    () => (localStorage.getItem('sasoo-density') === 'compact' ? 'compact' : 'comfortable')
+  );
   const [autoAnalyze, setAutoAnalyze] = useState(false);
   const [pdfParserMode, setPdfParserMode] = useState<'java'>('java');
   const [extractionPipelineVersion, setExtractionPipelineVersion] = useState<'legacy' | 'resolver_v1'>('resolver_v1');
@@ -144,6 +147,14 @@ export default function Settings() {
     }
     localStorage.setItem('sasoo-theme', theme);
   }, [theme]);
+
+  // -----------------------------------------------------------------------
+  // Apply density (localStorage-only UI preference, no backend field)
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    document.documentElement.classList.toggle('density-compact', density === 'compact');
+    localStorage.setItem('sasoo-density', density);
+  }, [density]);
 
   // -----------------------------------------------------------------------
   // Save settings
@@ -512,6 +523,38 @@ export default function Settings() {
               <AppIcon name="sun" className="w-4 h-4" />
               <span className="text-sm">{S.settings.light}</span>
             </button>
+          </div>
+
+          <div className="mt-4">
+            <label className="text-xs text-fg-muted block mb-1.5">
+              {S.settings.density}
+            </label>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setDensity('comfortable')}
+                className={`settings-appearance-option flex items-center gap-2 px-4 py-3 border transition-colors ${
+                  density === 'comfortable'
+                    ? 'settings-appearance-option-active border-accent bg-accent/10 text-accent'
+                    : 'settings-appearance-option-inactive'
+                }`}
+                style={{ borderRadius: 'var(--radius-control)' }}
+              >
+                <AppIcon name="grid" className="w-4 h-4" />
+                <span className="text-sm">{S.settings.densityComfortable}</span>
+              </button>
+              <button
+                onClick={() => setDensity('compact')}
+                className={`settings-appearance-option flex items-center gap-2 px-4 py-3 border transition-colors ${
+                  density === 'compact'
+                    ? 'settings-appearance-option-active border-accent bg-accent/10 text-accent'
+                    : 'settings-appearance-option-inactive'
+                }`}
+                style={{ borderRadius: 'var(--radius-control)' }}
+              >
+                <AppIcon name="list" className="w-4 h-4" />
+                <span className="text-sm">{S.settings.densityCompact}</span>
+              </button>
+            </div>
           </div>
         </SettingPanel>
 

@@ -235,6 +235,10 @@ export const S = {
     appearance: '표시 모드',
     dark: '다크',
     light: '라이트',
+    // Density
+    density: '밀도',
+    densityComfortable: 'Comfortable',
+    densityCompact: 'Compact',
     // API Key status
     keyConfigured: '설정됨',
     keyNotConfigured: '미설정',

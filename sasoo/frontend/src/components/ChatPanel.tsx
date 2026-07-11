@@ -280,7 +280,7 @@ export default function ChatPanel({
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-4 py-4">
+                <div className="flex-1 overflow-y-auto scroll-stable px-4 py-4">
                   {!hasMessages && (
                     <div className="chat-empty-state">
                       <div className="chat-empty-icon">

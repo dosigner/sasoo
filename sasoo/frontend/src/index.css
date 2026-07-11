@@ -47,6 +47,17 @@
   --radius-control: 6px;
   --radius-surface: 12px;
   --radius-pill: 9999px;
+
+  /* Density (Comfortable = default) */
+  --density-control-py: 0.5rem;
+  --density-card-p: 1.25rem;
+  --density-row-py: 0.75rem;
+}
+
+.density-compact {
+  --density-control-py: 0.375rem;
+  --density-card-p: 1rem;
+  --density-row-py: 0.5rem;
 }
 
 .light {
@@ -86,8 +97,8 @@
 
   /* Custom scrollbar */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 10px;
+    height: 10px;
   }
 
   ::-webkit-scrollbar-track {
@@ -95,12 +106,15 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-border rounded-full;
+    background-color: rgb(var(--border));
+    border-radius: var(--radius-pill);
+    border: 2px solid transparent;
+    background-clip: padding-box;
     transition: background-color var(--transition-speed) ease-out;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-fg-muted;
+    background-color: rgb(var(--fg-muted) / 0.5);
   }
 
   /* Selection color */
@@ -118,7 +132,9 @@
 @layer components {
   /* Reusable card component */
   .card {
-    @apply border border-border bg-surface p-4;
+    @apply border border-border bg-surface px-4;
+    padding-top: var(--density-card-p);
+    padding-bottom: var(--density-card-p);
     border-radius: var(--radius-surface);
   }
 
@@ -184,6 +200,12 @@
 
   .page-scaffold {
     @apply h-full overflow-y-auto;
+  }
+
+  /* Reserve scrollbar gutter on primary vertical-scroll containers to avoid
+     layout shift when content grows past the viewport. */
+  .scroll-stable {
+    scrollbar-gutter: stable;
   }
 
   .page-scaffold-default {
@@ -272,7 +294,9 @@
 
   /* Button variants */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium transition-all duration-300 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 px-4 text-sm font-medium transition-all duration-300 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50 disabled:pointer-events-none;
+    padding-top: var(--density-control-py);
+    padding-bottom: var(--density-control-py);
     border-radius: var(--radius-control);
   }
 
@@ -299,7 +323,9 @@
 
   /* Input styles */
   .input {
-    @apply w-full border border-border bg-surface px-3 py-2 text-sm text-fg placeholder-fg-muted transition-colors duration-300 ease-out focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent;
+    @apply w-full border border-border bg-surface px-3 text-sm text-fg placeholder-fg-muted transition-colors duration-300 ease-out focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent;
+    padding-top: var(--density-control-py);
+    padding-bottom: var(--density-control-py);
     border-radius: var(--radius-control);
   }
 
