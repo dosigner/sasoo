@@ -150,43 +150,66 @@
     @apply flex h-screen flex-col bg-bg text-fg;
   }
 
-  .app-desktop-rail {
-    width: var(--app-rail-width);
-    @apply shrink-0 items-center border-r border-border/80 bg-surface/90 px-3 py-4 backdrop-blur-md;
+  .app-sidebar {
+    width: var(--sidebar-width);
+    @apply flex shrink-0 flex-col border-r border-border bg-surface px-3 py-4 transition-[width] duration-150;
   }
 
-  .app-rail-brand {
-    @apply flex h-10 w-10 items-center justify-center rounded-2xl border border-border/80 bg-surface/90 shadow-[inset_0_1px_0_rgb(var(--fg)/0.04)];
+  .app-sidebar-collapsed {
+    width: var(--sidebar-collapsed-width);
+    @apply items-center px-2;
   }
 
-  .app-desktop-nav {
-    @apply mt-5 flex flex-1 flex-col items-center gap-2;
+  .app-sidebar-brand {
+    @apply flex items-center gap-2.5 px-2 pb-4;
   }
 
-  .app-nav-link {
-    @apply relative flex h-11 w-11 items-center justify-center rounded-2xl border border-transparent text-fg-muted transition-all duration-200 focus:outline-none focus-visible:border-accent/30 focus-visible:bg-surface-hover/95 focus-visible:text-fg focus-visible:ring-2 focus-visible:ring-accent/20;
+  .app-sidebar-collapsed .app-sidebar-brand {
+    @apply justify-center px-0;
   }
 
-  .app-nav-link:hover {
-    @apply border-border bg-surface/80 text-fg;
+  .app-sidebar-brand-name {
+    @apply text-sm font-semibold tracking-tight text-fg;
   }
 
-  .app-nav-link-active {
-    border-color: rgb(var(--accent) / 0.2);
-    background: linear-gradient(180deg, rgb(var(--accent) / 0.14), rgb(var(--accent) / 0.05));
-    @apply text-accent;
+  .app-sidebar-nav {
+    @apply flex flex-1 flex-col gap-5 overflow-y-auto;
   }
 
-  .app-nav-link-label {
-    @apply pointer-events-none absolute left-[calc(100%+0.8rem)] top-1/2 -translate-y-1/2 rounded-full border border-border/80 bg-surface/95 px-3 py-1.5 text-xs font-medium text-fg opacity-0 shadow-lg transition-all duration-150;
-    transform: translate(-4px, -50%);
-    white-space: nowrap;
+  .app-sidebar-section {
+    @apply flex flex-col gap-0.5;
   }
 
-  .app-nav-link:hover .app-nav-link-label,
-  .app-nav-link:focus-visible .app-nav-link-label {
-    opacity: 1;
-    transform: translate(0, -50%);
+  .app-sidebar-collapsed .app-sidebar-section {
+    @apply items-center;
+  }
+
+  .app-sidebar-section-title {
+    @apply px-2 pb-1.5 text-2xs font-semibold uppercase tracking-[0.08em] text-fg-muted;
+  }
+
+  .app-sidebar-link {
+    @apply flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-sm text-fg-secondary transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
+  }
+
+  .app-sidebar-collapsed .app-sidebar-link {
+    @apply h-10 w-10 justify-center gap-0 px-0 py-0;
+  }
+
+  .app-sidebar-link:hover {
+    @apply bg-surface-hover text-fg;
+  }
+
+  .app-sidebar-link-active {
+    @apply bg-accent/10 text-accent;
+  }
+
+  .app-sidebar-collapse-btn {
+    @apply mt-2 flex h-8 w-8 items-center justify-center self-end rounded-control text-fg-muted transition-colors duration-150 hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
+  }
+
+  .app-sidebar-collapsed .app-sidebar-collapse-btn {
+    @apply self-center;
   }
 
   .page-container-wide {

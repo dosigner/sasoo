@@ -8,6 +8,7 @@ export const S = {
   app: {
     name: 'Sasoo',
     subtitle: 'Research archive',
+    home: '홈',
     upload: '아카이브 시작',
     agents: '에이전트 편성',
     library: '연구 보관함',
