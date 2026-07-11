@@ -1,3 +1,4 @@
+import contextlib
 import sys
 import types
 import unittest
@@ -648,6 +649,191 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(captured["store"], True)
         # 완료 시 interaction_id를 analysis_results에 저장
         self.assertEqual(insert_mock.await_args.kwargs.get("interaction_id"), "int_recipe")
+
+
+class _OrchStubProfile:
+    personality = "precise"
+
+
+class _OrchStubAgent:
+    name = "crystal"
+    profile = _OrchStubProfile()
+    description = "정밀한 페르소나"
+
+
+class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
+    """`_run_full_analysis` 오케스트레이션: 체인 선형 전진 + 캐시 히트 재시작 복원 검증.
+
+    스크리닝·인용은 heavy/비초점이라 러너를 목킹하고, 체인 fix 대상인
+    visual→recipe→deep_dive→viz 경로는 실제 실행하면서 call_interaction만 목킹한다.
+    """
+
+    _SCREENING_TEXT = (
+        '{"domain":"materials","relevance_score":0.9,"summary":"요약",'
+        '"is_experimental":true,"key_topics":["박막","증착"]}'
+    )
+    _CITATION_TEXT = '{"citation_summary":"인용 분석 결과 텍스트"}'
+    _VISUAL_CACHED_TEXT = '{"quality_summary":"CACHED-VISUAL-MARKER","key_findings_from_visuals":[]}'
+
+    def _orch_call_fake(self, calls):
+        state = {"n": 0}
+
+        async def _fake(contents, **kwargs):
+            state["n"] += 1
+            iid = f"int_{state['n']}"
+            calls.append({
+                "contents": contents,
+                "previous_interaction_id": kwargs.get("previous_interaction_id"),
+                "store": kwargs.get("store"),
+                "interaction_id": iid,
+            })
+            return {
+                "text": '{"visualizations": []}',
+                "model": "gemini-3.5-flash",
+                "tokens_in": 1,
+                "tokens_out": 1,
+                "interaction_id": iid,
+            }
+
+        return _fake
+
+    @contextlib.contextmanager
+    def _orchestration_patches(self, *, cache_fake, call_fake, visual_result=None):
+        paper = {
+            "id": 7,
+            "folder_name": "folder",
+            "authors": "Kim",
+            "domain": "materials",
+            "analysis_focus": None,
+            "explanation_level": "masters",
+            "title": "Paper",
+        }
+        phase_inputs = {
+            "screening": "SCREENING-INPUT",
+            "citation_body": "CITE-BODY",
+            "citation_references": "CITE-REFS",
+            "visual": "VISUAL-INPUT",
+            "recipe": "RECIPE-INPUT",
+            "deep_dive": "DEEPDIVE-INPUT",
+            "visualization": "VIZ-INPUT",
+        }
+        figures = [{
+            "figure_num": "Figure 1", "quality": "good",
+            "confidence": 0.9, "resolver_version": "v1",
+        }]
+        tables = []
+
+        analysis_context_stub = types.ModuleType("api.analysis_context")
+        analysis_context_stub.build_chain_system_instruction = lambda **kw: "SYS-INSTRUCTION"
+
+        async def _upload_stub(paper_id, path):
+            return "files/uri-abc"
+
+        interactions_stub = types.ModuleType("services.llm.interactions_client")
+        interactions_stub.upload_pdf_for_paper = _upload_stub
+
+        agents_stub = types.ModuleType("services.agents")
+        agents_stub.get_agent_for_domain = lambda domain: _OrchStubAgent()
+
+        async def _settings_stub(*a, **k):
+            return {}
+
+        settings_stub = types.ModuleType("api.settings")
+        settings_stub.get_raw_settings = _settings_stub
+
+        screening_mock = AsyncMock(return_value={
+            "text": self._SCREENING_TEXT, "model": "g", "tokens_in": 1,
+            "tokens_out": 1, "interaction_id": None,
+        })
+        citation_mock = AsyncMock(return_value={
+            "text": self._CITATION_TEXT, "model": "g", "tokens_in": 1,
+            "tokens_out": 1, "interaction_id": None,
+        })
+        visual_ready_contract = (
+            {"visual_ready": True, "visual_state": "ready", "visual_error": None,
+             "artifacts_ready": True, "artifacts_error": None},
+            1, 0,
+        )
+
+        stack = contextlib.ExitStack()
+        stack.enter_context(patch.dict(sys.modules, {
+            "api.analysis_context": analysis_context_stub,
+            "services.llm.interactions_client": interactions_stub,
+            "services.agents": agents_stub,
+            "api.settings": settings_stub,
+        }))
+        stack.enter_context(patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)))
+        stack.enter_context(patch("api.analysis_routes.fetch_all", new=AsyncMock(side_effect=[figures, tables])))
+        stack.enter_context(patch("api.analysis_routes.get_paper_dir", return_value="/tmp/paper"))
+        stack.enter_context(patch("api.analysis_routes.load_or_build_document_context",
+                                  return_value={"phase_inputs": phase_inputs, "sections": {}}))
+        stack.enter_context(patch("api.analysis_routes.schedule_paper_artifacts_refresh", new=AsyncMock()))
+        stack.enter_context(patch("api.analysis_routes.execute_update", new=AsyncMock()))
+        stack.enter_context(patch("api.analysis_routes.execute_insert", new=AsyncMock(return_value=1)))
+        stack.enter_context(patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()))
+        stack.enter_context(patch("api.analysis_routes._find_paper_pdf", return_value="/tmp/paper/x.pdf"))
+        stack.enter_context(patch("api.analysis_routes._run_screening", new=screening_mock))
+        stack.enter_context(patch("api.analysis_routes._run_citation", new=citation_mock))
+        stack.enter_context(patch("api.analysis_routes._get_visual_contract",
+                                  new=AsyncMock(return_value=visual_ready_contract)))
+        stack.enter_context(patch("api.analysis_routes._get_cached_phase_result", new=cache_fake))
+        stack.enter_context(patch("api.analysis_routes.call_interaction", new=call_fake))
+        if visual_result is not None:
+            stack.enter_context(patch("api.analysis_routes._run_visual",
+                                      new=AsyncMock(return_value=visual_result)))
+        with stack:
+            yield
+
+    async def test_chain_forwards_previous_interaction_id_linearly(self):
+        calls = []
+        call_fake = self._orch_call_fake(calls)
+
+        async def _cache_none(*a, **k):
+            return None
+
+        with self._orchestration_patches(cache_fake=_cache_none, call_fake=call_fake):
+            await analysis_routes._run_full_analysis(7)
+
+        # 체인 스테이지(store=True) 호출만 추출: visual→recipe→deep_dive→viz
+        chain_calls = [c for c in calls if c["store"] is True]
+        self.assertEqual(len(chain_calls), 4)
+        # 첫 스테이지(visual)는 PDF 문서를 포함하고 previous=None
+        self.assertIsNone(chain_calls[0]["previous_interaction_id"])
+        self.assertIsInstance(chain_calls[0]["contents"], list)
+        self.assertEqual(chain_calls[0]["contents"][0]["type"], "document")
+        # 각 스테이지가 직전 스테이지의 interaction_id를 이어받음 (선형 전진)
+        self.assertEqual(chain_calls[1]["previous_interaction_id"], chain_calls[0]["interaction_id"])
+        self.assertEqual(chain_calls[2]["previous_interaction_id"], chain_calls[1]["interaction_id"])
+        self.assertEqual(chain_calls[3]["previous_interaction_id"], chain_calls[2]["interaction_id"])
+        # 체인 이어감 스테이지는 지시문 문자열만 전송(대용량 재전송 없음)
+        self.assertIsInstance(chain_calls[1]["contents"], str)
+
+    async def test_cache_hit_restart_reincludes_pdf_and_prev_context(self):
+        calls = []
+        call_fake = self._orch_call_fake(calls)
+
+        async def _cache_visual_hit(paper_id, phase, input_text):
+            if phase == "visual":
+                return {
+                    "text": self._VISUAL_CACHED_TEXT, "model": "gemini-cache",
+                    "tokens_in": 1, "tokens_out": 1, "cost_usd": 0.01, "input_hash": "h",
+                }
+            return None
+
+        with self._orchestration_patches(cache_fake=_cache_visual_hit, call_fake=call_fake):
+            await analysis_routes._run_full_analysis(7)
+
+        # visual 캐시 히트 → interaction_id 유실 → recipe가 체인 재시작 케이스로 첫 call_interaction
+        self.assertTrue(calls)
+        recipe_call = calls[0]
+        self.assertIsNone(recipe_call["previous_interaction_id"])
+        # PDF document dict가 다시 포함되고
+        self.assertIsInstance(recipe_call["contents"], list)
+        self.assertEqual(recipe_call["contents"][0]["type"], "document")
+        self.assertEqual(recipe_call["contents"][0]["uri"], "files/uri-abc")
+        # 캐시된 visual 결과 텍스트가 프롬프트에 복원됨
+        restored_text = recipe_call["contents"][1]["text"]
+        self.assertIn("CACHED-VISUAL-MARKER", restored_text)
 
 
 if __name__ == "__main__":

@@ -221,6 +221,21 @@ def _phase_result_snippet(row: Optional[dict], limit: int) -> str:
     return str(row.get("result") or "")[:limit]
 
 
+def _build_chain_restart_context(
+    previous_results: Optional[list[str]], per_stage_limit: int = 4000
+) -> str:
+    """체인 재시작 시 이전 스테이지 결과 텍스트를 프롬프트에 복원하기 위한 컨텍스트를 만든다.
+
+    중간 스테이지가 캐시 히트/스킵되어 previous_interaction_id가 유실되면 서버측 체인
+    상태가 끊긴다. 이때 다음 스테이지가 이전 분석 결과를 잃지 않도록, 지금까지 성공한
+    이전 스테이지 결과를 스테이지당 per_stage_limit(폴백 경로의 4000자 관례)로 truncate해
+    이어붙인다."""
+    if not previous_results:
+        return ""
+    parts = [str(r)[:per_stage_limit] for r in previous_results if r]
+    return "\n\n".join(parts)
+
+
 def _result_was_skipped(result: Optional[dict]) -> bool:
     if not result or not result.get("text"):
         return False
@@ -701,18 +716,28 @@ async def _run_chain_stage(
     previous_interaction_id: Optional[str],
     pdf_uri: Optional[str],
     response_schema: dict,
+    restart_context: str = "",
 ) -> dict:
     """체인/폴백 모드에 맞춰 call_interaction을 호출한다.
 
     - pdf_uri 있음(체인 모드): store=True. 체인 첫 호출(previous_interaction_id None)만
       PDF 문서를 input에 포함하고, 이후 스테이지는 지시문만 보내 서버 상태를 신뢰한다.
+      단, 중간 스테이지 캐시 히트/스킵으로 previous_interaction_id가 유실된 체인 재시작
+      케이스에는 restart_context(이전 스테이지 결과 텍스트)를 PDF와 함께 프롬프트에 실어
+      서버 상태 단절로 잃은 이전 분석 컨텍스트를 복원한다.
     - pdf_uri 없음(폴백): stateless(store=False). 기존 phase_inputs 텍스트를 프롬프트에 삽입한다.
     """
     if pdf_uri:
         if previous_interaction_id is None:
+            chain_text = prompt_chain
+            if restart_context:
+                chain_text = (
+                    f"{prompt_chain}\n\n"
+                    f"이전 분석 단계 결과(체인 재시작으로 복원):\n{restart_context}"
+                )
             contents = [
                 {"type": "document", "uri": pdf_uri, "mime_type": "application/pdf"},
-                {"type": "text", "text": prompt_chain},
+                {"type": "text", "text": chain_text},
             ]
         else:
             contents = prompt_chain
@@ -929,6 +954,7 @@ async def _run_recipe(
     recipe_input: str,
     status: AnalysisStatus,
     screening_result_text: Optional[str] = None,
+    previous_results: Optional[list[str]] = None,
     *,
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
@@ -1069,6 +1095,7 @@ missing_info(논문에서 찾지 못한 세부사항), reproducibility_score(0.0
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
         response_schema=_RECIPE_SCHEMA,
+        restart_context=_build_chain_restart_context(previous_results),
     )
 
     cleaned_text = _clean_llm_json(result["text"])
@@ -1115,6 +1142,7 @@ async def _run_deep_dive(
     previous_results: list[str],
     status: AnalysisStatus,
     screening_result_text: Optional[str] = None,
+    citation_result_text: Optional[str] = None,
     *,
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
@@ -1152,15 +1180,34 @@ async def _run_deep_dive(
 weaknesses(약점 리스트), novelty_assessment(새로움 평가), comparison_to_prior_work(기존 연구 대비 비교),
 suggested_improvements(개선 제안 리스트), follow_up_questions(후속 질문 리스트), practical_applications(실용적 응용 리스트)."""
 
+    # 스크리닝(r1)·인용(r_cit)은 stateless라 서버측 체인 상태에 없다. 체인 모드에서도
+    # 프롬프트가 약속하는 "스크리닝·인용" 컨텍스트를 실제로 제공하도록 텍스트를 직접 삽입한다.
+    stateless_parts = []
+    if screening_result_text:
+        stateless_parts.append(f"[스크리닝 결과]\n{screening_result_text[:4000]}")
+    if citation_result_text:
+        stateless_parts.append(f"[인용 분석 결과]\n{citation_result_text[:4000]}")
+    stateless_context = "\n\n".join(stateless_parts)
+
     prompt_chain = (
-        f"{instruction}\n\n위 논문 PDF와 이전 분석 단계(스크리닝·인용·시각·레시피) 결과를 "
-        "바탕으로 포괄적인 심층 분석을 제공해줘."
+        f"{instruction}\n\n위 논문 PDF와 앞선 체인 단계(시각·레시피) 결과, 그리고 아래 "
+        "스크리닝·인용 분석 결과를 바탕으로 포괄적인 심층 분석을 제공해줘."
     )
+    if stateless_context:
+        prompt_chain += f"\n\n--- 스크리닝·인용 분석 결과 ---\n{stateless_context}"
     prompt_fallback = (
         f"{instruction}\n\n이전 분석 단계의 결과:\n{prev_context[:4000]}\n\n"
         f"위 정보를 바탕으로 포괄적인 심층 분석을 제공해줘.\n\n논문 텍스트:\n{deep_dive_input}"
     )
     cache_key = prompt_fallback
+
+    # 체인 재시작 복원용 컨텍스트는 체인 스테이지(시각·레시피)만 담는다. 스크리닝·인용은
+    # 위 prompt_chain에 이미 삽입돼 있으므로 중복 방지를 위해 제외한다.
+    chain_stage_results = [
+        r
+        for r in (previous_results or [])
+        if r not in (screening_result_text, citation_result_text)
+    ]
 
     cached = await _get_cached_phase_result(paper_id, "deep_dive", cache_key)
     if cached is not None:
@@ -1184,6 +1231,7 @@ suggested_improvements(개선 제안 리스트), follow_up_questions(후속 질�
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
         response_schema=_DEEP_DIVE_SCHEMA,
+        restart_context=_build_chain_restart_context(chain_stage_results),
     )
 
     cleaned_text = _clean_llm_json(result["text"])
@@ -1303,6 +1351,7 @@ category(experimental_protocol|algorithm_flow|signal_flow|system_architecture|co
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
         response_schema=_VIZ_PLAN_SCHEMA,
+        restart_context=_build_chain_restart_context(previous_results),
     )
     cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
@@ -1839,6 +1888,7 @@ async def _run_full_analysis(paper_id: int):
             str(phase_inputs.get("recipe", "")),
             status,
             screening_result_text=r1.get("text", ""),
+            previous_results=previous,
             system_instruction=chain_system_instruction,
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
@@ -1862,6 +1912,7 @@ async def _run_full_analysis(paper_id: int):
             previous,
             status,
             screening_result_text=r1.get("text", ""),
+            citation_result_text=r_cit.get("text", ""),
             system_instruction=chain_system_instruction,
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
