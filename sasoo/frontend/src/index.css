@@ -31,7 +31,6 @@
   --sidebar-width: 13rem;
   --sidebar-collapsed-width: 4.5rem;
   --header-height: 3rem;
-  --app-rail-width: 4.5rem;
 
   /* Motion */
   --transition-speed: 150ms;
@@ -237,21 +236,16 @@
   }
 
   .page-scaffold-archive {
-    background:
-      radial-gradient(circle at top left, rgb(var(--accent) / 0.06), transparent 30%),
-      linear-gradient(180deg, rgb(var(--bg) / 1), rgb(var(--bg) / 0.96));
+    @apply bg-bg;
   }
 
   .page-scaffold-control {
-    background: linear-gradient(180deg, rgb(var(--bg) / 1), rgb(var(--bg) / 0.96));
+    @apply bg-bg;
   }
 
   .archive-panel {
-    @apply border border-border/60 bg-surface/50 backdrop-blur-md;
+    @apply border border-border/60 bg-surface;
     border-radius: var(--radius-surface);
-    box-shadow:
-      inset 0 1px 0 rgb(var(--fg) / 0.06),
-      0 18px 42px rgba(0, 0, 0, 0.1);
   }
 
   .archive-kicker {
@@ -312,8 +306,7 @@
   }
 
   .settings-savebar {
-    @apply border-border/80 bg-surface/95;
-    box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.06);
+    @apply border-t border-border/80 bg-surface/95;
   }
 
   /* Button variants */
@@ -325,7 +318,7 @@
   }
 
   .btn-primary {
-    @apply btn bg-accent text-accent-fg hover:bg-accent-hover font-semibold;
+    @apply btn bg-fg text-bg font-semibold hover:bg-fg/85;
   }
 
   .btn-secondary {
@@ -376,7 +369,7 @@
   }
 
   .toolbar-shell {
-    @apply border border-border/50 bg-surface/70 backdrop-blur-xl shadow-[0_12px_32px_rgba(0,0,0,0.14)];
+    @apply border border-border/50 bg-surface;
     border-radius: var(--radius-surface);
   }
 
@@ -386,7 +379,7 @@
   }
 
   .panel-section {
-    @apply border border-border/50 bg-surface/40 backdrop-blur-sm transition-all duration-200;
+    @apply border border-border/50 bg-surface/40 transition-all duration-200;
     border-radius: var(--radius-surface);
   }
 
@@ -450,7 +443,7 @@
   }
 
   .library-archive-header {
-    background: linear-gradient(180deg, rgb(var(--fg) / 0.03) 0%, rgb(var(--fg) / 0) 100%);
+    @apply bg-surface;
   }
 
   .library-controlbar {
@@ -459,46 +452,26 @@
 
   .library-filter-panel {
     @apply rounded-surface border border-border/50 bg-surface/90 p-4;
-    box-shadow: inset 0 1px 0 rgb(var(--fg) / 0.03);
   }
 
   .library-shelf {
     @apply overflow-hidden rounded-surface border border-border/60 bg-surface/90;
   }
 
-  .library-shelf-row {
-    position: relative;
-    box-shadow: inset 0 1px 0 rgb(var(--fg) / 0.012);
-  }
-
-  .library-shelf-row::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 180ms ease;
-    background: linear-gradient(90deg, rgba(255, 255, 255, 0.03), transparent 24%);
-  }
-
-  .library-shelf-row:hover::after {
-    opacity: 1;
-  }
-
   .library-shelf-row--completed {
-    background: linear-gradient(90deg, rgb(var(--success) / 0.08) 0%, rgb(var(--success) / 0.02) 16%, transparent 40%);
+    background-color: rgb(var(--success) / 0.06);
   }
 
   .library-shelf-row--analyzing {
-    background: linear-gradient(90deg, rgb(var(--accent) / 0.1) 0%, rgb(var(--accent) / 0.03) 16%, transparent 40%);
+    background-color: rgb(var(--accent) / 0.07);
   }
 
   .library-shelf-row--pending {
-    background: linear-gradient(90deg, rgb(var(--warning) / 0.08) 0%, rgb(var(--warning) / 0.025) 14%, transparent 38%);
+    background-color: rgb(var(--warning) / 0.06);
   }
 
   .library-shelf-row--error {
-    background: linear-gradient(90deg, rgb(var(--danger) / 0.11) 0%, rgb(var(--danger) / 0.03) 16%, transparent 40%);
+    background-color: rgb(var(--danger) / 0.07);
   }
 
   .library-shelf-row--completed .library-status-badge {
@@ -531,7 +504,6 @@
 
   .library-shelf-row--analyzing .library-status-dot {
     @apply bg-accent;
-    box-shadow: 0 0 0 4px rgb(var(--accent) / 0.08);
   }
 
   .library-shelf-row--pending .library-status-dot {
@@ -540,7 +512,6 @@
 
   .library-shelf-row--error .library-status-dot {
     @apply bg-danger;
-    box-shadow: 0 0 0 4px rgb(var(--danger) / 0.07);
   }
 
   .library-record-title {
@@ -565,7 +536,6 @@
 
   .library-archive-card {
     @apply relative overflow-hidden rounded-surface border border-border/50 bg-surface/40 p-4 transition-colors;
-    box-shadow: inset 0 1px 0 rgb(var(--fg) / 0.03);
   }
 
   .library-archive-card:hover {
@@ -573,45 +543,26 @@
   }
 
   .library-archive-card--completed {
-    background:
-      linear-gradient(180deg, rgb(var(--success) / 0.08) 0%, rgb(var(--success) / 0.02) 18%, transparent 48%),
-      rgb(var(--surface) / 0.6);
+    background-color: rgb(var(--success) / 0.07);
   }
 
   .library-archive-card--analyzing {
-    background:
-      linear-gradient(180deg, rgb(var(--accent) / 0.1) 0%, rgb(var(--accent) / 0.025) 20%, transparent 52%),
-      rgb(var(--surface) / 0.6);
+    background-color: rgb(var(--accent) / 0.08);
   }
 
   .library-archive-card--pending {
-    background:
-      linear-gradient(180deg, rgb(var(--warning) / 0.08) 0%, rgb(var(--warning) / 0.02) 18%, transparent 48%),
-      rgb(var(--surface) / 0.6);
+    background-color: rgb(var(--warning) / 0.07);
   }
 
   .library-archive-card--error {
-    background:
-      linear-gradient(180deg, rgb(var(--danger) / 0.11) 0%, rgb(var(--danger) / 0.03) 20%, transparent 52%),
-      rgb(var(--surface) / 0.6);
+    background-color: rgb(var(--danger) / 0.08);
   }
 }
 
 /* Utilities (unlayered to avoid @apply circular dependency with custom colors) */
-  /* Glass morphism effect */
+  /* Same-plane panel surface (formerly a backdrop-blur "glass" treatment) */
   .glass {
-    @apply bg-surface/90 backdrop-blur-xl border border-border/40;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .glass {
-      @apply backdrop-blur-none bg-surface;
-    }
-  }
-
-  /* Text gradient */
-  .text-gradient {
-    @apply bg-gradient-to-r from-accent to-accent-hover bg-clip-text text-transparent;
+    @apply bg-surface border border-border/40;
   }
 
   /* Truncate multiline */
@@ -1110,7 +1061,7 @@
   }
 
   .figure-modal-inspector {
-    background: linear-gradient(180deg, rgb(var(--surface) / 0.94), rgb(var(--bg) / 0.98));
+    background-color: rgb(var(--surface) / 0.96);
   }
 
 /* ── Missing keyframes ── */
