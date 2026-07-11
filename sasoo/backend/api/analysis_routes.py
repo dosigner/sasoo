@@ -75,8 +75,6 @@ from services.llm.interactions_client import call_interaction
 
 from api.analysis_state import _running_analyses, _cancel_events, _analyses_lock
 from api.analysis_helpers import (
-    _call_gemini,
-    _call_anthropic,
     _clean_llm_json,
     _is_error_result,
     _get_gemini_client,
@@ -488,7 +486,7 @@ Return ONLY valid JSON (마크다운 펜스 없이):
             return cached
 
         try:
-            result = await _call_gemini(llm_prompt)
+            result = await call_interaction(llm_prompt, model="gemini-3.5-flash", store=False)
             cleaned_text = _clean_llm_json(result["text"])
 
             try:
@@ -579,11 +577,173 @@ Return ONLY valid JSON (마크다운 펜스 없이):
             "tokens_in": phase_status.tokens_in or 0, "tokens_out": phase_status.tokens_out or 0}
 
 
+# ---------------------------------------------------------------------------
+# Stateful chain: Visual -> Recipe -> Deep Dive -> Viz planning (gemini-3.5-flash)
+# ---------------------------------------------------------------------------
+
+# 단계별 thinking_level (visual=low, recipe=medium, deep_dive=high, visualization=medium)
+_STAGE_THINKING = {"visual": "low", "recipe": "medium", "deep_dive": "high", "visualization": "medium"}
+
+_VISUAL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "figure_count": {"type": "integer"},
+        "tables_found": {"type": "integer"},
+        "equations_found": {"type": "integer"},
+        "diagram_types": {"type": "array", "items": {"type": "string"}},
+        "quality_summary": {"type": "string"},
+        "key_findings_from_visuals": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["quality_summary", "key_findings_from_visuals"],
+}
+
+_RECIPE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "objective": {"type": "string"},
+        "materials": {"type": "array", "items": {"type": "string"}},
+        "equipment": {"type": "array", "items": {"type": "string"}},
+        "parameters": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "value": {"type": "string"},
+                    "unit": {"type": "string"},
+                    "notes": {"type": "string"},
+                },
+                "required": ["name", "value"],
+            },
+        },
+        "steps": {"type": "array", "items": {"type": "string"}},
+        "critical_notes": {"type": "array", "items": {"type": "string"}},
+        "expected_results": {"type": "string"},
+        "safety_notes": {"type": "string"},
+        "confidence": {"type": "number"},
+        "missing_info": {"type": "array", "items": {"type": "string"}},
+        "reproducibility_score": {"type": "number"},
+    },
+    "required": ["title", "objective", "parameters", "steps"],
+}
+
+_DEEP_DIVE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "detailed_analysis": {"type": "string"},
+        "strengths": {"type": "array", "items": {"type": "string"}},
+        "weaknesses": {"type": "array", "items": {"type": "string"}},
+        "novelty_assessment": {"type": "string"},
+        "comparison_to_prior_work": {"type": "string"},
+        "suggested_improvements": {"type": "array", "items": {"type": "string"}},
+        "follow_up_questions": {"type": "array", "items": {"type": "string"}},
+        "practical_applications": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["detailed_analysis", "strengths", "weaknesses"],
+}
+
+_VIZ_PLAN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "visualizations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "tool": {"type": "string", "enum": ["mermaid", "paperbanana"]},
+                    "diagram_type": {"type": "string"},
+                    "description": {"type": "string"},
+                    "category": {"type": "string"},
+                },
+                "required": ["title", "tool", "description"],
+            },
+        }
+    },
+    "required": ["visualizations"],
+}
+
+_STAGE_SCHEMAS = {
+    "visual": _VISUAL_SCHEMA,
+    "recipe": _RECIPE_SCHEMA,
+    "deep_dive": _DEEP_DIVE_SCHEMA,
+    "visualization": _VIZ_PLAN_SCHEMA,
+}
+
+
+def _find_paper_pdf(paper_dir: Path) -> Optional[Path]:
+    """실제 업로드된 PDF 파일을 찾는다.
+
+    PDF 파일명은 원본 업로드명(고정 'paper.pdf' 아님)이라 glob으로 탐색한다.
+    """
+    try:
+        pdfs = sorted(paper_dir.glob("*.pdf"))
+    except OSError:
+        return None
+    return pdfs[0] if pdfs else None
+
+
+def _build_persona_prompt(agent) -> str:
+    """파이프라인 전체 페르소나: 에이전트 frontmatter 설명(personality) + DeepDive 오버레이."""
+    profile = getattr(agent, "profile", None)
+    desc = (getattr(profile, "personality", "") if profile else getattr(agent, "description", "")) or ""
+    overlay = agent.get_deepdive_prompt() if hasattr(agent, "get_deepdive_prompt") else ""
+    return "\n\n".join(p.strip() for p in (desc, overlay) if p and p.strip())
+
+
+async def _run_chain_stage(
+    *,
+    phase: str,
+    prompt_chain: str,
+    prompt_fallback: str,
+    system_instruction: str,
+    previous_interaction_id: Optional[str],
+    pdf_uri: Optional[str],
+    response_schema: dict,
+) -> dict:
+    """체인/폴백 모드에 맞춰 call_interaction을 호출한다.
+
+    - pdf_uri 있음(체인 모드): store=True. 체인 첫 호출(previous_interaction_id None)만
+      PDF 문서를 input에 포함하고, 이후 스테이지는 지시문만 보내 서버 상태를 신뢰한다.
+    - pdf_uri 없음(폴백): stateless(store=False). 기존 phase_inputs 텍스트를 프롬프트에 삽입한다.
+    """
+    if pdf_uri:
+        if previous_interaction_id is None:
+            contents = [
+                {"type": "document", "uri": pdf_uri, "mime_type": "application/pdf"},
+                {"type": "text", "text": prompt_chain},
+            ]
+        else:
+            contents = prompt_chain
+        return await call_interaction(
+            contents,
+            model="gemini-3.5-flash",
+            system_instruction=system_instruction,
+            thinking_level=_STAGE_THINKING[phase],
+            previous_interaction_id=previous_interaction_id,
+            response_schema=response_schema,
+            store=True,
+        )
+    return await call_interaction(
+        prompt_fallback,
+        model="gemini-3.5-flash",
+        system_instruction=system_instruction,
+        thinking_level=_STAGE_THINKING[phase],
+        response_schema=response_schema,
+        store=False,
+    )
+
+
 async def _run_visual(
     paper_id: int,
     visual_input: str,
     folder_name: str,
     status: AnalysisStatus,
+    *,
+    system_instruction: str = "",
+    previous_interaction_id: Optional[str] = None,
+    pdf_uri: Optional[str] = None,
 ) -> dict:
     """Phase 3: Visual verification - analyze figures, assess quality."""
     phase_status = PhaseStatus(
@@ -690,27 +850,18 @@ async def _run_visual(
                 f"method={table.get('parse_method')}, resolver={table.get('resolver_version')}"
             )
 
-    prompt = f"""너는 Sasoo(사수)라는 AI Co-Scientist야. 이 연구 논문의 시각적 요소를 분석해줘.
+    instruction = """너는 Sasoo(사수)라는 AI Co-Scientist야. 이 연구 논문의 시각적 요소를 분석해줘.
 
 모든 텍스트 내용(quality_summary, key_findings_from_visuals 등)은 반드시 한국어로 작성해.
 JSON key 이름만 영어로 유지하고, value는 전부 한국어로 써줘.
 
-Return ONLY valid JSON (마크다운 펜스 없이):
-{{
-  "figure_count": <int>,
-  "tables_found": <int>,
-  "equations_found": <int>,
-  "diagram_types": ["SEM", "TEM", "spectrum", "graph", "photograph", "schematic", ...],
-  "quality_summary": "그림 품질에 대한 전체 평가 (한국어)",
-  "key_findings_from_visuals": ["시각자료에서 발견한 핵심 사항1", "핵심 사항2", ...]
-}}
+figure_count(그림 수), tables_found(표 수), equations_found(수식 수), diagram_types(다이어그램 종류 리스트: SEM/TEM/spectrum/graph/photograph/schematic 등), quality_summary(그림 품질 전체 평가, 한국어), key_findings_from_visuals(시각자료에서 발견한 핵심 사항 리스트, 한국어)를 채워줘."""
 
-논문 관련 텍스트:
-{visual_input}
-{figure_desc}
-"""
+    prompt_chain = f"{instruction}\n\n위 논문 PDF를 직접 보고 시각 요소를 분석해줘.{figure_desc}"
+    prompt_fallback = f"{instruction}\n\n논문 관련 텍스트:\n{visual_input}\n{figure_desc}"
+    cache_key = prompt_fallback
 
-    cached = await _get_cached_phase_result(paper_id, "visual", prompt)
+    cached = await _get_cached_phase_result(paper_id, "visual", cache_key)
     if cached is not None:
         phase_status.status = "completed"
         phase_status.completed_at = _utcnow_iso()
@@ -724,7 +875,15 @@ Return ONLY valid JSON (마크다운 펜스 없이):
         status.total_tokens_out += cached["tokens_out"]
         return cached
 
-    result = await _call_gemini(prompt)
+    result = await _run_chain_stage(
+        phase="visual",
+        prompt_chain=prompt_chain,
+        prompt_fallback=prompt_fallback,
+        system_instruction=system_instruction,
+        previous_interaction_id=previous_interaction_id,
+        pdf_uri=pdf_uri,
+        response_schema=_VISUAL_SCHEMA,
+    )
     cleaned_text = _clean_llm_json(result["text"])
 
     # Validate JSON before storing
@@ -747,7 +906,8 @@ Return ONLY valid JSON (마크다운 펜스 없이):
         result["tokens_in"],
         result["tokens_out"],
         cost,
-        prompt,
+        cache_key,
+        interaction_id=result.get("interaction_id"),
     )
 
     phase_status.status = "completed"
@@ -769,6 +929,10 @@ async def _run_recipe(
     recipe_input: str,
     status: AnalysisStatus,
     screening_result_text: Optional[str] = None,
+    *,
+    system_instruction: str = "",
+    previous_interaction_id: Optional[str] = None,
+    pdf_uri: Optional[str] = None,
 ) -> dict:
     """Phase 3: Recipe extraction - extract structured experimental procedure."""
     phase_status = PhaseStatus(
@@ -858,7 +1022,7 @@ voltages, currents, frequencies, distances, speeds, sizes, ratios, percentages, 
         except (json.JSONDecodeError, TypeError):
             pass
 
-    prompt = f"""너는 Sasoo(사수)라는 AI Co-Scientist야. 이 연구 논문에서 실험 레시피를 완전하고 철저하게 추출해줘.
+    instruction = f"""너는 Sasoo(사수)라는 AI Co-Scientist야. 이 연구 논문에서 실험 레시피를 완전하고 철저하게 추출해줘.
 
 모든 텍스트 내용은 반드시 한국어로 작성해. JSON key 이름만 영어로 유지해.
 
@@ -870,38 +1034,20 @@ voltages, currents, frequencies, distances, speeds, sizes, ratios, percentages, 
 5. Methods 섹션뿐 아니라 논문 전체에서 파라미터를 찾아.
 {domain_hint}
 
-Return ONLY valid JSON (마크다운 펜스 없이, 설명 없이):
-{{
-  "title": "레시피 제목 (뭘 하는 실험인지, 한국어)",
-  "objective": "이 실험의 목적 (한국어)",
-  "materials": ["재료1 (규격 포함)", "재료2 (제조사, 순도, 등급)", ...],
-  "equipment": ["장비1 (모델번호 포함)", "장비2", ...],
-  "parameters": [
-    {{"name": "파라미터 이름", "value": "수치 값", "unit": "단위", "notes": "출처/컨텍스트 (한국어)"}},
-    {{"name": "다른 파라미터", "value": "값", "unit": "단위", "notes": ""}},
-    ...
-  ],
-  "steps": [
-    "단계 1: 구체적인 설정 포함한 상세 설명 (한국어)...",
-    "단계 2: 온도, 시간, 속도 등 포함 (한국어)...",
-    ...
-  ],
-  "critical_notes": ["재현을 위한 중요 참고사항 (한국어)", ...],
-  "expected_results": "예상되는 결과 (한국어)",
-  "safety_notes": "안전 주의사항 (한국어)",
-  "confidence": 0.0-1.0,
-  "missing_info": ["논문에서 찾지 못한 파라미터나 세부사항 (한국어)"],
-  "reproducibility_score": 0.0-1.0
-}}
+출력 필드: title(레시피 제목, 한국어), objective(실험 목적), materials(재료 리스트, 규격 포함),
+equipment(장비 리스트, 모델번호 포함), parameters(각 항목 name/value/unit/notes),
+steps(단계별 상세 설명, 온도·시간·속도 등 포함), critical_notes(재현 중요 참고사항),
+expected_results(예상 결과), safety_notes(안전 주의사항), confidence(0.0~1.0),
+missing_info(논문에서 찾지 못한 세부사항), reproducibility_score(0.0~1.0).
 
 중요: "parameters" 배열에 최소 8-15개 항목이 있어야 해.
-5개 미만이면 텍스트를 다시 꼼꼼히 읽어 — 분명 놓친 게 있을 거야.
+5개 미만이면 텍스트를 다시 꼼꼼히 읽어 — 분명 놓친 게 있을 거야."""
 
-논문 텍스트:
-{recipe_input}
-"""
+    prompt_chain = f"{instruction}\n\n위 논문 PDF와 이전 분석을 바탕으로 실험 레시피를 추출해줘."
+    prompt_fallback = f"{instruction}\n\n논문 텍스트:\n{recipe_input}"
+    cache_key = prompt_fallback
 
-    cached = await _get_cached_phase_result(paper_id, "recipe", prompt)
+    cached = await _get_cached_phase_result(paper_id, "recipe", cache_key)
     if cached is not None:
         phase_status.status = "completed"
         phase_status.completed_at = _utcnow_iso()
@@ -915,11 +1061,15 @@ Return ONLY valid JSON (마크다운 펜스 없이, 설명 없이):
         status.total_tokens_out += cached["tokens_out"]
         return cached
 
-    try:
-        result = await _call_anthropic(prompt)
-    except Exception:
-        # Fallback to Gemini if Anthropic fails
-        result = await _call_gemini(prompt)
+    result = await _run_chain_stage(
+        phase="recipe",
+        prompt_chain=prompt_chain,
+        prompt_fallback=prompt_fallback,
+        system_instruction=system_instruction,
+        previous_interaction_id=previous_interaction_id,
+        pdf_uri=pdf_uri,
+        response_schema=_RECIPE_SCHEMA,
+    )
 
     cleaned_text = _clean_llm_json(result["text"])
 
@@ -941,7 +1091,8 @@ Return ONLY valid JSON (마크다운 펜스 없이, 설명 없이):
         result["tokens_in"],
         result["tokens_out"],
         cost,
-        prompt,
+        cache_key,
+        interaction_id=result.get("interaction_id"),
     )
 
     phase_status.status = "completed"
@@ -964,8 +1115,12 @@ async def _run_deep_dive(
     previous_results: list[str],
     status: AnalysisStatus,
     screening_result_text: Optional[str] = None,
+    *,
+    system_instruction: str = "",
+    previous_interaction_id: Optional[str] = None,
+    pdf_uri: Optional[str] = None,
 ) -> dict:
-    """Phase 4: Deep dive - comprehensive analysis using Claude."""
+    """Phase 4: Deep dive - comprehensive analysis over the stateful chain."""
     phase_status = PhaseStatus(
         phase=AnalysisPhase.DEEP_DIVE,
         status="running",
@@ -988,33 +1143,26 @@ async def _run_deep_dive(
 
     prev_context = "\n\n".join(previous_results[:4]) if previous_results else ""
 
-    prompt = f"""너는 Sasoo(사수)라는 AI Co-Scientist야. 이 연구 논문에 대한 심층 분석을 해줘.
+    instruction = """너는 Sasoo(사수)라는 AI Co-Scientist야. 이 연구 논문에 대한 심층 분석을 해줘.
 
 모든 텍스트 내용은 반드시 한국어로 작성해. JSON key 이름만 영어로 유지해.
 전문적이면서도 이해하기 쉽게, 마치 선배 연구자가 후배에게 설명하듯이 써줘.
 
-이전 분석 단계의 결과:
-{prev_context[:4000]}
+출력 필드: detailed_analysis(논문의 기여도·방법론·결과 상세 분석, 여러 문단), strengths(강점 리스트),
+weaknesses(약점 리스트), novelty_assessment(새로움 평가), comparison_to_prior_work(기존 연구 대비 비교),
+suggested_improvements(개선 제안 리스트), follow_up_questions(후속 질문 리스트), practical_applications(실용적 응용 리스트)."""
 
-위 정보를 바탕으로 포괄적인 심층 분석을 제공해줘.
+    prompt_chain = (
+        f"{instruction}\n\n위 논문 PDF와 이전 분석 단계(스크리닝·인용·시각·레시피) 결과를 "
+        "바탕으로 포괄적인 심층 분석을 제공해줘."
+    )
+    prompt_fallback = (
+        f"{instruction}\n\n이전 분석 단계의 결과:\n{prev_context[:4000]}\n\n"
+        f"위 정보를 바탕으로 포괄적인 심층 분석을 제공해줘.\n\n논문 텍스트:\n{deep_dive_input}"
+    )
+    cache_key = prompt_fallback
 
-Return ONLY valid JSON (마크다운 펜스 없이):
-{{
-  "detailed_analysis": "논문의 기여도, 방법론, 결과에 대한 상세 분석 (여러 문단, 한국어)",
-  "strengths": ["강점1 (한국어)", "강점2", ...],
-  "weaknesses": ["약점1 (한국어)", "약점2", ...],
-  "novelty_assessment": "이 연구의 새로움 평가 (한국어)",
-  "comparison_to_prior_work": "기존 연구 대비 비교 (한국어)",
-  "suggested_improvements": ["개선 제안1 (한국어)", ...],
-  "follow_up_questions": ["후속 질문1 (한국어)", ...],
-  "practical_applications": ["실용적 응용1 (한국어)", ...]
-}}
-
-논문 텍스트:
-{deep_dive_input}
-"""
-
-    cached = await _get_cached_phase_result(paper_id, "deep_dive", prompt)
+    cached = await _get_cached_phase_result(paper_id, "deep_dive", cache_key)
     if cached is not None:
         phase_status.status = "completed"
         phase_status.completed_at = _utcnow_iso()
@@ -1028,10 +1176,15 @@ Return ONLY valid JSON (마크다운 펜스 없이):
         status.total_tokens_out += cached["tokens_out"]
         return cached
 
-    try:
-        result = await _call_anthropic(prompt)
-    except Exception:
-        result = await _call_gemini(prompt)
+    result = await _run_chain_stage(
+        phase="deep_dive",
+        prompt_chain=prompt_chain,
+        prompt_fallback=prompt_fallback,
+        system_instruction=system_instruction,
+        previous_interaction_id=previous_interaction_id,
+        pdf_uri=pdf_uri,
+        response_schema=_DEEP_DIVE_SCHEMA,
+    )
 
     cleaned_text = _clean_llm_json(result["text"])
 
@@ -1053,7 +1206,8 @@ Return ONLY valid JSON (마크다운 펜스 없이):
         result["tokens_in"],
         result["tokens_out"],
         cost,
-        prompt,
+        cache_key,
+        interaction_id=result.get("interaction_id"),
     )
 
     phase_status.status = "completed"
@@ -1092,10 +1246,14 @@ async def _plan_visualizations(
     visualization_input: str,
     previous_results: list[str],
     status: AnalysisStatus,
+    *,
+    system_instruction: str = "",
+    previous_interaction_id: Optional[str] = None,
+    pdf_uri: Optional[str] = None,
 ) -> list[dict]:
     """
-    Use Gemini Pro 3 to decide which visualizations (up to 5) will best help
-    understand the paper's methodology. Returns a plan as a list of dicts.
+    Decide which visualizations (up to 5) best help understand the paper's
+    methodology. Final stage of the stateful chain. Returns a plan as a list of dicts.
     """
     phase_status = PhaseStatus(
         phase=AnalysisPhase.DEEP_DIVE,  # piggyback on deep_dive phase for status
@@ -1106,48 +1264,46 @@ async def _plan_visualizations(
 
     prev_context = "\n---\n".join(previous_results[:4])
 
-    prompt = f"""너는 연구 논문 분석 시스템의 시각화 기획자야.
+    instruction = """너는 연구 논문 분석 시스템의 시각화 기획자야.
 
-아래 분석 결과를 모두 읽고, 이 논문의 방법론과 기여를 완전히 이해하는 데
-가장 도움이 될 다이어그램/그림을 결정해줘.
-
+이 논문의 방법론과 기여를 완전히 이해하는 데 가장 도움이 될 다이어그램/그림을 결정해줘.
 반드시 3~5개의 시각화 항목을 반환해. 가장 임팩트 있는 것을 선택해.
 
 각 시각화를 두 가지 도구 중 하나로 분류해:
 - "mermaid": 구조적/논리적 다이어그램 (플로우차트, 시퀀스, 마인드맵, 타임라인, 비교)
 - "paperbanana": 물리적/시각적 일러스트 (장비 셋업, 광학 레이아웃, 세포/분자 도식, 개념도)
 
-Return ONLY valid JSON (마크다운 펜스 없이). 아래 구조를 정확히 따라:
-{{
-  "visualizations": [
-    {{
-      "title": "짧은 설명 제목 (한국어)",
-      "tool": "mermaid" or "paperbanana",
-      "diagram_type": "flowchart|sequence|mindmap|timeline|methodology|conceptual|comparison",
-      "description": "이 시각화가 왜 필요한지, 무엇을 보여주는지 2-3문장 설명 (한국어)",
-      "category": "experimental_protocol|algorithm_flow|signal_flow|system_architecture|component_relationships|timeline|comparison|equipment_appearance|optical_table_layout|cell_molecule_schematic|physical_setup|conceptual_illustration"
-    }}
-  ]
-}}
+각 항목 필드: title(짧은 제목, 한국어), tool(mermaid|paperbanana),
+diagram_type(flowchart|sequence|mindmap|timeline|methodology|conceptual|comparison),
+description(왜 필요한지·무엇을 보여주는지 2-3문장, 한국어),
+category(experimental_protocol|algorithm_flow|signal_flow|system_architecture|component_relationships|timeline|comparison|equipment_appearance|optical_table_layout|cell_molecule_schematic|physical_setup|conceptual_illustration).
 
 실험 방법을 최대한 이해할 수 있는 시각화를 우선시해.
-고려할 것: 프로세스 흐름, 파라미터 관계, 장비 구성, 신호 경로, 비교표.
+고려할 것: 프로세스 흐름, 파라미터 관계, 장비 구성, 신호 경로, 비교표."""
 
---- 분석 결과 (Phase 1-4) ---
-{prev_context[:9000]}
+    prompt_chain = f"{instruction}\n\n위 논문 PDF와 이전 분석 단계 결과를 바탕으로 시각화 계획을 세워줘."
+    prompt_fallback = (
+        f"{instruction}\n\n--- 분석 결과 (Phase 1-4) ---\n{prev_context[:9000]}\n\n"
+        f"--- 관련 텍스트 요약 ---\n{visualization_input}"
+    )
+    cache_key = prompt_fallback
 
---- 관련 텍스트 요약 ---
-{visualization_input}
-"""
-
-    cached = await _get_cached_phase_result(paper_id, "viz_plan", prompt)
+    cached = await _get_cached_phase_result(paper_id, "viz_plan", cache_key)
     if cached is not None:
         try:
             return json.loads(cached["text"]).get("visualizations", [])
         except (json.JSONDecodeError, TypeError, AttributeError):
             return []
 
-    result = await _call_gemini(prompt, model="gemini-3.1-pro-preview")
+    result = await _run_chain_stage(
+        phase="visualization",
+        prompt_chain=prompt_chain,
+        prompt_fallback=prompt_fallback,
+        system_instruction=system_instruction,
+        previous_interaction_id=previous_interaction_id,
+        pdf_uri=pdf_uri,
+        response_schema=_VIZ_PLAN_SCHEMA,
+    )
     cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
     status.total_cost_usd += cost
@@ -1188,7 +1344,8 @@ Return ONLY valid JSON (마크다운 펜스 없이). 아래 구조를 정확히 
         result["tokens_in"],
         result["tokens_out"],
         cost,
-        prompt,
+        cache_key,
+        interaction_id=result.get("interaction_id"),
     )
 
     return items
@@ -1228,7 +1385,7 @@ async def _generate_single_mermaid(
 다이어그램 타입 키워드로 시작하는 유효한 Mermaid 코드만 반환해.
 """
 
-    result = await _call_gemini(prompt, model="gemini-3.1-pro-preview")
+    result = await call_interaction(prompt, model="gemini-3.5-flash", store=False)
 
     mermaid_code = result["text"].strip()
     # Remove markdown fences
@@ -1381,6 +1538,10 @@ async def _run_visualizations(
     recipe_result: str,
     deep_dive_result: str,
     status: AnalysisStatus,
+    *,
+    system_instruction: str = "",
+    previous_interaction_id: Optional[str] = None,
+    pdf_uri: Optional[str] = None,
 ) -> list[dict]:
     """
     Full visualization pipeline:
@@ -1407,8 +1568,16 @@ async def _run_visualizations(
         except (json.JSONDecodeError, TypeError, AttributeError):
             pass
 
-    # Step 1: Plan
-    viz_plan = await _plan_visualizations(paper_id, visualization_input, previous_results, status)
+    # Step 1: Plan (final stage of the stateful chain)
+    viz_plan = await _plan_visualizations(
+        paper_id,
+        visualization_input,
+        previous_results,
+        status,
+        system_instruction=system_instruction,
+        previous_interaction_id=previous_interaction_id,
+        pdf_uri=pdf_uri,
+    )
 
     # Step 2: Generate all in parallel
     async def generate_one(idx: int, item: dict) -> dict:
@@ -1483,14 +1652,14 @@ async def _run_visualizations(
     viz_result = {
         "items": list(generated_items),
         "total_count": len(generated_items),
-        "model_used": "gemini-3.1-pro-preview",
+        "model_used": "gemini-3.5-flash",
         "planned_at": _utcnow_iso(),
     }
     await _insert_analysis_result(
         paper_id,
         "visualization",
         json.dumps(viz_result, ensure_ascii=False),
-        "gemini-3.1-pro-preview",
+        "gemini-3.5-flash",
         0,
         0,
         0.0,
@@ -1568,6 +1737,57 @@ async def _run_full_analysis(paper_id: int):
             await execute_update("UPDATE papers SET status = ? WHERE id = ?", ("cancelled", paper_id))
             return
 
+        # --- 본 분석 체인 준비 (스크리닝 결과 기반 도메인/페르소나 자동 선택) ---
+        import json as _json
+        from api.analysis_context import build_chain_system_instruction
+        from services.llm.interactions_client import upload_pdf_for_paper
+        from services.agents import get_agent_for_domain
+        from api.settings import get_raw_settings
+
+        try:
+            screening_data = _json.loads(_clean_llm_json(r1.get("text") or "{}"))
+        except (_json.JSONDecodeError, TypeError):
+            screening_data = {}
+        domain = screening_data.get("domain") or paper.get("domain") or "general"
+        agent = get_agent_for_domain(domain)
+        await execute_update(
+            "UPDATE papers SET domain = ?, agent_used = ? WHERE id = ?",
+            (domain, agent.name, paper_id),
+        )
+
+        try:
+            settings_raw = await get_raw_settings()
+        except Exception as exc:
+            logger.warning("Settings load failed for paper %s, using defaults: %s", paper_id, exc)
+            settings_raw = {}
+        try:
+            focus = _json.loads(paper["analysis_focus"]) if paper.get("analysis_focus") else None
+        except (_json.JSONDecodeError, TypeError):
+            focus = None
+        level_key = paper.get("explanation_level") or settings_raw.get("default_explanation_level", "masters")
+        chain_system_instruction = build_chain_system_instruction(
+            persona_prompt=_build_persona_prompt(agent),
+            research_context=settings_raw.get("research_context", ""),
+            focus=focus,
+            level_key=level_key,
+        )
+
+        # PDF 직접 입력용 업로드. 실패/부재 시 pdf_uri=None → 각 스테이지는 텍스트 폴백 경로.
+        chain_prev_id: Optional[str] = None
+        pdf_uri: Optional[str] = None
+        pdf_file = _find_paper_pdf(paper_dir)
+        if pdf_file is not None:
+            try:
+                pdf_uri = await upload_pdf_for_paper(paper_id, str(pdf_file))
+            except Exception as exc:
+                logger.warning(
+                    "PDF upload failed for paper %s, falling back to text context: %s", paper_id, exc
+                )
+        else:
+            logger.warning(
+                "No PDF found in %s for paper %s; using text-context fallback.", paper_dir, paper_id
+            )
+
         # Phase 2: Citation Analysis (after screening, before visual)
         paper_authors = paper.get("authors", "") or ""
         r_cit = await _run_citation(
@@ -1585,13 +1805,18 @@ async def _run_full_analysis(paper_id: int):
             await execute_update("UPDATE papers SET status = ? WHERE id = ?", ("cancelled", paper_id))
             return
 
-        # Phase 3: Visual Verification (independent of citation)
+        # Phase 3: Visual Verification (첫 체인 호출 — PDF 직접 입력)
         r2 = await _run_visual(
             paper_id,
             str(phase_inputs.get("visual", "")),
             folder_name,
             status,
+            system_instruction=chain_system_instruction,
+            previous_interaction_id=chain_prev_id,
+            pdf_uri=pdf_uri,
         )
+        if pdf_uri:
+            chain_prev_id = r2.get("interaction_id")
 
         # Check for cancellation
         if cancel_event.is_set():
@@ -1608,13 +1833,18 @@ async def _run_full_analysis(paper_id: int):
         if r2.get("text") and not _is_error_result(r2["text"]):
             previous.append(r2["text"])
 
-        # Phase 4: Recipe Extraction (depends on text only)
+        # Phase 4: Recipe Extraction (체인 2번째 스테이지)
         r3 = await _run_recipe(
             paper_id,
             str(phase_inputs.get("recipe", "")),
             status,
             screening_result_text=r1.get("text", ""),
+            system_instruction=chain_system_instruction,
+            previous_interaction_id=chain_prev_id,
+            pdf_uri=pdf_uri,
         )
+        if pdf_uri:
+            chain_prev_id = r3.get("interaction_id")
 
         # Check for cancellation
         if cancel_event.is_set():
@@ -1625,14 +1855,19 @@ async def _run_full_analysis(paper_id: int):
         if r3.get("text") and not _is_error_result(r3["text"]):
             previous.append(r3["text"])
 
-        # Phase 4: Deep Dive (depends on all previous results)
+        # Phase 4: Deep Dive (체인 3번째 스테이지)
         r4 = await _run_deep_dive(
             paper_id,
             str(phase_inputs.get("deep_dive", "")),
             previous,
             status,
             screening_result_text=r1.get("text", ""),
+            system_instruction=chain_system_instruction,
+            previous_interaction_id=chain_prev_id,
+            pdf_uri=pdf_uri,
         )
+        if pdf_uri:
+            chain_prev_id = r4.get("interaction_id")
 
         # Check for cancellation
         if cancel_event.is_set():
@@ -1667,6 +1902,9 @@ async def _run_full_analysis(paper_id: int):
                     r3.get("text", ""),
                     r4.get("text", ""),
                     status,
+                    system_instruction=chain_system_instruction,
+                    previous_interaction_id=chain_prev_id,
+                    pdf_uri=pdf_uri,
                 )
             except Exception as viz_err:
                 # Visualization failure should NOT block the analysis from completing
@@ -2066,7 +2304,7 @@ Paper text excerpt:
 Return ONLY valid Mermaid syntax starting with "flowchart TD" or "flowchart LR".
 """
 
-    result = await _call_gemini(prompt)
+    result = await call_interaction(prompt, model="gemini-3.5-flash", store=False)
 
     # Clean up the mermaid code
     mermaid_code = result["text"].strip()
@@ -2371,7 +2609,7 @@ Return ONLY valid JSON (마크다운 펜스 없이):
 }}
 """
 
-    result = await _call_gemini(prompt)
+    result = await call_interaction(prompt, model="gemini-3.5-flash", store=False)
     cleaned_text = _clean_llm_json(result["text"])
 
     # Validate JSON
