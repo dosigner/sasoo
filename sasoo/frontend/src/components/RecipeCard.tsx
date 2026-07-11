@@ -177,9 +177,9 @@ export default function RecipeCard({
 
   return (
     <div>
-      {/* Header */}
+      {/* Header — signature 3px accent bar on the left */}
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-fg flex items-center gap-2">
+        <h3 className="flex items-center gap-2 border-l-[3px] border-accent pl-2.5 text-sm font-semibold text-fg">
           <AppIcon name="recipe" className="w-4 h-4 text-accent" />
           {title}
         </h3>
@@ -231,7 +231,7 @@ export default function RecipeCard({
       {/* Materials */}
       {materials.length > 0 && (
         <div className="card p-3 mb-3">
-          <h4 className="text-xs font-semibold text-fg mb-2">{S.recipe.materials}</h4>
+          <h4 className="mb-2 text-2xs font-medium uppercase tracking-wide text-fg-muted">{S.recipe.materials}</h4>
           <ul className="space-y-1">
             {materials.map((m, i) => (
               <li key={i} className="text-xs text-fg-muted flex items-start gap-1.5">
@@ -247,7 +247,7 @@ export default function RecipeCard({
       {parameters.length > 0 && (
         <div className="card p-0 overflow-hidden mb-3">
           <div className="px-3 py-2 border-b border-border bg-surface/70">
-            <h4 className="text-xs font-semibold text-fg">
+            <h4 className="text-2xs font-medium uppercase tracking-wide text-fg-muted">
               {S.recipe.parameters} ({parameters.length})
             </h4>
           </div>
@@ -265,11 +265,11 @@ export default function RecipeCard({
               <tbody>
                 {parameters.map((param, index) => (
                   <tr key={index} className="border-b border-border/50 last:border-b-0 hover:bg-surface-hover/30 transition-colors">
-                    <td className="px-3 py-2 text-fg-muted font-mono">{index + 1}</td>
-                    <td className="px-3 py-2 font-medium text-fg">{param.name || '-'}</td>
-                    <td className="px-3 py-2 text-accent font-mono">{param.value || '-'}</td>
-                    <td className="px-3 py-2 text-fg-muted">{param.unit || '-'}</td>
-                    <td className="px-3 py-2 text-fg-muted text-xs">{param.notes || '-'}</td>
+                    <td className="px-3 py-2 font-mono tabular-nums text-fg-muted">{index + 1}</td>
+                    <td className="px-3 py-2 text-sm text-fg-secondary">{param.name || '-'}</td>
+                    <td className="px-3 py-2 font-mono text-sm tabular-nums text-accent">{param.value || '-'}</td>
+                    <td className="px-3 py-2 font-mono text-sm tabular-nums text-fg-muted">{param.unit || '-'}</td>
+                    <td className="px-3 py-2 text-xs text-fg-muted">{param.notes || '-'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -290,7 +290,7 @@ export default function RecipeCard({
       {/* Steps */}
       {steps.length > 0 && (
         <div className="card p-3 mb-3">
-          <h4 className="text-xs font-semibold text-fg mb-2">{S.recipe.steps}</h4>
+          <h4 className="mb-2 text-2xs font-medium uppercase tracking-wide text-fg-muted">{S.recipe.steps}</h4>
           <ol className="space-y-1.5">
             {steps.map((step, i) => (
               <li key={i} className="text-xs text-fg-muted leading-relaxed">
@@ -305,7 +305,7 @@ export default function RecipeCard({
       {/* Critical Notes */}
       {criticalNotes.length > 0 && (
         <div className="mb-3">
-          <h4 className="text-xs font-semibold text-fg mb-2">{S.recipe.criticalNotes}</h4>
+          <h4 className="mb-2 text-2xs font-medium uppercase tracking-wide text-fg-muted">{S.recipe.criticalNotes}</h4>
           <div className="space-y-1.5">
             {criticalNotes.map((note, index) => (
               <div
@@ -325,7 +325,7 @@ export default function RecipeCard({
       {/* Missing Info */}
       {missingInfo.length > 0 && (
         <div className="card p-3 mb-3 border-danger/20 bg-danger/5">
-          <h4 className="text-xs font-semibold text-danger mb-1.5">{S.recipe.missingInfo}</h4>
+          <h4 className="mb-1.5 text-2xs font-medium uppercase tracking-wide text-danger">{S.recipe.missingInfo}</h4>
           <ul className="space-y-1">
             {missingInfo.map((info, index) => (
               <li key={index} className="text-xs text-danger/70 flex items-start gap-1.5">

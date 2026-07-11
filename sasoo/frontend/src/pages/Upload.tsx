@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import logoImg from '@/assets/logo.png';
@@ -12,7 +12,7 @@ import {
   type Settings,
   type UploadResponse,
 } from '@/lib/api';
-import { getAgentMeta, getAllAgents, agentBgStyle, agentBorderStyle } from '@/lib/agents';
+import { getAgentMeta, getAllAgents } from '@/lib/agents';
 import { useToast } from '@/components/Toast';
 import { S } from '@/lib/strings';
 import { AppIcon } from '@/components/icons';
@@ -467,15 +467,16 @@ export default function Upload() {
 
                       return (
                         <div
-                          className="mt-5 rounded-surface border p-3"
-                          style={{ ...agentBgStyle(displayColor), ...agentBorderStyle(displayColor) }}
+                          className="agent-tinted mt-5 rounded-surface border p-3"
+                          style={{ '--agent-color': displayColor } as CSSProperties}
                         >
                           <div className="flex items-center gap-3">
                             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface/80">
                               <AppIcon name="agents" className="h-5 w-5 text-fg-muted" />
                             </div>
                             <div className="min-w-0">
-                              <div className="text-sm font-semibold" style={{ color: displayColor }}>
+                              <div className="flex items-center gap-2 text-sm font-semibold text-fg">
+                                <span className="agent-dot" aria-hidden="true" />
                                 {displayName}
                               </div>
                               <div className="mt-1 text-xs text-fg-muted">{displayPersonality}</div>

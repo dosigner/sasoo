@@ -1297,3 +1297,23 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ── Agent tinting (color-mix, theme-aware) ──────────────────────────── */
+/* Consumers inject `--agent-color: <hex>` inline; contrast is resolved in
+   CSS so no theme branch is needed in JS. Chromium 111+ (Electron 28) OK. */
+@layer components {
+  .agent-tinted {
+    background: color-mix(in srgb, var(--agent-color) 14%, transparent);
+    border-color: color-mix(in srgb, var(--agent-color) 40%, transparent);
+  }
+
+  .agent-dot {
+    @apply inline-block h-2 w-2 shrink-0 rounded-full;
+    background: var(--agent-color);
+  }
+}
+
+.light .agent-tinted {
+  background: color-mix(in srgb, var(--agent-color) 8%, transparent);
+  border-color: color-mix(in srgb, var(--agent-color) 30%, transparent);
+}

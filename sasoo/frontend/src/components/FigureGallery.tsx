@@ -7,6 +7,10 @@ import { S } from '@/lib/strings';
 import { generateFigureExplanation } from '@/lib/api';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { AppIcon } from '@/components/icons';
+import { Badge, Tooltip } from '@/components/ui';
+import type { BadgeProps } from '@/components/ui/Badge';
+
+type BadgeVariant = BadgeProps['variant'];
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,20 +41,43 @@ interface FigureGroup {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// 3-color coding (scite-style): pass = success, minor concern = warning,
+// Red Flag (statistical risk signal) = danger, unknown = neutral.
 function qualityBadge(quality: string | null): {
   label: string;
-  classes: string;
+  variant: BadgeVariant;
+  isRedFlag: boolean;
 } {
   switch (quality) {
     case 'high':
-      return { label: S.figures.qualityHigh, classes: 'bg-success/10 text-success' };
+      return { label: S.figures.qualityHigh, variant: 'success', isRedFlag: false };
     case 'medium':
-      return { label: S.figures.qualityMedium, classes: 'bg-warning/10 text-warning' };
+      return { label: S.figures.qualityMedium, variant: 'warning', isRedFlag: false };
     case 'low':
-      return { label: S.figures.qualityLow, classes: 'bg-danger/10 text-danger' };
+      return { label: S.figures.qualityLow, variant: 'danger', isRedFlag: true };
     default:
-      return { label: S.figures.qualityUnknown, classes: 'bg-fg-muted/10 text-fg-muted' };
+      return { label: S.figures.qualityUnknown, variant: 'neutral', isRedFlag: false };
   }
+}
+
+// The card corner status dot is only shown for attention states (warning /
+// danger) so a risky figure is spottable while scanning the gallery.
+function statusDotClass(variant: BadgeVariant): string | null {
+  switch (variant) {
+    case 'danger':
+      return 'bg-danger';
+    case 'warning':
+      return 'bg-warning';
+    default:
+      return null;
+  }
+}
+
+// Numeric anchor derived from the figure label (e.g. "Figure 3a" → "3"), used
+// by citation click-back to scroll this card into view.
+function citationAnchor(figure: Figure): string | undefined {
+  const num = figure.figure_num?.match(/\d+/)?.[0];
+  return num ? `figure-${num}` : undefined;
 }
 
 function getFigureImageUrl(figure: Figure): string {
@@ -62,18 +89,12 @@ function formatConfidence(confidence: number | null | undefined): string | null 
   return `${Math.round(confidence * 100)}%`;
 }
 
-function buildStatusBadge(figure: Figure): { label: string; classes: string } {
+function buildStatusBadge(figure: Figure): { label: string; variant: BadgeVariant } {
   if (figure.extraction_status === 'uncertain') {
-    return {
-      label: S.figures.statusUncertain,
-      classes: 'bg-warning/10 text-warning border border-warning/20',
-    };
+    return { label: S.figures.statusUncertain, variant: 'warning' };
   }
 
-  return {
-    label: S.figures.statusReady,
-    classes: 'bg-success/10 text-success border border-success/20',
-  };
+  return { label: S.figures.statusReady, variant: 'success' };
 }
 
 function buildFigureGroups(figures: Figure[]): FigureGroup[] {
@@ -280,9 +301,7 @@ function Lightbox({
               <AppIcon name="figures" className="w-4 h-4 text-accent" />
               {figure.figure_num || 'Figure'}
             </h4>
-            <span className={`badge text-2xs ${badge.classes}`}>
-              {badge.label}
-            </span>
+            <Badge variant={badge.variant}>{badge.label}</Badge>
             {figure.caption && (
               <span className="text-2xs text-fg-muted truncate max-w-[300px] hidden lg:inline">
                 {figure.caption}
@@ -394,9 +413,9 @@ function Lightbox({
                     {S.figures.expertExplanation}
                   </h3>
                   {cached.modelUsed && cached.modelUsed !== 'cached' && (
-                    <span className="badge text-2xs bg-accent/10 text-accent ml-auto">
+                    <Badge variant="accent" className="ml-auto">
                       {cached.modelUsed}
-                    </span>
+                    </Badge>
                   )}
                 </div>
                 <div className="analysis-content figure-explanation-content">
@@ -442,10 +461,25 @@ function FigureCard({
   const badge = qualityBadge(figure.quality);
   const statusBadge = buildStatusBadge(figure);
   const confidenceLabel = formatConfidence(figure.confidence);
+  const dotClass = statusDotClass(badge.variant);
+  // Red Flag reason: reuse the existing AI analysis field when present — no new
+  // data field is invented. Absent → label-only badge.
+  const redFlagReason = badge.isRedFlag && figure.ai_analysis ? figure.ai_analysis : null;
+
+  const qualityBadgeEl = redFlagReason ? (
+    <Tooltip content={redFlagReason} className="max-w-xs whitespace-normal leading-snug">
+      <span className="inline-flex">
+        <Badge variant={badge.variant}>{badge.label}</Badge>
+      </span>
+    </Tooltip>
+  ) : (
+    <Badge variant={badge.variant}>{badge.label}</Badge>
+  );
 
   return (
     <div
       className="card-hover overflow-hidden p-0 group"
+      data-citation-anchor={citationAnchor(figure)}
       role="button"
       tabIndex={0}
       onClick={() => onOpen(index)}
@@ -468,13 +502,15 @@ function FigureCard({
           <AppIcon name="maximize" className="h-5 w-5 text-white opacity-0 transition-opacity group-hover:opacity-100" />
         </div>
         <div className="absolute left-2 right-2 top-2 flex flex-wrap items-center justify-between gap-2">
-          <span className={`badge text-2xs ${badge.classes}`}>
-            {badge.label}
-          </span>
-          <span className={`badge text-2xs ${statusBadge.classes}`}>
-            {statusBadge.label}
-          </span>
+          {qualityBadgeEl}
+          <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
         </div>
+        {dotClass && (
+          <span
+            className={`absolute bottom-2 left-2 h-2.5 w-2.5 rounded-full ring-2 ring-surface ${dotClass}`}
+            aria-hidden="true"
+          />
+        )}
       </div>
 
       <div className="space-y-3 p-3">
