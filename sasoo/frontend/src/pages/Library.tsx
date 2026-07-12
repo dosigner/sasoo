@@ -221,7 +221,7 @@ function PaperShelfRow({ paper, onOpen, onDelete, menuOpen, onToggleMenu }: Pape
           <div className="library-meta-value">{activityLabel(paper)}</div>
         </div>
         {paper.doi && (
-          <div className="truncate text-2xs font-mono text-fg-muted">
+          <div className="truncate text-2xs text-fg-muted">
             DOI {paper.doi}
           </div>
         )}

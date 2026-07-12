@@ -6,15 +6,13 @@ Sasoo - 논문 도해 생성 (PaperBanana 패키지 대체)
 아이콘 스타일, 라벨 텍스트까지 텍스트로 확정한 뒤 렌더러에는 실행만 시킨다.
 
 동시성 규약 (2026-07-11 사고의 재발 방지):
-  - 렌더는 asyncio.wait_for(run_pipeline_blocking(...), RENDER_TIMEOUT_S).
+  - 렌더는 asyncio.wait_for(asyncio.to_thread(...), RENDER_TIMEOUT_S).
     스레드로 빼야 이벤트 루프가 살아 있고, 그래야 타임아웃 타이머도 실제로 발화한다.
     (PaperBanana는 루프 안에서 동기 호출을 해서 /health까지 죽었고, asyncio 타임아웃은
     루프가 막혀 영영 발화하지 못했다.)
   - 프로바이더의 HTTP 클라이언트는 반드시 "스레드 안에서, 동기 API로" 생성·사용한다.
     async 클라이언트를 스레드로 옮기면 원래 루프에 묶여 조용히 실패한다
     (analysis_routes의 옛 주석에 기록된 실전 사례).
-  - 렌더는 asyncio 기본 풀이 아니라 PIPELINE_EXECUTOR에서, RENDER_SEM 슬롯을 잡고 돈다.
-    기본 풀을 쓰면 시각화 팬아웃이 풀을 채워 채팅 SSE가 스레드를 못 잡고 무한 대기한다.
 """
 
 from __future__ import annotations
@@ -29,7 +27,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Protocol
 
-from services.concurrency import RENDER_SEM, run_pipeline_blocking
 from services.models import MODEL_IMAGE, MODEL_IMAGE_OPENAI, MODEL_PRO
 from services.pricing import calc_image_cost
 
@@ -201,13 +198,10 @@ async def generate_illustration(
             logger.info("figure_gen: provider %s unavailable (no key), skipping", provider.name)
             continue
         try:
-            # The slot is taken outside wait_for so time spent queueing for a
-            # render is not charged against the provider's own timeout.
-            async with RENDER_SEM:
-                png = await asyncio.wait_for(
-                    run_pipeline_blocking(provider.generate, description),
-                    timeout=RENDER_TIMEOUT_S,
-                )
+            png = await asyncio.wait_for(
+                asyncio.to_thread(provider.generate, description),
+                timeout=RENDER_TIMEOUT_S,
+            )
         except asyncio.TimeoutError:
             errors.append(f"{provider.name}: timeout after {RENDER_TIMEOUT_S:.0f}s")
             logger.warning("figure_gen: %s timed out for '%s'", provider.name, viz_target.get("title"))

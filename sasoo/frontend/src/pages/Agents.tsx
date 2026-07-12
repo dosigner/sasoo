@@ -811,7 +811,7 @@ export default function Agents() {
                 <button
                   type="button"
                   onClick={() => setCreateChoiceOpen(true)}
-                  className="flex items-center gap-1.5 rounded-full bg-fg px-5 py-2.5 text-sm font-medium text-bg transition-colors hover:bg-fg/85"
+                  className="flex items-center gap-1.5 rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-accent-fg transition-colors hover:bg-accent-hover"
                 >
                   <Plus className="h-4 w-4" />
                   {S.agents.createNew}
@@ -962,7 +962,7 @@ export default function Agents() {
                 type="button"
                 onClick={() => void handleSave()}
                 disabled={submitting || authorLoading}
-                className="flex items-center gap-1.5 rounded-lg bg-fg px-4 py-2 text-sm font-medium text-bg transition-colors hover:bg-fg/85 disabled:opacity-60"
+                className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg transition-colors hover:bg-accent-hover disabled:opacity-60"
               >
                 <Check className="h-4 w-4" />
                 {submitting ? '...' : saveUsesRaw ? '검토 후 저장' : authorMode === 'create' ? S.agents.create : S.agents.save}
@@ -1045,7 +1045,7 @@ export default function Agents() {
                           type="button"
                           onClick={() => void handleGenerateDraft()}
                           disabled={generating}
-                          className="flex items-center gap-2 rounded-lg bg-fg px-4 py-2 text-sm font-medium text-bg transition-colors hover:bg-fg/85 disabled:opacity-60"
+                          className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg transition-colors hover:bg-accent-hover disabled:opacity-60"
                         >
                           {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
                           {generating ? S.agents.aiGenerating : 'AI 초안 적용'}

@@ -181,7 +181,7 @@ export default function MermaidRenderer({
 
   // Initialize/reinitialize mermaid when theme changes
   useEffect(() => {
-    const isDark = document.documentElement.classList.contains('dark');
+    const isDark = !document.documentElement.classList.contains('light');
     initMermaid(isDark);
     // Re-render if we have content
     if (editableCode) {
@@ -192,7 +192,7 @@ export default function MermaidRenderer({
   // Watch for theme changes
   useEffect(() => {
     const observer = new MutationObserver(() => {
-      const isDark = document.documentElement.classList.contains('dark');
+      const isDark = !document.documentElement.classList.contains('light');
       initMermaid(isDark);
       if (editableCode) {
         renderDiagram(editableCode);

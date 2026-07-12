@@ -93,7 +93,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
               {/* Retry Button */}
               <button
                 onClick={this.handleReset}
-                className="w-full px-4 py-2.5 bg-fg hover:bg-fg/85 active:bg-fg/85 text-bg rounded-lg font-medium transition-colors duration-200"
+                className="w-full px-4 py-2.5 bg-accent hover:bg-accent-hover active:bg-accent-hover text-accent-fg rounded-lg font-medium transition-colors duration-200 shadow-sm hover:shadow-md"
               >
                 다시 시도
               </button>
