@@ -22,7 +22,6 @@ from models.database import (
 )
 from models.schemas import SettingsModel, SettingsUpdate
 from services.crypto import decrypt_value, encrypt_value, is_encrypted, is_unreadable
-from services.models import MODEL_FLASH_HQ
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -43,7 +42,6 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "language": "ko",
     "theme": "light",
     "max_concurrent_analyses": "3",
-    "gemini_model": MODEL_FLASH_HQ,
     "pdf_parser_mode": "java",
     "extraction_pipeline_version": "resolver_v1",
     "extraction_pipeline_force_fallback": "false",
@@ -215,7 +213,6 @@ async def get_settings():
         language=raw.get("language", "ko"),
         theme=raw.get("theme", "light"),
         max_concurrent_analyses=int(raw.get("max_concurrent_analyses", "3")),
-        gemini_model=raw.get("gemini_model", MODEL_FLASH_HQ),
         pdf_parser_mode=raw.get("pdf_parser_mode", "java"),
         extraction_pipeline_version=raw.get("extraction_pipeline_version", "resolver_v1"),
         research_context=raw.get("research_context", ""),

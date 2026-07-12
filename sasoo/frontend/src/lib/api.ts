@@ -271,7 +271,6 @@ export interface Settings {
   auto_analyze: boolean;
   language: string;
   max_concurrent_analyses: number;
-  gemini_model: string;
   paperbanana_profile: PaperBananaProfile;
   pdf_parser_mode: 'java';
   extraction_pipeline_version: 'legacy' | 'resolver_v1';
