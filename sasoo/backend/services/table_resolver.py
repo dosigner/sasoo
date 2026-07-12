@@ -4,6 +4,7 @@ Table resolver for resolver_v1.
 
 from __future__ import annotations
 
+import base64
 import csv
 import json
 import os
@@ -12,8 +13,8 @@ from io import StringIO
 from pathlib import Path
 from typing import Any
 
-from api.analysis_helpers import _call_gemini, _clean_llm_json
-from services.models import MODEL_RESOLVER
+from api.analysis_helpers import _clean_llm_json
+from services.llm.interactions_client import call_interaction
 
 TABLE_LABEL_PATTERN = re.compile(r"^\s*(?:Table|Tbl\.?)\s*(\d+[A-Za-z]?)\b", re.IGNORECASE)
 
@@ -183,11 +184,16 @@ async def _repair_with_vlm(candidate: dict[str, Any], manifest: dict[str, Any], 
         "response_format": {"rows": [["cell"]], "confidence": "0.0-1.0"},
     }
     try:
-        result = await _call_gemini(
-            json.dumps(prompt, ensure_ascii=False),
-            model=MODEL_RESOLVER,
+        image_bytes = (paper_dir / page["raster_path"]).resolve().read_bytes()
+        result = await call_interaction(
+            [
+                {"type": "image", "data": base64.b64encode(image_bytes).decode("ascii"), "mime_type": "image/png"},
+                {"type": "text", "text": json.dumps(prompt, ensure_ascii=False)},
+            ],
+            lane="pipeline",
+            model="gemini-3.5-flash",
             thinking_level="minimal",
-            image_paths=[str((paper_dir / page["raster_path"]).resolve())],
+            store=False,
         )
         payload = json.loads(_clean_llm_json(result["text"]))
         return (_normalize_grid(payload.get("rows")), result["model"], float(payload.get("confidence") or 0.0))

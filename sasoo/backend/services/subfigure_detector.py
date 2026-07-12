@@ -13,8 +13,35 @@ from dataclasses import dataclass
 from PIL import Image
 import io
 
-from services.llm.gemini_client import GeminiClient, MODEL_FLASH
+from services.llm.interactions_client import call_interaction
 from models.paper import Figure, StructuredCaption, SubCaption
+
+_SUBFIGURE_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "has_subfigures": {"type": "boolean"},
+        "layout": {"type": "string", "enum": ["horizontal", "vertical", "grid", "single"]},
+        "confidence": {"type": "number"},
+        "subfigures": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string"},
+                    "bbox": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 4,
+                        "maxItems": 4,
+                    },
+                    "description": {"type": "string"},
+                },
+                "required": ["label", "bbox", "description"],
+            },
+        },
+    },
+    "required": ["has_subfigures", "layout", "confidence", "subfigures"],
+}
 
 
 @dataclass
@@ -80,23 +107,6 @@ If no sub-figures are detected, return:
 }
 ```"""
 
-    def __init__(self, gemini_client: Optional[GeminiClient] = None):
-        """
-        Initialize the sub-figure detector.
-
-        Args:
-            gemini_client: Optional pre-configured Gemini client
-        """
-        self._gemini_client = gemini_client
-        self._owns_client = False
-
-    async def _get_client(self) -> GeminiClient:
-        """Get or create Gemini client."""
-        if self._gemini_client is None:
-            self._gemini_client = GeminiClient()
-            self._owns_client = True
-        return self._gemini_client
-
     async def detect_subfigures(
         self,
         figure: Figure
@@ -110,8 +120,6 @@ If no sub-figures are detected, return:
         Returns:
             SubFigureDetectionResult with detected boundaries
         """
-        client = await self._get_client()
-
         # Read and encode image
         image_path = Path(figure.image_path)
         if not image_path.exists():
@@ -134,19 +142,22 @@ If no sub-figures are detected, return:
         with Image.open(image_path) as img:
             img_width, img_height = img.size
 
-        # Call Gemini with vision
+        # Call Gemini with vision via the Interactions API
         try:
-            response = await client.generate_with_image(
-                prompt=self.DETECTION_PROMPT,
-                image_base64=image_base64,
-                image_mime_type="image/png",
-                model=MODEL_FLASH,  # Fast and cheap for this task
-                phase="subfigure_detection"
+            result = await call_interaction(
+                [
+                    {"type": "image", "data": image_base64, "mime_type": "image/png"},
+                    {"type": "text", "text": self.DETECTION_PROMPT},
+                ],
+                lane="pipeline",
+                model="gemini-3.5-flash",
+                thinking_level="minimal",
+                store=False,
+                response_schema=_SUBFIGURE_RESPONSE_SCHEMA,
             )
 
             # Parse JSON response
-            result = self._parse_response(response, figure.figure_id)
-            return result
+            return self._parse_response(result["text"], figure.figure_id)
 
         except Exception as e:
             return SubFigureDetectionResult(
@@ -275,9 +286,3 @@ If no sub-figures are detected, return:
                 ))
 
             return extracted_figures
-
-    async def close(self):
-        """Cleanup resources."""
-        if self._owns_client and self._gemini_client:
-            # GeminiClient doesn't have async close, but we can clean up
-            self._gemini_client = None

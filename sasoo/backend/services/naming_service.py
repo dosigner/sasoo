@@ -1,7 +1,8 @@
 """
 Sasoo - Naming Service
-Uses Gemini 3.0 Flash (minimal thinking) to generate human-readable names
-for paper folders, figures, and PaperBanana illustrations.
+Uses Gemini 3.1 Flash Lite (minimal thinking) via the Interactions API to
+generate human-readable names for paper folders, figures, and PaperBanana
+illustrations.
 
 Fallback: UUID-based naming if Gemini fails.
 """
@@ -14,7 +15,27 @@ import re
 import uuid
 from typing import Optional
 
+from services.llm.interactions_client import call_interaction
+
 logger = logging.getLogger(__name__)
+
+# call_interaction() defaults to a Korean-forcing system instruction, but
+# naming prompts require short ASCII/CamelCase identifiers (filesystem-safe
+# names) — override it so existing response language/format is preserved.
+_NAMING_SYSTEM_INSTRUCTION = (
+    "You generate short, filesystem-safe identifiers for research paper "
+    "assets (folder names, figure filenames, illustration filenames). "
+    "Follow the formatting rules in the user prompt exactly and respond "
+    "only in the exact format requested. Do not add explanations, and do "
+    "not translate the identifiers into Korean or any other language."
+)
+
+# Moves the JSON array skeleton that generate_figure_names' prompt already
+# requests into a response_schema, replacing response_mime_type="application/json".
+_FIGURE_NAMES_RESPONSE_SCHEMA = {
+    "type": "array",
+    "items": {"type": "string"},
+}
 
 
 async def generate_folder_name(
@@ -33,9 +54,6 @@ async def generate_folder_name(
     Falls back to UUID-based name on failure.
     """
     try:
-        from services.llm.gemini_client import GeminiClient, MODEL_FLASH
-
-        client = GeminiClient()
         prompt = (
             "Generate a short, filesystem-safe folder name for this research paper.\n\n"
             f"Title: {title}\n"
@@ -54,13 +72,15 @@ async def generate_folder_name(
             "Return ONLY the folder name string, nothing else."
         )
 
-        response = await client._call(
-            model=MODEL_FLASH,
-            contents=prompt,
+        result = await call_interaction(
+            prompt,
+            lane="pipeline",
+            model="gemini-3.1-flash-lite",
+            system_instruction=_NAMING_SYSTEM_INSTRUCTION,
             thinking_level="minimal",
-            phase="naming",
+            store=False,
         )
-        raw_name = client._response_text(response).strip()
+        raw_name = result["text"].strip()
 
         # Sanitize: remove quotes, backticks, newlines
         raw_name = raw_name.strip('`"\'')
@@ -95,10 +115,6 @@ async def generate_figure_names(
         return []
 
     try:
-        from services.llm.gemini_client import GeminiClient, MODEL_FLASH
-
-        client = GeminiClient()
-
         figures_desc = "\n".join(
             f"- Figure '{f.get('figure_num', '?')}': {f.get('caption', 'no caption')}"
             for f in captions_and_pages
@@ -117,26 +133,28 @@ async def generate_figure_names(
             "Example: [\"fig1_sem_cross_section\", \"fig2_transmission_spectrum\"]"
         )
 
-        response = await client._call(
-            model=MODEL_FLASH,
-            contents=prompt,
+        result = await call_interaction(
+            prompt,
+            lane="pipeline",
+            model="gemini-3.1-flash-lite",
+            system_instruction=_NAMING_SYSTEM_INSTRUCTION,
             thinking_level="minimal",
-            phase="naming",
-            response_mime_type="application/json",
+            store=False,
+            response_schema=_FIGURE_NAMES_RESPONSE_SCHEMA,
         )
-        text = client._response_text(response).strip()
+        text = result["text"].strip()
 
         # Parse JSON array
         names = json.loads(text)
         if isinstance(names, list) and len(names) == len(captions_and_pages):
             # Sanitize each name
-            result = []
+            sanitized_names: list[str] = []
             for name in names:
                 safe = re.sub(r'[^\w]', '_', str(name).lower())
                 safe = re.sub(r'_+', '_', safe).strip('_')
-                result.append(safe if safe else f"fig{len(result)+1}")
-            logger.info("Generated %d figure names", len(result))
-            return result
+                sanitized_names.append(safe if safe else f"fig{len(sanitized_names)+1}")
+            logger.info("Generated %d figure names", len(sanitized_names))
+            return sanitized_names
 
     except Exception as exc:
         logger.warning("Figure name generation failed, using fallback: %s", exc)
@@ -157,9 +175,6 @@ async def generate_paperbanana_name(
     Falls back to sanitized title on failure.
     """
     try:
-        from services.llm.gemini_client import GeminiClient, MODEL_FLASH
-
-        client = GeminiClient()
         prompt = (
             "Generate a short, descriptive filename for this scientific illustration.\n\n"
             f"Title: {title}\n"
@@ -172,13 +187,15 @@ async def generate_paperbanana_name(
             "Return ONLY the filename string, nothing else."
         )
 
-        response = await client._call(
-            model=MODEL_FLASH,
-            contents=prompt,
+        result = await call_interaction(
+            prompt,
+            lane="pipeline",
+            model="gemini-3.1-flash-lite",
+            system_instruction=_NAMING_SYSTEM_INSTRUCTION,
             thinking_level="minimal",
-            phase="naming",
+            store=False,
         )
-        raw = client._response_text(response).strip().strip('`"\'').split('\n')[0]
+        raw = result["text"].strip().strip('`"\'').split('\n')[0]
         sanitized = re.sub(r'[^\w]', '_', raw.lower())
         sanitized = re.sub(r'_+', '_', sanitized).strip('_')
 

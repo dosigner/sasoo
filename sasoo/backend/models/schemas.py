@@ -12,7 +12,6 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-from services.models import MODEL_FLASH_HQ
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +94,8 @@ class PaperUpdate(BaseModel):
     tags: Optional[str] = None
     notes: Optional[str] = None
     status: Optional[PaperStatus] = None
+    explanation_level: Optional[str] = None
+    analysis_focus: Optional[dict] = None
 
 
 class PaperResponse(BaseModel):
@@ -118,6 +119,10 @@ class PaperResponse(BaseModel):
     visual_state: VisualState = VisualState.PARTIAL
     visual_error: Optional[str] = None
     artifacts_ready: bool = False
+    explanation_level: Optional[str] = None
+    analysis_focus: Optional[str] = None
+    pdf_file_uri: Optional[str] = None
+    pdf_file_expires_at: Optional[str] = None
 
 
 class PaperListResponse(BaseModel):
@@ -431,9 +436,10 @@ class SettingsModel(BaseModel):
     language: str = "ko"           # ko | en
     theme: str = "light"           # light | dark
     max_concurrent_analyses: int = 3
-    gemini_model: str = MODEL_FLASH_HQ
     pdf_parser_mode: str = "java"
     extraction_pipeline_version: str = "resolver_v1"
+    research_context: str = ""
+    default_explanation_level: str = "masters"
 
     @field_validator("library_path", mode="before")
     @classmethod
@@ -456,9 +462,10 @@ class SettingsUpdate(BaseModel):
     language: Optional[str] = None
     theme: Optional[str] = None
     max_concurrent_analyses: Optional[int] = None
-    gemini_model: Optional[str] = None
     pdf_parser_mode: Optional[str] = None
     extraction_pipeline_version: Optional[str] = None
+    research_context: Optional[str] = None
+    default_explanation_level: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

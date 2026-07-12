@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom';
 import {
   Loader2,
 } from 'lucide-react';
@@ -59,10 +59,11 @@ export default function Settings() {
     language: 'ko',
     theme: 'light',
     max_concurrent_analyses: 3,
-    gemini_model: 'gemini-3.5-flash',
     pdf_parser_mode: 'java',
     extraction_pipeline_version: 'resolver_v1',
     paperbanana_profile: 'fast',
+    research_context: '',
+    default_explanation_level: 'masters',
   };
 
   const [baselineSettings, setBaselineSettings] = useState<SettingsType>(defaultSettings);
@@ -379,6 +380,15 @@ export default function Settings() {
         </div>
       )}
 
+      <Link
+        to="/profile"
+        className="mb-4 inline-flex items-center gap-1.5 text-sm text-accent transition-colors hover:text-accent-hover"
+      >
+        <AppIcon name="agents" className="w-4 h-4" />
+        {S.settings.openProfileLink}
+        <AppIcon name="arrow-right" className="w-3.5 h-3.5" />
+      </Link>
+
       <div className="space-y-4">
         <SettingPanel
           kicker={S.settings.sectionCurrent}
@@ -451,6 +461,15 @@ export default function Settings() {
                 {S.settings.getKeyAt('')}
               </p>
             </div>
+          </div>
+        </SettingPanel>
+
+        <SettingPanel
+          kicker={S.settings.sectionEdit}
+          title={S.settings.imageSection}
+          description={S.settings.imageSectionDesc}
+        >
+          <div className="space-y-4">
 
             <div>
               <div className="flex items-center gap-2 mb-1.5">

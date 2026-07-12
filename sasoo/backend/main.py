@@ -143,7 +143,7 @@ app = FastAPI(
         "Backend API for Sasoo, an AI Co-Scientist desktop application "
         "that analyzes research papers using a 4-phase engineering analysis strategy "
         "(Screening -> Visual Verification -> Recipe Extraction -> Deep Dive) "
-        "powered by Gemini (3.1 Pro / 3.5 Flash / 3.1 Flash-Lite)."
+        "powered by the Gemini API (Interactions)."
     ),
     version="0.6.7",
     lifespan=lifespan,
@@ -185,11 +185,13 @@ get_library_root().mkdir(parents=True, exist_ok=True)
 
 from api.papers import router as papers_router              # noqa: E402
 from api.analysis_routes import router as analysis_router   # noqa: E402
+from api.analysis_routes import rewrite_router              # noqa: E402
 from api.settings import router as settings_router          # noqa: E402
 from api.agents import router as agents_router              # noqa: E402
 
 app.include_router(papers_router)
 app.include_router(analysis_router)
+app.include_router(rewrite_router)
 app.include_router(settings_router)
 app.include_router(agents_router)
 

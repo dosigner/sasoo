@@ -14,13 +14,20 @@ export const S = {
     subtitle: 'Research archive',
     home: '홈',
     upload: '아카이브 시작',
-    agents: '에이전트 편성',
     library: '연구 보관함',
+    profile: '연구자 프로필',
     settings: '시스템 제어',
     workbench: '워크벤치',
     collapse: '접기',
     expandSidebar: '사이드바 펼치기',
     collapseSidebar: '사이드바 접기',
+  },
+
+  // ── Profile (연구자 프로필) ──
+  profile: {
+    heroKicker: 'Researcher profile',
+    sectionTitle: '기본 눈높이와 연구 배경',
+    sectionDesc: '여기서 정한 값이 새 논문 분석의 기본값으로 쓰여요.',
   },
 
   // ── Home ──
@@ -67,6 +74,15 @@ export const S = {
     outputChat: '질문 기록',
     domainConfirm: '담당 분야 확인',
     domainConfirmHelp: '감지한 분야가 맞는지 확인하고 필요하면 다른 에이전트로 넘기세요.',
+    analysisOptionsTitle: '분석 옵션',
+    analysisOptionsOpenLabel: '분석 옵션 펼치기',
+    analysisOptionsCloseLabel: '분석 옵션 접기',
+    analysisOptionsHint: '초점과 설명 수준을 지금 맞추면 첫 분석부터 반영돼요. (선택)',
+    focusChipsLabel: '분석 초점',
+    focusChipsHelp: '관심 있는 부분을 골라요. 여러 개 골라도 되고, 안 골라도 돼요.',
+    focusNoteLabel: '이 논문에서 특별히 궁금한 점',
+    focusNoteHelper: '비워두면 균형 있게 분석해요',
+    focusNotePlaceholder: '예: 3장의 손실 함수 유도 과정이 궁금해요',
     retry: '다시 시도',
     clear: '선택 해제',
     onlyPdf: 'PDF 파일만 올릴 수 있어요.',
@@ -143,6 +159,12 @@ export const S = {
   pdf: {
     loading: 'PDF를 불러오고 있어요...',
     loadFailed: 'PDF를 불러오지 못했어요',
+  },
+
+  // ── Explanation Level Slider ──
+  explanationLevel: {
+    title: '설명 수준',
+    help: '슬라이더를 움직여 초등학생부터 박사생까지 원하는 눈높이로 설명을 맞춰요.',
   },
 
   // ── Library ──
@@ -236,6 +258,14 @@ export const S = {
     openaiHelp: 'GPT 이미지 생성(figure_gen)처럼 OpenAI 모델을 쓸 때 필요해요.',
     claudeHelp: 'Claude Sonnet으로 심층 분석할 때 필요해요.',
     getKeyAt: (name: string) => `${name}에서 키를 발급받으세요.`,
+    // Researcher profile
+    researcherProfile: '연구자 프로필',
+    researcherProfileDesc: '분석 결과의 눈높이와 관점을 맞춰요.',
+    researchContext: '연구 분야 소개',
+    researchContextPlaceholder: '예: 페로브스카이트 태양전지 소자 물리를 연구해요',
+    researchContextHelper: '한 줄이면 충분해요. 분석 결과가 내 분야 관점으로 이어져요.',
+    defaultLevel: '기본 설명 수준',
+    openProfileLink: '연구자 프로필 설정 열기',
     // Library
     librarySection: '보관함 경로',
     libraryPath: '논문 저장 경로',
@@ -269,6 +299,8 @@ export const S = {
     keyUnreadableHelp: '저장한 키를 풀지 못했어요. 암호화 키가 사라졌거나, 다른 환경에서 저장한 키예요. 새 키를 입력하면 덮어써요.',
     enterNewKey: '새 키를 입력해 주세요...',
     // Image generation
+    imageSection: '이미지 생성',
+    imageSectionDesc: 'OpenAI 키와 도해(figure) 생성 옵션을 관리해요.',
     imageProvider: '도해 생성 모델',
     imageProviderOpenai: 'gpt-image-2 (기본)',
     imageProviderGemini: 'Nano Banana 2 (Gemini)',
@@ -438,6 +470,9 @@ export const S = {
     phase5Desc: '프로세스 다이어그램과 시각 요약을 만들어요',
     analyzingDots: '분석 중...',
     loadingResults: '결과를 불러오고 있어요...',
+    rewriteLevel: '설명 수준',
+    rewriting: '수준에 맞게 다시 쓰는 중...',
+    rewriteFailed: '재작성하지 못했어요. 다시 시도해 주세요.',
     // formatPhaseAsMarkdown labels
     md: {
       domain: '분야',
@@ -628,6 +663,8 @@ export const S = {
     csvExported: 'CSV 파일을 내려받았어요',
     copied: '클립보드에 복사했어요',
     domainUpdated: '분야를 바꿨어요',
+    agentChanged: '담당 에이전트를 바꿨어요',
+    agentChangeFailed: '에이전트를 바꾸지 못했어요',
   },
 
   // ── Error / Fallback ──

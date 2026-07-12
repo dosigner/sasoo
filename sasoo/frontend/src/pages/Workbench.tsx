@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   getPaper,
   getPdfUrl,
+  updatePaper,
   type Paper,
   type PaperBananaProfile,
   type PdfNavigationRequest,
@@ -17,7 +18,7 @@ import type { CitationTarget } from '@/components/ChatPanel';
 import { ContentState, Modal, Select } from '@/components/ui';
 import { useWorkbenchLayout } from '@/hooks/useWorkbenchLayout';
 import { useWorkbenchAnalysisControls } from '@/hooks/useWorkbenchAnalysisControls';
-import { getAgentMeta } from '@/lib/agents';
+import { getAgentMeta, getAllAgents, type AgentMeta } from '@/lib/agents';
 import { AppIcon } from '@/components/icons';
 
 const ANALYSIS_PROFILE_OPTIONS: PaperBananaProfile[] = ['fast', 'balanced', 'quality'];
@@ -52,6 +53,7 @@ export default function Workbench() {
   const [citationFocus, setCitationFocus] = useState<CitationFocus | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatDraft, setChatDraft] = useState('');
+  const [agentChanging, setAgentChanging] = useState(false);
 
   const {
     status,
@@ -191,6 +193,20 @@ export default function Workbench() {
     }
   }, [handleStartAnalysis, toast]);
 
+  const onSelectAgent = useCallback(async (agent: AgentMeta) => {
+    if (!paper || agent.domain === paper.domain) return;
+    setAgentChanging(true);
+    try {
+      const updated = await updatePaper(paper.id, { domain: agent.domain });
+      setPaper(updated);
+      toast.success(S.toast.agentChanged);
+    } catch {
+      toast.error(S.toast.agentChangeFailed);
+    } finally {
+      setAgentChanging(false);
+    }
+  }, [paper, toast]);
+
   const onCancelCurrentAnalysis = useCallback(async () => {
     try {
       await handleCancelAnalysis();
@@ -256,7 +272,7 @@ export default function Workbench() {
       <Modal open={showAnalysisConfirm} onClose={() => setShowAnalysisConfirm(false)}>
         <h3 className="mb-2 text-lg font-semibold text-fg">분석을 시작할까요?</h3>
         <p className="mb-4 text-sm text-fg-muted">
-          논문 분석에 Gemini Pro + Claude Sonnet API를 사용해요.
+          논문 분석에 Gemini API를 사용해요.
           예상 비용: <span className="font-medium text-accent">$0.5 ~ $2.0</span> / 논문
         </p>
         <div className="mb-4">
@@ -299,6 +315,10 @@ export default function Workbench() {
         domain={paper.domain}
         agentLabel={agentMeta?.nameKo || agentMeta?.name || paper.agent_used}
         agentColor={agentMeta?.color}
+        agents={getAllAgents()}
+        currentAgentKey={paper.agent_used}
+        agentChanging={agentChanging}
+        onSelectAgent={(agent) => void onSelectAgent(agent)}
         pdfCollapsed={pdfCollapsed}
         activeSplitPreset={activePreset}
         runStateLabel={statusSummary.runStateLabel}
@@ -381,6 +401,7 @@ export default function Workbench() {
                 isRunning={isRunning}
                 agentName={paper.agent_used}
                 paperId={paperId}
+                paperLevel={paper.explanation_level}
                 terminalState={terminalState}
                 citationFocus={citationFocus}
                 onJumpToFigurePage={(figure) => {

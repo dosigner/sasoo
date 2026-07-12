@@ -65,9 +65,8 @@ _PLANNER_SYSTEM = (
 
 async def _plan_description(viz_target: dict) -> str:
     """Gemini 3.1-pro로 렌더러에 넘길 상세 기술서를 만든다."""
-    from services.llm.gemini_client import GeminiClient
+    from services.llm.interactions_client import call_interaction
 
-    client = GeminiClient()
     prompt = (
         f"Illustration request:\n"
         f"Title: {viz_target.get('title', '')}\n"
@@ -75,14 +74,15 @@ async def _plan_description(viz_target: dict) -> str:
         f"Context:\n{viz_target.get('description', '')[:6000]}\n\n"
         "Write the final image description now."
     )
-    response = await client._call(
+    result = await call_interaction(
+        prompt,
+        lane="pipeline",
         model=MODEL_PRO,
-        contents=prompt,
         system_instruction=_PLANNER_SYSTEM,
         thinking_level="medium",
-        phase="figure_planner",
+        store=False,
     )
-    return client._response_text(response).strip()
+    return str(result.get("text", "")).strip()
 
 
 # ---------------------------------------------------------------------------
