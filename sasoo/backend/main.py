@@ -109,6 +109,20 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         print(f"[Sasoo] Warning: Could not load API keys from DB: {exc}")
 
+    # Load the PDF visual-engine preference from DB into env. odl_parser's
+    # _resolve_stage_engine reads SASOO_PDF_VISUAL_ENGINE at call time; seeding
+    # it here applies the saved choice from the first parse of this session.
+    # (A fresh DB has no row yet; the resolver's own default of gemini stands.)
+    try:
+        from models.database import fetch_one
+        row = await fetch_one("SELECT value FROM settings WHERE key = 'pdf_visual_engine'")
+        engine = str((row or {}).get("value") or "").strip().lower()
+        if engine in {"gemini", "odl"}:
+            os.environ["SASOO_PDF_VISUAL_ENGINE"] = engine
+            print(f"[Sasoo] PDF visual engine preference loaded: {engine}")
+    except Exception as exc:
+        print(f"[Sasoo] Warning: Could not load PDF visual engine preference: {exc}")
+
     # 프로세스가 중간에 죽으면 papers.status가 'analyzing'으로 영구 고착된다.
     # 기동 시점에 살아있는 분석은 없으므로 전부 error로 정리한다.
     try:

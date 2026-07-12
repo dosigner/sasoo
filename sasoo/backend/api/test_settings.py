@@ -1,6 +1,9 @@
+import os
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
+
+from fastapi import HTTPException
 
 from api import settings
 from models.schemas import SettingsUpdate
@@ -163,6 +166,88 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response.research_context, "페로브스카이트 태양전지 소자 물리")
         self.assertEqual(response.default_explanation_level, "phd")
+
+
+class PdfVisualEngineSettingTests(unittest.IsolatedAsyncioTestCase):
+    """
+    The Figure-extraction (visual) engine choice: gemini (paid, high quality)
+    or odl (free). Saving it must persist to storage AND update
+    SASOO_PDF_VISUAL_ENGINE, which odl_parser._resolve_stage_engine reads at
+    call time so the next parse honours it without a restart.
+    """
+
+    def setUp(self) -> None:
+        # Isolate the process env var these tests touch.
+        self._saved_env = os.environ.get("SASOO_PDF_VISUAL_ENGINE")
+        os.environ.pop("SASOO_PDF_VISUAL_ENGINE", None)
+
+    def tearDown(self) -> None:
+        if self._saved_env is None:
+            os.environ.pop("SASOO_PDF_VISUAL_ENGINE", None)
+        else:
+            os.environ["SASOO_PDF_VISUAL_ENGINE"] = self._saved_env
+
+    async def test_default_visual_engine_is_gemini(self) -> None:
+        rows = [
+            {"key": "library_path", "value": "/tmp/sasoo-library"},
+            {"key": "pdf_parser_mode", "value": "java"},
+            {"key": "extraction_pipeline_version", "value": "resolver_v1"},
+            {"key": "extraction_pipeline_force_fallback", "value": "false"},
+        ]
+
+        with (
+            patch("api.settings._ensure_defaults", new=AsyncMock()),
+            patch("api.settings.fetch_all", new=AsyncMock(return_value=rows)),
+            patch("api.settings._set_setting", new=AsyncMock()),
+        ):
+            response = await settings.get_settings()
+
+        # Absent from storage -> the schema/route default (gemini) is reported.
+        self.assertEqual(response.pdf_visual_engine, "gemini")
+
+    async def test_update_visual_engine_persists_and_updates_env(self) -> None:
+        store: dict[str, str] = {
+            "library_path": "/tmp/sasoo-library",
+            "pdf_parser_mode": "java",
+            "extraction_pipeline_version": "resolver_v1",
+            "extraction_pipeline_force_fallback": "false",
+            "pdf_visual_engine": "gemini",
+        }
+
+        async def fake_set_setting(key: str, value: str) -> None:
+            store[key] = value
+
+        async def fake_fetch_all(*args, **kwargs):
+            return [{"key": k, "value": v} for k, v in store.items()]
+
+        with (
+            patch("api.settings._ensure_defaults", new=AsyncMock()),
+            patch("api.settings.fetch_all", new=AsyncMock(side_effect=fake_fetch_all)),
+            patch("api.settings._set_setting", new=AsyncMock(side_effect=fake_set_setting)),
+        ):
+            response = await settings.update_settings(
+                SettingsUpdate(pdf_visual_engine="odl")
+            )
+
+        self.assertEqual(store["pdf_visual_engine"], "odl")
+        self.assertEqual(response.pdf_visual_engine, "odl")
+        # The whole point: env is live for the next parse, no restart.
+        self.assertEqual(os.environ.get("SASOO_PDF_VISUAL_ENGINE"), "odl")
+
+    async def test_update_visual_engine_rejects_unknown_value(self) -> None:
+        with (
+            patch("api.settings._ensure_defaults", new=AsyncMock()),
+            patch("api.settings._set_setting", new=AsyncMock()) as set_setting,
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                await settings.update_settings(
+                    SettingsUpdate(pdf_visual_engine="claude")
+                )
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        # Rejected before any write, and env is left untouched.
+        set_setting.assert_not_awaited()
+        self.assertIsNone(os.environ.get("SASOO_PDF_VISUAL_ENGINE"))
 
 
 if __name__ == "__main__":

@@ -438,6 +438,9 @@ class SettingsModel(BaseModel):
     max_concurrent_analyses: int = 3
     pdf_parser_mode: str = "java"
     extraction_pipeline_version: str = "resolver_v1"
+    # Figure 추출(visual) 단계 엔진: gemini(고품질·유료) | odl(무료). text 단계는
+    # UI에 노출하지 않고 env(SASOO_PDF_TEXT_ENGINE)로만 조정한다.
+    pdf_visual_engine: str = "gemini"
     research_context: str = ""
     default_explanation_level: str = "masters"
 
@@ -464,6 +467,7 @@ class SettingsUpdate(BaseModel):
     max_concurrent_analyses: Optional[int] = None
     pdf_parser_mode: Optional[str] = None
     extraction_pipeline_version: Optional[str] = None
+    pdf_visual_engine: Optional[str] = None
     research_context: Optional[str] = None
     default_explanation_level: Optional[str] = None
 
