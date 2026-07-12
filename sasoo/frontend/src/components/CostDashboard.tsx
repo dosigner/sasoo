@@ -12,14 +12,17 @@ import { S } from '@/lib/strings';
 // ---------------------------------------------------------------------------
 // Local strings — CostDashboard C1 재구성 전용 신규 문자열.
 // strings.ts가 다른 세션에서 편집 중(dirty)이라 여기 로컬로 둔다.
-// TODO(strings.ts 이관 대상): L.thisMonthShort / L.heroSubtitle / L.deltaDown /
-// L.deltaUp / L.deltaFlat / L.reviewQueueWaiting / L.callsSuffix / L.itemsSuffix
+// TODO(strings.ts 이관 대상): L.subtitleThisMonth / L.subtitlePapersMid /
+// L.deltaDown / L.deltaUp / L.deltaFlat / L.reviewQueueWaiting /
+// L.callsSuffix / L.itemsSuffix
 // ---------------------------------------------------------------------------
 
 const L = {
-  thisMonthShort: '이번 달',
-  heroSubtitle: (papers: number, avg: string) =>
-    `${L.thisMonthShort} · 논문 ${papers}편 분석 · 편당 평균 ${avg}`,
+  // 히어로 부제 텍스트 조각 — 논문 수·편당 평균 수치는 JSX에서
+  // font-mono tabular-nums span으로 감싸 조립한다 (전체 표시 문구는
+  // "이번 달 · 논문 N편 분석 · 편당 평균 $X.XX"로 기존과 동일).
+  subtitleThisMonth: '이번 달 · 논문 ',
+  subtitlePapersMid: '편 분석 · 편당 평균 ',
   deltaDown: (pct: number) => `▼ ${pct}% 지난달보다 적게`,
   deltaUp: (pct: number) => `▲ ${pct}% 지난달보다 많이`,
   deltaFlat: '지난달과 동일',
@@ -112,6 +115,9 @@ function MonthBars({
             {/* Tooltip */}
             <div className="absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 group-hover:block">
               <div className="whitespace-nowrap rounded border border-border bg-surface px-2 py-1 shadow-lg">
+                <div className="text-2xs text-fg-muted">
+                  {S.cost.monthLabel(month.month.slice(5))}
+                </div>
                 <div className="text-2xs font-mono tabular-nums text-fg-secondary">
                   {formatCurrency(month.total_usd)}
                 </div>
@@ -308,7 +314,12 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
               )}
             </div>
             <div className="mt-1 text-xs text-fg-muted">
-              {L.heroSubtitle(hero.papersThisMonth, formatCurrency(hero.avgThisMonth))}
+              {L.subtitleThisMonth}
+              <span className="font-mono tabular-nums">{hero.papersThisMonth}</span>
+              {L.subtitlePapersMid}
+              <span className="font-mono tabular-nums">
+                {formatCurrency(hero.avgThisMonth)}
+              </span>
             </div>
           </div>
 
