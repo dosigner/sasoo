@@ -183,5 +183,85 @@ class PlatformScopedKeyTests(unittest.TestCase):
         return row[0] if row else ""
 
 
+class LibraryRootCacheTests(unittest.TestCase):
+    """
+    get_library_root() runs inside async request handlers on nearly every
+    endpoint, and each uncached call opens a synchronous SQLite connection on
+    the event loop. These tests pin the TTL cache that keeps that to at most
+    one read per TTL window -- and pin that the cache can be bypassed exactly
+    two ways: explicit invalidation and TTL expiry.
+    """
+
+    def _configure(self, root: Path, path: str) -> None:
+        conn = sqlite3.connect(str(root / "sasoo.db"))
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            ("library_path_darwin", path),
+        )
+        conn.commit()
+        conn.close()
+
+    def test_second_call_within_ttl_skips_sqlite(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._configure(root, "/Users/dongj/sasoo/library")
+            with (
+                patch.object(database, "_get_app_data_root", lambda: root),
+                patch.object(database.sys, "platform", "darwin"),
+            ):
+                first = database.get_library_root()
+                with patch.object(
+                    database.sqlite3,
+                    "connect",
+                    side_effect=AssertionError("sqlite reopened within TTL"),
+                ):
+                    second = database.get_library_root()
+
+        self.assertEqual(first, Path("/Users/dongj/sasoo/library"))
+        self.assertEqual(second, first)
+
+    def test_invalidate_forces_reread(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._configure(root, "/Users/dongj/old/library")
+            with (
+                patch.object(database, "_get_app_data_root", lambda: root),
+                patch.object(database.sys, "platform", "darwin"),
+            ):
+                self.assertEqual(
+                    database.get_library_root(), Path("/Users/dongj/old/library")
+                )
+                self._configure(root, "/Users/dongj/new/library")
+                database.invalidate_library_root_cache()
+                self.assertEqual(
+                    database.get_library_root(), Path("/Users/dongj/new/library")
+                )
+
+    def test_ttl_expiry_forces_reread(self) -> None:
+        clock = {"t": 0.0}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._configure(root, "/Users/dongj/old/library")
+            with (
+                patch.object(database, "_get_app_data_root", lambda: root),
+                patch.object(database.sys, "platform", "darwin"),
+                patch.object(
+                    database.time, "monotonic", side_effect=lambda: clock["t"]
+                ),
+            ):
+                self.assertEqual(
+                    database.get_library_root(), Path("/Users/dongj/old/library")
+                )
+                self._configure(root, "/Users/dongj/new/library")
+                clock["t"] = 100.0
+                self.assertEqual(
+                    database.get_library_root(), Path("/Users/dongj/new/library")
+                )
+
+
 if __name__ == "__main__":
     unittest.main()

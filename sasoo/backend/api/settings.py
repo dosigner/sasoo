@@ -17,6 +17,7 @@ from models.database import (
     fetch_one,
     get_db,
     get_library_root,
+    invalidate_library_root_cache,
     library_path_setting_key,
     usable_library_path,
 )
@@ -63,6 +64,9 @@ async def _ensure_library_path(db) -> None:
     default. So a Windows path found on a Mac -- or a stale value glued onto
     the working directory by an older build -- is replaced rather than used.
     """
+    # Resolve from a fresh read: comparing against a stale cache entry would
+    # "repair" a legitimate value someone just wrote to the DB out-of-band.
+    invalidate_library_root_cache()
     key = library_path_setting_key()
     row = await fetch_one("SELECT value FROM settings WHERE key = ?", (key,))
     stored = str((row or {}).get("value") or "").strip()
@@ -244,6 +248,7 @@ async def update_settings(update: SettingsUpdate):
         # Stored per platform, so a Mac and a Windows machine sharing this
         # settings database each keep their own.
         await _set_setting(library_path_setting_key(), str(new_path))
+        invalidate_library_root_cache()
 
     for key, value in update_data.items():
         # Convert booleans and enums to string for storage
