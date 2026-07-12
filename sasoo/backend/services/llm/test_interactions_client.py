@@ -10,26 +10,46 @@ from services.llm.interactions_client import call_interaction, upload_pdf_for_pa
 import services.llm.interactions_client as interactions_client
 
 
-def _fake_interaction(text="결과", interaction_id="int_1"):
+def _fake_interaction(text="결과", interaction_id="int_1", total_thought_tokens=0):
     return SimpleNamespace(
         id=interaction_id,
         output_text=text,
-        usage=SimpleNamespace(total_input_tokens=100, total_output_tokens=50),
+        usage=SimpleNamespace(
+            total_input_tokens=100,
+            total_output_tokens=50,
+            total_thought_tokens=total_thought_tokens,
+        ),
         status="completed",
     )
 
 
 def test_call_interaction_basic():
     fake_client = MagicMock()
-    fake_client.interactions.create.return_value = _fake_interaction()
+    fake_client.interactions.create.return_value = _fake_interaction(total_thought_tokens=50)
     with patch("services.llm.interactions_client._get_client", return_value=fake_client):
         result = asyncio.run(call_interaction("안녕", lane="pipeline"))
     assert result["text"] == "결과"
     assert result["interaction_id"] == "int_1"
     assert result["tokens_in"] == 100
+    # 라이브 실측: total_output_tokens는 thinking 미포함, 과금은 출력 단가로
+    # thinking 토큰도 청구되므로 tokens_out은 output+thought 합산값이어야 한다.
+    assert result["tokens_out"] == 100  # total_output_tokens(50) + total_thought_tokens(50)
+    assert result["tokens_thought"] == 50
     kwargs = fake_client.interactions.create.call_args.kwargs
     assert kwargs["model"] == "gemini-3.5-flash"
     assert set(kwargs.keys()) == {"model", "input", "system_instruction", "store"}
+
+
+def test_call_interaction_tokens_out_sums_output_and_thought_tokens():
+    """청구 기준: tokens_out은 total_output_tokens + total_thought_tokens여야 한다
+    (라이브 실측 — total_output_tokens는 thinking 토큰을 포함하지 않지만
+    Gemini는 thinking 토큰도 출력 단가로 과금한다)."""
+    fake_client = MagicMock()
+    fake_client.interactions.create.return_value = _fake_interaction(total_thought_tokens=762)
+    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+        result = asyncio.run(call_interaction("안녕"))
+    assert result["tokens_out"] == 50 + 762
+    assert result["tokens_thought"] == 762
 
 
 def test_call_interaction_no_disallowed_params_with_thinking_level():
@@ -116,7 +136,9 @@ def test_stream_interaction_yields_tokens_then_done():
     done = result[2]
     assert done["type"] == "done"
     assert done["tokens_in"] == 11
-    assert done["tokens_out"] == 90
+    # 라이브 실측: total_output_tokens는 thinking 미포함, 과금은 출력 단가로
+    # thinking 토큰도 청구되므로 tokens_out은 output+thought 합산값이어야 한다.
+    assert done["tokens_out"] == 90 + 245
     assert done["tokens_thought"] == 245
     assert done["interaction_id"] == "int_stream"
     # stream=True 전달 + 금지 파라미터 부재
@@ -125,6 +147,27 @@ def test_stream_interaction_yields_tokens_then_done():
     assert kwargs["model"] == "gemini-3.5-flash"
     for disallowed in ("temperature", "top_p", "top_k", "thinking_budget", "generation_config"):
         assert disallowed not in kwargs
+
+
+def test_stream_interaction_tokens_out_sums_output_and_thought_tokens():
+    """청구 기준: done의 tokens_out은 total_output_tokens + total_thought_tokens여야 한다
+    (라이브 실측 — total_output_tokens는 thinking 토큰을 포함하지 않지만
+    Gemini는 thinking 토큰도 출력 단가로 과금한다)."""
+    events = [
+        _delta_event("본문"),
+        _completed_event(tokens_in=5, tokens_out=358, tokens_thought=762, iid="int_live"),
+    ]
+    fake_client = MagicMock()
+    fake_client.interactions.create.return_value = iter(events)
+
+    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+        result = asyncio.run(_collect(interactions_client.stream_interaction("hi")))
+
+    done = result[-1]
+    assert done["type"] == "done"
+    assert done["tokens_out"] == 358 + 762
+    assert done["tokens_thought"] == 762
+    assert done["interaction_id"] == "int_live"
 
 
 def test_stream_interaction_ignores_non_text_events():
