@@ -82,7 +82,11 @@ export default function Home() {
         </div>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           {QUICK_ACTIONS.map((action) => (
-            <Link key={action.to} to={action.to} className="card-hover flex items-center gap-3">
+            <Link
+              key={action.to}
+              to={action.to}
+              className="card-hover flex items-center gap-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+            >
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control border border-border bg-bg">
                 <AppIcon name={action.icon} className="h-4 w-4 text-fg-secondary" />
               </span>
@@ -148,8 +152,8 @@ export default function Home() {
             <div className="mt-1.5 font-mono text-lg text-fg">${monthCost.toFixed(2)}</div>
           </div>
           <Link
-            to="/settings"
-            className="shrink-0 text-sm text-accent transition-colors hover:text-accent-hover"
+            to="/settings#cost"
+            className="shrink-0 text-sm text-accent transition-colors hover:text-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
           >
             {S.home.costOpenSettings}
           </Link>

@@ -107,7 +107,7 @@ DESIGN.md는 **방향만 채택하고 구체값은 기각**한다. frontmatter(M
 | 데이터 리스트 | 행 구분 1px `--border`, 헤더는 label-caps + `--fg-muted` | "blueprint" 수평선 문법. 헤더는 콘텐츠가 아니므로 muted |
 | Citation Chip | 현행 유지: `--accent`/10 배경 + `--accent` 텍스트 + mono | DESIGN.md는 정적 회색 칩을 가정했으나 실제로는 클릭백 액티브 요소 — "accent=active state"라는 DESIGN.md 자신의 원칙에 현행이 더 부합 |
 | Analysis Progress | 4px `--accent` 바 (결정형 진행에 한정) | discrete 상태는 기존 phase-dot(상태색) 담당 — 의미 충돌 없음 |
-| 사이드바 | 13rem 펼침 / 4.5rem 접힘, 활성 항목 6px radius `--surface-hover` 하이라이트 | 260px은 범용 디폴트. 한글 라벨 4개엔 208px면 충분하고 PDF 3-패널 앱에서 52px는 콘텐츠 몫. 기존 `--sidebar-width: 16rem`은 13rem으로 정리 |
+| 사이드바 | 13rem 펼침 / 4.5rem 접힘, 활성 항목 6px radius `--accent`/10 배경 + `--accent` 텍스트 | 260px은 범용 디폴트. 한글 라벨 4개엔 208px면 충분하고 PDF 3-패널 앱에서 52px는 콘텐츠 몫. 기존 `--sidebar-width: 16rem`은 13rem으로 정리. 활성 상태는 accent로 표시(§5 "accent=활성 상태" 원칙과 일치) |
 
 ## 7. 테마 플립 구현 메모
 

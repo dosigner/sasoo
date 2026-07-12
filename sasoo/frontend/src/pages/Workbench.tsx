@@ -229,7 +229,6 @@ export default function Workbench() {
 
   const pdfUrl = getPdfUrl(String(paper.id));
   const paperId = id ?? String(paper.id);
-  const screeningCompleted = status?.phases.some((phase) => phase.phase === 'screening' && phase.status === 'completed') ?? false;
   const artifactStatus = {
     text_ready: paper.text_ready,
     visual_ready: paper.visual_ready,
@@ -418,7 +417,7 @@ export default function Workbench() {
           paperId={paperId}
           agentName={paper.agent_used}
           open={chatOpen}
-          ready={screeningCompleted}
+          ready={paper.text_ready}
           readyMessage={S.workbench.assistantWaiting}
           draft={chatDraft}
           starters={chatStarters}

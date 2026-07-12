@@ -1227,7 +1227,7 @@
 
   /* Citation click-back chip rendered inside chat markdown */
   .citation-chip {
-    @apply mx-0.5 inline cursor-pointer rounded-control border-0 bg-accent/10 px-1 py-0.5 align-baseline font-medium text-accent transition-colors;
+    @apply mx-0.5 inline cursor-pointer rounded-control border-0 bg-accent/10 px-1 py-0.5 align-baseline font-mono font-medium text-accent transition-colors;
   }
 
   .citation-chip:hover {

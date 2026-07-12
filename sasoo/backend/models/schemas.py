@@ -390,6 +390,13 @@ class MermaidResult(BaseModel):
     description: Optional[str] = None
 
 
+class MermaidRepairRequest(BaseModel):
+    """Client-reported parse failure asking the LLM to fix the diagram code."""
+    mermaid_code: str
+    error_message: str
+    viz_id: Optional[int] = None  # visualization item ordinal to persist into; None = don't persist
+
+
 # ---------------------------------------------------------------------------
 # Domain Classification
 # ---------------------------------------------------------------------------

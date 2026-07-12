@@ -4,6 +4,7 @@ import {
   MessageSquare,
   Send,
   Sparkles,
+  Square,
   Trash2,
   User,
   X,
@@ -19,6 +20,11 @@ import { detectCitations, type CitationType } from '@/lib/citations';
 
 const REMARK_PLUGINS = [remarkGfm, remarkMath];
 const REHYPE_PLUGINS = [rehypeKatex];
+
+// Tokens are routed to their own bubble by id, so two turns can never bleed
+// into each other the way appending to the tail of the array would.
+let messageSeq = 0;
+const nextMessageId = () => `msg-${(messageSeq += 1)}`;
 
 export interface CitationTarget {
   type: CitationType;
@@ -87,23 +93,27 @@ export default function ChatPanel({
   onCitationClick,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [streaming, setStreaming] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [totalCost, setTotalCost] = useState(0);
-  const [activeActionsIndex, setActiveActionsIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // Aborts the turn currently on the wire; queued turns have not started yet.
+  const abortRef = useRef<AbortController | null>(null);
+  const runningRef = useRef(false);
 
   const agent = agentName ? getAgentMeta(agentName) : null;
   const agentColor = agent?.color || '#5e6ad2';
   const hasMessages = messages.length > 0;
+  const busy = messages.some((msg) => msg.status === 'pending' || msg.status === 'streaming');
 
   useEffect(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    runningRef.current = false;
     setMessages([]);
-    setError(null);
     setTotalCost(0);
-    setActiveActionsIndex(null);
   }, [paperId]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   useEffect(() => {
     if (!open) return;
@@ -167,63 +177,93 @@ export default function ChatPanel({
     };
   }, [onCitationClick]);
 
-  const sendText = useCallback(async (rawText: string) => {
-    const text = rawText.trim();
-    if (!text || streaming || !ready) return;
+  // Runs one queued question to completion. Turns are serialized so each one
+  // sees the previous answer in its history; the composer stays open regardless.
+  const runTurn = useCallback(async (pending: ChatMessage, snapshot: ChatMessage[]) => {
+    runningRef.current = true;
+    const agentId = nextMessageId();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
-    onDraftChange('');
-    setError(null);
-    setActiveActionsIndex(null);
-    if (inputRef.current) inputRef.current.style.height = 'auto';
+    // `pending` is deliberately excluded: the backend appends the question as
+    // the final user turn, so including it here would send it to Gemini twice.
+    const history = snapshot
+      .slice(0, snapshot.indexOf(pending))
+      .filter((msg) => msg.status === 'done' && msg.content.trim().length > 0);
 
-    const userMsg: ChatMessage = { role: 'user', content: text };
-    const agentMsg: ChatMessage = { role: 'agent', content: '' };
-    setMessages((prev) => [...prev, userMsg, agentMsg]);
-    setStreaming(true);
+    setMessages((prev) => [
+      ...prev.map((msg) => (msg.id === pending.id ? { ...msg, status: 'done' as const } : msg)),
+      { id: agentId, role: 'agent' as const, content: '', status: 'streaming' as const },
+    ]);
 
     try {
-      const history = [...messages, userMsg];
-
       await chatWithAgent(
         paperId,
-        text,
+        pending.content,
         history,
         (token) => {
-          setMessages((prev) => {
-            const updated = [...prev];
-            const last = updated[updated.length - 1];
-            if (last?.role === 'agent') {
-              updated[updated.length - 1] = {
-                ...last,
-                content: last.content + token,
-              };
-            }
-            return updated;
-          });
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === agentId ? { ...msg, content: msg.content + token } : msg,
+            ),
+          );
         },
         (meta: ChatDoneMeta) => {
           setTotalCost((prev) => prev + meta.cost_usd);
-          setActiveActionsIndex((current) => current ?? messages.length + 1);
+          setMessages((prev) =>
+            prev.map((msg) => (msg.id === agentId ? { ...msg, status: 'done' as const } : msg)),
+          );
         },
-        (errMsg) => {
-          setError(errMsg);
-        },
+        controller.signal,
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Chat failed');
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last?.role === 'agent' && !last.content) return prev.slice(0, -1);
-        return prev;
-      });
+      const stopped = controller.signal.aborted;
+      const detail = err instanceof Error ? err.message : '답변을 받지 못했어요.';
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.id !== agentId) return msg;
+          if (stopped) return { ...msg, status: 'done' as const };
+          return { ...msg, status: 'error' as const, error: detail };
+        }),
+      );
     } finally {
-      setStreaming(false);
+      // A stream that ends without a `done` frame would otherwise stay
+      // 'streaming' forever and wedge the queue.
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === agentId && msg.status === 'streaming'
+            ? { ...msg, status: 'error' as const, error: '응답이 중간에 끊겼어요.' }
+            : msg,
+        ),
+      );
+      if (abortRef.current === controller) abortRef.current = null;
+      runningRef.current = false;
     }
-  }, [messages, onDraftChange, paperId, ready, streaming]);
+  }, [paperId]);
 
-  const handleSend = useCallback(async () => {
-    await sendText(draft);
-  }, [draft, sendText]);
+  // Drains the queue: picks up the next pending question whenever one is idle.
+  useEffect(() => {
+    if (runningRef.current) return;
+    const pending = messages.find((msg) => msg.role === 'user' && msg.status === 'pending');
+    if (!pending) return;
+    void runTurn(pending, messages);
+  }, [messages, runTurn]);
+
+  const enqueue = useCallback((rawText: string) => {
+    const text = rawText.trim();
+    if (!text || !ready) return;
+
+    onDraftChange('');
+    if (inputRef.current) inputRef.current.style.height = 'auto';
+    setMessages((prev) => [
+      ...prev,
+      { id: nextMessageId(), role: 'user' as const, content: text, status: 'pending' as const },
+    ]);
+  }, [onDraftChange, ready]);
+
+  const handleSend = useCallback(() => {
+    enqueue(draft);
+  }, [draft, enqueue]);
 
   const handleStarter = useCallback((prompt: string) => {
     if (!ready) return;
@@ -234,17 +274,21 @@ export default function ChatPanel({
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      void handleSend();
+      handleSend();
     }
   }, [handleSend]);
 
+  const stopStreaming = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
   const clearConversation = useCallback(() => {
-    if (streaming) return;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    runningRef.current = false;
     setMessages([]);
-    setError(null);
     setTotalCost(0);
-    setActiveActionsIndex(null);
-  }, [streaming]);
+  }, []);
 
   return (
     <div className="pointer-events-none fixed inset-0 z-40">
@@ -280,7 +324,7 @@ export default function ChatPanel({
                 <span className={`chat-launcher-badge ${ready ? 'chat-launcher-badge-ready' : 'chat-launcher-badge-pending'}`}>
                   {ready ? '준비됨' : '대기'}
                 </span>
-                <span className="truncate">{ready ? '논문 맥락으로 바로 질문해요' : '스크리닝이 끝나면 질문할 수 있어요'}</span>
+                <span className="truncate">{ready ? '논문 맥락으로 바로 질문해요' : 'PDF 텍스트를 읽고 있어요'}</span>
               </span>
             </span>
           </button>
@@ -367,12 +411,16 @@ export default function ChatPanel({
 
                   <div className="space-y-4">
                     {messages.map((msg, index) => {
-                      const isLatestAgentMessage = msg.role === 'agent' && index === messages.length - 1 && !streaming;
-                      const showActions = isLatestAgentMessage && (activeActionsIndex === null || activeActionsIndex === index);
+                      const isStreaming = msg.status === 'streaming';
+                      const showActions =
+                        msg.role === 'agent' &&
+                        msg.status === 'done' &&
+                        index === messages.length - 1 &&
+                        !busy;
 
                       return (
                         <div
-                          key={`${msg.role}-${index}`}
+                          key={msg.id}
                           className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                         >
                           <div className={`chat-bubble-wrap ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
@@ -389,6 +437,7 @@ export default function ChatPanel({
                                 </>
                               ) : (
                                 <>
+                                  {msg.status === 'pending' && <span>대기 중</span>}
                                   <span>나</span>
                                   <span className="flex h-5 w-5 items-center justify-center rounded-full border border-border/55 bg-surface/90">
                                     <User className="h-3 w-3 text-fg-muted" />
@@ -399,7 +448,7 @@ export default function ChatPanel({
                             <div className={`chat-bubble ${msg.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-agent'}`}>
                               {msg.role === 'agent' ? (
                                 <>
-                                  {streaming && index === messages.length - 1 ? (
+                                  {isStreaming ? (
                                     <span className="whitespace-pre-wrap">{msg.content}</span>
                                   ) : (
                                     <ReactMarkdown
@@ -411,8 +460,13 @@ export default function ChatPanel({
                                       {msg.content}
                                     </ReactMarkdown>
                                   )}
-                                  {streaming && index === messages.length - 1 && (
+                                  {isStreaming && (
                                     <span className="ml-1 inline-block h-3.5 w-1.5 animate-pulse bg-accent align-middle" />
+                                  )}
+                                  {msg.status === 'error' && (
+                                    <p className="text-2xs text-danger">
+                                      {msg.error || '답변을 받지 못했어요.'}
+                                    </p>
                                   )}
                                 </>
                               ) : (
@@ -424,7 +478,7 @@ export default function ChatPanel({
                               <div className="chat-follow-actions">
                                 <button
                                   type="button"
-                                  onClick={() => void sendText('방금 답변을 핵심만 3줄로 요약해줘.')}
+                                  onClick={() => enqueue('방금 답변을 핵심만 3줄로 요약해줘.')}
                                   className="chat-follow-chip"
                                 >
                                   요약해서 보기
@@ -451,26 +505,31 @@ export default function ChatPanel({
                   <div ref={messagesEndRef} />
                 </div>
 
-                {error && (
-                  <div className="border-t border-border/45 px-4 py-2 text-2xs text-danger">
-                    {error}
-                  </div>
-                )}
-
                 <div className="border-t border-border/45 px-4 py-3">
                   <div className="mb-2 flex items-center justify-between gap-3 text-2xs text-fg-muted">
                     <span>{totalCost > 0 ? `누적 비용 $${totalCost.toFixed(4)}` : '답변이 끝나면 대화 비용을 확인할 수 있어요.'}</span>
-                    {hasMessages && (
-                      <button
-                        type="button"
-                        onClick={clearConversation}
-                        disabled={streaming}
-                        className="inline-flex items-center gap-1 text-fg-muted transition-colors hover:text-fg-secondary disabled:opacity-40"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        대화 초기화
-                      </button>
-                    )}
+                    <div className="flex items-center gap-3">
+                      {busy && (
+                        <button
+                          type="button"
+                          onClick={stopStreaming}
+                          className="inline-flex items-center gap-1 text-fg-muted transition-colors hover:text-fg-secondary"
+                        >
+                          <Square className="h-3 w-3" />
+                          답변 중지
+                        </button>
+                      )}
+                      {hasMessages && (
+                        <button
+                          type="button"
+                          onClick={clearConversation}
+                          className="inline-flex items-center gap-1 text-fg-muted transition-colors hover:text-fg-secondary"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          대화 초기화
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="chat-composer">
                     <textarea
@@ -479,14 +538,18 @@ export default function ChatPanel({
                       onChange={(e) => onDraftChange(e.target.value)}
                       onKeyDown={handleKeyDown}
                       rows={1}
-                      disabled={streaming || !ready}
-                      placeholder="질문을 입력하세요... (Shift+Enter 줄바꿈)"
+                      disabled={!ready}
+                      placeholder={
+                        busy
+                          ? '답변 중에도 질문을 이어서 보낼 수 있어요...'
+                          : '질문을 입력하세요... (Shift+Enter 줄바꿈)'
+                      }
                       className="chat-composer-input"
                     />
                     <button
                       type="button"
-                      onClick={() => void handleSend()}
-                      disabled={!draft.trim() || streaming || !ready}
+                      onClick={handleSend}
+                      disabled={!draft.trim() || !ready}
                       className="chat-send-button"
                       aria-label="질문 보내기"
                     >

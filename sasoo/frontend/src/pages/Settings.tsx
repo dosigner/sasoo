@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Loader2,
 } from 'lucide-react';
@@ -70,6 +71,8 @@ export default function Settings() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const location = useLocation();
+  const costSectionRef = useRef<HTMLDivElement | null>(null);
 
   // Form state
   const [geminiKey, setGeminiKey] = useState('');
@@ -181,6 +184,16 @@ export default function Settings() {
     document.documentElement.classList.toggle('density-compact', density === 'compact');
     localStorage.setItem('sasoo-density', density);
   }, [density]);
+
+  // -----------------------------------------------------------------------
+  // Deep-link into the cost section (Home "자세히 보기" -> /settings#cost)
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    if (loading) return;
+    if (location.hash === '#cost' && costSectionRef.current) {
+      costSectionRef.current.scrollIntoView({ block: 'start' });
+    }
+  }, [loading, location.hash]);
 
   // -----------------------------------------------------------------------
   // Save settings
@@ -692,13 +705,15 @@ export default function Settings() {
           </div>
         </SettingPanel>
 
-        <SettingPanel
-          kicker={S.settings.sectionCurrent}
-          title={S.settings.usageCosts}
-          description="최근 분석이 얼마나 호출과 비용을 만들었는지 확인해요."
-        >
-          <CostDashboard />
-        </SettingPanel>
+        <div id="cost" ref={costSectionRef}>
+          <SettingPanel
+            kicker={S.settings.sectionCurrent}
+            title={S.settings.usageCosts}
+            description="최근 분석이 얼마나 호출과 비용을 만들었는지 확인해요."
+          >
+            <CostDashboard />
+          </SettingPanel>
+        </div>
       </div>
     </div>
   );
