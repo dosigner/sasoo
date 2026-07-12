@@ -25,7 +25,7 @@ from typing import Any, Iterable
 import fitz  # PyMuPDF
 from PIL import Image
 
-from models.database import DB_PATH, fetch_all, get_db, get_library_root
+from models.database import DB_PATH, execute_insert, fetch_all, get_db, get_library_root
 from services.document_audit import find_suspect_pages
 from services.document_manifest import build_document_manifest
 from services.figure_candidates import build_figure_candidates
@@ -50,6 +50,10 @@ TEXT_CACHE_FILENAME = ".text_cache.txt"
 TEXT_CACHE_META_FILENAME = ".text_cache.meta.json"
 MANIFEST_FILENAME = ".odl_manifest.json"
 GEMINI_ENGINE_NAME = "gemini"
+# visual 단계 Gemini 파서의 토큰/비용 집계를 _run_convert(mock 경계)를 건드리지 않고
+# _run_convert_gemini → ensure_visual_artifacts로 끌어올리기 위한 out-of-band 채널.
+# 전 호출 경로가 동기·단일 스레드(executor 스레드)라 thread-local이면 논문 병렬 파싱에도 안전하다.
+_visual_parse_usage_channel = threading.local()
 SUPPORTED_MODES = {"java"}
 RAW_IMAGE_DIRNAME = ".odl_raw_images"
 FIGURE_LABEL_PATTERN = re.compile(r"^\s*(?:Figure|Fig\.?)\s*(\d+[A-Za-z]?)\b", re.IGNORECASE)
@@ -1400,11 +1404,19 @@ def _run_convert_odl(pdf_path: Path, output_dir: Path, figures_dir: Path, mode: 
 
 def _run_convert_gemini(pdf_path: Path, output_dir: Path, figures_dir: Path) -> tuple[dict[str, Any], str, str]:
     """Gemini 비전 엔진 어댑터. 비동기 run_convert_gemini를 기존 동기 브리지로 감싸고,
-    실패는 OdlParserError로 변환해 폴백이 ODL 실패와 동일하게 동작하도록 한다."""
+    실패는 OdlParserError로 변환해 폴백이 ODL 실패와 동일하게 동작하도록 한다.
+
+    상위 ensure_visual_artifacts가 채널에 빈 usage dict를 심어두면, 그 dict를 그대로
+    run_convert_gemini(usage_out=...)로 넘겨 토큰/비용 집계를 채운다. dict은 참조로
+    전달되므로 _run_coroutine_sync의 자식 스레드에서 채워도 join 후 상위에서 보인다.
+    채널이 비어 있으면(text 단계 등) None을 넘겨 아무것도 집계하지 않는다."""
     from services.gemini_parser import GeminiParserError, run_convert_gemini
 
+    usage_out = getattr(_visual_parse_usage_channel, "usage", None)
     try:
-        return _run_coroutine_sync(run_convert_gemini(pdf_path, output_dir, figures_dir))
+        return _run_coroutine_sync(
+            run_convert_gemini(pdf_path, output_dir, figures_dir, usage_out=usage_out)
+        )
     except GeminiParserError as exc:
         raise OdlParserError(f"Gemini parser engine failed: {exc}") from exc
 
@@ -1840,21 +1852,28 @@ def ensure_visual_artifacts(
         if output_file.exists():
             output_file.unlink()
 
+    # visual 단계 Gemini 파서의 usage를 담을 빈 dict를 채널에 심는다. 실제 gemini 변환이
+    # 일어날 때만 채워지고, ODL 폴백/키 부재/캐시 히트에선 빈 채로 남는다(→ 미기록).
+    _visual_parse_usage_channel.usage = {}
     try:
-        root, markdown_text, actual_engine = _run_convert(
-            pdf_path, output_dir, raw_image_dir, requested_mode, stage="visual"
-        )
-    except (OdlParserError, OdlRuntimeError) as exc:
-        # 프로덕션 폴백: visual 엔진(gemini) 실패 → ODL로 자동 재시도(사용자 눈엔 visual이 그냥 됨).
-        # 폴백 시엔 승격 없음. _run_convert 저수준은 불변 — 여기서만 engine="odl"로 강제한다.
-        logger.warning(
-            "Visual parser engine failed for %s; retrying with ODL: %s", paper_dir.name, exc
-        )
-        shutil.rmtree(raw_image_dir, ignore_errors=True)
-        raw_image_dir.mkdir(parents=True, exist_ok=True)
-        root, markdown_text, actual_engine = _run_convert(
-            pdf_path, output_dir, raw_image_dir, requested_mode, stage="visual", engine="odl"
-        )
+        try:
+            root, markdown_text, actual_engine = _run_convert(
+                pdf_path, output_dir, raw_image_dir, requested_mode, stage="visual"
+            )
+        except (OdlParserError, OdlRuntimeError) as exc:
+            # 프로덕션 폴백: visual 엔진(gemini) 실패 → ODL로 자동 재시도(사용자 눈엔 visual이 그냥 됨).
+            # 폴백 시엔 승격 없음. _run_convert 저수준은 불변 — 여기서만 engine="odl"로 강제한다.
+            logger.warning(
+                "Visual parser engine failed for %s; retrying with ODL: %s", paper_dir.name, exc
+            )
+            shutil.rmtree(raw_image_dir, ignore_errors=True)
+            raw_image_dir.mkdir(parents=True, exist_ok=True)
+            root, markdown_text, actual_engine = _run_convert(
+                pdf_path, output_dir, raw_image_dir, requested_mode, stage="visual", engine="odl"
+            )
+    finally:
+        visual_parse_usage = getattr(_visual_parse_usage_channel, "usage", None)
+        _visual_parse_usage_channel.usage = None
     if pipeline_version == RESOLVER_PIPELINE_VERSION:
         manifest = _run_coroutine_sync(
             _build_resolver_v1_manifest(
@@ -1887,6 +1906,11 @@ def ensure_visual_artifacts(
     _ensure_text_contract_files(paper_dir, manifest, overwrite=promoted)
     _write_cache_files(paper_dir, manifest)
     _write_manifest(paper_dir, manifest)
+    # gemini visual 파서가 실제로 돌아 usage가 채워졌을 때만, 디스크 영속(_write_manifest)
+    # 이후에 인메모리 전용 키로 얹는다. 디스크에 남기지 않으므로 캐시 히트 경로(상단 조기 반환)의
+    # manifest엔 이 키가 없고, 상위(_refresh_paper_artifacts)가 이 키 유무로 1회 기록을 판정한다.
+    if visual_parse_usage and visual_parse_usage.get("engine") == GEMINI_ENGINE_NAME:
+        manifest["_visual_parse_usage"] = visual_parse_usage
     return manifest
 
 
@@ -2234,6 +2258,55 @@ async def sync_tables_for_paper(
     return tables
 
 
+async def _record_visual_parse_usage(paper_id: int, usage: dict[str, Any]) -> None:
+    """visual 단계 Gemini 파서의 토큰/비용을 기존 analysis_results 원장에 1회 집계 기록.
+
+    phase는 분석 파이프라인의 "visual"(도표 텍스트 분석)과 충돌하지 않도록 "visual_parse".
+    분석 단계들과 동일하게 (model, tokens_in, tokens_out)로 calc_cost를 재계산해 원장 관례를
+    맞춘다. 기록은 best-effort — DB 미가용/오류로 파이프라인을 깨지 않는다(경고만 남기고 스킵)."""
+    try:
+        model = str(usage.get("model") or "")
+        tokens_in = int(usage.get("tokens_in", 0) or 0)
+        tokens_out = int(usage.get("tokens_out", 0) or 0)
+        if tokens_in <= 0 and tokens_out <= 0:
+            return
+
+        from services.pricing import calc_cost
+        from services.document_context import compute_input_hash
+
+        cost = calc_cost(model, tokens_in, tokens_out)
+        result_payload = json.dumps(
+            {
+                "engine": usage.get("engine"),
+                "model": model,
+                "pages": usage.get("pages"),
+                "tokens_in": tokens_in,
+                "tokens_out": tokens_out,
+                "tokens_thought": usage.get("tokens_thought"),
+            },
+            ensure_ascii=False,
+        )
+        await execute_insert(
+            """
+            INSERT INTO analysis_results
+                (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd, input_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                paper_id,
+                "visual_parse",
+                result_payload,
+                model,
+                tokens_in,
+                tokens_out,
+                cost,
+                compute_input_hash(f"visual_parse:{paper_id}:{usage.get('pages')}"),
+            ),
+        )
+    except Exception:  # noqa: BLE001 - 원장 기록은 best-effort, 파이프라인을 막지 않는다
+        logger.warning("visual_parse usage 기록 실패 (paper %s)", paper_id, exc_info=True)
+
+
 async def _refresh_paper_artifacts(
     paper_id: int,
     paper_dir: Path,
@@ -2247,8 +2320,13 @@ async def _refresh_paper_artifacts(
         extraction_pipeline_version=extraction_pipeline_version,
         force=force,
     )
+    # 인메모리 전용 usage 키를 걷어낸다(디스크엔 애초에 없다). 실제 gemini visual 파싱이
+    # 일어난 이번 refresh에서만 존재하며, 아래에서 원장에 1회 집계 기록한다.
+    visual_parse_usage = manifest.pop("_visual_parse_usage", None)
     await sync_figures_for_paper(paper_id, paper_dir, manifest=manifest)
     await sync_tables_for_paper(paper_id, paper_dir, manifest=manifest)
+    if visual_parse_usage:
+        await _record_visual_parse_usage(paper_id, visual_parse_usage)
     return manifest
 
 
