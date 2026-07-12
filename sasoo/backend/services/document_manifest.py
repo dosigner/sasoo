@@ -524,7 +524,14 @@ def build_document_manifest(
     flat_elements: list[FlatElement] = []
     _flatten_elements(root.get("kids", []), [0], flat_elements)
 
-    full_text = _build_plain_text(flat_elements) or markdown_text
+    if actual_engine == "gemini":
+        # gemini(gemini_parser.GEMINI_ENGINE_NAME) 엔진은 markdown_text가 완전한 본문
+        # (reading order / GFM 테이블 / LaTeX 수식 / "--- Page N ---" 마커)을 담는다.
+        # slim 스키마에선 트리에 본문 paragraph가 없으므로 markdown을 full_text 원천으로
+        # 삼아 본문 유실을 막는다(트리 조립본보다 품질 우위). ODL 경로는 아래 기존 로직 불변.
+        full_text = markdown_text or _build_plain_text(flat_elements)
+    else:
+        full_text = _build_plain_text(flat_elements) or markdown_text
     page_sizes = _extract_page_sizes(pdf_path)
     metadata = _extract_metadata(root, flat_elements, full_text, pdf_path, page_sizes)
     page_count = metadata.get("page_count") or len(page_sizes)

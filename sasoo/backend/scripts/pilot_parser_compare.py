@@ -29,6 +29,35 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 
+# gemini 튜닝 프로파일: env 래핑으로 baseline/tuned를 한 스위치로 재현한다.
+# gemini_parser 모듈이 import 시점에 이 env를 읽으므로, 반드시 파서 import 전에 세팅한다.
+_GEMINI_PROFILES: dict[str, dict[str, str]] = {
+    "baseline": {
+        "SASOO_GEMINI_PARSER_DPI": "180",
+        "SASOO_GEMINI_PARSER_THINKING": "low",
+        "SASOO_GEMINI_PARSER_MEDIA_RESOLUTION": "",  # 미지정 = SDK 기본 해상도
+        "SASOO_GEMINI_PARSER_ELEMENTS": "full",
+    },
+    "tuned": {
+        "SASOO_GEMINI_PARSER_DPI": "150",
+        "SASOO_GEMINI_PARSER_THINKING": "minimal",
+        "SASOO_GEMINI_PARSER_MEDIA_RESOLUTION": "low",
+        "SASOO_GEMINI_PARSER_ELEMENTS": "slim",
+    },
+}
+
+
+def _apply_gemini_profile(profile: str | None) -> None:
+    if not profile:
+        return
+    import os
+
+    settings = _GEMINI_PROFILES.get(profile)
+    if settings is None:
+        raise SystemExit(f"unknown --gemini-profile: {profile!r} (baseline|tuned)")
+    os.environ.update(settings)
+
+
 def _load_env_gemini_key() -> None:
     """GEMINI_API_KEY가 env에 없으면 backend/.env를 직접 파싱해 로드(새 의존성 금지)."""
     import os
@@ -173,8 +202,15 @@ def main() -> None:
     parser.add_argument("--pdfs", nargs="+", required=True, help="비교할 PDF 경로들")
     parser.add_argument("--engines", default="odl,gemini", help="쉼표 구분 엔진 목록")
     parser.add_argument("--out", required=True, help="결과 출력 디렉토리")
+    parser.add_argument(
+        "--gemini-profile",
+        choices=sorted(_GEMINI_PROFILES),
+        default=None,
+        help="gemini 튜닝 env 프리셋(baseline|tuned). 개별 SASOO_GEMINI_PARSER_* env로 세부 조정 가능.",
+    )
     args = parser.parse_args()
 
+    _apply_gemini_profile(args.gemini_profile)
     _load_env_gemini_key()
 
     engines = [e.strip().lower() for e in args.engines.split(",") if e.strip()]

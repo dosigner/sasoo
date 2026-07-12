@@ -57,6 +57,26 @@ def _get_client():
     return genai.Client(api_key=api_key)
 
 
+def _apply_media_resolution(prompt, media_resolution: str | None):
+    """image 파트에 media_resolution(resolution)을 주입한 새 input을 반환.
+
+    media_resolution이 없거나 prompt가 파트 리스트가 아니면 원본을 그대로 반환한다.
+    Interactions API의 ImageContentParam.resolution(low/medium/high/ultra_high)에
+    대응한다 — 저해상 입력으로 이미지 토큰을 줄이는 통로. 이미지가 없는 기존
+    호출부(예: 채팅 텍스트 호출)는 무영향이며, 원본 파트 dict은 변형하지 않는다.
+    """
+    if not media_resolution or not isinstance(prompt, list):
+        return prompt
+    new_parts = []
+    changed = False
+    for part in prompt:
+        if isinstance(part, dict) and part.get("type") == "image" and "resolution" not in part:
+            part = {**part, "resolution": media_resolution}
+            changed = True
+        new_parts.append(part)
+    return new_parts if changed else prompt
+
+
 async def call_interaction(
     prompt,
     *,
@@ -67,6 +87,7 @@ async def call_interaction(
     previous_interaction_id: str | None = None,
     response_schema: dict | None = None,
     store: bool = True,
+    media_resolution: str | None = None,
 ) -> dict:
     if not store and previous_interaction_id:
         raise ValueError("previous_interaction_id requires store=True")
@@ -75,7 +96,7 @@ async def call_interaction(
         client = _get_client()
         kwargs: dict = {
             "model": model,
-            "input": prompt,
+            "input": _apply_media_resolution(prompt, media_resolution),
             "system_instruction": system_instruction or _SYSTEM_INSTRUCTION_KO,
             "store": store,
         }

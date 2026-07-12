@@ -20,6 +20,7 @@ import asyncio
 import base64
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -33,49 +34,112 @@ from services.pricing import calc_cost
 logger = logging.getLogger(__name__)
 
 GEMINI_ENGINE_NAME = "gemini"
-RENDER_DPI = 180                # 페이지 래스터화 해상도
-PAGE_CONCURRENCY = 4            # 동시에 진행하는 페이지 수(interactions pipeline lane 세마포어와 조합)
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return int(raw.strip())
+    except ValueError:
+        logger.warning("invalid %s=%r; falling back to %d", name, raw, default)
+        return default
+
+
+def _env_str(name: str, default: str) -> str:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip()
+
+
+# --- 비용 튜닝 레버(모두 env 오버라이드 가능; 기본값 = 튜닝 후 권장값) ---
+# 베이스라인 재현:
+#   SASOO_GEMINI_PARSER_DPI=180 SASOO_GEMINI_PARSER_THINKING=low \
+#   SASOO_GEMINI_PARSER_MEDIA_RESOLUTION= SASOO_GEMINI_PARSER_ELEMENTS=full
+RENDER_DPI = _env_int("SASOO_GEMINI_PARSER_DPI", 150)  # 페이지 래스터화 해상도(하향: 150)
+PAGE_CONCURRENCY = _env_int("SASOO_GEMINI_PARSER_PAGE_CONCURRENCY", 4)
 _PAGE_RETRIES = 1              # 페이지 호출 실패 시 추가 재시도 횟수(총 2회 시도)
-_THINKING_LEVEL = "low"        # 구조 충실도를 위해 약간의 추론. thinking 토큰은 출력 단가로 과금됨.
+# thinking 토큰은 출력 단가로 과금됨. ThinkingLevel 허용값 minimal<low<medium<high 중 최저치.
+_THINKING_LEVEL = _env_str("SASOO_GEMINI_PARSER_THINKING", "minimal")
+# 이미지 파트별 media_resolution(low/medium/high/ultra_high). 빈 문자열이면 미지정(SDK 기본).
+# 저해상일수록 이미지 입력 토큰이 줄지만 작은 수식/캡션 OCR이 깨질 수 있다 — DPI와 함께 조절.
+_MEDIA_RESOLUTION = _env_str("SASOO_GEMINI_PARSER_MEDIA_RESOLUTION", "low")
+# elements 스키마 모드: "slim"(기본, 시각요소+heading만) | "full"(베이스라인, paragraph/formula 포함).
+# slim은 markdown과 중복되는 paragraph/formula 본문 출력을 없애 출력 토큰을 줄인다.
+_ELEMENTS_SLIM = _env_str("SASOO_GEMINI_PARSER_ELEMENTS", "slim").lower() != "full"
 
 # 기본 system_instruction은 모든 value를 한국어로 강제한다(interactions_client). 파서는
 # 원문을 그대로 옮겨야 하므로 전용 지시로 덮어써 번역/요약을 막는다.
-_PARSER_SYSTEM_INSTRUCTION = (
+_PARSER_SYSTEM_INSTRUCTION_SLIM = (
+    "You are a precise PDF parser. Transcribe verbatim in the original language; "
+    "never translate or summarize. Output only valid JSON matching the schema."
+)
+_PARSER_SYSTEM_INSTRUCTION_FULL = (
     "You are a precise PDF document parser. Transcribe the page content verbatim in the "
     "document's original language. Never translate, summarize, paraphrase, or add commentary. "
     "Output only valid JSON that matches the requested schema."
 )
+_PARSER_SYSTEM_INSTRUCTION = (
+    _PARSER_SYSTEM_INSTRUCTION_SLIM if _ELEMENTS_SLIM else _PARSER_SYSTEM_INSTRUCTION_FULL
+)
 
-# box_2d는 [ymin, xmin, ymax, xmax] 0-1000 정규화 — Gemini 공식 규약.
-_PAGE_RESPONSE_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "markdown": {"type": "string"},
-        "elements": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "type": {
-                        "type": "string",
-                        "enum": ["image", "table", "caption", "heading", "paragraph", "formula"],
+_ELEMENT_TYPES_SLIM = ["image", "table", "caption", "heading"]
+_ELEMENT_TYPES_FULL = ["image", "table", "caption", "heading", "paragraph", "formula"]
+
+
+def _build_page_schema(element_types: list[str]) -> dict[str, Any]:
+    # box_2d는 [ymin, xmin, ymax, xmax] 0-1000 정규화 — Gemini 공식 규약.
+    return {
+        "type": "object",
+        "properties": {
+            "markdown": {"type": "string"},
+            "elements": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "type": {"type": "string", "enum": list(element_types)},
+                        "box_2d": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "minItems": 4,
+                            "maxItems": 4,
+                        },
+                        "text": {"type": "string"},
                     },
-                    "box_2d": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "minItems": 4,
-                        "maxItems": 4,
-                    },
-                    "text": {"type": "string"},
+                    "required": ["type", "box_2d", "text"],
                 },
-                "required": ["type", "box_2d", "text"],
             },
         },
-    },
-    "required": ["markdown", "elements"],
-}
+        "required": ["markdown", "elements"],
+    }
 
-_PAGE_PROMPT = (
+
+_PAGE_RESPONSE_SCHEMA: dict[str, Any] = _build_page_schema(
+    _ELEMENT_TYPES_SLIM if _ELEMENTS_SLIM else _ELEMENT_TYPES_FULL
+)
+
+# slim: 본문은 markdown이 전담(중복 제거). elements는 시각요소+heading만.
+_PAGE_PROMPT_SLIM = (
+    "Parse this scientific-paper page image into JSON with two fields.\n"
+    "\n"
+    "\"markdown\": the ENTIRE page as Markdown in reading order. Tables as GitHub-flavored "
+    "Markdown; math as LaTeX ($...$ inline, $$...$$ display); at each figure put one line "
+    "![Figure N](placeholder). Transcribe verbatim in the original language; never translate.\n"
+    "\n"
+    "\"elements\": visual blocks only — figures, tables, captions, headings. For each give "
+    "\"type\" (image|table|caption|heading), \"box_2d\" [ymin,xmin,ymax,xmax] normalized 0-1000 "
+    "with TOP-LEFT origin (tightest enclosing box), and \"text\" (caption/heading verbatim text; "
+    "table as Markdown; image empty \"\").\n"
+    "\n"
+    "Rules: every figure/chart/photo/diagram is an \"image\" element with box_2d. Each figure or "
+    "table caption (\"Figure 3: ...\", \"Table 2: ...\") is a separate \"caption\" element starting "
+    "with its label. Do NOT emit paragraph or formula elements — body text lives only in markdown. "
+    "Output JSON only."
+)
+_PAGE_PROMPT_FULL = (
     "Parse this single scientific-paper page image into structured JSON.\n"
     "\n"
     "Return two fields:\n"
@@ -97,6 +161,7 @@ _PAGE_PROMPT = (
     "  \"caption\" elements whose text starts with the exact caption label.\n"
     "- Output JSON only."
 )
+_PAGE_PROMPT = _PAGE_PROMPT_SLIM if _ELEMENTS_SLIM else _PAGE_PROMPT_FULL
 
 
 class GeminiParserError(RuntimeError):
@@ -104,8 +169,10 @@ class GeminiParserError(RuntimeError):
 
 
 # Gemini element type -> ODL 트리 type 매핑.
-# formula는 ODL의 TEXTUAL_TYPES에 없어 매니페스트에서 탈락하므로 paragraph로 보존한다.
-_GEMINI_TO_ODL_TYPE: dict[str, str] = {
+# slim 모드에선 paragraph/formula를 방출하지 않으므로(본문은 markdown 전담) 매핑에서 뺀다.
+# full 모드는 baseline 재현용 — formula는 ODL TEXTUAL_TYPES에 없어 매니페스트에서
+# 탈락하므로 paragraph로 보존한다.
+_GEMINI_TO_ODL_TYPE_FULL: dict[str, str] = {
     "image": "image",
     "table": "table",
     "caption": "caption",
@@ -113,6 +180,13 @@ _GEMINI_TO_ODL_TYPE: dict[str, str] = {
     "paragraph": "paragraph",
     "formula": "paragraph",
 }
+_GEMINI_TO_ODL_TYPE_SLIM: dict[str, str] = {
+    "image": "image",
+    "table": "table",
+    "caption": "caption",
+    "heading": "heading",
+}
+_GEMINI_TO_ODL_TYPE = _GEMINI_TO_ODL_TYPE_SLIM if _ELEMENTS_SLIM else _GEMINI_TO_ODL_TYPE_FULL
 _IMAGE_TYPES = {"image", "picture"}
 
 
@@ -223,9 +297,10 @@ async def _call_page(png_b64: str, model: str) -> dict[str, Any]:
         lane="pipeline",
         model=model,
         system_instruction=_PARSER_SYSTEM_INSTRUCTION,
-        thinking_level=_THINKING_LEVEL,
+        thinking_level=_THINKING_LEVEL or None,
         store=False,
         response_schema=_PAGE_RESPONSE_SCHEMA,
+        media_resolution=_MEDIA_RESOLUTION or None,
     )
     data = _parse_json(result.get("text", ""))
     tokens_in = int(result.get("tokens_in", 0) or 0)
@@ -337,7 +412,15 @@ async def run_convert_gemini(
         "number of pages": page_count,
         "kids": kids,
     }
-    markdown_text = "\n\n".join(md for md in page_markdowns if md).strip()
+    # 페이지 경계에 "--- Page N ---" 마커를 넣는다(ODL _build_plain_text full_text 포맷과 정합).
+    # slim 모드에서 이 markdown이 manifest full_text로 채택되면(document_manifest의 gemini 분기)
+    # document_audit._page_text_map의 페이지별 텍스트 분리가 그대로 동작한다.
+    markdown_parts: list[str] = []
+    for page_index, md in enumerate(page_markdowns):
+        if not md:
+            continue
+        markdown_parts.append(f"--- Page {page_index + 1} ---\n\n{md}")
+    markdown_text = "\n\n".join(markdown_parts).strip()
 
     if usage_out is not None:
         usage_out.update(

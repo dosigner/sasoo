@@ -28,6 +28,7 @@ from services.gemini_parser import (
 )
 from services.document_manifest import build_document_manifest
 from services.figure_candidates import build_figure_candidates
+from services.llm.interactions_client import _apply_media_resolution
 
 PAGE_WIDTH = 612.0
 PAGE_HEIGHT = 792.0
@@ -201,6 +202,105 @@ class RunConvertGeminiTests(unittest.IsolatedAsyncioTestCase):
 
             # 페이지마다 최초 시도 + 재시도 1회 = 페이지당 2회 이상 호출.
             self.assertGreaterEqual(failing.await_count, 2)
+
+    async def test_tuning_levers_forwarded_to_call(self):
+        # 파서가 media_resolution / thinking_level(둘 다 env 기본값)을 call_interaction에
+        # 그대로 전달하는지 확인한다.
+        with TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            pdf_path = tmpdir / "sample.pdf"
+            _make_pdf(pdf_path, pages=1)
+
+            fake = _fake_call()
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), patch(
+                "services.gemini_parser.call_interaction", new=fake
+            ):
+                await run_convert_gemini(pdf_path, tmpdir, tmpdir / "figures")
+
+            _, kwargs = fake.call_args
+            self.assertEqual(
+                kwargs.get("media_resolution"), gemini_parser._MEDIA_RESOLUTION or None
+            )
+            self.assertEqual(
+                kwargs.get("thinking_level"), gemini_parser._THINKING_LEVEL or None
+            )
+
+    @unittest.skipUnless(gemini_parser._ELEMENTS_SLIM, "slim 스키마 전용")
+    async def test_slim_schema_drops_paragraph_keeps_visual_and_heading(self):
+        # 기본(slim) 모드: paragraph/formula 노드는 트리에서 탈락하고, 시각요소·heading은 유지.
+        with TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            pdf_path = tmpdir / "sample.pdf"
+            _make_pdf(pdf_path, pages=1)
+
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), patch(
+                "services.gemini_parser.call_interaction", new=_fake_call()
+            ):
+                root, _markdown, _engine = await run_convert_gemini(
+                    pdf_path, tmpdir, tmpdir / "figures"
+                )
+
+            types = {node["type"] for node in root["kids"]}
+            self.assertIn("image", types)
+            self.assertIn("caption", types)
+            self.assertIn("heading", types)
+            self.assertNotIn("paragraph", types)
+
+    async def test_full_text_uses_markdown_with_page_markers(self):
+        # gemini full_text는 markdown(페이지 마커 포함)에서 나온다 — 본문 유실 방지 + audit 보전.
+        with TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            pdf_path = tmpdir / "sample.pdf"
+            _make_pdf(pdf_path, pages=2)
+
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), patch(
+                "services.gemini_parser.call_interaction", new=_fake_call()
+            ):
+                root, markdown_text, engine = await run_convert_gemini(
+                    pdf_path, tmpdir, tmpdir / "figures"
+                )
+
+            self.assertIn("--- Page 1 ---", markdown_text)
+            self.assertIn("--- Page 2 ---", markdown_text)
+            self.assertIn("Some body paragraph text.", markdown_text)
+
+            manifest = build_document_manifest(
+                pdf_path=pdf_path,
+                paper_dir=tmpdir,
+                root=root,
+                markdown_text=markdown_text,
+                actual_engine=engine,
+                requested_mode="gemini",
+                extraction_pipeline_version="resolver_v1",
+                parser_version="test",
+                resolver_version="test",
+                generate_page_rasters=False,
+            )
+            # gemini 분기: full_text == markdown_text (트리 조립본이 아니라 markdown).
+            self.assertEqual(manifest["full_text"], markdown_text)
+            self.assertIn("--- Page 1 ---", manifest["full_text"])
+            self.assertIn("Some body paragraph text.", manifest["full_text"])
+
+
+class MediaResolutionInjectionTests(unittest.TestCase):
+    def test_injects_resolution_into_image_parts_without_mutating(self):
+        parts = [
+            {"type": "image", "data": "b64", "mime_type": "image/png"},
+            {"type": "text", "text": "hi"},
+        ]
+        out = _apply_media_resolution(parts, "low")
+        self.assertEqual(out[0]["resolution"], "low")
+        self.assertNotIn("resolution", out[1])
+        # 원본 파트는 변형되지 않는다.
+        self.assertNotIn("resolution", parts[0])
+
+    def test_noop_when_no_media_resolution(self):
+        parts = [{"type": "image", "data": "x"}]
+        self.assertIs(_apply_media_resolution(parts, None), parts)
+
+    def test_noop_when_no_image_part(self):
+        parts = [{"type": "text", "text": "hi"}]
+        self.assertIs(_apply_media_resolution(parts, "low"), parts)
 
 
 if __name__ == "__main__":
