@@ -21,10 +21,10 @@
 - 커밋 메시지 끝에 `Co-Authored-By:` 트레일러 (세션 규칙 준수).
 - **스트리밍 이벤트 실계약**: Task 2 시작 전 `.agents/skills/gemini-interactions-api/SKILL.md`의 Streaming 절과 https://ai.google.dev/gemini-api/docs/interactions/streaming.md.txt 를 읽고 `step.delta`/`interaction.completed` 필드명을 확인할 것 (`# VERIFY:` 주석 지점).
 
-## 사용자 결정 필요 (실행 세션 시작 시 1회 질문)
+## 확정된 결정 (2026-07-12, 사용자 승인 — 실행 세션은 질문 없이 진행)
 
-1. **VizRouter 삭제 여부** — `services/viz/viz_router.py`는 어디서도 인스턴스화되지 않는 고아 코드(주석 참조만 존재). 권장: 삭제. 유지 결정 시 Task 5에서 전환 대상에 포함.
-2. **DomainRouter 시맨틱 폴백** — `domain_router.py:83`이 `DomainRouter()`를 gemini 없이 생성해 시맨틱 분류가 사실상 비활성. 권장: 이번에 `call_interaction` 기반으로 **살려서 배선**(스크리닝 분야 감지의 백업 경로). 대안: 죽은 상태 그대로 코드만 정리.
+1. **VizRouter 삭제 확정** — `services/viz/viz_router.py`는 어디서도 인스턴스화되지 않는 고아 코드(주석 참조만 존재). Task 5에서 `git rm`.
+2. **DomainRouter 시맨틱 폴백 제거 확정** — `domain_router.py:83`이 `DomainRouter()`를 gemini 없이 생성해 폴백이 원래부터 비활성. 스크리닝 단계가 분석 시작 직후 PDF 본문 기반으로 분야를 재감지해 `papers.domain`/`agent_used`를 덮어쓰고, 업로드 화면에 수동 드롭다운도 있으므로 중복 설계로 판정. Task 4에서 GeminiClient 의존 배선만 걷어내고 휴리스틱+`needs_confirmation` 경로만 유지.
 
 ---
 
@@ -83,16 +83,14 @@ PR #7이 미검증으로 남긴 실 API 계약을 확인한다. **이후 태스�
 - Test: 기존 + 신규 목킹 테스트
 
 - [ ] **Step 1:** naming_service의 `GeminiClient()._call(...)`+`_response_text(...)` 3곳을 `call_interaction(prompt, model="gemini-3.1-flash-lite", thinking_level="minimal", store=False)`로 치환 (`generate_figure_names`는 `response_schema` 사용 — 기존 `response_mime_type="application/json"` 대체).
-- [ ] **Step 2:** domain_router — 사용자 결정(위 결정 2)에 따라:
-  - 살리는 경우: `classify_domain` 로직을 `call_interaction(..., model="gemini-3.1-flash-lite", response_schema={domain,...}, store=False)` 기반의 로컬 함수로 옮기고 `DomainRouter()` 생성부(L83)에서 활성 배선 + `needs_confirmation` 폴백 유지.
-  - 정리만 하는 경우: `_semantic_classify`의 GeminiClient 의존 제거(항상 `needs_confirmation=True` 경로만 유지)하고 생성자 파라미터 삭제.
+- [ ] **Step 2:** domain_router 정리 (확정된 결정 2): `_semantic_classify`의 GeminiClient 의존 제거(항상 `needs_confirmation=True` 경로만 유지)하고 생성자의 `gemini_client` 파라미터 삭제. 휴리스틱 분류 로직은 무변경.
 - [ ] **Step 3:** pytest 무회귀. 커밋.
 
 ### Task 5: gemini_client.py 및 고아 코드 제거
 
 **Files:**
 - Delete: `sasoo/backend/services/llm/gemini_client.py` (UsageTracker/UsageRecord 포함 — 정의처가 여기뿐임을 grep 재확인)
-- Delete(사용자 승인 시): `sasoo/backend/services/viz/viz_router.py`
+- Delete: `sasoo/backend/services/viz/viz_router.py` (확정된 결정 1 — 고아 코드)
 - Modify: `sasoo/backend/services/pricing.py` — 이 시점에 `gemini-3-flash-preview` 참조가 0이면 해당 가격 항목 제거 (`gemini-3.1-pro-preview`·이미지 모델 항목은 paperbanana_bridge 등 잔존 참조 확인 후 판단)
 - Modify: `sasoo/backend/services/agents/base_agent.py` L49 — GeminiClient 언급 docstring 주석 정리
 
@@ -111,4 +109,4 @@ PR #7이 미검증으로 남긴 실 API 계약을 확인한다. **이후 태스�
 
 - 조사에서 확인된 살아있는 구식 경로 전부가 태스크에 배정됨: 채팅 스트리밍(Task 2), subfigure/figure/table 비전(Task 3), naming/domain 텍스트(Task 4), 본체 삭제(Task 5). 죽은 코드(analyze_* 등)는 Task 5의 파일 삭제로 일괄 소멸.
 - 타입 일관성: 모든 치환이 `call_interaction`의 기존 반환 키만 사용. 스트리밍 신규 함수는 별도 이벤트 dict(채팅 SSE 스키마와 1:1 변환 가능)로 분리.
-- 미확정 지점 2건(VizRouter 삭제, DomainRouter 활성화)은 사용자 결정 섹션에 명시 — 실행 세션이 시작 시 1회 질문으로 해소.
+- 결정 2건(VizRouter 삭제, DomainRouter 폴백 제거)은 2026-07-12 사용자 승인으로 확정 — 실행 세션은 질문 없이 진행 가능.
