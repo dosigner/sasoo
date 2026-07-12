@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom';
 import {
   Loader2,
 } from 'lucide-react';
@@ -381,6 +381,15 @@ export default function Settings() {
         </div>
       )}
 
+      <Link
+        to="/profile"
+        className="mb-4 inline-flex items-center gap-1.5 text-sm text-accent transition-colors hover:text-accent-hover"
+      >
+        <AppIcon name="agents" className="w-4 h-4" />
+        {S.settings.openProfileLink}
+        <AppIcon name="arrow-right" className="w-3.5 h-3.5" />
+      </Link>
+
       <div className="space-y-4">
         <SettingPanel
           kicker={S.settings.sectionCurrent}
@@ -458,8 +467,8 @@ export default function Settings() {
 
         <SettingPanel
           kicker={S.settings.sectionEdit}
-          title={S.settings.researcherProfile}
-          description={S.settings.researcherProfileDesc}
+          title={S.settings.imageSection}
+          description={S.settings.imageSectionDesc}
         >
           <div className="space-y-4">
 

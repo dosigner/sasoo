@@ -129,7 +129,7 @@ function AgentBadgeDropdown({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={`담당 에이전트: ${agentLabel}. 변경하려면 여세요`}
-        className={agentColor ? 'status-pill cursor-pointer' : 'status-pill cursor-pointer border-surface-700/50 bg-surface-800/80 text-surface-300'}
+        className={agentColor ? 'status-pill cursor-pointer' : 'status-pill cursor-pointer border-border/50 bg-surface/80 text-fg-secondary'}
         style={buildAgentPillStyle(agentColor)}
       >
         {changing ? (
@@ -150,7 +150,7 @@ function AgentBadgeDropdown({
           aria-label="담당 에이전트 선택"
           aria-activedescendant={`${listboxId}-opt-${activeIndex}`}
           onKeyDown={handleListKeyDown}
-          className="absolute left-0 top-full z-30 mt-1.5 max-h-72 w-56 overflow-y-auto rounded-lg border border-surface-700/60 bg-surface-900/98 p-1 shadow-lg backdrop-blur focus:outline-none [.light_&]:border-surface-200 [.light_&]:bg-white"
+          className="absolute left-0 top-full z-50 mt-1.5 max-h-72 w-56 overflow-y-auto rounded-lg border border-border bg-surface p-1 shadow-lg backdrop-blur focus:outline-none"
         >
           {agents.map((agent, index) => {
             const isSelected = index === selectedIndex;
@@ -165,13 +165,13 @@ function AgentBadgeDropdown({
                 onClick={() => commit(index)}
                 className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs ${
                   isActive
-                    ? 'bg-surface-700/70 text-surface-100 [.light_&]:bg-surface-100'
-                    : 'text-surface-300 [.light_&]:text-surface-600'
+                    ? 'bg-surface-hover text-fg'
+                    : 'text-fg-secondary'
                 }`}
               >
                 <AgentAvatar name={agent.nameKo || agent.name} color={agent.color} size="sm" />
                 <span className="min-w-0 flex-1 truncate">{agent.nameKo || agent.name}</span>
-                {isSelected && <AppIcon name="success" className="h-3.5 w-3.5 text-primary-400" />}
+                {isSelected && <AppIcon name="success" className="h-3.5 w-3.5 text-accent" />}
               </li>
             );
           })}
@@ -235,7 +235,7 @@ export default function WorkbenchHeader({
   ];
 
   return (
-    <div className="shrink-0 border-b border-border/45 bg-surface/95 px-4 py-3 backdrop-blur">
+    <div className="relative z-40 shrink-0 border-b border-border/45 bg-surface/95 px-4 py-3 backdrop-blur">
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-2.5">
           <button

@@ -1,10 +1,13 @@
-import { useState, useCallback, useRef, type CSSProperties } from 'react';
+import { useState, useCallback, useRef, useEffect, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import {
   ApiError,
+  getSettings,
   uploadPaper,
   updatePaper,
+  type PaperUpdateData,
+  type Settings,
   type UploadResponse,
 } from '@/lib/api';
 import { getAgentMeta, getAllAgents } from '@/lib/agents';
@@ -12,9 +15,19 @@ import { useToast } from '@/components/Toast';
 import { S } from '@/lib/strings';
 import { AppIcon } from '@/components/icons';
 import { Select } from '@/components/ui';
+import LevelSlider from '@/components/LevelSlider';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 const ACCEPTED_TYPES = ['application/pdf'];
+
+// 분석 초점 칩 — 다중 선택. key는 백엔드 analysis_focus.chips로 전달된다.
+const FOCUS_CHIPS = [
+  { key: 'reproduction', label: '재현 방법' },
+  { key: 'contribution', label: '핵심 기여' },
+  { key: 'limitations', label: '한계·후속 연구' },
+  { key: 'theory', label: '수식·이론' },
+  { key: 'related_work', label: '선행연구 대비' },
+] as const;
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -34,8 +47,32 @@ export default function UploadPanel() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadResult, setUploadResult] = useState<UploadResponse | null>(null);
   const [domainOverride, setDomainOverride] = useState<string>('');
+  const [focusChips, setFocusChips] = useState<string[]>([]);
+  const [focusNote, setFocusNote] = useState('');
+  const [levelOverride, setLevelOverride] = useState<string | null>(null); // null = 설정 기본값 사용
+  const [analysisOptionsOpen, setAnalysisOptionsOpen] = useState(false);
+  const [settingsSnapshot, setSettingsSnapshot] = useState<Settings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+
+  // 기본 설명 수준(연구자 프로필)을 슬라이더 초기값으로 쓰기 위해 설정을 미리 읽어둔다.
+  useEffect(() => {
+    let cancelled = false;
+    getSettings()
+      .then((data) => {
+        if (!cancelled) setSettingsSnapshot(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggleFocusChip = useCallback((key: string) => {
+    setFocusChips((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+  }, []);
 
   const validateFile = useCallback((file: File): string | null => {
     if (!ACCEPTED_TYPES.includes(file.type) && !file.name.endsWith('.pdf')) {
@@ -99,14 +136,24 @@ export default function UploadPanel() {
   const handleStartAnalysis = useCallback(async () => {
     if (!uploadResult) return;
     try {
+      const updates: PaperUpdateData = {};
       if (domainOverride && domainOverride !== uploadResult.domain) {
-        await updatePaper(uploadResult.id, { domain: domainOverride });
+        updates.domain = domainOverride;
+      }
+      if (levelOverride) {
+        updates.explanation_level = levelOverride;
+      }
+      if (focusChips.length > 0 || focusNote.trim()) {
+        updates.analysis_focus = { chips: focusChips, note: focusNote.trim() };
+      }
+      if (Object.keys(updates).length > 0) {
+        await updatePaper(uploadResult.id, updates);
       }
       navigate(`/workbench/${uploadResult.id}`);
     } catch {
       navigate(`/workbench/${uploadResult.id}`);
     }
-  }, [navigate, uploadResult, domainOverride]);
+  }, [navigate, uploadResult, domainOverride, levelOverride, focusChips, focusNote]);
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -304,6 +351,104 @@ export default function UploadPanel() {
                     {S.upload.domainConfirmHelp}
                   </p>
                 </div>
+              </div>
+
+              <div className="rounded-surface border border-border bg-surface/60">
+                <button
+                  type="button"
+                  onClick={() => setAnalysisOptionsOpen((open) => !open)}
+                  aria-expanded={analysisOptionsOpen}
+                  aria-label={
+                    analysisOptionsOpen
+                      ? S.upload.analysisOptionsCloseLabel
+                      : S.upload.analysisOptionsOpenLabel
+                  }
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left"
+                >
+                  <div>
+                    <div className="text-sm font-medium text-fg">
+                      {S.upload.analysisOptionsTitle}
+                    </div>
+                    {!analysisOptionsOpen && (
+                      <p className="mt-1 text-xs leading-5 text-fg-muted">
+                        {S.upload.analysisOptionsHint}
+                      </p>
+                    )}
+                  </div>
+                  <AppIcon
+                    name="chevron-down"
+                    className={`h-4 w-4 shrink-0 text-fg-muted transition-transform duration-200 ${
+                      analysisOptionsOpen ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+
+                {analysisOptionsOpen && (
+                  <div className="space-y-5 border-t border-border/70 px-4 pb-4 pt-4">
+                    <div>
+                      <label className="text-2xs uppercase tracking-[0.22em] text-fg-muted">
+                        {S.upload.focusChipsLabel}
+                      </label>
+                      <p className="mt-1 text-xs leading-5 text-fg-muted">
+                        {S.upload.focusChipsHelp}
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {FOCUS_CHIPS.map((chip) => {
+                          const selected = focusChips.includes(chip.key);
+                          return (
+                            <button
+                              key={chip.key}
+                              type="button"
+                              aria-pressed={selected}
+                              onClick={() => toggleFocusChip(chip.key)}
+                              className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-sm transition-colors ${
+                                selected
+                                  ? 'border-accent bg-accent font-semibold text-accent-fg'
+                                  : 'border-border bg-surface font-normal text-fg-secondary hover:border-accent/50 hover:text-fg'
+                              }`}
+                            >
+                              {selected && <AppIcon name="success" className="h-3.5 w-3.5" />}
+                              {chip.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="focus-note"
+                        className="text-2xs uppercase tracking-[0.22em] text-fg-muted"
+                      >
+                        {S.upload.focusNoteLabel}
+                      </label>
+                      <textarea
+                        id="focus-note"
+                        value={focusNote}
+                        onChange={(e) => setFocusNote(e.target.value)}
+                        placeholder={S.upload.focusNotePlaceholder}
+                        rows={2}
+                        className="input mt-2 resize-none"
+                      />
+                      <p className="mt-2 text-xs leading-6 text-fg-muted">
+                        {S.upload.focusNoteHelper}
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-2xs uppercase tracking-[0.22em] text-fg-muted">
+                        {S.explanationLevel.title}
+                      </label>
+                      <div className="mt-3">
+                        <LevelSlider
+                          value={levelOverride ?? settingsSnapshot?.default_explanation_level ?? 'masters'}
+                          onChange={setLevelOverride}
+                          compact
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <button onClick={handleStartAnalysis} className="btn-primary w-full justify-center py-3 text-sm">

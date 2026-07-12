@@ -364,10 +364,10 @@ function PhaseSection({
 
           {contentLoading ? (
             <div className="mt-2 space-y-2" role="status" aria-busy="true" aria-label={S.analysis.rewriting}>
-              <div className="h-3 w-11/12 animate-pulse rounded bg-surface-700/40" />
-              <div className="h-3 w-full animate-pulse rounded bg-surface-700/40" />
-              <div className="h-3 w-10/12 animate-pulse rounded bg-surface-700/40" />
-              <div className="h-3 w-9/12 animate-pulse rounded bg-surface-700/40" />
+              <div className="h-3 w-11/12 animate-pulse rounded bg-surface-hover" />
+              <div className="h-3 w-full animate-pulse rounded bg-surface-hover" />
+              <div className="h-3 w-10/12 animate-pulse rounded bg-surface-hover" />
+              <div className="h-3 w-9/12 animate-pulse rounded bg-surface-hover" />
               <span className="sr-only">{S.analysis.rewriting}</span>
             </div>
           ) : (
@@ -1243,8 +1243,8 @@ export default function AnalysisPanel({
                 accentColor={phaseAccentColor}
                 headerControl={
                   deepDiveCompleted && paperId ? (
-                    <div className="rounded-lg border border-surface-700/40 bg-surface-900/40 px-3 py-2 [.light_&]:bg-surface-50">
-                      <div className="mb-1.5 text-2xs text-surface-500">
+                    <div className="rounded-lg border border-border bg-surface-hover px-3 py-2">
+                      <div className="mb-1.5 text-2xs text-fg-muted">
                         {S.analysis.rewriteLevel}
                       </div>
                       <LevelSlider
