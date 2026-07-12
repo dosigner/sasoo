@@ -2340,7 +2340,7 @@ async def regenerate_visualization(paper_id: int, viz_id: int):
     # Rebuild the generation contexts the pipeline used
     visualization_input = ""
     try:
-        document_context = await asyncio.to_thread(
+        document_context = await run_pipeline_blocking(
             load_or_build_document_context, get_paper_dir(paper["folder_name"])
         )
         visualization_input = str(
