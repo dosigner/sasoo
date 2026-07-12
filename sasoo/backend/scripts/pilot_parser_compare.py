@@ -102,7 +102,9 @@ def _count_element_types(root: dict[str, Any]) -> dict[str, int]:
     return counts
 
 
-def _run_engine(pdf_path: Path, engine: str, work_dir: Path) -> dict[str, Any]:
+def _run_engine(
+    pdf_path: Path, engine: str, work_dir: Path, md_out: Path | None = None
+) -> dict[str, Any]:
     """한 (pdf, engine) 셀을 실행해 지표 dict를 반환. 실패 시 {"error": ...}."""
     from services.document_manifest import build_document_manifest
     from services.figure_candidates import build_figure_candidates
@@ -129,6 +131,9 @@ def _run_engine(pdf_path: Path, engine: str, work_dir: Path) -> dict[str, Any]:
             )
         else:
             raise ValueError(f"unknown engine: {engine}")
+
+        if md_out is not None:
+            md_out.write_text(markdown_text, encoding="utf-8")
 
         # figure 후보 수 (resolver LLM 호출 없이 후보 생성까지만).
         manifest = build_document_manifest(
@@ -203,6 +208,11 @@ def main() -> None:
     parser.add_argument("--engines", default="odl,gemini", help="쉼표 구분 엔진 목록")
     parser.add_argument("--out", required=True, help="결과 출력 디렉토리")
     parser.add_argument(
+        "--save-markdown",
+        action="store_true",
+        help="엔진별 변환 마크다운을 <out>/<pdf>.<engine>.md로 저장 (정성 비교용)",
+    )
+    parser.add_argument(
         "--gemini-profile",
         choices=sorted(_GEMINI_PROFILES),
         default=None,
@@ -224,8 +234,11 @@ def main() -> None:
             if not pdf_path.exists():
                 metrics = {"engine": engine, "error": f"PDF not found: {pdf_path}"}
             else:
+                md_out = (
+                    out_dir / f"{pdf_path.stem}.{engine}.md" if args.save_markdown else None
+                )
                 with TemporaryDirectory() as tmp:
-                    metrics = _run_engine(pdf_path, engine, Path(tmp))
+                    metrics = _run_engine(pdf_path, engine, Path(tmp), md_out=md_out)
             results.append({"pdf": pdf_path.name, "engine": engine, "metrics": metrics})
             status = metrics.get("error") or f"{metrics.get('wall_time_s')}s"
             print(f"[done] {pdf_path.name} x {engine}: {status}", file=sys.stderr)
