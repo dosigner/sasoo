@@ -57,7 +57,7 @@ export default function UpdateBanner() {
           <>
             <Download className="w-3.5 h-3.5 text-accent shrink-0" />
             <span className="text-fg truncate">
-              새 버전 <strong className="text-accent">v{version}</strong> 사용 가능
+              새 버전 <strong className="text-accent">v{version}</strong>, 지금 받을 수 있어요
             </span>
           </>
         )}

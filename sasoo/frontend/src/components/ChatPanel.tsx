@@ -218,7 +218,7 @@ export default function ChatPanel({
       );
     } catch (err) {
       const stopped = controller.signal.aborted;
-      const detail = err instanceof Error ? err.message : '답변을 받지 못했습니다.';
+      const detail = err instanceof Error ? err.message : '답변을 받지 못했어요.';
       setMessages((prev) =>
         prev.map((msg) => {
           if (msg.id !== agentId) return msg;
@@ -232,7 +232,7 @@ export default function ChatPanel({
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === agentId && msg.status === 'streaming'
-            ? { ...msg, status: 'error' as const, error: '응답이 중간에 끊겼습니다.' }
+            ? { ...msg, status: 'error' as const, error: '응답이 중간에 끊겼어요.' }
             : msg,
         ),
       );
@@ -324,7 +324,7 @@ export default function ChatPanel({
                 <span className={`chat-launcher-badge ${ready ? 'chat-launcher-badge-ready' : 'chat-launcher-badge-pending'}`}>
                   {ready ? '준비됨' : '대기'}
                 </span>
-                <span className="truncate">{ready ? '논문 맥락으로 바로 질문' : 'PDF 텍스트 준비 중'}</span>
+                <span className="truncate">{ready ? '논문 맥락으로 바로 질문해요' : 'PDF 텍스트를 읽고 있어요'}</span>
               </span>
             </span>
           </button>
@@ -347,7 +347,7 @@ export default function ChatPanel({
                   </span>
                 </div>
                 <p className="text-2xs text-fg-muted">
-                  {ready ? '현재 논문 맥락을 유지한 채 질문을 이어갈 수 있습니다.' : readyMessage}
+                  {ready ? '현재 논문 맥락을 유지한 채 질문을 이어갈 수 있어요.' : readyMessage}
                 </p>
               </div>
 
@@ -367,7 +367,7 @@ export default function ChatPanel({
                   <MessageSquare className="h-5 w-5 text-fg-muted" />
                 </div>
                 <p className="text-sm font-medium text-fg">
-                  질문 도우미 준비 중
+                  질문 도우미를 준비하고 있어요
                 </p>
                 <p className="mt-2 text-xs leading-relaxed text-fg-muted">
                   {readyMessage}
@@ -403,7 +403,7 @@ export default function ChatPanel({
                       <div>
                         <p className="text-xs text-fg-secondary">논문을 읽으면서 바로 질문해 보세요.</p>
                         <p className="mt-1 text-2xs text-fg-muted">
-                          핵심 기여, Figure 해석, 재현 리스크처럼 작업형 질문에 최적화되어 있습니다.
+                          핵심 기여, Figure 해석, 재현 리스크처럼 작업형 질문에 최적화했어요.
                         </p>
                       </div>
                     </div>
@@ -465,7 +465,7 @@ export default function ChatPanel({
                                   )}
                                   {msg.status === 'error' && (
                                     <p className="text-2xs text-danger">
-                                      {msg.error || '답변을 받지 못했습니다.'}
+                                      {msg.error || '답변을 받지 못했어요.'}
                                     </p>
                                   )}
                                 </>
@@ -507,7 +507,7 @@ export default function ChatPanel({
 
                 <div className="border-t border-border/45 px-4 py-3">
                   <div className="mb-2 flex items-center justify-between gap-3 text-2xs text-fg-muted">
-                    <span>{totalCost > 0 ? `누적 비용 $${totalCost.toFixed(4)}` : '대화 비용은 응답 후 집계됩니다.'}</span>
+                    <span>{totalCost > 0 ? `누적 비용 $${totalCost.toFixed(4)}` : '답변이 끝나면 대화 비용을 확인할 수 있어요.'}</span>
                     <div className="flex items-center gap-3">
                       {busy && (
                         <button
@@ -541,7 +541,7 @@ export default function ChatPanel({
                       disabled={!ready}
                       placeholder={
                         busy
-                          ? '답변 중에도 질문을 이어서 보낼 수 있습니다...'
+                          ? '답변 중에도 질문을 이어서 보낼 수 있어요...'
                           : '질문을 입력하세요... (Shift+Enter 줄바꿈)'
                       }
                       className="chat-composer-input"

@@ -359,7 +359,7 @@ export default function PdfViewer({
       })
       .catch((loadError: Error) => {
         if (cancelled) return;
-        setError(loadError.message || 'PDF 문서를 렌더링하지 못했습니다.');
+        setError(loadError.message || 'PDF 문서를 렌더링하지 못했어요.');
         setLoading(false);
       });
 
@@ -700,7 +700,7 @@ export default function PdfViewer({
               <ContentState
                 icon={(props) => <AppIcon name="library" {...props} />}
                 title={S.pdf.loading}
-                description="문서 뷰어를 준비하고 있습니다."
+                description="문서 뷰어를 준비하고 있어요."
                 loading
                 tone="muted"
               />
@@ -724,7 +724,7 @@ export default function PdfViewer({
             <ContentState
               icon={(props) => <AppIcon name="library" {...props} />}
               title={S.pdf.loadFailed}
-              description="PDF 보기를 위해 JavaScript가 필요합니다."
+              description="JavaScript를 켜면 PDF를 볼 수 있어요."
               tone="error"
             />
           </div>

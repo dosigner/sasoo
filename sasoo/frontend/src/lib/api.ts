@@ -394,10 +394,10 @@ async function request<T>(
   if (!response.ok) {
     let errorMessage =
       response.status >= 500
-        ? '서버 응답을 기다리는 중 문제가 발생했습니다.'
+        ? '서버 응답을 기다리는 동안 문제가 생겼어요.'
         : response.status === 404
-          ? '요청한 항목을 찾을 수 없습니다.'
-          : '요청을 처리하지 못했습니다.';
+          ? '요청한 항목을 찾지 못했어요.'
+          : '요청을 처리하지 못했어요.';
     let details: unknown = undefined;
     try {
       const errorBody = await response.json();

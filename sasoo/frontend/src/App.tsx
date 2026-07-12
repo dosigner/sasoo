@@ -28,7 +28,7 @@ function RouteFallback() {
       <ContentState
         icon={(props) => <AppIcon name="spinner" {...props} />}
         title={S.workbench.loading}
-        description="화면을 준비하고 있습니다."
+        description="화면을 준비하고 있어요."
         loading
         tone="muted"
       />

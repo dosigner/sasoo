@@ -1151,7 +1151,7 @@ export default function AnalysisPanel({
                 </h3>
               </div>
               <p className="mt-2 text-xs leading-relaxed text-fg-muted">
-                {visualSummary.summaryLine || '시각 검증 결과와 Figure를 한곳에서 확인할 수 있습니다.'}
+                {visualSummary.summaryLine || '시각 검증 결과와 Figure를 한곳에서 확인할 수 있어요.'}
               </p>
             </div>
 
@@ -1178,7 +1178,7 @@ export default function AnalysisPanel({
                 </h3>
               </div>
               <p className="mt-2 text-xs leading-relaxed text-fg-muted">
-                {visualSummary.summaryLine || '복구된 Table 구조와 저장된 CSV/HTML 자산을 한곳에서 확인할 수 있습니다.'}
+                {visualSummary.summaryLine || '복구한 Table 구조와 저장한 CSV/HTML 자산을 한곳에서 확인할 수 있어요.'}
               </p>
             </div>
 

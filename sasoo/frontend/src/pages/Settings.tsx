@@ -383,7 +383,7 @@ export default function Settings() {
         <SettingPanel
           kicker={S.settings.sectionCurrent}
           title={S.settings.apiKeys}
-          description="현재 연결 상태를 먼저 확인하고, 바꿀 키만 새로 입력합니다."
+          description="현재 연결 상태를 먼저 확인하고, 바꿀 키만 새로 입력해요."
         >
           <div className="space-y-4">
             <div>
@@ -556,7 +556,7 @@ export default function Settings() {
         <SettingPanel
           kicker={S.settings.sectionEdit}
           title={S.settings.librarySection}
-          description="논문이 쌓이는 경로와 업로드 직후의 기본 동작을 정리합니다."
+          description="논문이 쌓이는 경로와 업로드 직후의 기본 동작을 정리해요."
         >
           <div className="space-y-4">
             <div>
@@ -643,7 +643,7 @@ export default function Settings() {
         <SettingPanel
           kicker={S.settings.sectionEdit}
           title={S.settings.appearance}
-          description="현재 작업 환경에 맞게 화면 톤을 조정합니다."
+          description="현재 작업 환경에 맞게 화면 톤을 조정해요."
         >
           <div className="flex items-center gap-3">
             <button
@@ -709,7 +709,7 @@ export default function Settings() {
           <SettingPanel
             kicker={S.settings.sectionCurrent}
             title={S.settings.usageCosts}
-            description="최근 분석이 얼마나 호출과 비용을 만들었는지 확인합니다."
+            description="최근 분석이 얼마나 호출과 비용을 만들었는지 확인해요."
           >
             <CostDashboard />
           </SettingPanel>

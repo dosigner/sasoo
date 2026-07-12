@@ -116,7 +116,7 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
         // No plan yet, that's fine
         setLoaded(true);
       } else {
-        setError('실험 계획서를 불러오는데 실패했습니다.');
+        setError('실험 계획서를 불러오지 못했어요.');
       }
     } finally {
       setLoading(false);
@@ -134,9 +134,9 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
       setLoaded(true);
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(err.message || '실험 계획서 생성에 실패했습니다.');
+        setError(err.message || '실험 계획서를 만들지 못했어요.');
       } else {
-        setError('실험 계획서 생성에 실패했습니다.');
+        setError('실험 계획서를 만들지 못했어요.');
       }
     } finally {
       setGenerating(false);
@@ -154,10 +154,10 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
       <div className="flex flex-col items-center justify-center py-12 text-center px-6">
         <FlaskConical className="w-10 h-10 text-fg-muted mb-3" />
         <h3 className="text-sm font-semibold text-fg-secondary mb-1">
-          실험 계획서를 생성하려면 분석이 필요합니다
+          분석을 끝내면 실험 계획서를 만들 수 있어요
         </h3>
         <p className="text-xs text-fg-muted">
-          Phase 3 (Recipe Extraction)이 완료된 후에 사용할 수 있습니다.
+          Phase 3 (Recipe Extraction)이 끝나면 사용할 수 있어요.
         </p>
       </div>
     );
@@ -168,7 +168,7 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="w-5 h-5 text-accent animate-spin" />
-        <span className="ml-2 text-sm text-fg-muted">불러오는 중...</span>
+        <span className="ml-2 text-sm text-fg-muted">불러오고 있어요...</span>
       </div>
     );
   }
@@ -182,7 +182,7 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
           실험 재현 가이드 생성
         </h3>
         <p className="text-xs text-fg-muted mb-4 max-w-sm">
-          Recipe Card를 기반으로 실험 장비, 재료, 절차, 주의사항을 포함한 재현 가이드를 생성합니다.
+          Recipe Card를 기반으로 실험 장비, 재료, 절차, 주의사항을 포함한 재현 가이드를 만들어요.
         </p>
         {error && (
           <div className="flex items-center gap-1.5 text-xs text-danger mb-3">
@@ -198,7 +198,7 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
           {generating ? (
             <>
               <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
-              생성 중...
+              만들고 있어요...
             </>
           ) : (
             <>
@@ -407,7 +407,7 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
           {generating ? (
             <>
               <Loader2 className="w-3 h-3 animate-spin mr-1" />
-              재생성 중...
+              다시 만들고 있어요...
             </>
           ) : (
             '다시 생성'

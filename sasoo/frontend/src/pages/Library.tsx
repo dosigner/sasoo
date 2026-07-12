@@ -519,7 +519,7 @@ export default function Library() {
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-2xs uppercase tracking-[0.16em] text-fg-muted">분류 기준</div>
-              <div className="mt-1 text-sm leading-6 text-fg-secondary">분야와 상태로 먼저 좁히고, 연도와 태그는 보조 기준으로 사용하세요.</div>
+              <div className="mt-1 text-sm leading-6 text-fg-secondary">분야와 상태로 먼저 좁히고, 연도와 태그는 보조 기준으로 쓰세요.</div>
             </div>
             {hasActiveFilters && (
               <button
