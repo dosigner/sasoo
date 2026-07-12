@@ -8,8 +8,6 @@ All prices are in USD per 1 million tokens.
 # Pricing table (USD per 1M tokens)
 PRICING: dict[str, dict[str, float]] = {
     # Gemini 3.x models
-    "gemini-3-flash-preview": {"input": 0.25, "output": 1.50},
-    "gemini-3.1-flash-lite-preview": {"input": 0.02, "output": 0.30},
     "gemini-3.1-flash-image-preview": {"input": 0.10, "output": 0.40},
     "gemini-3.5-flash": {"input": 1.50, "output": 9.00},
     "gemini-3.1-flash-lite": {"input": 0.25, "output": 1.50},
@@ -21,7 +19,7 @@ def calc_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     Calculate USD cost for a single LLM call.
 
     Args:
-        model: Model identifier (e.g., "gemini-3-flash-preview")
+        model: Model identifier (e.g., "gemini-3.5-flash")
         input_tokens: Number of input tokens
         output_tokens: Number of output tokens
 

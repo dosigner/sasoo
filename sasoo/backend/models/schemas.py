@@ -428,7 +428,6 @@ class SettingsModel(BaseModel):
     language: str = "ko"           # ko | en
     theme: str = "light"           # light | dark
     max_concurrent_analyses: int = 3
-    gemini_model: str = "gemini-3-flash-preview"
     pdf_parser_mode: str = "java"
     extraction_pipeline_version: str = "resolver_v1"
     research_context: str = ""
@@ -452,7 +451,6 @@ class SettingsUpdate(BaseModel):
     language: Optional[str] = None
     theme: Optional[str] = None
     max_concurrent_analyses: Optional[int] = None
-    gemini_model: Optional[str] = None
     pdf_parser_mode: Optional[str] = None
     extraction_pipeline_version: Optional[str] = None
     research_context: Optional[str] = None

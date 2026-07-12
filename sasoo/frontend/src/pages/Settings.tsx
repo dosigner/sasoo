@@ -54,7 +54,6 @@ export default function Settings() {
     language: 'ko',
     theme: 'light',
     max_concurrent_analyses: 3,
-    gemini_model: 'gemini-3-flash-preview',
     pdf_parser_mode: 'java',
     extraction_pipeline_version: 'resolver_v1',
     paperbanana_profile: 'fast',
