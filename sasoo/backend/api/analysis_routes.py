@@ -376,6 +376,7 @@ JSON key 이름만 영어로 유지하고, value는 전부 한국어로 써줘.
 
     result = await call_interaction(
         prompt,
+        lane="pipeline",
         model="gemini-3.1-flash-lite",
         thinking_level="minimal",
         response_schema=_SCREENING_SCHEMA,
@@ -512,7 +513,7 @@ Return ONLY valid JSON (마크다운 펜스 없이):
             return cached
 
         try:
-            result = await call_interaction(llm_prompt, model="gemini-3.5-flash", store=False)
+            result = await call_interaction(llm_prompt, lane="pipeline", model="gemini-3.5-flash", store=False)
             cleaned_text = _clean_llm_json(result["text"])
 
             try:
@@ -754,6 +755,7 @@ async def _run_chain_stage(
             contents = prompt_chain
         return await call_interaction(
             contents,
+            lane="pipeline",
             model="gemini-3.5-flash",
             system_instruction=system_instruction,
             thinking_level=_STAGE_THINKING[phase],
@@ -763,6 +765,7 @@ async def _run_chain_stage(
         )
     return await call_interaction(
         prompt_fallback,
+        lane="pipeline",
         model="gemini-3.5-flash",
         system_instruction=system_instruction,
         thinking_level=_STAGE_THINKING[phase],
@@ -1618,7 +1621,7 @@ async def _generate_single_mermaid(
 다이어그램 타입 키워드로 시작하는 유효한 Mermaid 코드만 반환해.
 """
 
-    result = await call_interaction(prompt, model="gemini-3.5-flash", store=False)
+    result = await call_interaction(prompt, lane="pipeline", model="gemini-3.5-flash", store=False)
 
     return _sanitize_mermaid_code(result["text"])
 
@@ -2501,7 +2504,7 @@ Paper text excerpt:
 Return ONLY valid Mermaid syntax starting with "flowchart TD" or "flowchart LR".
 """
 
-    result = await call_interaction(prompt, model="gemini-3.5-flash", store=False)
+    result = await call_interaction(prompt, lane="chat", model="gemini-3.5-flash", store=False)
 
     mermaid_code = _sanitize_mermaid_code(result["text"])
 
@@ -2606,7 +2609,7 @@ async def repair_mermaid(paper_id: int, request: MermaidRepairRequest):
 - linkStyle 인덱스가 엣지 수를 벗어나면 해당 linkStyle 줄을 삭제해.
 - 수정된 전체 Mermaid 코드만 반환해. 설명 금지."""
 
-    result = await call_interaction(prompt, model="gemini-3.5-flash", store=False)
+    result = await call_interaction(prompt, lane="chat", model="gemini-3.5-flash", store=False)
     repaired = _sanitize_mermaid_code(result["text"])
     if not repaired:
         raise HTTPException(status_code=502, detail="Repair produced empty Mermaid code.")
@@ -2937,7 +2940,7 @@ Return ONLY valid JSON (마크다운 펜스 없이):
 }}
 """
 
-    result = await call_interaction(prompt, model="gemini-3.5-flash", store=False)
+    result = await call_interaction(prompt, lane="chat", model="gemini-3.5-flash", store=False)
     cleaned_text = _clean_llm_json(result["text"])
 
     # Validate JSON
@@ -3111,23 +3114,50 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
     transcript_parts.append(f"사용자: {message}")
     chat_input = "\n".join(transcript_parts)
 
-    # 6. Stream via SSE — stream_interaction이 executor+Queue 브릿지를 담당한다.
+    # 6. Stream via SSE — stream_interaction(lane="chat")이 전용 풀에서 브릿지를 담당한다.
+    #
+    # 파이프라인과 같은 쿼터를 때리는 순간이 곧 채팅이 실패하기 쉬운 순간이라,
+    # 분석 경로처럼 재시도한다. 단 토큰이 이미 나간 뒤의 실패는 답변을 되감을 수
+    # 없으므로 terminal이다. 클라이언트가 끊으면 즉시 소비를 멈춘다.
     async def event_generator():
-        try:
-            async for ev in stream_interaction(
-                chat_input,
-                model=_CHAT_MODEL,
-                system_instruction=system_prompt,
-                store=False,
-            ):
-                if ev["type"] == "token":
-                    yield f"data: {json.dumps({'type': 'token', 'content': ev['text']}, ensure_ascii=False)}\n\n"
-                elif ev["type"] == "done":
-                    cost = calc_cost(_CHAT_MODEL, ev["tokens_in"], ev["tokens_out"])
-                    yield f"data: {json.dumps({'type': 'done', 'tokens_in': ev['tokens_in'], 'tokens_out': ev['tokens_out'], 'cost_usd': cost}, ensure_ascii=False)}\n\n"
-        except Exception as exc:
-            logger.error("Chat stream error: %s", exc)
-            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
+        last_error: Exception | None = None
+        streamed_any = False
+
+        for attempt in range(_CHAT_MAX_ATTEMPTS):
+            try:
+                async for ev in stream_interaction(
+                    chat_input,
+                    lane="chat",
+                    model=_CHAT_MODEL,
+                    system_instruction=system_prompt,
+                    store=False,
+                ):
+                    if await request.is_disconnected():
+                        logger.info(
+                            "Chat client disconnected for paper %s; abandoning stream", paper_id
+                        )
+                        return
+                    if ev["type"] == "token":
+                        streamed_any = True
+                        yield f"data: {json.dumps({'type': 'token', 'content': ev['text']}, ensure_ascii=False)}\n\n"
+                    elif ev["type"] == "done":
+                        cost = calc_cost(_CHAT_MODEL, ev["tokens_in"], ev["tokens_out"])
+                        yield f"data: {json.dumps({'type': 'done', 'tokens_in': ev['tokens_in'], 'tokens_out': ev['tokens_out'], 'cost_usd': cost}, ensure_ascii=False)}\n\n"
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "Chat stream failed for paper %s (attempt %d/%d): %s",
+                    paper_id, attempt + 1, _CHAT_MAX_ATTEMPTS, exc,
+                )
+                if streamed_any or attempt == _CHAT_MAX_ATTEMPTS - 1:
+                    break
+                await asyncio.sleep(2 ** attempt)
+
+        logger.error("Chat stream error for paper %s: %s", paper_id, last_error)
+        yield f"data: {json.dumps({'type': 'error', 'message': str(last_error)}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -3207,6 +3237,7 @@ async def rewrite_section(paper_id: int, req: RewriteRequest):
             raise RuntimeError("no chain id")
         result = await call_interaction(
             prompt,
+            lane="chat",
             model="gemini-3.5-flash",
             thinking_level="low",
             previous_interaction_id=chain_id,
@@ -3216,6 +3247,7 @@ async def rewrite_section(paper_id: int, req: RewriteRequest):
         result = await call_interaction(
             f"다음 논문 분석 결과를 읽고 아래 수준으로 다시 설명해줘. {level_instruction}\n\n"
             f"분석 결과:\n{original['result']}",
+            lane="chat",
             model="gemini-3.5-flash",
             thinking_level="low",
             store=False,

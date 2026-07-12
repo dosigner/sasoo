@@ -76,6 +76,7 @@ async def _plan_description(viz_target: dict) -> str:
     )
     result = await call_interaction(
         prompt,
+        lane="pipeline",
         model=MODEL_PRO,
         system_instruction=_PLANNER_SYSTEM,
         thinking_level="medium",

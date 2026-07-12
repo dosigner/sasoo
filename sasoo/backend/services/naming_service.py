@@ -74,6 +74,7 @@ async def generate_folder_name(
 
         result = await call_interaction(
             prompt,
+            lane="pipeline",
             model="gemini-3.1-flash-lite",
             system_instruction=_NAMING_SYSTEM_INSTRUCTION,
             thinking_level="minimal",
@@ -134,6 +135,7 @@ async def generate_figure_names(
 
         result = await call_interaction(
             prompt,
+            lane="pipeline",
             model="gemini-3.1-flash-lite",
             system_instruction=_NAMING_SYSTEM_INSTRUCTION,
             thinking_level="minimal",
@@ -187,6 +189,7 @@ async def generate_paperbanana_name(
 
         result = await call_interaction(
             prompt,
+            lane="pipeline",
             model="gemini-3.1-flash-lite",
             system_instruction=_NAMING_SYSTEM_INSTRUCTION,
             thinking_level="minimal",

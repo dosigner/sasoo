@@ -149,6 +149,7 @@ If no sub-figures are detected, return:
                     {"type": "image", "data": image_base64, "mime_type": "image/png"},
                     {"type": "text", "text": self.DETECTION_PROMPT},
                 ],
+                lane="pipeline",
                 model="gemini-3.5-flash",
                 thinking_level="minimal",
                 store=False,

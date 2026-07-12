@@ -560,9 +560,9 @@ Be exhaustive. Do NOT summarize or abbreviate. Include every relevant numerical 
             contents = prompt
 
     try:
-        result = await call_interaction(contents, model="gemini-3.5-flash", thinking_level="high", store=False)
+        result = await call_interaction(contents, lane="chat", model="gemini-3.5-flash", thinking_level="high", store=False)
     except Exception:
-        result = await call_interaction(contents, model="gemini-3.5-flash", store=False)
+        result = await call_interaction(contents, lane="chat", model="gemini-3.5-flash", store=False)
 
     explanation = result["text"].strip()
 
