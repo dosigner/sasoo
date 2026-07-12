@@ -1308,7 +1308,30 @@ def _write_manifest(paper_dir: Path, manifest: dict[str, Any]) -> None:
     )
 
 
-def _run_convert(pdf_path: Path, output_dir: Path, figures_dir: Path, mode: str) -> tuple[dict[str, Any], str, str]:
+def _resolve_pdf_engine(engine: str | None) -> str:
+    """파서 엔진 선택: 함수 인자(파일럿 오버라이드) > env SASOO_PDF_ENGINE > "odl"."""
+    selected = (engine or os.environ.get("SASOO_PDF_ENGINE") or "odl").strip().lower()
+    return selected if selected in {"odl", "gemini"} else "odl"
+
+
+def _run_convert(
+    pdf_path: Path,
+    output_dir: Path,
+    figures_dir: Path,
+    mode: str,
+    engine: str | None = None,
+) -> tuple[dict[str, Any], str, str]:
+    """엔진 디스패처. 반환 계약 (root_json, markdown_text, actual_engine)은 엔진 불문 동일.
+
+    ODL(기본)은 _run_convert_odl로, gemini는 _run_convert_gemini로 위임한다. gemini 실패는
+    OdlParserError로 변환해 기존 폴백 체인(ensure_text_artifacts의 pymupdf 폴백)을 그대로 태운다.
+    """
+    if _resolve_pdf_engine(engine) == "gemini":
+        return _run_convert_gemini(pdf_path, output_dir, figures_dir)
+    return _run_convert_odl(pdf_path, output_dir, figures_dir, mode)
+
+
+def _run_convert_odl(pdf_path: Path, output_dir: Path, figures_dir: Path, mode: str) -> tuple[dict[str, Any], str, str]:
     ensure_java_runtime()
     odl = _import_odl_module()
 
@@ -1334,6 +1357,17 @@ def _run_convert(pdf_path: Path, output_dir: Path, figures_dir: Path, mode: str)
     root = json.loads(json_path.read_text(encoding="utf-8"))
     markdown_text = md_path.read_text(encoding="utf-8")
     return root, markdown_text, actual_engine
+
+
+def _run_convert_gemini(pdf_path: Path, output_dir: Path, figures_dir: Path) -> tuple[dict[str, Any], str, str]:
+    """Gemini 비전 엔진 어댑터. 비동기 run_convert_gemini를 기존 동기 브리지로 감싸고,
+    실패는 OdlParserError로 변환해 폴백이 ODL 실패와 동일하게 동작하도록 한다."""
+    from services.gemini_parser import GeminiParserError, run_convert_gemini
+
+    try:
+        return _run_coroutine_sync(run_convert_gemini(pdf_path, output_dir, figures_dir))
+    except GeminiParserError as exc:
+        raise OdlParserError(f"Gemini parser engine failed: {exc}") from exc
 
 
 def _convert_error_message(exc: Exception) -> str:
