@@ -117,7 +117,7 @@ export const S = {
     panelResize: '패널 크기 조절',
     backToLibrary: '라이브러리',
     assistant: '질문 도우미',
-    assistantWaiting: '스크리닝 완료 후 질문 가능',
+    assistantWaiting: 'PDF 텍스트 추출 후 질문 가능',
     statusRailTitle: '분석 상태',
     inspectNow: '지금 검토하기',
     inspectClaim: '핵심 주장 보기',
