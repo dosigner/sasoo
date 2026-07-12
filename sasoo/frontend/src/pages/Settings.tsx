@@ -12,6 +12,7 @@ import { useToast } from '@/components/Toast';
 import { Toggle } from '@/components/ui';
 import { S } from '@/lib/strings';
 import { AppIcon } from '@/components/icons';
+import LevelSlider, { type LevelKey } from '@/components/LevelSlider';
 
 function SettingPanel({
   kicker,
@@ -47,18 +48,17 @@ function SettingPanel({
 export default function Settings() {
   const defaultSettings: SettingsType = {
     gemini_api_key: '',
-    anthropic_api_key: '',
     library_path: '',
     default_domain: 'optics',
     auto_analyze: false,
     language: 'ko',
     theme: 'light',
     max_concurrent_analyses: 3,
-    gemini_model: 'gemini-3-flash-preview',
-    anthropic_model: 'claude-sonnet-4-20250514',
     pdf_parser_mode: 'java',
     extraction_pipeline_version: 'resolver_v1',
     paperbanana_profile: 'fast',
+    research_context: '',
+    default_explanation_level: 'masters',
   };
 
   const [baselineSettings, setBaselineSettings] = useState<SettingsType>(defaultSettings);
@@ -70,28 +70,24 @@ export default function Settings() {
 
   // Form state
   const [geminiKey, setGeminiKey] = useState('');
-  const [claudeKey, setClaudeKey] = useState('');
   const [libraryPath, setLibraryPath] = useState('');
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
   const [autoAnalyze, setAutoAnalyze] = useState(false);
   const [pdfParserMode, setPdfParserMode] = useState<'java'>('java');
   const [extractionPipelineVersion, setExtractionPipelineVersion] = useState<'legacy' | 'resolver_v1'>('resolver_v1');
+  const [researchContext, setResearchContext] = useState('');
+  const [defaultLevel, setDefaultLevel] = useState<LevelKey>('masters');
 
   // API key status (masked value from server, for display only)
   const [geminiKeyStatus, setGeminiKeyStatus] = useState('');
-  const [claudeKeyStatus, setClaudeKeyStatus] = useState('');
 
   // Visibility toggles
   const [showGeminiKey, setShowGeminiKey] = useState(false);
-  const [showClaudeKey, setShowClaudeKey] = useState(false);
   const geminiInputRef = useRef<HTMLInputElement | null>(null);
-  const claudeInputRef = useRef<HTMLInputElement | null>(null);
 
   const clearApiKeyInputs = useCallback(() => {
     setGeminiKey('');
-    setClaudeKey('');
     if (geminiInputRef.current) geminiInputRef.current.value = '';
-    if (claudeInputRef.current) claudeInputRef.current.value = '';
   }, []);
 
   const applySettingsToForm = useCallback((data: SettingsType) => {
@@ -102,6 +98,8 @@ export default function Settings() {
     setExtractionPipelineVersion(
       (data.extraction_pipeline_version || 'resolver_v1') as 'legacy' | 'resolver_v1'
     );
+    setResearchContext(data.research_context || '');
+    setDefaultLevel((data.default_explanation_level || 'masters') as LevelKey);
   }, []);
 
   // -----------------------------------------------------------------------
@@ -116,7 +114,6 @@ export default function Settings() {
         if (cancelled) return;
         // Store masked keys for status display, but DON'T populate inputs
         setGeminiKeyStatus(data.gemini_api_key || '');
-        setClaudeKeyStatus(data.anthropic_api_key || '');
         // Key inputs start empty — user types new key only when they want to change
         clearApiKeyInputs();
         applySettingsToForm(data);
@@ -167,16 +164,16 @@ export default function Settings() {
         auto_analyze: autoAnalyze,
         pdf_parser_mode: pdfParserMode,
         extraction_pipeline_version: extractionPipelineVersion,
+        research_context: researchContext,
+        default_explanation_level: defaultLevel,
       };
       if (geminiKey.trim()) payload.gemini_api_key = geminiKey.trim();
-      if (claudeKey.trim()) payload.anthropic_api_key = claudeKey.trim();
 
       const updated = await updateSettings(payload);
       setBaselineSettings(updated);
       applySettingsToForm(updated);
       // Update status badges with new masked values
       setGeminiKeyStatus(updated.gemini_api_key || '');
-      setClaudeKeyStatus(updated.anthropic_api_key || '');
       // Clear key inputs after save. This also fights password-manager autofill
       // that can leave the settings screen permanently "dirty".
       clearApiKeyInputs();
@@ -190,7 +187,7 @@ export default function Settings() {
     } finally {
       setSaving(false);
     }
-  }, [geminiKey, claudeKey, libraryPath, theme, autoAnalyze, pdfParserMode, extractionPipelineVersion, toast, applySettingsToForm, clearApiKeyInputs]);
+  }, [geminiKey, libraryPath, theme, autoAnalyze, pdfParserMode, extractionPipelineVersion, researchContext, defaultLevel, toast, applySettingsToForm, clearApiKeyInputs]);
 
   const handleBrowseDirectory = useCallback(async () => {
     if (!window.electronAPI?.openDirectory) {
@@ -234,6 +231,8 @@ export default function Settings() {
     setAutoAnalyze(baselineSettings.auto_analyze ?? false);
     setPdfParserMode((baselineSettings.pdf_parser_mode || 'java') as 'java');
     setExtractionPipelineVersion((baselineSettings.extraction_pipeline_version || 'resolver_v1') as 'legacy' | 'resolver_v1');
+    setResearchContext(baselineSettings.research_context || '');
+    setDefaultLevel((baselineSettings.default_explanation_level || 'masters') as LevelKey);
     setSaved(false);
   }, [baselineSettings, clearApiKeyInputs]);
 
@@ -242,12 +241,13 @@ export default function Settings() {
   // -----------------------------------------------------------------------
   const hasChanges =
     geminiKey.trim() !== '' ||
-    claudeKey.trim() !== '' ||
     libraryPath !== (baselineSettings.library_path || '') ||
     theme !== (baselineSettings.theme || 'light') ||
     autoAnalyze !== (baselineSettings.auto_analyze ?? false) ||
     pdfParserMode !== (baselineSettings.pdf_parser_mode || 'java') ||
-    extractionPipelineVersion !== (baselineSettings.extraction_pipeline_version || 'resolver_v1');
+    extractionPipelineVersion !== (baselineSettings.extraction_pipeline_version || 'resolver_v1') ||
+    researchContext !== (baselineSettings.research_context || '') ||
+    defaultLevel !== ((baselineSettings.default_explanation_level || 'masters') as LevelKey);
 
   if (loading) {
     return (
@@ -274,7 +274,7 @@ export default function Settings() {
             </p>
             <div className="page-status-strip mt-3">
               <span className="archive-inline-status archive-inline-status-muted">
-                {S.settings.apiKeys} {geminiKeyStatus || claudeKeyStatus ? S.settings.statusConfigured : S.settings.statusMissing}
+                {S.settings.apiKeys} {geminiKeyStatus ? S.settings.statusConfigured : S.settings.statusMissing}
               </span>
               <span className="archive-inline-status archive-inline-status-muted">
                 {S.settings.librarySection} {libraryPath ? S.settings.statusConfigured : S.settings.statusMissing}
@@ -390,62 +390,37 @@ export default function Settings() {
                 {S.settings.getKeyAt('')}
               </p>
             </div>
+          </div>
+        </SettingPanel>
+
+        <SettingPanel
+          kicker={S.settings.sectionEdit}
+          title={S.settings.researcherProfile}
+          description={S.settings.researcherProfileDesc}
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="settings-label text-xs text-surface-400 block mb-1.5" htmlFor="research-context">
+                {S.settings.researchContext}
+              </label>
+              <input
+                id="research-context"
+                type="text"
+                value={researchContext}
+                onChange={(e) => setResearchContext(e.target.value)}
+                placeholder={S.settings.researchContextPlaceholder}
+                className="input"
+              />
+              <p className="settings-helper text-2xs text-surface-600 mt-1">
+                {S.settings.researchContextHelper}
+              </p>
+            </div>
 
             <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <label className="text-xs text-surface-400">
-                  {S.settings.claudeKey}
-                </label>
-                {claudeKeyStatus ? (
-                  <span className="text-2xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
-                    {S.settings.keyConfigured} ({claudeKeyStatus})
-                  </span>
-                ) : (
-                  <span className="text-2xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">
-                    {S.settings.keyNotConfigured}
-                  </span>
-                )}
-              </div>
-              <div className="relative">
-                <input
-                  ref={claudeInputRef}
-                  type={showClaudeKey ? 'text' : 'password'}
-                  value={claudeKey}
-                  onChange={(e) => setClaudeKey(e.target.value)}
-                  name="sasoo-claude-api-key"
-                  autoComplete="off"
-                  data-lpignore="true"
-                  data-1p-ignore="true"
-                  data-bwignore="true"
-                  spellCheck={false}
-                  placeholder={S.settings.enterNewKey}
-                  className="input pr-10"
-                />
-                <button
-                  onClick={() => setShowClaudeKey(!showClaudeKey)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-surface-500 hover:text-surface-300 transition-colors"
-                  style={{ borderRadius: 'var(--radius-control)' }}
-                  type="button"
-                >
-                  {showClaudeKey ? (
-                    <AppIcon name="eye-off" className="w-4 h-4" />
-                  ) : (
-                    <AppIcon name="eye" className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-              <p className="text-2xs text-surface-600 mt-1">
-                {S.settings.claudeHelp}{' '}
-                <a
-                  href="https://platform.claude.com/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary-400 hover:text-primary-300 underline underline-offset-2"
-                >
-                  Anthropic Console
-                </a>
-                {S.settings.getKeyAt('')}
-              </p>
+              <label className="settings-label text-xs text-surface-400 block mb-1.5">
+                {S.settings.defaultLevel}
+              </label>
+              <LevelSlider value={defaultLevel} onChange={setDefaultLevel} />
             </div>
           </div>
         </SettingPanel>

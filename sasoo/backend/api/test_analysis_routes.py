@@ -1,3 +1,4 @@
+import contextlib
 import sys
 import types
 import unittest
@@ -283,19 +284,21 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         )
         captured = {}
 
-        async def _fake_call(prompt: str):
+        async def _fake_call(prompt, **kwargs):
             captured["prompt"] = prompt
+            captured.update(kwargs)
             return {
                 "text": '{"title":"recipe","parameters":[],"steps":[],"materials":[],"equipment":[],"critical_notes":[],"confidence":0.8,"missing_info":[],"reproducibility_score":0.7}',
                 "model": "gemini",
                 "tokens_in": 10,
                 "tokens_out": 20,
+                "interaction_id": None,
             }
 
         with (
             patch("api.analysis_routes.fetch_one", new=AsyncMock(side_effect=AssertionError("DB reread should not happen"))),
             patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes._call_gemini", new=_fake_call),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
             patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
         ):
             await analysis_routes._run_recipe(
@@ -305,7 +308,9 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                 screening_result_text='{"domain":"materials"}',
             )
 
+        # 폴백 경로(pdf_uri 없음): 도메인 힌트 + 논문 텍스트가 프롬프트에 들어가고 store=False
         self.assertIn("DOMAIN-SPECIFIC PARAMETERS (Materials Science)", captured["prompt"])
+        self.assertIs(captured["store"], False)
 
     async def test_run_recipe_skips_when_screening_signal_is_weak(self):
         status = AnalysisStatus(
@@ -317,8 +322,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()) as insert_mock,
-            patch("api.analysis_routes._call_gemini", new=AsyncMock(side_effect=AssertionError("LLM call should be skipped"))),
-            patch("api.analysis_routes._call_anthropic", new=AsyncMock(side_effect=AssertionError("LLM call should be skipped"))),
+            patch("api.analysis_routes.call_interaction", new=AsyncMock(side_effect=AssertionError("LLM call should be skipped"))),
         ):
             result = await analysis_routes._run_recipe(
                 7,
@@ -349,11 +353,53 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["model"], "gemini-cache")
         insert_mock.assert_awaited_once()
 
+    async def test_screening_uses_interactions_stateless(self):
+        status = AnalysisStatus(
+            paper_id=7,
+            overall_status="running",
+            phases=[],
+            progress_pct=0.0,
+        )
+        calls = {}
+
+        async def _fake_call(prompt, **kwargs):
+            calls["prompt"] = prompt
+            calls.update(kwargs)
+            return {
+                "text": '{"domain": "optics", "agent_recommended": "photon", '
+                        '"relevance_score": 0.9, "key_topics": [], '
+                        '"methodology_type": "experimental", "summary": "요약", '
+                        '"is_experimental": true, "has_figures": true, '
+                        '"estimated_complexity": "low"}',
+                "model": "gemini-3.1-flash-lite",
+                "tokens_in": 10,
+                "tokens_out": 10,
+                "interaction_id": None,
+            }
+
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()) as insert_mock,
+        ):
+            result = await analysis_routes._run_screening(7, "논문 텍스트", status)
+
+        self.assertEqual(calls["model"], "gemini-3.1-flash-lite")
+        self.assertEqual(calls["thinking_level"], "minimal")
+        self.assertIs(calls["store"], False)
+        self.assertIn("domain", calls["response_schema"]["properties"])
+        # 프롬프트에서 JSON 골격/펜스 지시는 제거되었지만 논문 텍스트는 유지
+        self.assertIn("논문 텍스트", calls["prompt"])
+        self.assertNotIn("Return ONLY valid JSON", calls["prompt"])
+        self.assertEqual(result["model"], "gemini-3.1-flash-lite")
+        self.assertEqual(result["interaction_id"], None)
+        insert_mock.assert_awaited_once()
+
     async def test_mermaid_uses_visualization_context_and_latest_recipe_row(self):
         paper = {"id": 7, "title": "Paper", "folder_name": "folder"}
         captured = {}
 
-        async def _fake_call(prompt: str):
+        async def _fake_call(prompt, **kwargs):
             captured["prompt"] = prompt
             return {"text": "flowchart TD\nA-->B", "model": "gemini", "tokens_in": 1, "tokens_out": 1}
 
@@ -362,7 +408,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             patch("api.analysis_routes.get_paper_dir", return_value="/tmp/paper"),
             patch("api.analysis_routes.load_or_build_document_context", return_value={"phase_inputs": {"visualization": "VISUALIZATION-CONTEXT"}}),
             patch("api.analysis_routes.get_latest_completed_phase_row", new=AsyncMock(return_value=_row("recipe", '{"title":"recipe"}'))),
-            patch("api.analysis_routes._call_gemini", new=_fake_call),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
         ):
             response = await analysis_routes.get_mermaid(7)
 
@@ -374,7 +420,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "materials"}
         captured = {}
 
-        async def _fake_call(prompt: str):
+        async def _fake_call(prompt, **kwargs):
             captured["prompt"] = prompt
             return {"text": '{"title":"plan"}', "model": "gemini", "tokens_in": 1, "tokens_out": 1}
 
@@ -387,7 +433,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                 _row("recipe", '{"title":"latest recipe"}'),
                 _row("visual", '{"figure_count":3}'),
             ])),
-            patch("api.analysis_routes._call_gemini", new=_fake_call),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
             patch("api.analysis_routes.execute_insert", new=AsyncMock(return_value=1)),
         ):
             response = await analysis_routes._generate_experiment_plan_impl(7)
@@ -404,40 +450,13 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         }
         captured = {}
 
-        class DummyPart:
-            @staticmethod
-            def from_text(text: str):
-                return {"text": text}
-
-        class DummyContent:
-            def __init__(self, role, parts):
-                self.role = role
-                self.parts = parts
-
-        class DummyModels:
-            def generate_content_stream(self, *, model, contents, config):
-                captured["model"] = model
-                captured["contents"] = contents
-                captured["config"] = config
-                usage = types.SimpleNamespace(prompt_token_count=10, candidates_token_count=20)
-                return [
-                    types.SimpleNamespace(text="첫", usage_metadata=usage),
-                    types.SimpleNamespace(text="답", usage_metadata=usage),
-                ]
-
-        class DummyClient:
-            def __init__(self):
-                self.models = DummyModels()
-
-        genai_types = types.SimpleNamespace(
-            Content=DummyContent,
-            Part=DummyPart,
-            GenerateContentConfig=lambda **kwargs: kwargs,
-        )
-        google_module = types.ModuleType("google")
-        genai_module = types.ModuleType("google.genai")
-        genai_module.types = genai_types
-        google_module.genai = genai_module
+        async def fake_stream(prompt, **kwargs):
+            captured["prompt"] = prompt
+            captured.update(kwargs)
+            yield {"type": "token", "text": "첫"}
+            yield {"type": "token", "text": "답"}
+            yield {"type": "done", "tokens_in": 10, "tokens_out": 20,
+                   "tokens_thought": 0, "interaction_id": None}
 
         with (
             patch.dict(sys.modules, {"services.agents": agents_module}),
@@ -445,8 +464,55 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             patch("api.analysis_routes.get_paper_dir", return_value="/tmp/paper"),
             patch("api.analysis_routes.load_or_build_document_context", return_value={"phase_inputs": {"chat": "CHAT-CONTEXT"}}),
             patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value=latest_rows)),
-            patch("api.analysis_routes._get_gemini_client", return_value=DummyClient()),
-            patch.dict(sys.modules, {"google": google_module, "google.genai": genai_module}),
+            patch("api.analysis_routes.stream_interaction", new=fake_stream),
+            patch("api.analysis_routes.calc_cost", return_value=0.0001),
+        ):
+            response = await analysis_routes._chat_with_agent_impl(
+                7,
+                _FakeRequest({"message": "질문", "history": [{"role": "user", "content": "이전질문"}]}),
+            )
+            chunks = []
+            async for chunk in response.body_iterator:
+                chunks.append(chunk)
+
+        # stateless 전환: stream_interaction으로 넘어간 계약 검증
+        self.assertEqual(captured["model"], "gemini-3.5-flash")
+        self.assertIs(captured["store"], False)
+        system_prompt = captured["system_instruction"]
+        self.assertIn("CHAT-CONTEXT", system_prompt)
+        self.assertIn("스크리닝 결과", system_prompt)
+        # 히스토리는 요청 텍스트로 조립되어 input에 포함
+        self.assertIn("이전질문", captured["prompt"])
+        self.assertIn("질문", captured["prompt"])
+        # SSE 이벤트 스키마 불변: token(content) / done(tokens_in,tokens_out,cost_usd)
+        joined = "".join(chunks)
+        self.assertIn('"type": "token"', joined)
+        self.assertIn('"content": "첫"', joined)
+        self.assertIn('"type": "done"', joined)
+        self.assertIn('"cost_usd"', joined)
+        self.assertNotIn('"type": "error"', joined)
+
+    async def test_chat_stream_error_emits_sse_error_event(self):
+        """stream_interaction이 예외를 던지면 event_generator의 except 절이
+        실제 SSE `{"type":"error","message":...}` 이벤트를 내보내는지 검증한다."""
+        paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "materials"}
+        latest_rows = {
+            "screening": _row("screening", '{"summary":"screening"}'),
+            "recipe": _row("recipe", '{"title":"recipe"}'),
+        }
+
+        async def fake_stream_raises(prompt, **kwargs):
+            raise RuntimeError("stream boom")
+            yield  # pragma: no cover - unreachable, keeps this an async generator
+
+        with (
+            patch.dict(sys.modules, {"services.agents": agents_module}),
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)),
+            patch("api.analysis_routes.get_paper_dir", return_value="/tmp/paper"),
+            patch("api.analysis_routes.load_or_build_document_context", return_value={"phase_inputs": {"chat": "CHAT-CONTEXT"}}),
+            patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value=latest_rows)),
+            patch("api.analysis_routes.stream_interaction", new=fake_stream_raises),
+            patch("api.analysis_routes.calc_cost", return_value=0.0001),
         ):
             response = await analysis_routes._chat_with_agent_impl(
                 7,
@@ -456,10 +522,10 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             async for chunk in response.body_iterator:
                 chunks.append(chunk)
 
-        system_prompt = captured["config"]["system_instruction"]
-        self.assertIn("CHAT-CONTEXT", system_prompt)
-        self.assertIn("스크리닝 결과", system_prompt)
-        self.assertTrue(any("done" in str(chunk) for chunk in chunks))
+        joined = "".join(chunks)
+        self.assertIn('"type": "error"', joined)
+        self.assertIn("stream boom", joined)
+        self.assertNotIn('"type": "done"', joined)
 
 
 class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):
@@ -488,7 +554,7 @@ class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):
                     }
                 ),
             ),
-            patch("api.figure_service._call_gemini", new=_fake_call),
+            patch("api.figure_service.call_interaction", new=_fake_call),
             patch("api.figure_service.execute_update", new=AsyncMock()),
         ):
             response = await figure_service.explain_figure_handler(7, 9)
@@ -497,6 +563,395 @@ class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("--- visual ---", captured["prompt"])
         self.assertNotIn("--- PAPER FULL TEXT ---", captured["prompt"])
         self.assertEqual(response.explanation, "설명")
+
+
+class ChainStageTests(unittest.IsolatedAsyncioTestCase):
+    """상태 유지 체인 전환의 핵심 계약 검증: 체인 연결 / PDF 첫 호출 / 폴백."""
+
+    def _capturing_fake(self, captured):
+        async def _fake(contents, **kwargs):
+            captured["contents"] = contents
+            captured.update(kwargs)
+            return {"text": '{"quality_summary":"ok","key_findings_from_visuals":[]}',
+                    "model": "gemini-3.5-flash", "tokens_in": 5, "tokens_out": 5,
+                    "interaction_id": "int_new"}
+        return _fake
+
+    async def test_chain_first_call_includes_pdf_document(self):
+        captured = {}
+        with patch("api.analysis_routes.call_interaction", new=self._capturing_fake(captured)):
+            result = await analysis_routes._run_chain_stage(
+                phase="visual",
+                prompt_chain="CHAIN-PROMPT",
+                prompt_fallback="FALLBACK-PROMPT",
+                system_instruction="SI",
+                previous_interaction_id=None,
+                pdf_uri="files/uri-123",
+                response_schema={"type": "object"},
+            )
+        # 첫 호출은 PDF 문서 + 텍스트 content 리스트, store=True, previous=None
+        self.assertIsInstance(captured["contents"], list)
+        self.assertEqual(captured["contents"][0]["type"], "document")
+        self.assertEqual(captured["contents"][0]["uri"], "files/uri-123")
+        self.assertEqual(captured["contents"][1]["text"], "CHAIN-PROMPT")
+        self.assertIs(captured["store"], True)
+        self.assertIsNone(captured["previous_interaction_id"])
+        self.assertEqual(captured["thinking_level"], "low")
+        self.assertEqual(result["interaction_id"], "int_new")
+
+    async def test_chain_continuation_uses_previous_id_and_no_pdf(self):
+        captured = {}
+        with patch("api.analysis_routes.call_interaction", new=self._capturing_fake(captured)):
+            await analysis_routes._run_chain_stage(
+                phase="deep_dive",
+                prompt_chain="CHAIN-PROMPT",
+                prompt_fallback="FALLBACK-PROMPT",
+                system_instruction="SI",
+                previous_interaction_id="int_prev",
+                pdf_uri="files/uri-123",
+                response_schema={"type": "object"},
+            )
+        # 이후 스테이지는 지시문만(문자열), previous_interaction_id로 서버 상태 이어감
+        self.assertEqual(captured["contents"], "CHAIN-PROMPT")
+        self.assertEqual(captured["previous_interaction_id"], "int_prev")
+        self.assertIs(captured["store"], True)
+        self.assertEqual(captured["thinking_level"], "high")
+
+    async def test_fallback_is_stateless_text_path(self):
+        captured = {}
+        with patch("api.analysis_routes.call_interaction", new=self._capturing_fake(captured)):
+            await analysis_routes._run_chain_stage(
+                phase="recipe",
+                prompt_chain="CHAIN-PROMPT",
+                prompt_fallback="FALLBACK-PROMPT",
+                system_instruction="SI",
+                previous_interaction_id=None,
+                pdf_uri=None,
+                response_schema={"type": "object"},
+            )
+        # PDF 없음 → 텍스트 프롬프트, store=False, previous_interaction_id 미전달
+        self.assertEqual(captured["contents"], "FALLBACK-PROMPT")
+        self.assertIs(captured["store"], False)
+        self.assertNotIn("previous_interaction_id", captured)
+        self.assertEqual(captured["thinking_level"], "medium")
+
+    async def test_recipe_stage_forwards_chain_params(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        captured = {}
+
+        async def _fake_call(contents, **kwargs):
+            captured["contents"] = contents
+            captured.update(kwargs)
+            return {"text": '{"title":"r","objective":"o","parameters":[],"steps":[]}',
+                    "model": "gemini-3.5-flash", "tokens_in": 1, "tokens_out": 1,
+                    "interaction_id": "int_recipe"}
+
+        insert_mock = AsyncMock()
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=insert_mock),
+        ):
+            await analysis_routes._run_recipe(
+                7,
+                "Recipe body",
+                status,
+                screening_result_text='{"domain":"materials"}',
+                system_instruction="SI-CHAIN",
+                previous_interaction_id="int_visual",
+                pdf_uri="files/uri-123",
+            )
+
+        # 체인 모드: 이전 스테이지 interaction_id를 그대로 이어받고, 지시문만 전송
+        self.assertEqual(captured["previous_interaction_id"], "int_visual")
+        self.assertEqual(captured["system_instruction"], "SI-CHAIN")
+        self.assertIsInstance(captured["contents"], str)  # 지시문만(대용량 텍스트 미포함)
+        self.assertIs(captured["store"], True)
+        # 완료 시 interaction_id를 analysis_results에 저장
+        self.assertEqual(insert_mock.await_args.kwargs.get("interaction_id"), "int_recipe")
+
+
+class _OrchStubProfile:
+    personality = "precise"
+
+
+class _OrchStubAgent:
+    name = "crystal"
+    profile = _OrchStubProfile()
+    description = "정밀한 페르소나"
+
+
+class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
+    """`_run_full_analysis` 오케스트레이션: 체인 선형 전진 + 캐시 히트 재시작 복원 검증.
+
+    스크리닝·인용은 heavy/비초점이라 러너를 목킹하고, 체인 fix 대상인
+    visual→recipe→deep_dive→viz 경로는 실제 실행하면서 call_interaction만 목킹한다.
+    """
+
+    _SCREENING_TEXT = (
+        '{"domain":"materials","relevance_score":0.9,"summary":"요약",'
+        '"is_experimental":true,"key_topics":["박막","증착"]}'
+    )
+    _CITATION_TEXT = '{"citation_summary":"인용 분석 결과 텍스트"}'
+    _VISUAL_CACHED_TEXT = '{"quality_summary":"CACHED-VISUAL-MARKER","key_findings_from_visuals":[]}'
+
+    def _orch_call_fake(self, calls):
+        state = {"n": 0}
+
+        async def _fake(contents, **kwargs):
+            state["n"] += 1
+            iid = f"int_{state['n']}"
+            calls.append({
+                "contents": contents,
+                "previous_interaction_id": kwargs.get("previous_interaction_id"),
+                "store": kwargs.get("store"),
+                "interaction_id": iid,
+            })
+            return {
+                "text": '{"visualizations": []}',
+                "model": "gemini-3.5-flash",
+                "tokens_in": 1,
+                "tokens_out": 1,
+                "interaction_id": iid,
+            }
+
+        return _fake
+
+    @contextlib.contextmanager
+    def _orchestration_patches(self, *, cache_fake, call_fake, visual_result=None):
+        paper = {
+            "id": 7,
+            "folder_name": "folder",
+            "authors": "Kim",
+            "domain": "materials",
+            "analysis_focus": None,
+            "explanation_level": "masters",
+            "title": "Paper",
+        }
+        phase_inputs = {
+            "screening": "SCREENING-INPUT",
+            "citation_body": "CITE-BODY",
+            "citation_references": "CITE-REFS",
+            "visual": "VISUAL-INPUT",
+            "recipe": "RECIPE-INPUT",
+            "deep_dive": "DEEPDIVE-INPUT",
+            "visualization": "VIZ-INPUT",
+        }
+        figures = [{
+            "figure_num": "Figure 1", "quality": "good",
+            "confidence": 0.9, "resolver_version": "v1",
+        }]
+        tables = []
+
+        analysis_context_stub = types.ModuleType("api.analysis_context")
+        analysis_context_stub.build_chain_system_instruction = lambda **kw: "SYS-INSTRUCTION"
+
+        async def _upload_stub(paper_id, path):
+            return "files/uri-abc"
+
+        interactions_stub = types.ModuleType("services.llm.interactions_client")
+        interactions_stub.upload_pdf_for_paper = _upload_stub
+
+        agents_stub = types.ModuleType("services.agents")
+        agents_stub.get_agent_for_domain = lambda domain: _OrchStubAgent()
+
+        async def _settings_stub(*a, **k):
+            return {}
+
+        settings_stub = types.ModuleType("api.settings")
+        settings_stub.get_raw_settings = _settings_stub
+
+        screening_mock = AsyncMock(return_value={
+            "text": self._SCREENING_TEXT, "model": "g", "tokens_in": 1,
+            "tokens_out": 1, "interaction_id": None,
+        })
+        citation_mock = AsyncMock(return_value={
+            "text": self._CITATION_TEXT, "model": "g", "tokens_in": 1,
+            "tokens_out": 1, "interaction_id": None,
+        })
+        visual_ready_contract = (
+            {"visual_ready": True, "visual_state": "ready", "visual_error": None,
+             "artifacts_ready": True, "artifacts_error": None},
+            1, 0,
+        )
+
+        stack = contextlib.ExitStack()
+        stack.enter_context(patch.dict(sys.modules, {
+            "api.analysis_context": analysis_context_stub,
+            "services.llm.interactions_client": interactions_stub,
+            "services.agents": agents_stub,
+            "api.settings": settings_stub,
+        }))
+        stack.enter_context(patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)))
+        stack.enter_context(patch("api.analysis_routes.fetch_all", new=AsyncMock(side_effect=[figures, tables])))
+        stack.enter_context(patch("api.analysis_routes.get_paper_dir", return_value="/tmp/paper"))
+        stack.enter_context(patch("api.analysis_routes.load_or_build_document_context",
+                                  return_value={"phase_inputs": phase_inputs, "sections": {}}))
+        stack.enter_context(patch("api.analysis_routes.schedule_paper_artifacts_refresh", new=AsyncMock()))
+        stack.enter_context(patch("api.analysis_routes.execute_update", new=AsyncMock()))
+        stack.enter_context(patch("api.analysis_routes.execute_insert", new=AsyncMock(return_value=1)))
+        stack.enter_context(patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()))
+        stack.enter_context(patch("api.analysis_routes._find_paper_pdf", return_value="/tmp/paper/x.pdf"))
+        stack.enter_context(patch("api.analysis_routes._run_screening", new=screening_mock))
+        stack.enter_context(patch("api.analysis_routes._run_citation", new=citation_mock))
+        stack.enter_context(patch("api.analysis_routes._get_visual_contract",
+                                  new=AsyncMock(return_value=visual_ready_contract)))
+        stack.enter_context(patch("api.analysis_routes._get_cached_phase_result", new=cache_fake))
+        stack.enter_context(patch("api.analysis_routes.call_interaction", new=call_fake))
+        if visual_result is not None:
+            stack.enter_context(patch("api.analysis_routes._run_visual",
+                                      new=AsyncMock(return_value=visual_result)))
+        with stack:
+            yield
+
+    async def test_chain_forwards_previous_interaction_id_linearly(self):
+        calls = []
+        call_fake = self._orch_call_fake(calls)
+
+        async def _cache_none(*a, **k):
+            return None
+
+        with self._orchestration_patches(cache_fake=_cache_none, call_fake=call_fake):
+            await analysis_routes._run_full_analysis(7)
+
+        # 체인 스테이지(store=True) 호출만 추출: visual→recipe→deep_dive→viz
+        chain_calls = [c for c in calls if c["store"] is True]
+        self.assertEqual(len(chain_calls), 4)
+        # 첫 스테이지(visual)는 PDF 문서를 포함하고 previous=None
+        self.assertIsNone(chain_calls[0]["previous_interaction_id"])
+        self.assertIsInstance(chain_calls[0]["contents"], list)
+        self.assertEqual(chain_calls[0]["contents"][0]["type"], "document")
+        # 각 스테이지가 직전 스테이지의 interaction_id를 이어받음 (선형 전진)
+        self.assertEqual(chain_calls[1]["previous_interaction_id"], chain_calls[0]["interaction_id"])
+        self.assertEqual(chain_calls[2]["previous_interaction_id"], chain_calls[1]["interaction_id"])
+        self.assertEqual(chain_calls[3]["previous_interaction_id"], chain_calls[2]["interaction_id"])
+        # 체인 이어감 스테이지는 지시문 문자열만 전송(대용량 재전송 없음)
+        self.assertIsInstance(chain_calls[1]["contents"], str)
+
+    async def test_cache_hit_restart_reincludes_pdf_and_prev_context(self):
+        calls = []
+        call_fake = self._orch_call_fake(calls)
+
+        async def _cache_visual_hit(paper_id, phase, input_text):
+            if phase == "visual":
+                return {
+                    "text": self._VISUAL_CACHED_TEXT, "model": "gemini-cache",
+                    "tokens_in": 1, "tokens_out": 1, "cost_usd": 0.01, "input_hash": "h",
+                }
+            return None
+
+        with self._orchestration_patches(cache_fake=_cache_visual_hit, call_fake=call_fake):
+            await analysis_routes._run_full_analysis(7)
+
+        # visual 캐시 히트 → interaction_id 유실 → recipe가 체인 재시작 케이스로 첫 call_interaction
+        self.assertTrue(calls)
+        recipe_call = calls[0]
+        self.assertIsNone(recipe_call["previous_interaction_id"])
+        # PDF document dict가 다시 포함되고
+        self.assertIsInstance(recipe_call["contents"], list)
+        self.assertEqual(recipe_call["contents"][0]["type"], "document")
+        self.assertEqual(recipe_call["contents"][0]["uri"], "files/uri-abc")
+        # 캐시된 visual 결과 텍스트가 프롬프트에 복원됨
+        restored_text = recipe_call["contents"][1]["text"]
+        self.assertIn("CACHED-VISUAL-MARKER", restored_text)
+
+
+class RewriteSectionTests(unittest.IsolatedAsyncioTestCase):
+    """섹션 재작성(수준 변경 = 체인 연장) 엔드포인트 계약 검증."""
+
+    def _wiring(self, *, chain_id="int_chain_prev"):
+        """fetch_one/_insert_analysis_result를 인메모리 캐시로 시뮬레이션한다.
+
+        - cache 조회(phase에 '#level=' 포함): cache_store에서 반환(첫 요청 None → 두 번째 히트)
+        - original 조회(원문 phase): 원문 result/interaction_id 반환
+        - chain_id 조회(params 길이 1): 가장 최근 non-null interaction_id 반환(None이면 폴백)
+        """
+        cache_store: dict = {}
+
+        async def fake_fetch_one(sql, params):
+            if len(params) == 1:  # 최근 non-null interaction_id 조회
+                return {"interaction_id": chain_id} if chain_id else None
+            phase_param = params[1]
+            if "#level=" in phase_param:  # 캐시 조회
+                return cache_store.get(phase_param)
+            return {"result": "원문 딥다이브 분석", "interaction_id": "int_orig"}
+
+        async def fake_insert(paper_id, phase, result_text, *args, **kwargs):
+            cache_store[phase] = {"result": result_text}
+
+        return fake_fetch_one, fake_insert, cache_store
+
+    async def test_rewrite_section_extends_chain(self):
+        captured = {}
+
+        async def fake_call(prompt, **kwargs):
+            captured["prompt"] = prompt
+            captured.update(kwargs)
+            return {"text": "쉬운 설명", "model": "gemini-3.5-flash",
+                    "tokens_in": 10, "tokens_out": 10, "interaction_id": "int_rw"}
+
+        fake_fetch_one, fake_insert, _ = self._wiring()
+
+        with (
+            patch("api.analysis_routes.fetch_one", new=fake_fetch_one),
+            patch("api.analysis_routes.call_interaction", new=fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=fake_insert),
+            patch("api.analysis_routes.calc_cost", return_value=0.0),
+        ):
+            req = analysis_routes.RewriteRequest(phase="deep_dive", level="high")
+            resp = await analysis_routes.rewrite_section(7, req)
+            self.assertEqual(resp["text"], "쉬운 설명")
+            self.assertIs(resp["cached"], False)
+            # 체인 연장: previous_interaction_id로 최근 interaction_id를 이어받음
+            self.assertEqual(captured["previous_interaction_id"], "int_chain_prev")
+            self.assertEqual(captured["thinking_level"], "low")
+            self.assertEqual(captured["model"], "gemini-3.5-flash")
+
+            # 두 번째 호출은 캐시 히트
+            req2 = analysis_routes.RewriteRequest(phase="deep_dive", level="high")
+            resp2 = await analysis_routes.rewrite_section(7, req2)
+            self.assertIs(resp2["cached"], True)
+            self.assertEqual(resp2["text"], "쉬운 설명")
+
+    async def test_rewrite_invalid_level_rejected(self):
+        from pydantic import ValidationError
+
+        with self.assertRaises(ValidationError):
+            analysis_routes.RewriteRequest(phase="deep_dive", level="toddler")
+
+    async def test_rewrite_invalid_phase_rejected(self):
+        from pydantic import ValidationError
+
+        with self.assertRaises(ValidationError):
+            analysis_routes.RewriteRequest(phase="citation", level="high")
+
+    async def test_rewrite_falls_back_to_stateless_when_no_chain(self):
+        captured = {}
+
+        async def fake_call(prompt, **kwargs):
+            captured["prompt"] = prompt
+            captured.update(kwargs)
+            return {"text": "폴백 설명", "model": "gemini-3.5-flash",
+                    "tokens_in": 5, "tokens_out": 5, "interaction_id": None}
+
+        # chain_id=None → 최근 non-null interaction_id 없음 → 폴백 경로
+        fake_fetch_one, fake_insert, _ = self._wiring(chain_id=None)
+
+        with (
+            patch("api.analysis_routes.fetch_one", new=fake_fetch_one),
+            patch("api.analysis_routes.call_interaction", new=fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=fake_insert),
+            patch("api.analysis_routes.calc_cost", return_value=0.0),
+        ):
+            req = analysis_routes.RewriteRequest(phase="deep_dive", level="elementary")
+            resp = await analysis_routes.rewrite_section(7, req)
+
+        self.assertEqual(resp["text"], "폴백 설명")
+        self.assertIs(resp["cached"], False)
+        # 폴백: stateless(store=False), 원문 텍스트를 프롬프트에 포함, 체인 id 미전달
+        self.assertIs(captured["store"], False)
+        self.assertNotIn("previous_interaction_id", captured)
+        self.assertIn("원문 딥다이브 분석", captured["prompt"])
 
 
 if __name__ == "__main__":

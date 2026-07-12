@@ -98,16 +98,13 @@ async def lifespan(app: FastAPI):
     from models.database import fetch_all
     from services.crypto import decrypt_value
     try:
-        rows = await fetch_all("SELECT key, value FROM settings WHERE key IN ('gemini_api_key', 'anthropic_api_key')")
+        rows = await fetch_all("SELECT key, value FROM settings WHERE key = 'gemini_api_key'")
         for row in rows:
             k, v = row["key"], row["value"]
             if v:
                 decrypted = decrypt_value(v)
-                if decrypted:
-                    if k == "gemini_api_key":
-                        os.environ["GEMINI_API_KEY"] = decrypted
-                    elif k == "anthropic_api_key":
-                        os.environ["ANTHROPIC_API_KEY"] = decrypted
+                if decrypted and k == "gemini_api_key":
+                    os.environ["GEMINI_API_KEY"] = decrypted
         print("[Sasoo] API keys loaded from database into environment.")
     except Exception as exc:
         print(f"[Sasoo] Warning: Could not load API keys from DB: {exc}")
@@ -139,7 +136,7 @@ app = FastAPI(
         "Backend API for Sasoo, an AI Co-Scientist desktop application "
         "that analyzes research papers using a 4-phase engineering analysis strategy "
         "(Screening -> Visual Verification -> Recipe Extraction -> Deep Dive) "
-        "powered by Gemini 3.1 + Claude Sonnet 4.5 dual LLM."
+        "powered by the Gemini API (Interactions)."
     ),
     version="0.6.7",
     lifespan=lifespan,
@@ -181,11 +178,13 @@ get_library_root().mkdir(parents=True, exist_ok=True)
 
 from api.papers import router as papers_router              # noqa: E402
 from api.analysis_routes import router as analysis_router   # noqa: E402
+from api.analysis_routes import rewrite_router              # noqa: E402
 from api.settings import router as settings_router          # noqa: E402
 from api.agents import router as agents_router              # noqa: E402
 
 app.include_router(papers_router)
 app.include_router(analysis_router)
+app.include_router(rewrite_router)
 app.include_router(settings_router)
 app.include_router(agents_router)
 

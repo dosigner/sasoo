@@ -23,18 +23,17 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 DEFAULT_SETTINGS: dict[str, str] = {
     "gemini_api_key": "",
-    "anthropic_api_key": "",
     "library_path": str(get_library_root()),
     "default_domain": "optics",
     "auto_analyze": "true",
     "language": "ko",
     "theme": "light",
     "max_concurrent_analyses": "3",
-    "gemini_model": "gemini-3-flash-preview",
-    "anthropic_model": "claude-sonnet-4-20250514",
     "pdf_parser_mode": "java",
     "extraction_pipeline_version": "resolver_v1",
     "extraction_pipeline_force_fallback": "false",
+    "research_context": "",
+    "default_explanation_level": "masters",
 }
 
 
@@ -81,7 +80,7 @@ async def _ensure_defaults() -> None:
     await db.commit()
 
 
-_API_KEY_FIELDS = {"gemini_api_key", "anthropic_api_key"}
+_API_KEY_FIELDS = {"gemini_api_key"}
 
 
 async def _get_all_settings() -> dict[str, str]:
@@ -112,6 +111,14 @@ async def _get_all_settings() -> dict[str, str]:
         await _set_setting("library_path", normalized_library_path)
         result["library_path"] = normalized_library_path
     return result
+
+
+async def get_raw_settings() -> dict:
+    """Return all settings as a flat dict without masking (internal use only, not a route).
+
+    API keys are decrypted transparently. Callers must not expose this over the API.
+    """
+    return await _get_all_settings()
 
 
 async def _set_setting(key: str, value: str) -> None:
@@ -152,17 +159,16 @@ async def get_settings():
 
     return SettingsModel(
         gemini_api_key=_mask_api_key(raw.get("gemini_api_key", "")),
-        anthropic_api_key=_mask_api_key(raw.get("anthropic_api_key", "")),
         library_path=raw.get("library_path", str(get_library_root())),
         default_domain=raw.get("default_domain", "optics"),
         auto_analyze=raw.get("auto_analyze", "true").lower() == "true",
         language=raw.get("language", "ko"),
         theme=raw.get("theme", "light"),
         max_concurrent_analyses=int(raw.get("max_concurrent_analyses", "3")),
-        gemini_model=raw.get("gemini_model", "gemini-3-flash-preview"),
-        anthropic_model=raw.get("anthropic_model", "claude-sonnet-4-20250514"),
         pdf_parser_mode=raw.get("pdf_parser_mode", "java"),
         extraction_pipeline_version=raw.get("extraction_pipeline_version", "resolver_v1"),
+        research_context=raw.get("research_context", ""),
+        default_explanation_level=raw.get("default_explanation_level", "masters"),
     )
 
 
@@ -212,9 +218,6 @@ async def update_settings(update: SettingsUpdate):
     if "gemini_api_key" in update_data and update_data["gemini_api_key"]:
         os.environ["GEMINI_API_KEY"] = update_data["gemini_api_key"]
         os.environ["GOOGLE_API_KEY"] = update_data["gemini_api_key"]  # PaperBanana uses this
-
-    if "anthropic_api_key" in update_data and update_data["anthropic_api_key"]:
-        os.environ["ANTHROPIC_API_KEY"] = update_data["anthropic_api_key"]
 
     return await get_settings()
 
@@ -590,15 +593,10 @@ async def check_api_keys():
     raw = await _get_all_settings()
 
     gemini_key = raw.get("gemini_api_key", "")
-    anthropic_key = raw.get("anthropic_api_key", "")
 
     return {
         "gemini": {
             "configured": bool(gemini_key),
             "masked": _mask_api_key(gemini_key),
-        },
-        "anthropic": {
-            "configured": bool(anthropic_key),
-            "masked": _mask_api_key(anthropic_key),
         },
     }
