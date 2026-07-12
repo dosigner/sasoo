@@ -267,22 +267,24 @@ def _assemble_page_nodes(
     return nodes
 
 
-async def _render_page_png(pdf_path: Path, page_index: int, dpi: int) -> tuple[str, float, float]:
-    """페이지를 PNG로 렌더해 (base64, width_pt, height_pt) 반환. 페이지마다 독립 doc를
-    열어 fitz 스레드 안전성을 보장한다(블로킹이라 기본 실행기 스레드에서 수행)."""
+async def _render_page_png(
+    doc: "fitz.Document", page_index: int, dpi: int
+) -> tuple[str, float, float]:
+    """페이지를 PNG로 렌더해 (base64, width_pt, height_pt) 반환.
+
+    F6: 페이지마다 fitz.open(전체 재파싱)하는 대신, 상위에서 오픈해 풀로 관리하는 doc를
+    재사용한다. fitz.Document는 스레드/태스크 안전하지 않으므로 호출부(_process_page)가
+    doc 풀에서 배타적으로 체크아웃한 doc만 넘긴다 — 동시에 두 태스크가 같은 doc를 만지지
+    않는다. 렌더는 블로킹이라 기본 실행기 스레드에서 수행한다."""
 
     def _work() -> tuple[str, float, float]:
-        doc = fitz.open(str(pdf_path))
-        try:
-            page = doc[page_index]
-            width = float(page.rect.width)
-            height = float(page.rect.height)
-            matrix = fitz.Matrix(dpi / 72.0, dpi / 72.0)
-            pix = page.get_pixmap(matrix=matrix, alpha=False)
-            png_b64 = base64.b64encode(pix.tobytes("png")).decode("ascii")
-            return png_b64, width, height
-        finally:
-            doc.close()
+        page = doc[page_index]
+        width = float(page.rect.width)
+        height = float(page.rect.height)
+        matrix = fitz.Matrix(dpi / 72.0, dpi / 72.0)
+        pix = page.get_pixmap(matrix=matrix, alpha=False)
+        png_b64 = base64.b64encode(pix.tobytes("png")).decode("ascii")
+        return png_b64, width, height
 
     return await asyncio.get_running_loop().run_in_executor(None, _work)
 
@@ -318,14 +320,21 @@ async def _call_page(png_b64: str, model: str) -> dict[str, Any]:
 
 
 async def _process_page(
-    pdf_path: Path,
+    doc_pool: "asyncio.Queue[fitz.Document]",
     page_index: int,
     page_sem: asyncio.Semaphore,
     model: str,
 ) -> tuple[list[dict[str, Any]], str, dict[str, Any]]:
-    """페이지 하나를 렌더 -> 호출 -> 조립. 실패 시 _PAGE_RETRIES회 재시도 후 예외."""
+    """페이지 하나를 렌더 -> 호출 -> 조립. 실패 시 _PAGE_RETRIES회 재시도 후 예외.
+
+    렌더는 doc_pool에서 doc를 배타적으로 체크아웃해 수행하고, 렌더가 끝나면 즉시 반납한다
+    (긴 LLM 호출 동안 doc를 점유하지 않아 소수의 doc로 전 페이지를 커버한다 — F6)."""
     async with page_sem:
-        png_b64, width, height = await _render_page_png(pdf_path, page_index, RENDER_DPI)
+        doc = await doc_pool.get()
+        try:
+            png_b64, width, height = await _render_page_png(doc, page_index, RENDER_DPI)
+        finally:
+            doc_pool.put_nowait(doc)
         last_err: Exception | None = None
         for attempt in range(_PAGE_RETRIES + 1):
             try:
@@ -346,7 +355,13 @@ async def _process_page(
 
 
 def _open_metadata(pdf_path: Path) -> tuple[int, str | None, str | None]:
-    doc = fitz.open(str(pdf_path))
+    # F1: fitz.open이 손상/암호화 PDF를 거부하면 raw fitz/RuntimeError가 새어나가
+    # ensure_visual_artifacts의 폴백(except OdlParserError)을 우회한다. 엔진 계약대로
+    # GeminiParserError로 감싸 폴백이 ODL 실패와 동일하게 동작하게 한다(원인 체이닝 유지).
+    try:
+        doc = fitz.open(str(pdf_path))
+    except Exception as exc:  # noqa: BLE001 - 폴백 유도용으로 엔진 계약 예외로 변환
+        raise GeminiParserError(f"failed to open PDF: {exc}") from exc
     try:
         meta = doc.metadata or {}
         return len(doc), meta.get("title") or None, meta.get("author") or None
@@ -378,24 +393,49 @@ async def run_convert_gemini(
         raise GeminiParserError(f"PDF has no pages: {pdf_path}")
 
     page_sem = asyncio.Semaphore(PAGE_CONCURRENCY)
-    tasks = [
-        _process_page(pdf_path, page_index, page_sem, MODEL_VISUAL)
-        for page_index in range(page_count)
-    ]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # F6: 페이지마다 fitz.open하는 대신 doc를 PAGE_CONCURRENCY개(≤페이지 수)만 열어 풀로
+    # 재사용한다. 각 doc는 _process_page가 렌더 동안만 배타 체크아웃하므로 동시 접근이 없다.
+    pool_size = max(1, min(PAGE_CONCURRENCY, page_count))
+    docs: list["fitz.Document"] = await loop.run_in_executor(
+        None, lambda: [fitz.open(str(pdf_path)) for _ in range(pool_size)]
+    )
+    doc_pool: "asyncio.Queue[fitz.Document]" = asyncio.Queue()
+    for _doc in docs:
+        doc_pool.put_nowait(_doc)
 
-    errors = [item for item in results if isinstance(item, BaseException)]
-    if errors:
-        raise GeminiParserError(
-            f"{len(errors)}/{page_count} page(s) failed; first error: {errors[0]}"
-        )
+    try:
+        # F5: 시스템성 오류(bad key/쿼터 소진 등) fail-fast. 페이지 1을 먼저 단독 시도하고,
+        # 실패하면 나머지 페이지를 팬아웃하지 않고 즉시 중단한다(28p 논문에서 N×2회 헛호출을
+        # 페이지 1의 2회로 축소). 페이지 1이 성공해야만 나머지를 병렬 fan-out한다.
+        first = await _process_page(doc_pool, 0, page_sem, MODEL_VISUAL)  # 실패 시 GeminiParserError 전파
+        results: list[Any] = [first]
+        if page_count > 1:
+            rest = await asyncio.gather(
+                *[
+                    _process_page(doc_pool, page_index, page_sem, MODEL_VISUAL)
+                    for page_index in range(1, page_count)
+                ],
+                return_exceptions=True,
+            )
+            results.extend(rest)
+    finally:
+        await loop.run_in_executor(None, lambda: [d.close() for d in docs])
 
+    # F2: 성공 페이지는 이미 API에 과금됐다. 부분 실패로 문서를 중단(raise)하더라도 그 시점까지의
+    # 실제 지출이 원장에 남도록, totals를 raise 이전에 계산해 usage_out에 반영한다.
     kids: list[dict[str, Any]] = []
     page_markdowns: list[str] = []
     totals = {"tokens_in": 0, "tokens_out": 0, "tokens_thought": 0, "cost_usd": 0.0}
     element_id = 0
+    success_pages = 0
+    errors: list[BaseException] = []
     for page_index in range(page_count):
-        nodes, page_markdown, usage = results[page_index]  # type: ignore[misc]
+        item = results[page_index]
+        if isinstance(item, BaseException):
+            errors.append(item)
+            continue
+        nodes, page_markdown, usage = item
+        success_pages += 1
         for node in nodes:
             node["id"] = element_id
             element_id += 1
@@ -405,6 +445,26 @@ async def run_convert_gemini(
         totals["tokens_out"] += int(usage.get("tokens_out", 0) or 0)
         totals["tokens_thought"] += int(usage.get("tokens_thought", 0) or 0)
         totals["cost_usd"] += float(usage.get("cost_usd", 0.0) or 0.0)
+
+    if usage_out is not None:
+        # 성공/부분실패 공통으로 실제 지출을 반영한다. pages는 실제 성공(=과금)한 페이지 수.
+        usage_out.update(
+            {
+                "engine": GEMINI_ENGINE_NAME,
+                "model": MODEL_VISUAL,
+                "pages": success_pages,
+                "tokens_in": totals["tokens_in"],
+                "tokens_out": totals["tokens_out"],
+                "tokens_thought": totals["tokens_thought"],
+                "cost_usd": round(totals["cost_usd"], 8),
+                "partial": bool(errors),
+            }
+        )
+
+    if errors:
+        raise GeminiParserError(
+            f"{len(errors)}/{page_count} page(s) failed; first error: {errors[0]}"
+        )
 
     root: dict[str, Any] = {
         "title": meta_title,
@@ -422,17 +482,6 @@ async def run_convert_gemini(
         markdown_parts.append(f"--- Page {page_index + 1} ---\n\n{md}")
     markdown_text = "\n\n".join(markdown_parts).strip()
 
-    if usage_out is not None:
-        usage_out.update(
-            {
-                "engine": GEMINI_ENGINE_NAME,
-                "model": MODEL_VISUAL,
-                "pages": page_count,
-                "tokens_in": totals["tokens_in"],
-                "tokens_out": totals["tokens_out"],
-                "tokens_thought": totals["tokens_thought"],
-                "cost_usd": round(totals["cost_usd"], 8),
-            }
-        )
-
+    # usage_out은 위(raise 이전)에서 이미 성공 페이지 기준으로 채워졌다(F2). 여기서 다시
+    # 쓰지 않는다 — 성공 경로에선 success_pages == page_count라 값이 동일하다.
     return root, markdown_text, GEMINI_ENGINE_NAME

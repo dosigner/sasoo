@@ -630,6 +630,10 @@ def build_document_manifest(
             )
             continue
 
+        # 코드리뷰 F4(주의): gemini slim 스키마의 트리에는 본문 paragraph가 없어(heading/caption만)
+        # per-page text_blocks가 본문을 담지 못한다. 본문 계약은 full_text(=markdown, 위 gemini 분기)로
+        # 보전되고, {stem}.json 텍스트 루트는 odl_parser._manifest_to_text_root가 full_text를 페이지별로
+        # 복원해 채운다. text_blocks 기반의 caption-band 텍스트 확장(figure_candidates)만 slim에서 비활성.
         if element_type in TEXTUAL_TYPES and text:
             idx = text_counts.get(page_number, 0)
             text_counts[page_number] = idx + 1

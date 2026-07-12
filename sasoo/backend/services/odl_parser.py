@@ -26,7 +26,7 @@ import fitz  # PyMuPDF
 from PIL import Image
 
 from models.database import DB_PATH, execute_insert, fetch_all, get_db, get_library_root
-from services.document_audit import find_suspect_pages
+from services.document_audit import _page_text_map, find_suspect_pages
 from services.document_manifest import build_document_manifest
 from services.figure_candidates import build_figure_candidates
 from services.figure_resolver import resolve_figure_candidates
@@ -1121,6 +1121,34 @@ def _build_manifest(
 
 def _manifest_to_text_root(manifest: dict[str, Any]) -> dict[str, Any]:
     metadata = dict(manifest.get("metadata", {}))
+    page_count = metadata.get("page_count") or len(manifest.get("pages", []))
+
+    # F4: gemini slim 스키마에선 트리에 본문 paragraph가 없어(heading/caption만) pages[*].text_blocks
+    # 가 본문을 담지 못한다 → 아래 text_blocks 경로로 {stem}.json을 만들면 본문이 공동화되어
+    # 자매 파일 {stem}.md(=full_text)와 본문이 어긋난다. gemini는 full_text가 완전한 본문
+    # (페이지 마커 포함 markdown)이므로, 이를 페이지별로 쪼개 paragraph 노드로 복원해 텍스트 계약이
+    # 본문을 갖게 한다(.md와 .json의 본문 일치). ODL/pymupdf 경로는 기존 text_blocks 로직 불변.
+    engine = str(manifest.get("engine") or "").strip().lower()
+    full_text = str(manifest.get("full_text") or "")
+    if engine == GEMINI_ENGINE_NAME and full_text.strip():
+        page_map = _page_text_map(full_text)  # document_audit과 동일한 "--- Page N ---" 분할
+        if page_map:
+            gemini_kids: list[dict[str, Any]] = []
+            for page_number in sorted(page_map):
+                text = _maybe_text(page_map[page_number])
+                if not text:
+                    continue
+                gemini_kids.append(
+                    {"type": "paragraph", "page number": page_number, "content": text}
+                )
+            if gemini_kids:
+                return {
+                    "title": metadata.get("title"),
+                    "author": metadata.get("authors"),
+                    "number of pages": page_count,
+                    "kids": gemini_kids,
+                }
+
     kids: list[dict[str, Any]] = []
     for page in manifest.get("pages", []):
         page_number = _maybe_int(page.get("page_number")) or 1
@@ -1139,7 +1167,7 @@ def _manifest_to_text_root(manifest: dict[str, Any]) -> dict[str, Any]:
     return {
         "title": metadata.get("title"),
         "author": metadata.get("authors"),
-        "number of pages": metadata.get("page_count") or len(manifest.get("pages", [])),
+        "number of pages": page_count,
         "kids": kids,
     }
 
@@ -1419,6 +1447,13 @@ def _run_convert_gemini(pdf_path: Path, output_dir: Path, figures_dir: Path) -> 
         )
     except GeminiParserError as exc:
         raise OdlParserError(f"Gemini parser engine failed: {exc}") from exc
+    except Exception as exc:  # noqa: BLE001 - F1: 비-GeminiParserError도 폴백 대상으로 변환
+        # gemini 경로가 GeminiParserError가 아닌 예외(예: fitz.open의 raw RuntimeError,
+        # _run_coroutine_sync 스레드에서 새어나온 임의 예외)를 던지면, ensure_visual_artifacts의
+        # 폴백(except OdlParserError)이 이를 못 잡아 아티팩트 태스크가 통째로 실패하고
+        # explain_odl_failure가 엔진을 오귀속("OpenDataLoader failed: ...")한다. 이 초크포인트에서
+        # 모든 gemini-경로 예외를 OdlParserError로 감싸(원인 체이닝) 폴백이 ODL 실패와 동일하게 동작.
+        raise OdlParserError(f"Gemini parser engine failed: {exc}") from exc
 
 
 def _convert_error_message(exc: Exception) -> str:
@@ -1674,6 +1709,12 @@ def _promote_text_from_visual(
 
     반환: 승격 시 True — 호출부가 .md/.json 계약 파일을 overwrite로 다시 쓰게 한다. 승격 아님
     (ODL visual 또는 폴백)이면 False + 필드/파일 불변으로 기존 ODL-only 경로 바이트를 유지한다.
+
+    설계 노트(코드리뷰 F3, 미수정=의도된 설계): 승격은 본문 텍스트 계약(full_text/{stem}.md/.json)을
+    Gemini 전사본으로 교체하므로, 하류 인용·정량 분석은 ODL 축자 텍스트가 아니라 Gemini 전사
+    기준으로 수행된다(Gemini는 저자명·grant번호·수치를 산발 변조할 수 있다). 이는 수식·표·읽기순서
+    품질을 위해 받아들인 트레이드오프이며, 축자 원문은 {stem}.odl-reference.md로 보존된다
+    (get_odl_reference_text). 인용 검증을 레퍼런스에 배선하는 작업은 별도 보류 과제다.
     """
     if visual_engine != GEMINI_ENGINE_NAME:
         return False

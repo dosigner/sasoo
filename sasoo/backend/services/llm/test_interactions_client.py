@@ -420,39 +420,93 @@ def test_call_interaction_requires_lane():
 
 
 def test_chat_lane_runs_on_chat_executor_and_skips_pipeline_sem():
-    from services.concurrency import PIPELINE_LLM_SEM
-    baseline = PIPELINE_LLM_SEM._value
+    from services.concurrency import pipeline_llm_sem
     seen = {}
 
-    def fake_create(**kwargs):
-        seen["thread"] = threading.current_thread().name
-        seen["sem_during"] = PIPELINE_LLM_SEM._value
-        return _fake_interaction()
+    async def _run():
+        # 같은 루프 안에서 accessor를 부르면 call_interaction이 쓰는 것과 동일한
+        # 루프별 세마포어 객체를 얻는다(크로스루프 바인딩 방지 리팩터 후 계약).
+        sem = pipeline_llm_sem()
+        seen["baseline"] = sem._value
 
-    fake_client = MagicMock()
-    fake_client.interactions.create.side_effect = fake_create
-    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        asyncio.run(call_interaction("안녕", lane="chat"))
+        def fake_create(**kwargs):
+            seen["thread"] = threading.current_thread().name
+            seen["sem_during"] = sem._value
+            return _fake_interaction()
 
+        fake_client = MagicMock()
+        fake_client.interactions.create.side_effect = fake_create
+        with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+            await call_interaction("안녕", lane="chat")
+
+    asyncio.run(_run())
     assert seen["thread"].startswith("sasoo-chat")
-    assert seen["sem_during"] == baseline  # chat lane은 파이프라인 세마포어를 잡지 않는다
+    assert seen["sem_during"] == seen["baseline"]  # chat lane은 파이프라인 세마포어를 잡지 않는다
 
 
 def test_pipeline_lane_runs_on_pipeline_executor_and_holds_sem():
-    from services.concurrency import PIPELINE_LLM_SEM
-    baseline = PIPELINE_LLM_SEM._value
+    from services.concurrency import pipeline_llm_sem
     seen = {}
 
-    def fake_create(**kwargs):
-        seen["thread"] = threading.current_thread().name
-        seen["sem_during"] = PIPELINE_LLM_SEM._value
-        return _fake_interaction()
+    async def _run():
+        sem = pipeline_llm_sem()  # 같은 루프 → call_interaction이 쓰는 것과 동일 객체
+        seen["baseline"] = sem._value
 
-    fake_client = MagicMock()
-    fake_client.interactions.create.side_effect = fake_create
-    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        asyncio.run(call_interaction("안녕", lane="pipeline"))
+        def fake_create(**kwargs):
+            seen["thread"] = threading.current_thread().name
+            seen["sem_during"] = sem._value
+            return _fake_interaction()
 
+        fake_client = MagicMock()
+        fake_client.interactions.create.side_effect = fake_create
+        with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+            await call_interaction("안녕", lane="pipeline")
+        seen["after"] = sem._value
+
+    asyncio.run(_run())
     assert seen["thread"].startswith("sasoo-pipeline")
-    assert seen["sem_during"] == baseline - 1  # 호출 중 슬롯 하나 점유
-    assert PIPELINE_LLM_SEM._value == baseline  # 종료 후 반납
+    assert seen["sem_during"] == seen["baseline"] - 1  # 호출 중 슬롯 하나 점유
+    assert seen["after"] == seen["baseline"]  # 종료 후 반납
+
+
+def test_pipeline_sem_survives_separate_event_loops():
+    """F0 회귀: 서로 다른 asyncio.run 루프가 순차로 pipeline 세마포어를 경합해도
+    'bound to a different event loop' RuntimeError가 나지 않아야 한다.
+
+    (리뷰어가 경험적으로 재현한 시나리오의 역: 중첩 asyncio.run 루프의 gemini 파서와
+    메인 루프의 pipeline 호출이 같은 전역 세마포어를 경합하면, 먼저 대기 경로를 밟은
+    루프에 세마포어가 영구 바인딩되어 이후 다른 루프의 모든 pipeline 호출이 죽었다.)
+    """
+    from services.concurrency import pipeline_llm_sem
+
+    async def _contend():
+        # 대기 경로(value<=0)를 강제로 태워야 루프 바인딩이 일어난다.
+        sem = pipeline_llm_sem()
+        # 전체 슬롯을 소진한 뒤 한 acquire를 더 걸어 실제로 대기시킨다.
+        for _ in range(sem._value):
+            await sem.acquire()
+        waiter = asyncio.ensure_future(sem.acquire())
+        await asyncio.sleep(0)  # waiter가 대기 경로에 진입 → 이 루프에 바인딩
+        sem.release()
+        await waiter
+        # 복구 불필요: 루프별 세마포어는 asyncio.run 종료 시 루프와 함께 폐기된다.
+
+    # 두 개의 완전히 별개인 asyncio.run 루프에서 순차로 경합한다.
+    asyncio.run(_contend())
+    asyncio.run(_contend())  # 크로스루프 바인딩이면 여기서 RuntimeError로 죽는다
+
+    # (teeth) 같은 시나리오를 프로세스-전역 세마포어 하나로 돌리면 실제로 죽는지 확인해,
+    # 위 통과가 우연이 아니라 루프별 레지스트리 덕분임을 문서화한다.
+    shared = asyncio.Semaphore(1)
+
+    async def _contend_shared():
+        await shared.acquire()
+        w = asyncio.ensure_future(shared.acquire())
+        await asyncio.sleep(0)
+        shared.release()
+        await w
+        shared.release()
+
+    asyncio.run(_contend_shared())
+    with pytest.raises(RuntimeError, match="bound to a different event loop"):
+        asyncio.run(_contend_shared())

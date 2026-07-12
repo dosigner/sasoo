@@ -282,6 +282,100 @@ class RunConvertGeminiTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("Some body paragraph text.", manifest["full_text"])
 
 
+class FailFastAndPartialUsageTests(unittest.IsolatedAsyncioTestCase):
+    """F5(시스템성 오류 fail-fast) + F2(부분 실패 시 성공 페이지 과금 보전) + F6(문서 재사용)."""
+
+    async def test_systemic_error_fails_fast_without_fanning_out(self):
+        # F5: 모든 페이지가 실패하는 시스템성 오류(bad key/쿼터)에서, 페이지 1만 단독 시도(2회)하고
+        # 나머지 페이지는 팬아웃하지 않아야 한다. 5페이지 문서라도 총 호출은 2회(page1 x 재시도).
+        with TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            pdf_path = tmpdir / "sample.pdf"
+            _make_pdf(pdf_path, pages=5)
+
+            failing = AsyncMock(side_effect=RuntimeError("bad api key"))
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), patch(
+                "services.gemini_parser.call_interaction", new=failing
+            ):
+                with self.assertRaises(GeminiParserError):
+                    await run_convert_gemini(pdf_path, tmpdir, tmpdir / "figures")
+
+            # 페이지 1의 최초 시도 + 재시도 1회 = 정확히 2회. 나머지 4페이지는 시도조차 안 함.
+            self.assertEqual(failing.await_count, 2)
+
+    async def test_partial_failure_populates_usage_before_raising(self):
+        # F2: 페이지 1 성공(과금됨) + 페이지 2,3 실패 → run_convert_gemini는 raise하되,
+        # 이미 과금된 페이지 1의 토큰을 usage_out에 반영해야 한다(partial=True).
+        with TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            pdf_path = tmpdir / "sample.pdf"
+            _make_pdf(pdf_path, pages=3)
+
+            call_index = {"n": 0}
+
+            async def _seq(*args, **kwargs):
+                i = call_index["n"]
+                call_index["n"] += 1
+                if i == 0:  # 페이지 1(프로브)만 성공 — 프로브가 성공해야 나머지가 팬아웃된다.
+                    return {
+                        "text": json.dumps(_CANNED_PAGE),
+                        "model": "gemini-3.5-flash",
+                        "tokens_in": 100,
+                        "tokens_out": 50,
+                        "tokens_thought": 10,
+                        "interaction_id": None,
+                    }
+                raise RuntimeError("rate limited on later page")
+
+            usage: dict = {}
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), patch(
+                "services.gemini_parser.call_interaction", new=_seq
+            ):
+                with self.assertRaises(GeminiParserError):
+                    await run_convert_gemini(
+                        pdf_path, tmpdir, tmpdir / "figures", usage_out=usage
+                    )
+
+            # 성공 페이지 1건의 지출이 원장에 남도록 usage_out이 채워진다.
+            self.assertEqual(usage.get("engine"), "gemini")
+            self.assertEqual(usage.get("pages"), 1)
+            self.assertEqual(usage.get("tokens_in"), 100)
+            self.assertEqual(usage.get("tokens_out"), 50)
+            self.assertTrue(usage.get("partial"))
+            self.assertGreater(usage.get("cost_usd", 0.0), 0.0)
+
+    async def test_document_reused_not_reopened_per_page(self):
+        # F6: 페이지마다 fitz.open(전체 재파싱)하지 않는다. 8페이지 + PAGE_CONCURRENCY=4면
+        # open 횟수 = 메타데이터 1회 + 풀 크기 min(4,8)=4회 = 5회(페이지 수 8보다 적다).
+        with TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            pdf_path = tmpdir / "sample.pdf"
+            _make_pdf(pdf_path, pages=8)
+
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), patch(
+                "services.gemini_parser.call_interaction", new=_fake_call()
+            ), patch.object(
+                gemini_parser.fitz, "open", wraps=fitz.open
+            ) as open_spy:
+                await run_convert_gemini(pdf_path, tmpdir, tmpdir / "figures")
+
+            pool_size = min(gemini_parser.PAGE_CONCURRENCY, 8)
+            self.assertEqual(open_spy.call_count, pool_size + 1)
+            self.assertLess(open_spy.call_count, 8)  # 페이지당 1회 재파싱이 아님
+
+    async def test_corrupt_pdf_raises_gemini_parser_error(self):
+        # F1: fitz.open이 거부하는 파일(비-PDF 바이트)은 raw fitz 예외가 아니라 GeminiParserError로
+        # 나와야 폴백(ensure_visual_artifacts의 except OdlParserError 체인)이 동작한다.
+        with TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            bad_path = tmpdir / "corrupt.pdf"
+            bad_path.write_bytes(b"%PDF-1.4 this is not a real pdf \x00\x01\x02")
+
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}):
+                with self.assertRaises(GeminiParserError):
+                    await run_convert_gemini(bad_path, tmpdir, tmpdir / "figures")
+
+
 class MediaResolutionInjectionTests(unittest.TestCase):
     def test_injects_resolution_into_image_parts_without_mutating(self):
         parts = [

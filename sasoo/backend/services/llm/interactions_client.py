@@ -9,7 +9,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from services.concurrency import CHAT_EXECUTOR, PIPELINE_EXECUTOR, PIPELINE_LLM_SEM
+from services.concurrency import CHAT_EXECUTOR, PIPELINE_EXECUTOR, pipeline_llm_sem
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # asyncio 기본 풀을 암묵적으로 쓰다가 파이프라인 팬아웃이 풀을 채우면
 # 채팅 SSE가 스레드를 못 잡고 무한 대기하는 사고(2026-07-11)의 재발 방지.
 #   "chat"     : 사용자가 실시간으로 기다리는 대화형 경로. 전용 풀, 세마포어 없음.
-#   "pipeline" : 분석 파이프라인. 전용 풀 + PIPELINE_LLM_SEM으로 동시 호출 제한.
+#   "pipeline" : 분석 파이프라인. 전용 풀 + 루프별 pipeline_llm_sem()으로 동시 호출 제한.
 Lane = Literal["chat", "pipeline"]
 
 
@@ -32,7 +32,8 @@ def _executor_for(lane: Lane):
 async def _run_on_lane(lane: Lane, fn):
     loop = asyncio.get_running_loop()
     if lane == "pipeline":
-        async with PIPELINE_LLM_SEM:
+        # 현재 루프 전용 세마포어(크로스루프 바인딩 방지 — concurrency.pipeline_llm_sem 참조).
+        async with pipeline_llm_sem():
             return await loop.run_in_executor(PIPELINE_EXECUTOR, fn)
     return await loop.run_in_executor(_executor_for(lane), fn)
 
@@ -221,7 +222,8 @@ async def stream_interaction(
             asyncio.run_coroutine_threadsafe(q.put(("__end__", None)), loop)
 
     # pipeline lane은 스트림이 살아있는 동안 세마포어 슬롯 하나를 점유한다.
-    sem = PIPELINE_LLM_SEM if lane == "pipeline" else None
+    # 현재 루프 전용 세마포어를 쓴다(크로스루프 바인딩 방지).
+    sem = pipeline_llm_sem() if lane == "pipeline" else None
     if sem is not None:
         await sem.acquire()
     try:
