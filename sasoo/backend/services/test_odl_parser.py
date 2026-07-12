@@ -30,8 +30,6 @@ sys.modules.setdefault("services.subfigure_detector", subfigure_detector_module)
 from services.odl_parser import (
     OdlRuntimeError,
     PYMUPDF_TEXT_ENGINE,
-    _build_manifest,
-    _render_bbox_crop,
     ensure_java_runtime,
     get_artifact_refresh_error,
     get_pdf_signature,
@@ -53,127 +51,6 @@ from services.odl_parser import (
 
 
 class OdlParserUnitTests(unittest.TestCase):
-    def test_build_manifest_prefers_caption_targets_and_list_item_captions(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            paper_dir = Path(tmp_dir)
-            pdf_path = paper_dir / "paper.pdf"
-            doc = fitz.open()
-            doc.new_page(width=300, height=400)
-            doc.new_page(width=300, height=400)
-            doc.save(pdf_path)
-            doc.close()
-
-            root = {
-                "title": "Sample Paper",
-                "author": "Jane Doe",
-                "number of pages": 2,
-                "kids": [
-                    {
-                        "type": "table",
-                        "id": 301,
-                        "page number": 1,
-                        "bounding box": [10, 80, 140, 240],
-                    },
-                    {
-                        "type": "caption",
-                        "id": 201,
-                        "page number": 1,
-                        "linked content id": 301,
-                        "bounding box": [10, 40, 180, 70],
-                        "content": "Figure 3. Table-linked caption",
-                    },
-                    {
-                        "type": "image",
-                        "id": 102,
-                        "page number": 1,
-                        "bounding box": [150, 80, 280, 240],
-                    },
-                    {
-                        "type": "caption",
-                        "id": 202,
-                        "page number": 1,
-                        "bounding box": [150, 40, 280, 70],
-                        "content": "Figure 4. Nearby caption",
-                    },
-                    {
-                        "type": "image",
-                        "id": 103,
-                        "page number": 2,
-                        "bounding box": [0, 40, 300, 360],
-                    },
-                    {
-                        "type": "image",
-                        "id": 104,
-                        "page number": 2,
-                        "bounding box": [0, 0, 300, 30],
-                    },
-                    {
-                        "type": "list",
-                        "page number": 2,
-                        "list items": [
-                            {
-                                "type": "list item",
-                                "page number": 2,
-                                "content": "Figure 5. List-item caption",
-                            }
-                        ],
-                    },
-                ],
-            }
-
-            fake_outputs = [
-                (str(paper_dir / "figures" / "Fig_3.png"), 600, 400),
-                (str(paper_dir / "figures" / "Fig_4.png"), 500, 320),
-                (str(paper_dir / "figures" / "Fig_5.png"), 900, 600),
-            ]
-
-            with patch("services.odl_parser._copy_or_render_figure", side_effect=fake_outputs):
-                manifest = _build_manifest(
-                    pdf_path=pdf_path,
-                    paper_dir=paper_dir,
-                    output_dir=paper_dir,
-                    root=root,
-                    markdown_text="# Sample Paper",
-                    actual_engine="odl-java",
-                    requested_mode="java",
-                )
-
-            self.assertEqual(manifest["metadata"]["title"], "Sample Paper")
-            self.assertEqual(len(manifest["figures"]), 3)
-            self.assertEqual(manifest["figures"][0]["figure_num"], "Fig. 3")
-            self.assertEqual(manifest["figures"][0]["caption"], "Figure 3. Table-linked caption")
-            self.assertEqual(manifest["figures"][0]["bbox"], [10.0, 80.0, 140.0, 240.0])
-            self.assertEqual(manifest["figures"][1]["figure_num"], "Fig. 4")
-            self.assertEqual(manifest["figures"][1]["caption"], "Figure 4. Nearby caption")
-            self.assertEqual(manifest["figures"][1]["bbox"], [150.0, 80.0, 280.0, 240.0])
-            self.assertEqual(manifest["figures"][2]["figure_num"], "Fig. 5")
-            self.assertEqual(manifest["figures"][2]["caption"], "Figure 5. List-item caption")
-            self.assertEqual(manifest["figures"][2]["page_number"], 2)
-
-    def test_render_bbox_crop_uses_odl_pdf_coordinates(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
-            pdf_path = tmp_path / "crop.pdf"
-            out_path = tmp_path / "figures" / "crop.png"
-
-            doc = fitz.open()
-            page = doc.new_page(width=300, height=400)
-            page.draw_rect(fitz.Rect(50, 50, 200, 250), color=(1, 0, 0), fill=(1, 0.8, 0.8))
-            doc.save(pdf_path)
-            doc.close()
-
-            # ODL bbox order is [left, bottom, right, top] in PDF coordinates.
-            rendered_path, width, height = _render_bbox_crop(
-                pdf_path=pdf_path,
-                page_number=1,
-                bbox=[50, 150, 200, 350],
-                out_path=out_path,
-            )
-
-            self.assertTrue(Path(rendered_path).exists())
-            self.assertGreater(width, 0)
-            self.assertGreater(height, 0)
-
     def test_figure_row_to_api_dict_deserializes_bbox(self) -> None:
         payload = figure_row_to_api_dict(
             {
@@ -216,13 +93,13 @@ class OdlParserUnitTests(unittest.TestCase):
             (paper_dir / TEXT_CACHE_META_FILENAME).write_text(
                 json.dumps(
                     {
-                        "pdf_hash": "legacy-hash",
+                        "pdf_hash": "cached-hash",
                         "pdf_mtime_ns": signature["pdf_mtime_ns"],
                         "pdf_size": signature["pdf_size"],
-                        "parser_version": "odl-v2",
+                        "parser_version": "odl-v3",
                         "requested_mode": "java",
-                        "extraction_pipeline_version": "legacy",
-                        "resolver_version": "legacy",
+                        "extraction_pipeline_version": "resolver_v1",
+                        "resolver_version": "resolver-v1",
                         "engine": "odl-java",
                     }
                 ),
@@ -231,12 +108,12 @@ class OdlParserUnitTests(unittest.TestCase):
             (paper_dir / MANIFEST_FILENAME).write_text(
                 json.dumps(
                     {
-                        "parser_version": "odl-v2",
+                        "parser_version": "odl-v3",
                         "requested_mode": "java",
-                        "extraction_pipeline_version": "legacy",
-                        "resolver_version": "legacy",
+                        "extraction_pipeline_version": "resolver_v1",
+                        "resolver_version": "resolver-v1",
                         "engine": "odl-java",
-                        "pdf_hash": "legacy-hash",
+                        "pdf_hash": "cached-hash",
                         "pdf_mtime_ns": signature["pdf_mtime_ns"],
                         "pdf_size": signature["pdf_size"],
                         "markdown_file": "paper.md",
@@ -251,13 +128,7 @@ class OdlParserUnitTests(unittest.TestCase):
             )
 
             with patch("services.odl_parser._pdf_hash", side_effect=AssertionError("hash should not be recomputed")):
-                self.assertFalse(paper_artifacts_are_current(paper_dir))
-                self.assertTrue(
-                    paper_artifacts_are_current(
-                        paper_dir,
-                        extraction_pipeline_version="legacy",
-                    )
-                )
+                self.assertTrue(paper_artifacts_are_current(paper_dir))
 
     def test_artifact_current_check_rejects_legacy_meta_without_signature(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -320,10 +191,10 @@ class OdlParserUnitTests(unittest.TestCase):
             (paper_dir / MANIFEST_FILENAME).write_text(
                 json.dumps(
                     {
-                        "parser_version": "odl-v2",
+                        "parser_version": "odl-v3",
                         "requested_mode": "java",
-                        "extraction_pipeline_version": "legacy",
-                        "resolver_version": "legacy",
+                        "extraction_pipeline_version": "resolver_v1",
+                        "resolver_version": "resolver-v1",
                         "engine": "odl-java",
                         "pdf_mtime_ns": signature["pdf_mtime_ns"],
                         "pdf_size": signature["pdf_size"],
@@ -340,15 +211,15 @@ class OdlParserUnitTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            self.assertTrue(paper_text_is_current(paper_dir, extraction_pipeline_version="legacy"))
-            self.assertTrue(paper_visuals_are_current(paper_dir, extraction_pipeline_version="legacy"))
-            self.assertTrue(paper_artifacts_are_current(paper_dir, extraction_pipeline_version="legacy"))
+            self.assertTrue(paper_text_is_current(paper_dir))
+            self.assertTrue(paper_visuals_are_current(paper_dir))
+            self.assertTrue(paper_artifacts_are_current(paper_dir))
 
             figure_path.unlink()
 
-            self.assertTrue(paper_text_is_current(paper_dir, extraction_pipeline_version="legacy"))
-            self.assertFalse(paper_visuals_are_current(paper_dir, extraction_pipeline_version="legacy"))
-            self.assertFalse(paper_artifacts_are_current(paper_dir, extraction_pipeline_version="legacy"))
+            self.assertTrue(paper_text_is_current(paper_dir))
+            self.assertFalse(paper_visuals_are_current(paper_dir))
+            self.assertFalse(paper_artifacts_are_current(paper_dir))
 
     def test_ensure_text_artifacts_falls_back_to_pymupdf_when_odl_unavailable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

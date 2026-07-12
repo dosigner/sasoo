@@ -12,7 +12,6 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from models.database import (
-    LEGACY_LIBRARY_PATH_KEY,
     fetch_all,
     fetch_one,
     get_db,
@@ -45,7 +44,6 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "max_concurrent_analyses": "3",
     "pdf_parser_mode": "java",
     "extraction_pipeline_version": "resolver_v1",
-    "extraction_pipeline_force_fallback": "false",
     "research_context": "",
     "default_explanation_level": "masters",
 }
@@ -98,12 +96,8 @@ async def _ensure_defaults() -> None:
                 (key, value),
             )
         elif key == "extraction_pipeline_version":
-            fallback_row = await fetch_one(
-                "SELECT value FROM settings WHERE key = 'extraction_pipeline_force_fallback' LIMIT 1"
-            )
             existing_value = str(existing.get("value") or "").strip().lower()
-            fallback_forced = str((fallback_row or {}).get("value") or "false").strip().lower() == "true"
-            if existing_value == "legacy" and not fallback_forced:
+            if existing_value == "legacy":
                 await db.execute(
                     "UPDATE settings SET value = ?, updated_at = ? WHERE key = ?",
                     ("resolver_v1", datetime.utcnow().isoformat(), key),
@@ -150,7 +144,7 @@ async def _get_all_settings() -> dict[str, str]:
     if result.get("pdf_parser_mode") != "java":
         await _set_setting("pdf_parser_mode", "java")
         result["pdf_parser_mode"] = "java"
-    if result.get("extraction_pipeline_version") == "legacy" and result.get("extraction_pipeline_force_fallback", "false").lower() != "true":
+    if result.get("extraction_pipeline_version") == "legacy":
         await _set_setting("extraction_pipeline_version", "resolver_v1")
         result["extraction_pipeline_version"] = "resolver_v1"
     # The API always speaks of "library_path" -- the path for THIS machine --
@@ -265,14 +259,9 @@ async def update_settings(update: SettingsUpdate):
             str_value = encrypt_value(str_value)
         if key == "pdf_parser_mode" and str_value != "java":
             raise HTTPException(status_code=400, detail="Slim build supports only 'java' for pdf_parser_mode.")
-        if key == "extraction_pipeline_version" and str_value not in {"legacy", "resolver_v1"}:
-            raise HTTPException(status_code=400, detail="extraction_pipeline_version must be 'legacy' or 'resolver_v1'.")
+        if key == "extraction_pipeline_version" and str_value != "resolver_v1":
+            raise HTTPException(status_code=400, detail="extraction_pipeline_version must be 'resolver_v1'.")
         await _set_setting(key, str_value)
-        if key == "extraction_pipeline_version":
-            await _set_setting(
-                "extraction_pipeline_force_fallback",
-                "true" if str_value == "legacy" else "false",
-            )
 
     # If API keys changed, update environment variables for current session
     # (use original plaintext value, not encrypted)
@@ -488,31 +477,5 @@ async def get_cost_summary(
             "estimated_cached_cost_usd_saved": estimated_cached_cost_usd_saved,
             "uncertain_table_repair_calls": uncertain_table_repair_calls,
             "review_required_tables": review_required_tables,
-        },
-    }
-
-
-@router.get("/keys/status")
-async def check_api_keys():
-    """
-    Check which API keys are configured (without revealing them).
-    Useful for the frontend to show setup status.
-    """
-    raw = await _get_all_settings()
-    unreadable = await _unreadable_api_keys()
-
-    gemini_key = raw.get("gemini_api_key", "")
-
-    return {
-        "gemini": {
-            "configured": bool(gemini_key),
-            "masked": _mask_api_key(gemini_key),
-            # Stored, but the key it was encrypted with is gone.
-            "unreadable": "gemini_api_key" in unreadable,
-        },
-        "openai": {
-            "configured": bool(raw.get("openai_api_key", "")),
-            "masked": _mask_api_key(raw.get("openai_api_key", "")),
-            "unreadable": "openai_api_key" in unreadable,
         },
     }

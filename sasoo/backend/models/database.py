@@ -560,22 +560,8 @@ def get_paper_dir(folder_name: str) -> Path:
     return get_library_root() / folder_name
 
 
-def get_figures_dir(folder_name: str) -> Path:
-    """Return the absolute path to a paper's figures directory."""
-    d = get_paper_dir(folder_name) / "figures"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
 def get_paperbanana_dir(folder_name: str) -> Path:
     """Return the absolute path for PaperBanana output."""
     d = get_paper_dir(folder_name) / "paperbanana"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
-def get_tables_dir(folder_name: str) -> Path:
-    """Return the absolute path to a paper's tables directory."""
-    d = get_paper_dir(folder_name) / "tables"
     d.mkdir(parents=True, exist_ok=True)
     return d

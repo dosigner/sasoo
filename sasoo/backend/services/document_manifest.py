@@ -5,7 +5,6 @@ Resolver v1 document-manifest builder.
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -667,10 +666,3 @@ def build_document_manifest(
             "suspect_pages": [],
         },
     }
-
-
-def write_manifest(paper_dir: Path, manifest: dict[str, Any], filename: str) -> None:
-    (paper_dir / filename).write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )

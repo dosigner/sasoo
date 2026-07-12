@@ -5,7 +5,6 @@ All request/response models for the API layer.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from enum import Enum
 from typing import Any, Literal, Optional
@@ -51,13 +50,6 @@ class AgentType(str, Enum):
     ATLAS = "atlas"         # general-purpose
 
 
-class FigureQuality(str, Enum):
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
-    UNREADABLE = "unreadable"
-
-
 class VisualState(str, Enum):
     READY = "ready"
     RUNNING = "running"
@@ -68,19 +60,6 @@ class VisualState(str, Enum):
 # ---------------------------------------------------------------------------
 # Paper Models
 # ---------------------------------------------------------------------------
-
-class PaperCreate(BaseModel):
-    """Returned after successful PDF upload and initial metadata extraction."""
-    title: str
-    authors: Optional[str] = None
-    year: Optional[int] = None
-    journal: Optional[str] = None
-    doi: Optional[str] = None
-    domain: DomainType = DomainType.OPTICS
-    agent_used: AgentType = AgentType.PHOTON
-    tags: Optional[str] = None
-    notes: Optional[str] = None
-
 
 class PaperUpdate(BaseModel):
     """Fields that can be patched on an existing paper."""
@@ -244,20 +223,6 @@ class RecipeCard(BaseModel):
 # Analysis Phase Result Models
 # ---------------------------------------------------------------------------
 
-class ScreeningResult(BaseModel):
-    """Phase 1: Screening result."""
-    paper_id: int
-    domain: DomainType
-    agent_recommended: AgentType
-    relevance_score: float = Field(ge=0.0, le=1.0)
-    key_topics: list[str] = Field(default_factory=list)
-    methodology_type: Optional[str] = None
-    summary: str
-    is_experimental: bool = True
-    has_figures: bool = True
-    estimated_complexity: Optional[str] = None  # low, medium, high
-
-
 class CitationContext(BaseModel):
     """A single citation context occurrence."""
     sentence: str = ""
@@ -275,52 +240,6 @@ class CitedReference(BaseModel):
     cite_contexts: list[CitationContext] = Field(default_factory=list)
     citation_role: str = ""  # foundational, methodological, comparative, supporting, contrasting
     why_cited: str = ""
-
-
-class CitationResult(BaseModel):
-    """Phase 2: Citation analysis result."""
-    paper_id: int
-    total_references: int = 0
-    citation_style: str = "numbered"  # numbered or author_year
-    top_cited: list[CitedReference] = Field(default_factory=list)
-    self_citation_count: int = 0
-    self_citation_ratio: float = 0.0
-    citation_distribution: dict[str, int] = Field(default_factory=dict)
-    summary: str = ""
-
-
-class VisualResult(BaseModel):
-    """Phase 3: Visual verification result."""
-    paper_id: int
-    figures: list[FigureInfo] = Field(default_factory=list)
-    figure_count: int = 0
-    tables_found: int = 0
-    equations_found: int = 0
-    diagram_types: list[str] = Field(default_factory=list)  # SEM, TEM, spectrum, graph, etc.
-    quality_summary: str = ""
-    key_findings_from_visuals: list[str] = Field(default_factory=list)
-
-
-class RecipeResult(BaseModel):
-    """Phase 3: Recipe extraction result."""
-    paper_id: int
-    recipe: RecipeCard
-    confidence: float = Field(ge=0.0, le=1.0)
-    missing_info: list[str] = Field(default_factory=list)
-    reproducibility_score: float = Field(ge=0.0, le=1.0)
-
-
-class DeepDiveResult(BaseModel):
-    """Phase 4: Deep dive analysis result."""
-    paper_id: int
-    detailed_analysis: str
-    strengths: list[str] = Field(default_factory=list)
-    weaknesses: list[str] = Field(default_factory=list)
-    novelty_assessment: str = ""
-    comparison_to_prior_work: Optional[str] = None
-    suggested_improvements: list[str] = Field(default_factory=list)
-    follow_up_questions: list[str] = Field(default_factory=list)
-    practical_applications: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -352,26 +271,6 @@ class AnalysisStatus(BaseModel):
     total_tokens_out: int = 0
 
 
-class AnalysisResult(BaseModel):
-    """Single stored analysis result row."""
-    id: int
-    paper_id: int
-    phase: str
-    result: str  # JSON string
-    model_used: Optional[str] = None
-    tokens_in: Optional[int] = None
-    tokens_out: Optional[int] = None
-    cost_usd: Optional[float] = None
-    created_at: Optional[str] = None
-
-    def parsed_result(self) -> dict:
-        """Parse the JSON result string."""
-        try:
-            return json.loads(self.result)
-        except (json.JSONDecodeError, TypeError):
-            return {"raw": self.result}
-
-
 class FullAnalysisResponse(BaseModel):
     """Complete analysis results across all phases."""
     paper_id: int
@@ -400,19 +299,6 @@ class MermaidRepairRequest(BaseModel):
     mermaid_code: str
     error_message: str
     viz_id: Optional[int] = None  # visualization item ordinal to persist into; None = don't persist
-
-
-# ---------------------------------------------------------------------------
-# Domain Classification
-# ---------------------------------------------------------------------------
-
-class DomainResult(BaseModel):
-    """Domain classification output."""
-    domain: DomainType
-    confidence: float = Field(ge=0.0, le=1.0)
-    agent: AgentType
-    reasoning: str = ""
-    keywords_matched: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

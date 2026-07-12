@@ -87,7 +87,7 @@ export default function Settings() {
   );
   const [autoAnalyze, setAutoAnalyze] = useState(false);
   const [pdfParserMode, setPdfParserMode] = useState<'java'>('java');
-  const [extractionPipelineVersion, setExtractionPipelineVersion] = useState<'legacy' | 'resolver_v1'>('resolver_v1');
+  const [extractionPipelineVersion, setExtractionPipelineVersion] = useState<'resolver_v1'>('resolver_v1');
   const [imageProvider, setImageProvider] = useState<'openai' | 'gemini'>('openai');
   const [imageQuality, setImageQuality] = useState<'low' | 'medium' | 'high'>('high');
 
@@ -123,7 +123,7 @@ export default function Settings() {
     setAutoAnalyze(data.auto_analyze ?? false);
     setPdfParserMode((data.pdf_parser_mode || 'java') as 'java');
     setExtractionPipelineVersion(
-      (data.extraction_pipeline_version || 'resolver_v1') as 'legacy' | 'resolver_v1'
+      (data.extraction_pipeline_version || 'resolver_v1') as 'resolver_v1'
     );
     setImageProvider((data.image_provider || 'openai') as 'openai' | 'gemini');
     setImageQuality((data.image_quality || 'high') as 'low' | 'medium' | 'high');
@@ -282,7 +282,7 @@ export default function Settings() {
     setTheme((baselineSettings.theme || 'light') as 'dark' | 'light');
     setAutoAnalyze(baselineSettings.auto_analyze ?? false);
     setPdfParserMode((baselineSettings.pdf_parser_mode || 'java') as 'java');
-    setExtractionPipelineVersion((baselineSettings.extraction_pipeline_version || 'resolver_v1') as 'legacy' | 'resolver_v1');
+    setExtractionPipelineVersion((baselineSettings.extraction_pipeline_version || 'resolver_v1') as 'resolver_v1');
     setImageProvider((baselineSettings.image_provider || 'openai') as 'openai' | 'gemini');
     setImageQuality((baselineSettings.image_quality || 'high') as 'low' | 'medium' | 'high');
     setSaved(false);
@@ -645,10 +645,9 @@ export default function Settings() {
               </label>
               <Select
                 value={extractionPipelineVersion}
-                onValueChange={(value) => setExtractionPipelineVersion(value as 'legacy' | 'resolver_v1')}
+                onValueChange={(value) => setExtractionPipelineVersion(value as 'resolver_v1')}
                 aria-label={S.settings.extractionPipeline}
                 options={[
-                  { value: 'legacy', label: S.settings.extractionPipelineLegacy },
                   { value: 'resolver_v1', label: S.settings.extractionPipelineResolverV1 },
                 ]}
               />
