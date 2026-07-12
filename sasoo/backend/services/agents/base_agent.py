@@ -46,7 +46,9 @@ class BaseAgent(ABC):
     Usage:
         agent = AgentPhoton()
         prompt = agent.get_screening_prompt()
-        # Pass prompt to GeminiClient as agent_prompt parameter
+        # prompt is merged into the system_instruction/prompt text that
+        # analysis_routes.py's call_interaction() (services/llm/interactions_client.py)
+        # sends to the model.
     """
 
     # ------------------------------------------------------------------

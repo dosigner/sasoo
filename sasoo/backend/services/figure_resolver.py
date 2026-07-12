@@ -4,6 +4,7 @@ Figure resolver for resolver_v1.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -14,10 +15,10 @@ from typing import Any
 import fitz
 from PIL import Image
 
-from api.analysis_helpers import _call_gemini, _clean_llm_json
+from api.analysis_helpers import _clean_llm_json
 from models.paper import Figure as ParsedFigure
+from services.llm.interactions_client import call_interaction
 from services.subfigure_detector import SubFigureDetector
-from services.models import MODEL_RESOLVER
 
 FIGURE_LABEL_PATTERN = re.compile(r"^\s*(?:Figure|Fig\.?)\s*(\d+[A-Za-z]?)\b", re.IGNORECASE)
 
@@ -275,11 +276,15 @@ async def _maybe_select_candidate(
     }
 
     try:
-        result = await _call_gemini(
-            json.dumps(prompt, ensure_ascii=False),
-            model=MODEL_RESOLVER,
+        image_bytes = (paper_dir / raster_path).resolve().read_bytes()
+        result = await call_interaction(
+            [
+                {"type": "image", "data": base64.b64encode(image_bytes).decode("ascii"), "mime_type": "image/png"},
+                {"type": "text", "text": json.dumps(prompt, ensure_ascii=False)},
+            ],
+            model="gemini-3.5-flash",
             thinking_level="minimal",
-            image_paths=[str((paper_dir / raster_path).resolve())],
+            store=False,
         )
         payload = json.loads(_clean_llm_json(result["text"]))
         selected = str(payload.get("selected_candidate_id") or "")
@@ -335,11 +340,15 @@ async def _maybe_rerank_caption(
     }
 
     try:
-        result = await _call_gemini(
-            json.dumps(prompt, ensure_ascii=False),
-            model=MODEL_RESOLVER,
+        image_bytes = (paper_dir / raster_path).resolve().read_bytes()
+        result = await call_interaction(
+            [
+                {"type": "image", "data": base64.b64encode(image_bytes).decode("ascii"), "mime_type": "image/png"},
+                {"type": "text", "text": json.dumps(prompt, ensure_ascii=False)},
+            ],
+            model="gemini-3.5-flash",
             thinking_level="minimal",
-            image_paths=[str((paper_dir / raster_path).resolve())],
+            store=False,
         )
         payload = json.loads(_clean_llm_json(result["text"]))
         selected = payload.get("selected_caption_id")

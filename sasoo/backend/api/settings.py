@@ -37,6 +37,7 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "openai_api_key": "",
     "image_provider": "openai",
     "image_quality": "high",
+    "library_path": str(get_library_root()),
     "default_domain": "optics",
     "auto_analyze": "true",
     "language": "ko",
@@ -46,6 +47,8 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "pdf_parser_mode": "java",
     "extraction_pipeline_version": "resolver_v1",
     "extraction_pipeline_force_fallback": "false",
+    "research_context": "",
+    "default_explanation_level": "masters",
 }
 
 
@@ -154,6 +157,14 @@ async def _get_all_settings() -> dict[str, str]:
     return result
 
 
+async def get_raw_settings() -> dict:
+    """Return all settings as a flat dict without masking (internal use only, not a route).
+
+    API keys are decrypted transparently. Callers must not expose this over the API.
+    """
+    return await _get_all_settings()
+
+
 async def _set_setting(key: str, value: str) -> None:
     """Upsert a single setting."""
     db = await get_db()
@@ -207,6 +218,8 @@ async def get_settings():
         gemini_model=raw.get("gemini_model", MODEL_FLASH_HQ),
         pdf_parser_mode=raw.get("pdf_parser_mode", "java"),
         extraction_pipeline_version=raw.get("extraction_pipeline_version", "resolver_v1"),
+        research_context=raw.get("research_context", ""),
+        default_explanation_level=raw.get("default_explanation_level", "masters"),
     )
 
 

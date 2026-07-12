@@ -24,7 +24,6 @@ const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
   {
     title: '관리',
     items: [
-      { to: '/agents', icon: 'agents', label: S.app.agents, exact: false },
       { to: '/settings', icon: 'settings', label: S.app.settings, exact: false },
     ],
   },

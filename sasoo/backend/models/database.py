@@ -203,7 +203,11 @@ CREATE TABLE IF NOT EXISTS papers (
     status TEXT DEFAULT 'pending',
     analyzed_at DATETIME,
     notes TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    explanation_level TEXT,
+    analysis_focus TEXT,
+    pdf_file_uri TEXT,
+    pdf_file_expires_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS analysis_results (
@@ -216,7 +220,8 @@ CREATE TABLE IF NOT EXISTS analysis_results (
     tokens_out INTEGER,
     cost_usd REAL,
     input_hash TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    interaction_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS figures (
@@ -444,6 +449,20 @@ async def init_db() -> None:
             await _db_connection.commit()
         except Exception:
             pass
+
+    # Migration: Analysis params + Interactions API chain checkpoint columns
+    for ddl in (
+        "ALTER TABLE papers ADD COLUMN explanation_level TEXT",
+        "ALTER TABLE papers ADD COLUMN analysis_focus TEXT",
+        "ALTER TABLE papers ADD COLUMN pdf_file_uri TEXT",
+        "ALTER TABLE papers ADD COLUMN pdf_file_expires_at TEXT",
+        "ALTER TABLE analysis_results ADD COLUMN interaction_id TEXT",
+    ):
+        try:
+            await _db_connection.execute(ddl)
+            await _db_connection.commit()
+        except Exception:
+            pass  # column already exists
 
 
 async def get_db() -> aiosqlite.Connection:

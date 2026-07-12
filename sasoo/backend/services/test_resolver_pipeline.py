@@ -1,17 +1,27 @@
 from __future__ import annotations
 
+import base64
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import fitz
+from PIL import Image
 
 from services.document_audit import find_suspect_pages
 from services.document_manifest import build_document_manifest
 from services.figure_candidates import build_figure_candidates
 from services.table_candidates import build_table_candidates
-from services.table_resolver import resolve_table_candidates
+from services.table_resolver import _repair_with_vlm, resolve_table_candidates
+
+
+def _make_png(path: Path, size: tuple[int, int] = (40, 20)) -> bytes:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image = Image.new("RGB", size, color="white")
+    image.save(path, "PNG")
+    return path.read_bytes()
 
 
 class ResolverMetadataTests(unittest.TestCase):
@@ -298,6 +308,89 @@ class ResolverTableResolutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(table["repair_reason"], "irregular_row_widths")
         self.assertEqual(table["repair_confidence"], 0.31)
         self.assertEqual(result["low_confidence_pages"], [1])
+
+
+class RepairWithVlmCallInteractionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_calls_call_interaction_with_image_dict_and_model_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            paper_dir = Path(tmp_dir)
+            raster_rel = "pages/page_1.png"
+            image_bytes = _make_png(paper_dir / raster_rel)
+
+            manifest = {"pages": [{"page_number": 1, "raster_path": raster_rel}]}
+            candidate = {
+                "page_number": 1,
+                "bbox": [1.0, 2.0, 3.0, 4.0],
+                "text_grid": [["", "Value"], ["A", "1.0"]],
+            }
+
+            fake_call = AsyncMock(
+                return_value={
+                    "text": '{"rows": [["Name", "Value"], ["A", "1.0"]], "confidence": 0.5}',
+                    "model": "gemini-3.5-flash",
+                    "tokens_in": 1,
+                    "tokens_out": 1,
+                }
+            )
+
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), \
+                 patch("services.table_resolver.call_interaction", new=fake_call):
+                grid, model_used, confidence = await _repair_with_vlm(candidate, manifest, paper_dir)
+
+            fake_call.assert_awaited_once()
+            args, kwargs = fake_call.call_args
+            contents = args[0]
+            self.assertEqual(contents[0]["type"], "image")
+            self.assertEqual(contents[0]["mime_type"], "image/png")
+            self.assertEqual(base64.b64decode(contents[0]["data"]), image_bytes)
+            self.assertEqual(contents[1]["type"], "text")
+            self.assertEqual(kwargs["model"], "gemini-3.5-flash")
+            self.assertEqual(kwargs["thinking_level"], "minimal")
+            self.assertIs(kwargs["store"], False)
+
+            self.assertEqual(grid, [["Name", "Value"], ["A", "1.0"]])
+            self.assertEqual(model_used, "gemini-3.5-flash")
+            self.assertAlmostEqual(confidence, 0.5)
+
+    async def test_no_api_key_skips_call_interaction(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            paper_dir = Path(tmp_dir)
+            manifest = {"pages": [{"page_number": 1, "raster_path": "pages/page_1.png"}]}
+            candidate = {"page_number": 1, "text_grid": [["A", "B"], ["1", "2"]]}
+
+            fake_call = AsyncMock(side_effect=AssertionError("call_interaction should not run"))
+
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("GEMINI_API_KEY", None)
+                with patch("services.table_resolver.call_interaction", new=fake_call):
+                    grid, model_used, confidence = await _repair_with_vlm(candidate, manifest, paper_dir)
+
+            fake_call.assert_not_awaited()
+            self.assertEqual(model_used, "heuristic")
+            self.assertEqual(confidence, 0.0)
+
+    async def test_call_interaction_exception_falls_back_to_heuristic_grid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            paper_dir = Path(tmp_dir)
+            raster_rel = "pages/page_1.png"
+            _make_png(paper_dir / raster_rel)
+
+            manifest = {"pages": [{"page_number": 1, "raster_path": raster_rel}]}
+            candidate = {
+                "page_number": 1,
+                "bbox": [1.0, 2.0, 3.0, 4.0],
+                "text_grid": [["A", "B"], ["1", "2"]],
+            }
+
+            fake_call = AsyncMock(side_effect=RuntimeError("boom"))
+
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), \
+                 patch("services.table_resolver.call_interaction", new=fake_call):
+                grid, model_used, confidence = await _repair_with_vlm(candidate, manifest, paper_dir)
+
+            self.assertEqual(grid, [["A", "B"], ["1", "2"]])
+            self.assertEqual(model_used, "heuristic")
+            self.assertEqual(confidence, 0.0)
 
 
 class ResolverAuditTests(unittest.TestCase):

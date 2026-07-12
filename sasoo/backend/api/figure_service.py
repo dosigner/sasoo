@@ -31,8 +31,7 @@ from services.analysis_results import get_latest_completed_phase_rows
 from services.concurrency import run_pipeline_blocking
 from services.document_context import load_or_build_document_context
 from services.pricing import calc_cost
-from api.analysis_helpers import _call_gemini
-from services.models import MODEL_FIGURE_EXPLAIN
+from services.llm.interactions_client import call_interaction
 
 
 # ---------------------------------------------------------------------------
@@ -542,13 +541,28 @@ Be exhaustive. Do NOT summarize or abbreviate. Include every relevant numerical 
 {analysis_context}
 """
 
-    # Get the figure's file path and pass it to Gemini for multimodal analysis
-    image_paths_arg = [str(resolved_figure_image_path)] if resolved_figure_image_path and resolved_figure_image_path.exists() else None
+    # Build multimodal input: base64 이미지 content dict + 텍스트 (Interactions API stateless call)
+    contents = prompt
+    if resolved_figure_image_path and resolved_figure_image_path.exists():
+        try:
+            import base64
+            img_bytes = resolved_figure_image_path.read_bytes()
+            mime_map = {
+                ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                ".gif": "image/gif", ".webp": "image/webp",
+            }
+            mime_type = mime_map.get(resolved_figure_image_path.suffix.lower(), "image/png")
+            contents = [
+                {"type": "image", "data": base64.b64encode(img_bytes).decode("ascii"), "mime_type": mime_type},
+                {"type": "text", "text": prompt},
+            ]
+        except OSError:
+            contents = prompt
 
     try:
-        result = await _call_gemini(prompt, model=MODEL_FIGURE_EXPLAIN, thinking_level="high", image_paths=image_paths_arg)
+        result = await call_interaction(contents, model="gemini-3.5-flash", thinking_level="high", store=False)
     except Exception:
-        result = await _call_gemini(prompt, model=MODEL_FIGURE_EXPLAIN, image_paths=image_paths_arg)
+        result = await call_interaction(contents, model="gemini-3.5-flash", store=False)
 
     explanation = result["text"].strip()
 

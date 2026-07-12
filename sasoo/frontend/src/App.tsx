@@ -20,7 +20,6 @@ const HomePage = lazy(() => import('@/pages/Home'));
 const Workbench = lazy(() => import('@/pages/Workbench'));
 const Library = lazy(() => import('@/pages/Library'));
 const SettingsPage = lazy(() => import('@/pages/Settings'));
-const Agents = lazy(() => import('@/pages/Agents'));
 
 function RouteFallback() {
   return (
@@ -119,7 +118,6 @@ function App() {
                   <Suspense fallback={<RouteFallback />}>
                     <Routes>
                       <Route path="/" element={<PageScaffold variant="archive"><HomePage /></PageScaffold>} />
-                      <Route path="/agents" element={<PageScaffold variant="control"><Agents /></PageScaffold>} />
                       <Route path="/workbench/:id" element={<WorkbenchScaffold><Workbench /></WorkbenchScaffold>} />
                       <Route path="/library" element={<PageScaffold variant="archive"><Library /></PageScaffold>} />
                       <Route path="/settings" element={<PageScaffold variant="control"><SettingsPage /></PageScaffold>} />

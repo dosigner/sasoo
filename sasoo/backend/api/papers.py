@@ -769,9 +769,20 @@ async def update_paper(paper_id: int, update: PaperUpdate):
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update.")
 
+    # If the domain changes without an explicit agent_used override, keep the
+    # persona badge (agent_used) in sync with the new domain's default agent.
+    if "domain" in update_data and "agent_used" not in update_data:
+        from services.agents import get_agent_for_domain
+
+        domain_value = update_data["domain"]
+        domain_key = domain_value.value if hasattr(domain_value, "value") else domain_value
+        update_data["agent_used"] = get_agent_for_domain(domain_key).name
+
     set_parts: list[str] = []
     values: list = []
     for key, value in update_data.items():
+        if key == "analysis_focus" and isinstance(value, dict):
+            value = json.dumps(value, ensure_ascii=False)
         set_parts.append(f"{key} = ?")
         values.append(value.value if hasattr(value, "value") else value)
 

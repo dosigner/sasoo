@@ -63,6 +63,8 @@ export default function Settings() {
     pdf_parser_mode: 'java',
     extraction_pipeline_version: 'resolver_v1',
     paperbanana_profile: 'fast',
+    research_context: '',
+    default_explanation_level: 'masters',
   };
 
   const [baselineSettings, setBaselineSettings] = useState<SettingsType>(defaultSettings);
@@ -451,6 +453,15 @@ export default function Settings() {
                 {S.settings.getKeyAt('')}
               </p>
             </div>
+          </div>
+        </SettingPanel>
+
+        <SettingPanel
+          kicker={S.settings.sectionEdit}
+          title={S.settings.researcherProfile}
+          description={S.settings.researcherProfileDesc}
+        >
+          <div className="space-y-4">
 
             <div>
               <div className="flex items-center gap-2 mb-1.5">

@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from api import settings
+from models.schemas import SettingsUpdate
 
 
 class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
@@ -120,6 +121,48 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
             SettingsUpdate(image_quality="ultra")
         # Valid values should pass
         SettingsUpdate(image_provider="gemini", image_quality="medium")
+
+    async def test_new_researcher_settings_defaults(self) -> None:
+        rows = [
+            {"key": "library_path", "value": "/tmp/sasoo-library"},
+            {"key": "pdf_parser_mode", "value": "java"},
+            {"key": "extraction_pipeline_version", "value": "resolver_v1"},
+            {"key": "extraction_pipeline_force_fallback", "value": "false"},
+        ]
+
+        with patch("api.settings._ensure_defaults", new=AsyncMock()):
+            with patch("api.settings.fetch_all", new=AsyncMock(return_value=rows)):
+                with patch("api.settings._set_setting", new=AsyncMock()):
+                    response = await settings.get_settings()
+
+        self.assertEqual(response.research_context, "")
+        self.assertEqual(response.default_explanation_level, "masters")
+
+    async def test_update_researcher_settings(self) -> None:
+        store: dict[str, str] = {
+            "library_path": "/tmp/sasoo-library",
+            "pdf_parser_mode": "java",
+            "extraction_pipeline_version": "resolver_v1",
+            "extraction_pipeline_force_fallback": "false",
+        }
+
+        async def fake_set_setting(key: str, value: str) -> None:
+            store[key] = value
+
+        async def fake_fetch_all(*args, **kwargs):
+            return [{"key": k, "value": v} for k, v in store.items()]
+
+        with patch("api.settings._ensure_defaults", new=AsyncMock()):
+            with patch("api.settings.fetch_all", new=AsyncMock(side_effect=fake_fetch_all)):
+                with patch("api.settings._set_setting", new=AsyncMock(side_effect=fake_set_setting)):
+                    update = SettingsUpdate(
+                        research_context="페로브스카이트 태양전지 소자 물리",
+                        default_explanation_level="phd",
+                    )
+                    response = await settings.update_settings(update)
+
+        self.assertEqual(response.research_context, "페로브스카이트 태양전지 소자 물리")
+        self.assertEqual(response.default_explanation_level, "phd")
 
 
 if __name__ == "__main__":
