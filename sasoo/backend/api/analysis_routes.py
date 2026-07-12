@@ -12,6 +12,7 @@ Phases:
 import asyncio
 import json
 import logging
+import re
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,6 +40,7 @@ from models.schemas import (
     FigureInfo,
     FigureListResponse,
     FullAnalysisResponse,
+    MermaidRepairRequest,
     MermaidResult,
     PaperBananaRequest,
     PaperBananaResponse,
@@ -1054,14 +1056,185 @@ Return ONLY valid JSON (마크다운 펜스 없이):
 
 _MERMAID_SYNTAX_RULES = """CRITICAL RULES (Mermaid v10.x compatibility):
 1. Start with the diagram type keyword (flowchart TD, flowchart LR, sequenceDiagram, mindmap, etc.).
-2. NEVER use --- frontmatter blocks or accTitle/accDescr.
+2. NEVER use --- frontmatter blocks, accTitle/accDescr, or %%{init: ...}%% directives.
 3. Use simple alphanumeric node IDs (A, B, step1). NEVER use Korean in node IDs.
 4. ALWAYS wrap labels containing special characters in double quotes: A["레이저 소스 (1064nm)"].
 5. Special characters that MUST be quoted: parentheses (), colons :, semicolons ;, pipes |, angles <>.
 6. For edge labels use: A -->|"label text"| B
 7. Keep labels concise (under 30 chars). Use Korean for all labels.
 8. Do NOT use HTML tags except <br/> for line breaks.
-9. Return ONLY the Mermaid code. No markdown fences, no explanation."""
+9. NEVER use the `A & B --> C` multi-link shorthand — write each edge on its own line.
+10. Return ONLY the Mermaid code. No markdown fences, no explanation."""
+
+_MERMAID_STYLE_RULES = """STYLING RULES — make the diagram visually rich and easy to scan (색·모양·화살표로 의미를 구분해):
+
+A. Flowchart (flowchart TD/LR) — ALWAYS apply styling:
+   - Give EVERY node a semantic class with :::className, e.g. A["입력 데이터"]:::data
+   - Define all classDefs at the END of the diagram. Use this theme-safe palette
+     (dark fill + bright stroke + pale text — readable on dark AND light backgrounds):
+       classDef data fill:#1e3a5f,stroke:#4a9eff,stroke-width:2px,color:#e8f4ff
+       classDef process fill:#3b2a5f,stroke:#a78bfa,stroke-width:2px,color:#f3e8ff
+       classDef measure fill:#134e4a,stroke:#2dd4bf,stroke-width:2px,color:#e0fffb
+       classDef decision fill:#5f4a1e,stroke:#fbbf24,stroke-width:2px,color:#fff7e0
+       classDef result fill:#1e5f3a,stroke:#34d399,stroke-width:2px,color:#e0fff0
+       classDef caution fill:#5f1e2a,stroke:#fb7185,stroke-width:2px,color:#ffe8ec
+     Only define the classes you actually use. You may add more classes in the
+     same format (keep fill dark, color pale).
+   - Vary node shapes by meaning: ["단계"] 일반, ("시작/끝"), {"판단"}, [("데이터 저장")], (("핵심 개념")), [["서브루틴"]]
+   - Vary arrow styles by meaning:
+       ==>   핵심 주 흐름 (굵은 선)
+       -->   일반 흐름
+       -.->  피드백 / 반복 / 선택적 경로
+       --o   참조 / 데이터 연결
+       --x   실패 / 배제 경로
+       <-->  양방향 상호작용
+   - Group related steps with subgraphs (alphanumeric id + quoted title), then style them:
+       subgraph SG1["학습 파이프라인"] ... end
+       style SG1 fill:transparent,stroke:#8b5cf6,stroke-width:1.5px,stroke-dasharray:5 5
+   - Color important arrows with linkStyle (0-based edge index, counted in
+     order of appearance from the top). Use bright strokes from the palette:
+       linkStyle 0,3 stroke:#4a9eff,stroke-width:2.5px
+       linkStyle 1 stroke:#fb7185,stroke-width:2px
+     e.g. 주 흐름=파랑, 피드백=보라, 실패 경로=장미. Count indices carefully.
+
+B. sequenceDiagram:
+   - Use autonumber and participant aliases: participant A as 레이저 소스
+   - Group phases with translucent backgrounds (alpha <= 0.2 so both themes stay readable):
+       rect rgba(94, 106, 210, 0.15) ... end
+   - Vary arrows: ->> 요청/명령, -->> 응답(점선), -x 실패, -) 비동기
+   - Use Note over/left of/right of for annotations.
+   - classDef/linkStyle are NOT supported here — do not use them.
+
+C. mindmap / timeline:
+   - classDef, style, linkStyle are NOT supported — never emit them.
+   - For mindmap, vary node shapes instead: root((중심)), (둥근), [사각], ((원)).
+
+EXAMPLE (flowchart pattern to imitate — structure, shapes, arrows, classes):
+flowchart TD
+    A("논문 입력"):::data ==> B["전처리"]:::process
+    B --> C{"품질 충족?"}:::decision
+    C -->|"예"| D[["모델 학습"]]:::process
+    C -.->|"아니오"| B
+    D --o E[("결과 DB")]:::data
+    D ==> F["성능 평가"]:::measure
+    F --x G["과적합 사례"]:::caution
+    F ==> H(("최종 모델")):::result
+    subgraph SG1["학습 루프"]
+        B
+        C
+        D
+    end
+    style SG1 fill:transparent,stroke:#8b5cf6,stroke-width:1.5px,stroke-dasharray:5 5
+    classDef data fill:#1e3a5f,stroke:#4a9eff,stroke-width:2px,color:#e8f4ff
+    classDef process fill:#3b2a5f,stroke:#a78bfa,stroke-width:2px,color:#f3e8ff
+    classDef measure fill:#134e4a,stroke:#2dd4bf,stroke-width:2px,color:#e0fffb
+    classDef decision fill:#5f4a1e,stroke:#fbbf24,stroke-width:2px,color:#fff7e0
+    classDef result fill:#1e5f3a,stroke:#34d399,stroke-width:2px,color:#e0fff0
+    classDef caution fill:#5f1e2a,stroke:#fb7185,stroke-width:2px,color:#ffe8ec"""
+
+_MERMAID_KEYWORDS = (
+    "flowchart",
+    "graph",
+    "sequenceDiagram",
+    "mindmap",
+    "timeline",
+    "classDiagram",
+    "stateDiagram",
+    "erDiagram",
+    "gantt",
+    "pie",
+    "quadrantChart",
+    "journey",
+)
+
+
+# Flowchart edge connectors: -->, ---, -.->, ==>, ===, --o, --x, <-->, ~~~ …
+# Greedy quantifiers collapse long forms (---->) into a single match.
+_MERMAID_LINK_RE = re.compile(r"<?(?:-{2,}[>ox]?|={2,}[>x]?|-\.+->?|~{3,})")
+
+_MERMAID_NON_EDGE_PREFIXES = (
+    "classDef",
+    "class ",
+    "style ",
+    "linkStyle",
+    "subgraph",
+    "direction",
+    "%%",
+)
+
+
+def _filter_out_of_range_linkstyles(code: str) -> str:
+    """Drop numbered linkStyle lines whose edge index cannot exist.
+
+    Mermaid hard-fails the whole diagram on an out-of-range linkStyle index,
+    so guarding here lets the prompt use per-edge colors freely. Counting is
+    done on quote-stripped non-style lines; `&` multi-links make the count
+    ambiguous, in which case every numbered linkStyle is dropped.
+    """
+    lines = code.split("\n")
+    first = lines[0].strip() if lines else ""
+    if not first.startswith(("flowchart", "graph")):
+        return code
+
+    edge_count = 0
+    ambiguous = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith(_MERMAID_NON_EDGE_PREFIXES):
+            continue
+        unquoted = re.sub(r'"[^"]*"', '""', stripped)
+        if "&" in unquoted:
+            ambiguous = True
+        edge_count += len(_MERMAID_LINK_RE.findall(unquoted))
+
+    kept: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped.startswith("linkStyle"):
+            kept.append(line)
+            continue
+        if stripped.startswith("linkStyle default"):
+            kept.append(line)
+            continue
+        match = re.match(r"linkStyle\s+((?:\d+\s*,\s*)*\d+)\b", stripped)
+        if match is None or ambiguous:
+            continue
+        indices = [int(n) for n in re.findall(r"\d+", match.group(1))]
+        if all(i < edge_count for i in indices):
+            kept.append(line)
+    return "\n".join(kept)
+
+
+def _sanitize_mermaid_code(raw: str) -> str:
+    """Best-effort cleanup of LLM-generated Mermaid code (v10.x compatibility)."""
+    code = raw.strip()
+
+    # Strip markdown fences
+    if code.startswith("```"):
+        code = "\n".join(
+            line for line in code.split("\n") if not line.strip().startswith("```")
+        ).strip()
+
+    # Strip YAML frontmatter block
+    fm_match = re.match(r"^\s*---\s*\n.*?\n\s*---\s*\n?", code, re.DOTALL)
+    if fm_match:
+        code = code[fm_match.end():]
+
+    # Strip init directives and accessibility lines (not supported / theme conflicts)
+    code = re.sub(r"%%\{init:.*?\}%%\s*", "", code, flags=re.DOTALL)
+    code = re.sub(r"^\s*accTitle\s*:.*$", "", code, flags=re.MULTILINE)
+    code = re.sub(r"^\s*accDescr\s*:.*$", "", code, flags=re.MULTILINE)
+    code = code.strip()
+
+    # Drop any prose before the first diagram keyword line
+    lines = code.split("\n")
+    if lines and not lines[0].strip().startswith(_MERMAID_KEYWORDS):
+        for i, line in enumerate(lines):
+            if line.strip().startswith(_MERMAID_KEYWORDS):
+                code = "\n".join(lines[i:])
+                break
+
+    return _filter_out_of_range_linkstyles(code.strip()).strip()
 
 
 async def _plan_visualizations(
@@ -1180,8 +1353,6 @@ async def _generate_single_mermaid(
     previous_results: list[str],
 ) -> str:
     """Generate Mermaid code for a single visualization item using Gemini Pro 3."""
-    import re as _re
-
     title = viz_item.get("title", "Diagram")
     diagram_type = viz_item.get("diagram_type", "flowchart")
     description = viz_item.get("description", "")
@@ -1194,6 +1365,9 @@ async def _generate_single_mermaid(
 설명: {description}
 
 {_MERMAID_SYNTAX_RULES}
+
+{_MERMAID_STYLE_RULES}
+
 추가 규칙: 모든 노드 레이블과 엣지 레이블을 반드시 한국어로 작성해.
 
 분석 데이터와 논문 텍스트를 소스로 사용해:
@@ -1209,22 +1383,7 @@ async def _generate_single_mermaid(
 
     result = await _call_gemini(prompt, model=MODEL_MERMAID)
 
-    mermaid_code = result["text"].strip()
-    # Remove markdown fences
-    if mermaid_code.startswith("```"):
-        lines = mermaid_code.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        mermaid_code = "\n".join(lines).strip()
-
-    # Sanitize: remove frontmatter + accTitle
-    fm_match = _re.match(r"^\s*---\s*\n.*?\n\s*---\s*\n?", mermaid_code, _re.DOTALL)
-    if fm_match:
-        mermaid_code = mermaid_code[fm_match.end():]
-    mermaid_code = _re.sub(r"^\s*accTitle\s*:.*$", "", mermaid_code, flags=_re.MULTILINE)
-    mermaid_code = _re.sub(r"^\s*accDescr\s*:.*$", "", mermaid_code, flags=_re.MULTILINE)
-    mermaid_code = mermaid_code.strip()
-
-    return mermaid_code
+    return _sanitize_mermaid_code(result["text"])
 
 
 async def _generate_single_paperbanana(
@@ -2007,16 +2166,11 @@ async def get_mermaid(paper_id: int):
 
     prompt = f"""Generate a Mermaid flowchart diagram that shows the experimental process/methodology flow of this research paper.
 
-CRITICAL RULES (Mermaid v10.x compatibility):
-1. Return ONLY the Mermaid code. No markdown fences, no explanation.
-2. Start with "flowchart TD" or "flowchart LR". Do NOT use "graph TD".
-3. NEVER use --- frontmatter blocks or accTitle/accDescr.
-4. Use simple alphanumeric node IDs (A, B, step1, step2). NEVER use Korean in node IDs.
-5. ALWAYS wrap labels containing special characters in double quotes: A["레이저 소스 (1064nm)"]
-6. Special characters that MUST be quoted: parentheses (), colons :, semicolons ;, pipes |, angles <>.
-7. For edge labels use: A -->|"label text"| B
-8. Keep labels concise (under 30 chars).
-9. Do NOT use HTML tags in labels except <br/> for line breaks.
+{_MERMAID_SYNTAX_RULES}
+
+{_MERMAID_STYLE_RULES}
+
+추가 규칙: 모든 노드 레이블과 엣지 레이블을 반드시 한국어로 작성해.
 
 Paper title: {paper['title']}
 {recipe_text}
@@ -2029,25 +2183,7 @@ Return ONLY valid Mermaid syntax starting with "flowchart TD" or "flowchart LR".
 
     result = await _call_gemini(prompt)
 
-    # Clean up the mermaid code
-    mermaid_code = result["text"].strip()
-    # Remove markdown code fence if present
-    if mermaid_code.startswith("```"):
-        lines = mermaid_code.split("\n")
-        # Remove first and last line (fences)
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        mermaid_code = "\n".join(lines).strip()
-
-    # Sanitize: remove frontmatter and accTitle if LLM included them anyway
-    import re as _re
-    # Strip --- frontmatter block
-    fm_match = _re.match(r"^\s*---\s*\n.*?\n\s*---\s*\n?", mermaid_code, _re.DOTALL)
-    if fm_match:
-        mermaid_code = mermaid_code[fm_match.end():]
-    # Strip accTitle/accDescr lines
-    mermaid_code = _re.sub(r"^\s*accTitle\s*:.*$", "", mermaid_code, flags=_re.MULTILINE)
-    mermaid_code = _re.sub(r"^\s*accDescr\s*:.*$", "", mermaid_code, flags=_re.MULTILINE)
-    mermaid_code = mermaid_code.strip()
+    mermaid_code = _sanitize_mermaid_code(result["text"])
 
     return MermaidResult(
         paper_id=paper_id,
@@ -2086,6 +2222,155 @@ async def get_visualizations(paper_id: int):
         )
     except (json.JSONDecodeError, TypeError):
         return VisualizationPlanResponse(paper_id=paper_id)
+
+
+async def _update_stored_visualization_item(
+    paper_id: int, viz_id: int, new_fields: dict
+) -> Optional[dict]:
+    """Patch one item inside the latest stored visualization row.
+
+    Returns the updated item dict, or None when no stored row/item matches.
+    """
+    viz_row = await get_latest_completed_phase_row(paper_id, "visualization")
+    if viz_row is None:
+        return None
+    data = viz_row.get("parsed_result")
+    if not isinstance(data, dict):
+        return None
+    items = data.get("items")
+    if not isinstance(items, list):
+        return None
+
+    updated_item = None
+    for item in items:
+        if isinstance(item, dict) and item.get("id") == viz_id:
+            item.update(new_fields)
+            updated_item = item
+            break
+    if updated_item is None:
+        return None
+
+    await execute_update(
+        "UPDATE analysis_results SET result = ? WHERE id = ?",
+        (json.dumps(data, ensure_ascii=False), viz_row["id"]),
+    )
+    return updated_item
+
+
+@router.post("/{paper_id}/mermaid/repair", response_model=MermaidResult)
+async def repair_mermaid(paper_id: int, request: MermaidRepairRequest):
+    """
+    Self-heal a Mermaid diagram that failed to parse in the renderer.
+
+    The client sends the failing code plus the parser error message; Gemini
+    fixes the code while keeping the content and styling. When viz_id is
+    given, the repaired code is persisted into the stored visualization row.
+    """
+    paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
+    if paper is None:
+        raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
+
+    prompt = f"""아래 Mermaid 코드가 파서 오류로 렌더링에 실패했어. 오류를 고친 전체 코드를 반환해줘.
+
+{_MERMAID_SYNTAX_RULES}
+
+파서 오류 메시지:
+{request.error_message[:500]}
+
+실패한 코드:
+{request.mermaid_code[:6000]}
+
+지침:
+- 다이어그램의 내용(노드, 엣지, 레이블)과 스타일(classDef 색상, 화살표 종류)은 최대한 유지해.
+- 파서 오류의 원인만 최소한으로 고쳐.
+- linkStyle 인덱스가 엣지 수를 벗어나면 해당 linkStyle 줄을 삭제해.
+- 수정된 전체 Mermaid 코드만 반환해. 설명 금지."""
+
+    result = await _call_gemini(prompt, model=MODEL_MERMAID)
+    repaired = _sanitize_mermaid_code(result["text"])
+    if not repaired:
+        raise HTTPException(status_code=502, detail="Repair produced empty Mermaid code.")
+
+    if request.viz_id is not None:
+        await _update_stored_visualization_item(
+            paper_id,
+            request.viz_id,
+            {"mermaid_code": repaired, "status": "completed", "error_message": None},
+        )
+
+    return MermaidResult(
+        paper_id=paper_id,
+        mermaid_code=repaired,
+        diagram_type="flowchart",
+        description=None,
+    )
+
+
+@router.post(
+    "/{paper_id}/visualizations/{viz_id}/regenerate",
+    response_model=VisualizationItem,
+)
+async def regenerate_visualization(paper_id: int, viz_id: int):
+    """
+    Regenerate a single Mermaid visualization item with the current prompt
+    (styling rules included) and persist it, without re-running the analysis.
+    """
+    paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
+    if paper is None:
+        raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
+
+    viz_row = await get_latest_completed_phase_row(paper_id, "visualization")
+    data = (viz_row or {}).get("parsed_result") or {}
+    items = data.get("items") if isinstance(data, dict) else None
+    stored_item = next(
+        (it for it in items or [] if isinstance(it, dict) and it.get("id") == viz_id),
+        None,
+    )
+    if stored_item is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Visualization {viz_id} not found for paper {paper_id}.",
+        )
+    if stored_item.get("tool") != "mermaid":
+        raise HTTPException(
+            status_code=400,
+            detail="Only mermaid visualizations can be regenerated here.",
+        )
+
+    # Rebuild the generation contexts the pipeline used
+    visualization_input = ""
+    try:
+        document_context = await asyncio.to_thread(
+            load_or_build_document_context, get_paper_dir(paper["folder_name"])
+        )
+        visualization_input = str(
+            document_context.get("phase_inputs", {}).get("visualization", "")
+        )
+    except FileNotFoundError:
+        pass
+
+    phase_rows = await get_latest_completed_phase_rows(
+        paper_id,
+        phases=["screening", "citation", "visual", "recipe", "deep_dive"],
+    )
+    previous_results = [
+        _phase_result_snippet(phase_rows[phase], 3000)
+        for phase in ["screening", "citation", "visual", "recipe", "deep_dive"]
+        if phase in phase_rows
+    ]
+
+    code = await _generate_single_mermaid(
+        paper_id, stored_item, visualization_input, previous_results
+    )
+    if not code:
+        raise HTTPException(status_code=502, detail="Regeneration produced empty Mermaid code.")
+
+    updated = await _update_stored_visualization_item(
+        paper_id,
+        viz_id,
+        {"mermaid_code": code, "status": "completed", "error_message": None},
+    )
+    return VisualizationItem(**(updated or {**stored_item, "mermaid_code": code}))
 
 
 @router.get("/{paper_id}/report", response_model=ReportResponse)

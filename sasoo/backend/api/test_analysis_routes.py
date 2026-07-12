@@ -186,6 +186,7 @@ schemas_module.FigureExplanationResponse = _SimpleModel
 schemas_module.FigureInfo = _SimpleModel
 schemas_module.FigureListResponse = _SimpleModel
 schemas_module.FullAnalysisResponse = _SimpleModel
+schemas_module.MermaidRepairRequest = _SimpleModel
 schemas_module.MermaidResult = _SimpleModel
 schemas_module.PaperBananaRequest = _SimpleModel
 schemas_module.PaperBananaResponse = _SimpleModel
@@ -712,6 +713,221 @@ class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("--- visual ---", captured["prompt"])
         self.assertNotIn("--- PAPER FULL TEXT ---", captured["prompt"])
         self.assertEqual(response.explanation, "설명")
+
+
+class MermaidRepairAndRegenerateTests(unittest.IsolatedAsyncioTestCase):
+    def _viz_row(self, items):
+        payload = {"items": items, "total_count": len(items), "complete": True}
+        return _row(
+            "visualization",
+            json.dumps(payload, ensure_ascii=False),
+            parsed_result=payload,
+            id=42,
+        )
+
+    async def test_repair_fixes_code_and_persists_into_viz_row(self):
+        paper = {"id": 7, "title": "Paper", "folder_name": "folder"}
+        items = [{"id": 2, "tool": "mermaid", "title": "t", "mermaid_code": "broken", "status": "error"}]
+        captured = {}
+
+        async def _fake_call(prompt: str, **kwargs):
+            captured["prompt"] = prompt
+            return {"text": "```mermaid\nflowchart TD\nA-->B\n```", "model": "gemini", "tokens_in": 1, "tokens_out": 1}
+
+        update_mock = AsyncMock()
+        with (
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)),
+            patch("api.analysis_routes.get_latest_completed_phase_row", new=AsyncMock(return_value=self._viz_row(items))),
+            patch("api.analysis_routes.execute_update", new=update_mock),
+            patch("api.analysis_routes._call_gemini", new=_fake_call),
+        ):
+            request = analysis_routes.MermaidRepairRequest(
+                mermaid_code="flowchart TD\nA-->B\nlinkStyle 5 stroke:#f00",
+                error_message="The index 5 for linkStyle is out of bounds",
+                viz_id=2,
+            )
+            response = await analysis_routes.repair_mermaid(7, request)
+
+        self.assertEqual(response.mermaid_code, "flowchart TD\nA-->B")
+        self.assertIn("linkStyle is out of bounds", captured["prompt"])
+        # Persisted: the stored row was rewritten with the repaired item
+        update_mock.assert_awaited_once()
+        saved_payload = json.loads(update_mock.call_args.args[1][0])
+        self.assertEqual(saved_payload["items"][0]["mermaid_code"], "flowchart TD\nA-->B")
+        self.assertEqual(saved_payload["items"][0]["status"], "completed")
+
+    async def test_repair_without_viz_id_does_not_persist(self):
+        paper = {"id": 7, "title": "Paper", "folder_name": "folder"}
+
+        async def _fake_call(prompt: str, **kwargs):
+            return {"text": "flowchart TD\nA-->B", "model": "gemini", "tokens_in": 1, "tokens_out": 1}
+
+        update_mock = AsyncMock()
+        with (
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)),
+            patch("api.analysis_routes.execute_update", new=update_mock),
+            patch("api.analysis_routes._call_gemini", new=_fake_call),
+        ):
+            request = analysis_routes.MermaidRepairRequest(
+                mermaid_code="broken", error_message="Syntax error", viz_id=None
+            )
+            response = await analysis_routes.repair_mermaid(7, request)
+
+        self.assertEqual(response.mermaid_code, "flowchart TD\nA-->B")
+        update_mock.assert_not_awaited()
+
+    async def test_regenerate_uses_stored_item_and_persists(self):
+        paper = {"id": 7, "title": "Paper", "folder_name": "folder"}
+        items = [
+            {"id": 1, "tool": "paperbanana", "title": "img"},
+            {
+                "id": 3,
+                "tool": "mermaid",
+                "title": "플로우",
+                "diagram_type": "flowchart",
+                "description": "설명",
+                "mermaid_code": "flowchart TD\nOld-->Old2",
+                "status": "completed",
+            },
+        ]
+        captured = {}
+
+        async def _fake_call(prompt: str, **kwargs):
+            captured["prompt"] = prompt
+            return {"text": "flowchart TD\nNew-->New2", "model": "gemini", "tokens_in": 1, "tokens_out": 1}
+
+        update_mock = AsyncMock()
+        with (
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)),
+            patch("api.analysis_routes.get_paper_dir", return_value="/tmp/paper"),
+            patch("api.analysis_routes.load_or_build_document_context", return_value={"phase_inputs": {"visualization": "VIZ-CONTEXT"}}),
+            patch("api.analysis_routes.get_latest_completed_phase_row", new=AsyncMock(return_value=self._viz_row(items))),
+            patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value={"recipe": _row("recipe", '{"title":"r"}')})),
+            patch("api.analysis_routes.execute_update", new=update_mock),
+            patch("api.analysis_routes._call_gemini", new=_fake_call),
+        ):
+            response = await analysis_routes.regenerate_visualization(7, 3)
+
+        self.assertEqual(response.mermaid_code, "flowchart TD\nNew-->New2")
+        self.assertEqual(response.id, 3)
+        self.assertIn("VIZ-CONTEXT", captured["prompt"])
+        self.assertIn("플로우", captured["prompt"])
+        update_mock.assert_awaited_once()
+
+    async def test_regenerate_rejects_non_mermaid_item(self):
+        paper = {"id": 7, "title": "Paper", "folder_name": "folder"}
+        items = [{"id": 1, "tool": "paperbanana", "title": "img"}]
+
+        with (
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)),
+            patch("api.analysis_routes.get_latest_completed_phase_row", new=AsyncMock(return_value=self._viz_row(items))),
+        ):
+            with self.assertRaises(Exception) as ctx:
+                await analysis_routes.regenerate_visualization(7, 1)
+        self.assertEqual(getattr(ctx.exception, "status_code", None), 400)
+
+
+class SanitizeMermaidCodeTests(unittest.TestCase):
+    def test_strips_fences_frontmatter_and_acc_lines(self):
+        raw = (
+            "```mermaid\n"
+            "---\ntitle: t\n---\n"
+            "flowchart TD\n"
+            "    accTitle: acc\n"
+            "    accDescr: desc\n"
+            '    A["시작"] --> B\n'
+            "```"
+        )
+        cleaned = analysis_routes._sanitize_mermaid_code(raw)
+        self.assertTrue(cleaned.startswith("flowchart TD"))
+        self.assertNotIn("accTitle", cleaned)
+        self.assertNotIn("accDescr", cleaned)
+        self.assertNotIn("```", cleaned)
+        self.assertNotIn("---", cleaned)
+
+    def test_strips_init_directive(self):
+        raw = '%%{init: {"theme": "forest"}}%%\nflowchart LR\n    A --> B'
+        cleaned = analysis_routes._sanitize_mermaid_code(raw)
+        self.assertTrue(cleaned.startswith("flowchart LR"))
+        self.assertNotIn("%%{init", cleaned)
+
+    def test_drops_prose_before_diagram_keyword(self):
+        raw = "다음은 다이어그램입니다:\n\nflowchart TD\n    A --> B"
+        cleaned = analysis_routes._sanitize_mermaid_code(raw)
+        self.assertTrue(cleaned.startswith("flowchart TD"))
+
+    def test_preserves_styling_statements(self):
+        raw = (
+            "flowchart TD\n"
+            '    A["입력"]:::data ==> B["처리"]:::process\n'
+            "    classDef data fill:#1e3a5f,stroke:#4a9eff,stroke-width:2px,color:#e8f4ff\n"
+            "    classDef process fill:#3b2a5f,stroke:#a78bfa,stroke-width:2px,color:#f3e8ff"
+        )
+        self.assertEqual(analysis_routes._sanitize_mermaid_code(raw), raw)
+
+    def test_plain_code_passes_through(self):
+        raw = "flowchart TD\nA-->B"
+        self.assertEqual(analysis_routes._sanitize_mermaid_code(raw), raw)
+
+    def test_keeps_linkstyle_with_valid_indices(self):
+        raw = (
+            "flowchart TD\n"
+            '    A["시작 (1단계)"] --> B\n'
+            "    B ==> C\n"
+            "    C -.-> A\n"
+            "    linkStyle 0,2 stroke:#4a9eff,stroke-width:2.5px\n"
+            "    linkStyle default stroke:#888"
+        )
+        self.assertEqual(analysis_routes._sanitize_mermaid_code(raw), raw)
+
+    def test_drops_out_of_range_linkstyle_lines(self):
+        raw = (
+            "flowchart TD\n"
+            "    A --> B\n"
+            "    B --o C\n"
+            "    linkStyle 1 stroke:#4a9eff\n"
+            "    linkStyle 5 stroke:#fb7185\n"
+            "    linkStyle default stroke:#888"
+        )
+        cleaned = analysis_routes._sanitize_mermaid_code(raw)
+        self.assertIn("linkStyle 1 stroke:#4a9eff", cleaned)
+        self.assertNotIn("linkStyle 5", cleaned)
+        self.assertIn("linkStyle default", cleaned)
+
+    def test_counts_multiple_edges_per_line_and_long_arrows(self):
+        raw = (
+            "flowchart LR\n"
+            "    A --> B ---> C\n"
+            '    C <-->|"교환"| D\n'
+            "    linkStyle 2 stroke:#34d399\n"
+            "    linkStyle 3 stroke:#fb7185"
+        )
+        cleaned = analysis_routes._sanitize_mermaid_code(raw)
+        self.assertIn("linkStyle 2", cleaned)  # 3 edges → index 2 valid
+        self.assertNotIn("linkStyle 3", cleaned)
+
+    def test_drops_numbered_linkstyle_when_ampersand_makes_count_ambiguous(self):
+        raw = (
+            "flowchart TD\n"
+            "    A & B --> C\n"
+            "    linkStyle 0 stroke:#4a9eff\n"
+            "    linkStyle default stroke:#888"
+        )
+        cleaned = analysis_routes._sanitize_mermaid_code(raw)
+        self.assertNotIn("linkStyle 0", cleaned)
+        self.assertIn("linkStyle default", cleaned)
+
+    def test_linkstyle_untouched_for_non_flowchart(self):
+        raw = "sequenceDiagram\n    A->>B: 요청\n    B-->>A: 응답"
+        self.assertEqual(analysis_routes._sanitize_mermaid_code(raw), raw)
+
+    def test_edge_count_ignores_arrows_inside_quoted_labels(self):
+        raw = (
+            "flowchart TD\n"
+            '    A["증가 --> 감소"] --> B\n'
+            "    linkStyle 0 stroke:#4a9eff"
+        )
+        self.assertEqual(analysis_routes._sanitize_mermaid_code(raw), raw)
 
 
 if __name__ == "__main__":
