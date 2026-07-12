@@ -93,6 +93,91 @@ async def call_interaction(
     return await asyncio.get_event_loop().run_in_executor(None, _sync_call)
 
 
+async def stream_interaction(
+    prompt,
+    *,
+    model: str = "gemini-3.5-flash",
+    system_instruction: str | None = None,
+    thinking_level: str | None = None,
+    previous_interaction_id: str | None = None,
+    store: bool = True,
+):
+    """Interactions API 스트리밍 래퍼.
+
+    `{"type":"token","text":str}`를 토큰마다 yield하고, 마지막에
+    `{"type":"done","tokens_in":int,"tokens_out":int,"tokens_thought":int,"interaction_id":str|None}`
+    를 yield한다. sync SDK 스트림은 스레드에서 돌리고 asyncio.Queue로 브릿지해
+    이벤트 루프를 막지 않는다(기존 채팅 엔드포인트의 관용구 이동).
+    스트림 중 오류는 RuntimeError로 전파한다.
+    """
+    if not store and previous_interaction_id:
+        raise ValueError("previous_interaction_id requires store=True")
+
+    loop = asyncio.get_running_loop()
+    q: asyncio.Queue = asyncio.Queue()
+
+    def _sync_stream():
+        try:
+            client = _get_client()
+            kwargs: dict = {
+                "model": model,
+                "input": prompt,
+                "system_instruction": system_instruction or _SYSTEM_INSTRUCTION_KO,
+                "store": store,
+                "stream": True,
+            }
+            if thinking_level:
+                kwargs["generation_config"] = {"thinking_level": thinking_level}
+            if previous_interaction_id:
+                kwargs["previous_interaction_id"] = previous_interaction_id
+
+            for event in client.interactions.create(**kwargs):
+                # VERIFY(확인됨, streaming.md.txt): 텍스트 토큰은
+                # event.event_type == "step.delta" + event.delta.type == "text" + event.delta.text.
+                event_type = getattr(event, "event_type", None)
+                if event_type == "step.delta":
+                    delta = getattr(event, "delta", None)
+                    if delta is not None and getattr(delta, "type", None) == "text":
+                        text = getattr(delta, "text", "") or ""
+                        if text:
+                            asyncio.run_coroutine_threadsafe(q.put(("token", text)), loop)
+                elif event_type == "interaction.completed":
+                    # VERIFY(확인됨, streaming.md.txt): 종료는 interaction.completed +
+                    # event.interaction.usage.total_input_tokens / total_output_tokens /
+                    # total_thought_tokens, id는 event.interaction.id.
+                    interaction = getattr(event, "interaction", None)
+                    usage = getattr(interaction, "usage", None)
+                    asyncio.run_coroutine_threadsafe(
+                        q.put((
+                            "done",
+                            {
+                                "tokens_in": getattr(usage, "total_input_tokens", 0) or 0,
+                                "tokens_out": getattr(usage, "total_output_tokens", 0) or 0,
+                                "tokens_thought": getattr(usage, "total_thought_tokens", 0) or 0,
+                                "interaction_id": getattr(interaction, "id", None),
+                            },
+                        )),
+                        loop,
+                    )
+        except Exception as exc:  # noqa: BLE001 - 소비자에게 전파
+            asyncio.run_coroutine_threadsafe(q.put(("error", str(exc))), loop)
+        finally:
+            asyncio.run_coroutine_threadsafe(q.put(("__end__", None)), loop)
+
+    loop.run_in_executor(None, _sync_stream)
+
+    while True:
+        kind, data = await q.get()
+        if kind == "token":
+            yield {"type": "token", "text": data}
+        elif kind == "done":
+            yield {"type": "done", **data}
+        elif kind == "error":
+            raise RuntimeError(f"Interactions API stream failed: {data}")
+        else:  # "__end__"
+            break
+
+
 async def _cached_pdf_uri(paper_id: int) -> str | None:
     """캐시된 pdf_file_uri가 아직 유효하면 반환, 아니면 None."""
     from models.database import fetch_one

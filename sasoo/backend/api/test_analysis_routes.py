@@ -450,40 +450,13 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         }
         captured = {}
 
-        class DummyPart:
-            @staticmethod
-            def from_text(text: str):
-                return {"text": text}
-
-        class DummyContent:
-            def __init__(self, role, parts):
-                self.role = role
-                self.parts = parts
-
-        class DummyModels:
-            def generate_content_stream(self, *, model, contents, config):
-                captured["model"] = model
-                captured["contents"] = contents
-                captured["config"] = config
-                usage = types.SimpleNamespace(prompt_token_count=10, candidates_token_count=20)
-                return [
-                    types.SimpleNamespace(text="첫", usage_metadata=usage),
-                    types.SimpleNamespace(text="답", usage_metadata=usage),
-                ]
-
-        class DummyClient:
-            def __init__(self):
-                self.models = DummyModels()
-
-        genai_types = types.SimpleNamespace(
-            Content=DummyContent,
-            Part=DummyPart,
-            GenerateContentConfig=lambda **kwargs: kwargs,
-        )
-        google_module = types.ModuleType("google")
-        genai_module = types.ModuleType("google.genai")
-        genai_module.types = genai_types
-        google_module.genai = genai_module
+        async def fake_stream(prompt, **kwargs):
+            captured["prompt"] = prompt
+            captured.update(kwargs)
+            yield {"type": "token", "text": "첫"}
+            yield {"type": "token", "text": "답"}
+            yield {"type": "done", "tokens_in": 10, "tokens_out": 20,
+                   "tokens_thought": 0, "interaction_id": None}
 
         with (
             patch.dict(sys.modules, {"services.agents": agents_module}),
@@ -491,21 +464,33 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             patch("api.analysis_routes.get_paper_dir", return_value="/tmp/paper"),
             patch("api.analysis_routes.load_or_build_document_context", return_value={"phase_inputs": {"chat": "CHAT-CONTEXT"}}),
             patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value=latest_rows)),
-            patch("api.analysis_routes._get_gemini_client", return_value=DummyClient()),
-            patch.dict(sys.modules, {"google": google_module, "google.genai": genai_module}),
+            patch("api.analysis_routes.stream_interaction", new=fake_stream),
+            patch("api.analysis_routes.calc_cost", return_value=0.0001),
         ):
             response = await analysis_routes._chat_with_agent_impl(
                 7,
-                _FakeRequest({"message": "질문", "history": []}),
+                _FakeRequest({"message": "질문", "history": [{"role": "user", "content": "이전질문"}]}),
             )
             chunks = []
             async for chunk in response.body_iterator:
                 chunks.append(chunk)
 
-        system_prompt = captured["config"]["system_instruction"]
+        # stateless 전환: stream_interaction으로 넘어간 계약 검증
+        self.assertEqual(captured["model"], "gemini-3.5-flash")
+        self.assertIs(captured["store"], False)
+        system_prompt = captured["system_instruction"]
         self.assertIn("CHAT-CONTEXT", system_prompt)
         self.assertIn("스크리닝 결과", system_prompt)
-        self.assertTrue(any("done" in str(chunk) for chunk in chunks))
+        # 히스토리는 요청 텍스트로 조립되어 input에 포함
+        self.assertIn("이전질문", captured["prompt"])
+        self.assertIn("질문", captured["prompt"])
+        # SSE 이벤트 스키마 불변: token(content) / done(tokens_in,tokens_out,cost_usd)
+        joined = "".join(chunks)
+        self.assertIn('"type": "token"', joined)
+        self.assertIn('"content": "첫"', joined)
+        self.assertIn('"type": "done"', joined)
+        self.assertIn('"cost_usd"', joined)
+        self.assertNotIn('"type": "error"', joined)
 
 
 class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):

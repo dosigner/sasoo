@@ -71,6 +71,154 @@ def test_call_interaction_store_false_with_previous_id_raises():
         )
 
 
+# ---------------------------------------------------------------------------
+# stream_interaction: 스트리밍 이벤트 → token/done 변환, 비차단 브릿지
+# ---------------------------------------------------------------------------
+
+def _delta_event(text):
+    # VERIFY(확인됨, streaming.md.txt): step.delta + delta.type=="text" + delta.text
+    return SimpleNamespace(
+        event_type="step.delta",
+        delta=SimpleNamespace(type="text", text=text),
+    )
+
+
+def _completed_event(tokens_in=11, tokens_out=90, tokens_thought=245, iid="int_stream"):
+    # VERIFY(확인됨, streaming.md.txt): interaction.completed + interaction.usage.total_*_tokens
+    usage = SimpleNamespace(
+        total_input_tokens=tokens_in,
+        total_output_tokens=tokens_out,
+        total_thought_tokens=tokens_thought,
+    )
+    return SimpleNamespace(
+        event_type="interaction.completed",
+        interaction=SimpleNamespace(id=iid, usage=usage),
+    )
+
+
+async def _collect(agen):
+    out = []
+    async for ev in agen:
+        out.append(ev)
+    return out
+
+
+def test_stream_interaction_yields_tokens_then_done():
+    events = [_delta_event("안"), _delta_event("녕"), _completed_event()]
+    fake_client = MagicMock()
+    fake_client.interactions.create.return_value = iter(events)
+
+    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+        result = asyncio.run(_collect(interactions_client.stream_interaction("hi")))
+
+    assert result[0] == {"type": "token", "text": "안"}
+    assert result[1] == {"type": "token", "text": "녕"}
+    done = result[2]
+    assert done["type"] == "done"
+    assert done["tokens_in"] == 11
+    assert done["tokens_out"] == 90
+    assert done["tokens_thought"] == 245
+    assert done["interaction_id"] == "int_stream"
+    # stream=True 전달 + 금지 파라미터 부재
+    kwargs = fake_client.interactions.create.call_args.kwargs
+    assert kwargs["stream"] is True
+    assert kwargs["model"] == "gemini-3.5-flash"
+    for disallowed in ("temperature", "top_p", "top_k", "thinking_budget", "generation_config"):
+        assert disallowed not in kwargs
+
+
+def test_stream_interaction_ignores_non_text_events():
+    events = [
+        SimpleNamespace(event_type="interaction.created", interaction=SimpleNamespace(id="x")),
+        SimpleNamespace(event_type="step.start", step=SimpleNamespace(type="model_output")),
+        SimpleNamespace(event_type="step.delta",
+                        delta=SimpleNamespace(type="thought_summary", text="생각중")),
+        _delta_event("본문"),
+        SimpleNamespace(event_type="step.stop", index=0),
+        _completed_event(),
+    ]
+    fake_client = MagicMock()
+    fake_client.interactions.create.return_value = iter(events)
+
+    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+        result = asyncio.run(_collect(interactions_client.stream_interaction("hi")))
+
+    tokens = [e for e in result if e["type"] == "token"]
+    assert tokens == [{"type": "token", "text": "본문"}]
+    assert result[-1]["type"] == "done"
+
+
+def test_stream_interaction_thinking_level_passed_without_disallowed_params():
+    events = [_delta_event("t"), _completed_event()]
+    fake_client = MagicMock()
+    fake_client.interactions.create.return_value = iter(events)
+
+    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+        asyncio.run(_collect(interactions_client.stream_interaction("hi", thinking_level="low")))
+
+    kwargs = fake_client.interactions.create.call_args.kwargs
+    assert kwargs["generation_config"] == {"thinking_level": "low"}
+    for disallowed in ("temperature", "top_p", "top_k", "thinking_budget"):
+        assert disallowed not in kwargs["generation_config"]
+
+
+def test_stream_interaction_store_false_with_previous_id_raises():
+    with pytest.raises(ValueError, match="previous_interaction_id requires store=True"):
+        asyncio.run(
+            _collect(
+                interactions_client.stream_interaction(
+                    "후속", previous_interaction_id="int_1", store=False
+                )
+            )
+        )
+
+
+def test_stream_interaction_does_not_block_event_loop():
+    """sync 스트림은 스레드에서 돌아야 한다: 생산자 스레드가 블록된 동안에도
+    이벤트 루프(소비자)가 계속 돌아 첫 토큰을 받고 proceed를 풀 수 있어야 한다.
+    만약 sync 제너레이터가 이벤트 루프에서 돌면 여기서 데드락이 난다."""
+    proceed = threading.Event()
+
+    def fake_events():
+        yield _delta_event("첫")
+        assert proceed.wait(timeout=2), "소비자가 첫 토큰 후 proceed를 풀지 못했다"
+        yield _delta_event("둘")
+        yield _completed_event()
+
+    fake_client = MagicMock()
+    fake_client.interactions.create.return_value = fake_events()
+
+    async def _run():
+        agen = interactions_client.stream_interaction("hi")
+        first = await agen.__anext__()
+        # 이 지점에 도달했다는 것 자체가 생산자 스레드가 블록된 동안
+        # 이벤트 루프가 살아 있었다는 증거다.
+        proceed.set()
+        rest = [ev async for ev in agen]
+        return [first, *rest]
+
+    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+        result = asyncio.run(_run())
+
+    assert [e for e in result if e["type"] == "token"] == [
+        {"type": "token", "text": "첫"},
+        {"type": "token", "text": "둘"},
+    ]
+    assert result[-1]["type"] == "done"
+
+
+def test_stream_interaction_raises_on_stream_error():
+    fake_client = MagicMock()
+    fake_client.interactions.create.side_effect = RuntimeError("boom")
+
+    async def _run():
+        return await _collect(interactions_client.stream_interaction("hi"))
+
+    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+        with pytest.raises(RuntimeError, match="boom"):
+            asyncio.run(_run())
+
+
 def _paper_row(uri="uri-old", expires_at=None):
     return {"pdf_file_uri": uri, "pdf_file_expires_at": expires_at}
 

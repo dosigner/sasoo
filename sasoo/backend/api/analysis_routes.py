@@ -72,14 +72,13 @@ from services.document_context import (
     load_or_build_document_context,
 )
 from services.pricing import calc_cost
-from services.llm.interactions_client import call_interaction
+from services.llm.interactions_client import call_interaction, stream_interaction
 from api.analysis_context import EXPLANATION_LEVELS
 
 from api.analysis_state import _running_analyses, _cancel_events, _analyses_lock
 from api.analysis_helpers import (
     _clean_llm_json,
     _is_error_result,
-    _get_gemini_client,
     _SYSTEM_INSTRUCTION_KO,
 )
 from api.report_service import (
@@ -2732,7 +2731,7 @@ async def get_experiment_plan(paper_id: int):
 # Agent Chat (SSE streaming)
 # ---------------------------------------------------------------------------
 
-_CHAT_MODEL = "gemini-3-flash-preview"
+_CHAT_MODEL = "gemini-3.5-flash"
 
 
 @router.post("/{paper_id}/chat")
@@ -2819,67 +2818,35 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
         + "\n".join(context_parts)
     )
 
-    # 5. Build Gemini contents from history
-    from google.genai import types as _gtypes
-
-    contents = []
+    # 5. 히스토리를 요청 텍스트로 조립 (stateless, store=False).
+    #    Interactions는 단일 input 텍스트를 받으므로 최근 대화를 전사(transcript)로 붙인다.
+    #    TODO(stateful): 후속 개선으로 paper 체인의 마지막 interaction_id를
+    #    previous_interaction_id로 이어 서버 상태를 재사용하는 stateful 모드가 가능하다.
+    #    다만 프론트가 매 요청 history 전체를 보내는 현재 계약을 바꿔야 하므로 이번 범위 밖이다.
+    transcript_parts: list[str] = []
     for msg in history[-20:]:  # limit history to last 20 messages
-        role = "user" if msg.get("role") == "user" else "model"
-        contents.append(
-            _gtypes.Content(role=role, parts=[_gtypes.Part.from_text(text=msg.get("content", ""))])
-        )
-    contents.append(
-        _gtypes.Content(role="user", parts=[_gtypes.Part.from_text(text=message)])
-    )
+        speaker = "사용자" if msg.get("role") == "user" else "사수"
+        transcript_parts.append(f"{speaker}: {msg.get('content', '')}")
+    transcript_parts.append(f"사용자: {message}")
+    chat_input = "\n".join(transcript_parts)
 
-    # 6. Stream via SSE
-    q: asyncio.Queue = asyncio.Queue()
-    loop = asyncio.get_running_loop()
-
-    def _sync_stream():
+    # 6. Stream via SSE — stream_interaction이 executor+Queue 브릿지를 담당한다.
+    async def event_generator():
         try:
-            client = _get_gemini_client()
-            config = _gtypes.GenerateContentConfig(system_instruction=system_prompt)
-            response_stream = client.models.generate_content_stream(
+            async for ev in stream_interaction(
+                chat_input,
                 model=_CHAT_MODEL,
-                contents=contents,
-                config=config,
-            )
-            tokens_in = 0
-            tokens_out = 0
-            for chunk in response_stream:
-                text = chunk.text or ""
-                if text:
-                    asyncio.run_coroutine_threadsafe(q.put(("token", text)), loop)
-                usage = getattr(chunk, "usage_metadata", None)
-                if usage:
-                    t_in = getattr(usage, "prompt_token_count", 0)
-                    t_out = getattr(usage, "candidates_token_count", 0)
-                    if t_in:
-                        tokens_in = t_in
-                    if t_out:
-                        tokens_out = t_out
-            asyncio.run_coroutine_threadsafe(
-                q.put(("done", {"tokens_in": tokens_in, "tokens_out": tokens_out})), loop
-            )
+                system_instruction=system_prompt,
+                store=False,
+            ):
+                if ev["type"] == "token":
+                    yield f"data: {json.dumps({'type': 'token', 'content': ev['text']}, ensure_ascii=False)}\n\n"
+                elif ev["type"] == "done":
+                    cost = calc_cost(_CHAT_MODEL, ev["tokens_in"], ev["tokens_out"])
+                    yield f"data: {json.dumps({'type': 'done', 'tokens_in': ev['tokens_in'], 'tokens_out': ev['tokens_out'], 'cost_usd': cost}, ensure_ascii=False)}\n\n"
         except Exception as exc:
             logger.error("Chat stream error: %s", exc)
-            asyncio.run_coroutine_threadsafe(q.put(("error", str(exc))), loop)
-
-    loop.run_in_executor(None, _sync_stream)
-
-    async def event_generator():
-        while True:
-            msg_type, data = await q.get()
-            if msg_type == "token":
-                yield f"data: {json.dumps({'type': 'token', 'content': data}, ensure_ascii=False)}\n\n"
-            elif msg_type == "done":
-                cost = calc_cost(_CHAT_MODEL, data["tokens_in"], data["tokens_out"])
-                yield f"data: {json.dumps({'type': 'done', 'tokens_in': data['tokens_in'], 'tokens_out': data['tokens_out'], 'cost_usd': cost}, ensure_ascii=False)}\n\n"
-                break
-            elif msg_type == "error":
-                yield f"data: {json.dumps({'type': 'error', 'message': data}, ensure_ascii=False)}\n\n"
-                break
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         event_generator(),
