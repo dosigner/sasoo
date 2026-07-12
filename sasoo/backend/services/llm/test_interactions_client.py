@@ -207,6 +207,29 @@ def test_stream_interaction_does_not_block_event_loop():
     assert result[-1]["type"] == "done"
 
 
+def test_stream_interaction_yields_fallback_done_when_stream_ends_without_completed():
+    """SDK 스트림이 interaction.completed 없이 정상 종료(__end__만 도달)해도
+    done을 조용히 누락시키지 않고 폴백 done을 yield해야 한다 —
+    안 그러면 프론트 onDone(비용 집계·액션 버튼)이 영영 호출되지 않는다."""
+    events = [_delta_event("안"), _delta_event("녕")]
+    fake_client = MagicMock()
+    fake_client.interactions.create.return_value = iter(events)
+
+    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+        result = asyncio.run(_collect(interactions_client.stream_interaction("hi")))
+
+    assert result[0] == {"type": "token", "text": "안"}
+    assert result[1] == {"type": "token", "text": "녕"}
+    assert len(result) == 3
+    assert result[2] == {
+        "type": "done",
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "tokens_thought": 0,
+        "interaction_id": None,
+    }
+
+
 def test_stream_interaction_raises_on_stream_error():
     fake_client = MagicMock()
     fake_client.interactions.create.side_effect = RuntimeError("boom")

@@ -492,6 +492,41 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"cost_usd"', joined)
         self.assertNotIn('"type": "error"', joined)
 
+    async def test_chat_stream_error_emits_sse_error_event(self):
+        """stream_interaction이 예외를 던지면 event_generator의 except 절이
+        실제 SSE `{"type":"error","message":...}` 이벤트를 내보내는지 검증한다."""
+        paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "materials"}
+        latest_rows = {
+            "screening": _row("screening", '{"summary":"screening"}'),
+            "recipe": _row("recipe", '{"title":"recipe"}'),
+        }
+
+        async def fake_stream_raises(prompt, **kwargs):
+            raise RuntimeError("stream boom")
+            yield  # pragma: no cover - unreachable, keeps this an async generator
+
+        with (
+            patch.dict(sys.modules, {"services.agents": agents_module}),
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)),
+            patch("api.analysis_routes.get_paper_dir", return_value="/tmp/paper"),
+            patch("api.analysis_routes.load_or_build_document_context", return_value={"phase_inputs": {"chat": "CHAT-CONTEXT"}}),
+            patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value=latest_rows)),
+            patch("api.analysis_routes.stream_interaction", new=fake_stream_raises),
+            patch("api.analysis_routes.calc_cost", return_value=0.0001),
+        ):
+            response = await analysis_routes._chat_with_agent_impl(
+                7,
+                _FakeRequest({"message": "질문", "history": []}),
+            )
+            chunks = []
+            async for chunk in response.body_iterator:
+                chunks.append(chunk)
+
+        joined = "".join(chunks)
+        self.assertIn('"type": "error"', joined)
+        self.assertIn("stream boom", joined)
+        self.assertNotIn('"type": "done"', joined)
+
 
 class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):
     async def test_figure_prompt_uses_figure_detail_context_and_latest_phase_snippets(self):

@@ -109,6 +109,9 @@ async def stream_interaction(
     를 yield한다. sync SDK 스트림은 스레드에서 돌리고 asyncio.Queue로 브릿지해
     이벤트 루프를 막지 않는다(기존 채팅 엔드포인트의 관용구 이동).
     스트림 중 오류는 RuntimeError로 전파한다.
+    SDK 스트림이 interaction.completed 이벤트 없이 정상 종료하면 폴백 done
+    (`tokens_in/out/thought=0, interaction_id=None`)을 yield해 소비자가
+    항상 종료 신호를 받도록 보장한다.
     """
     if not store and previous_interaction_id:
         raise ValueError("previous_interaction_id requires store=True")
@@ -166,15 +169,29 @@ async def stream_interaction(
 
     loop.run_in_executor(None, _sync_stream)
 
+    done_seen = False
     while True:
         kind, data = await q.get()
         if kind == "token":
             yield {"type": "token", "text": data}
         elif kind == "done":
+            done_seen = True
             yield {"type": "done", **data}
         elif kind == "error":
             raise RuntimeError(f"Interactions API stream failed: {data}")
         else:  # "__end__"
+            if not done_seen:
+                # SDK 스트림이 interaction.completed 없이 정상 종료한 경우
+                # (예: 서버가 종료 이벤트를 누락) — done 없이 조용히 끝나면
+                # 프론트 onDone(비용 집계·액션 버튼)이 영영 호출되지 않는다.
+                # 폴백 done을 yield해 소비자가 항상 종료를 인지하게 한다.
+                yield {
+                    "type": "done",
+                    "tokens_in": 0,
+                    "tokens_out": 0,
+                    "tokens_thought": 0,
+                    "interaction_id": None,
+                }
             break
 
 
