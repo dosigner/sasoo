@@ -3,13 +3,12 @@ Sasoo - Figure explanation service.
 Handles the explain_figure endpoint for per-figure AI explanations.
 """
 
-import asyncio
 import json
 import logging
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 

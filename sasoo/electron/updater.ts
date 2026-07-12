@@ -46,15 +46,6 @@ export function initAutoUpdater(win: BrowserWindow, onBeforeQuit?: () => Promise
 
   // --- IPC handlers ---------------------------------------------------------
 
-  ipcMain.handle('updater:check', async () => {
-    try {
-      const result = await autoUpdater.checkForUpdates();
-      return { updateAvailable: !!result?.updateInfo };
-    } catch {
-      return { updateAvailable: false };
-    }
-  });
-
   ipcMain.handle('updater:download', async () => {
     if (isMac) {
       // No code signing → open GitHub Releases page in browser

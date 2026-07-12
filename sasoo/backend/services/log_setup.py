@@ -10,7 +10,6 @@ Log files are stored in:
 import logging
 import sys
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
 
 from models.database import APP_DATA_ROOT
 

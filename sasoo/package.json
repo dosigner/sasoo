@@ -24,21 +24,21 @@
     "build:linux": "pnpm build:backend && pnpm build:frontend && pnpm build:electron && electron-builder --linux",
     "verify:mac-artifact": "node scripts/verify-mac-artifacts.js",
     "verify:win-artifact": "node scripts/verify-win-artifacts.js",
+    "test:unit": "vitest run",
     "start": "electron . --no-sandbox",
     "clean": "rm -rf dist dist-electron frontend/dist backend/dist backend/build",
     "postinstall": "cd frontend && pnpm install"
   },
   "dependencies": {
-    "electron-store": "^8.2.0",
-    "electron-updater": "^6.8.3",
-    "fs-extra": "^10.1.0"
+    "electron-updater": "^6.8.3"
   },
   "devDependencies": {
     "@types/node": "^20.11.16",
     "concurrently": "^8.2.2",
     "electron": "^28.2.1",
     "electron-builder": "^24.13.3",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.1.10"
   },
   "build": {
     "appId": "com.dosigner.sasoo",

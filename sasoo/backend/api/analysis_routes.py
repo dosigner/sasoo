@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 
@@ -34,9 +34,7 @@ from models.database import (
 )
 from models.schemas import (
     AnalysisPhase,
-    AnalysisResult,
     AnalysisStatus,
-    DomainResult,
     FigureExplanationResponse,
     FigureInfo,
     FigureListResponse,

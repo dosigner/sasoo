@@ -23,7 +23,6 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
             {"key": "library_path", "value": ""},
             {"key": "pdf_parser_mode", "value": "java"},
             {"key": "extraction_pipeline_version", "value": "resolver_v1"},
-            {"key": "extraction_pipeline_force_fallback", "value": "false"},
         ]
 
         with (
@@ -44,7 +43,6 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
             {"key": "library_path", "value": r"C:\Users\dongj\Documents\sasoo\library"},
             {"key": "pdf_parser_mode", "value": "java"},
             {"key": "extraction_pipeline_version", "value": "resolver_v1"},
-            {"key": "extraction_pipeline_force_fallback", "value": "false"},
         ]
 
         with (
@@ -90,6 +88,73 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
 
         db.execute.assert_not_awaited()
 
+    async def test_update_library_path_invalidates_cached_root(self) -> None:
+        """
+        get_library_root() is cached with a TTL; changing the path through the
+        API must drop that cache so the very next read sees the new root.
+        """
+        update = SettingsUpdate(library_path="/tmp/sasoo-moved-library")
+
+        with (
+            patch("api.settings._set_setting", new=AsyncMock()),
+            patch("api.settings.get_settings", new=AsyncMock(return_value=None)),
+            patch("api.settings.invalidate_library_root_cache") as invalidate,
+            patch("pathlib.Path.mkdir"),
+        ):
+            await settings.update_settings(update)
+
+        invalidate.assert_called_once()
+
+    async def test_ensure_library_path_invalidates_cache_after_write(self) -> None:
+        resolved = Path("/tmp/sasoo-library").resolve(strict=False)
+        db = AsyncMock()
+
+        with (
+            patch("api.settings.fetch_one", new=AsyncMock(return_value=None)),
+            patch("api.settings.get_library_root", return_value=resolved),
+            patch("api.settings.library_path_setting_key", return_value="library_path_darwin"),
+            patch("api.settings.invalidate_library_root_cache") as invalidate,
+            patch("pathlib.Path.mkdir"),
+        ):
+            await settings._ensure_library_path(db)
+
+        invalidate.assert_called_once()
+
+    async def test_ensure_library_path_refreshes_resolution_before_comparing(self) -> None:
+        """
+        _ensure_library_path "repairs" the stored value whenever it differs
+        from get_library_root(). If resolution comes from a stale cache entry,
+        a legitimate value written to the DB out-of-band gets overwritten with
+        the cached one -- so the cache must be dropped BEFORE resolving.
+        (Caught live: a direct sqlite edit was reverted by the next
+        GET /api/settings.)
+        """
+        from unittest.mock import MagicMock
+
+        resolved = Path("/tmp/sasoo-library").resolve(strict=False)
+        db = AsyncMock()
+        order = MagicMock()
+        order.resolve.return_value = resolved
+
+        with (
+            patch(
+                "api.settings.fetch_one",
+                new=AsyncMock(return_value={"value": str(resolved)}),
+            ),
+            patch("api.settings.get_library_root", order.resolve),
+            patch("api.settings.library_path_setting_key", return_value="library_path_darwin"),
+            patch("api.settings.invalidate_library_root_cache", order.invalidate),
+        ):
+            await settings._ensure_library_path(db)
+
+        called = [name for name, _args, _kwargs in order.mock_calls]
+        self.assertIn("invalidate", called, "cache must be dropped before resolving")
+        self.assertLess(
+            called.index("invalidate"),
+            called.index("resolve"),
+            "invalidation must happen before get_library_root() resolves",
+        )
+
     async def test_get_settings_includes_openai_fields_with_defaults(self) -> None:
         """openai_api_key/image_provider/image_quality must appear even when unset in storage."""
         platform_root = "/tmp/sasoo-library"
@@ -97,7 +162,6 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
             {"key": "library_path", "value": ""},
             {"key": "pdf_parser_mode", "value": "java"},
             {"key": "extraction_pipeline_version", "value": "resolver_v1"},
-            {"key": "extraction_pipeline_force_fallback", "value": "false"},
         ]
 
         with (
@@ -130,7 +194,6 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
             {"key": "library_path", "value": "/tmp/sasoo-library"},
             {"key": "pdf_parser_mode", "value": "java"},
             {"key": "extraction_pipeline_version", "value": "resolver_v1"},
-            {"key": "extraction_pipeline_force_fallback", "value": "false"},
         ]
 
         with patch("api.settings._ensure_defaults", new=AsyncMock()):
@@ -146,7 +209,6 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
             "library_path": "/tmp/sasoo-library",
             "pdf_parser_mode": "java",
             "extraction_pipeline_version": "resolver_v1",
-            "extraction_pipeline_force_fallback": "false",
         }
 
         async def fake_set_setting(key: str, value: str) -> None:
@@ -192,7 +254,6 @@ class PdfVisualEngineSettingTests(unittest.IsolatedAsyncioTestCase):
             {"key": "library_path", "value": "/tmp/sasoo-library"},
             {"key": "pdf_parser_mode", "value": "java"},
             {"key": "extraction_pipeline_version", "value": "resolver_v1"},
-            {"key": "extraction_pipeline_force_fallback", "value": "false"},
         ]
 
         with (
@@ -210,7 +271,6 @@ class PdfVisualEngineSettingTests(unittest.IsolatedAsyncioTestCase):
             "library_path": "/tmp/sasoo-library",
             "pdf_parser_mode": "java",
             "extraction_pipeline_version": "resolver_v1",
-            "extraction_pipeline_force_fallback": "false",
             "pdf_visual_engine": "gemini",
         }
 

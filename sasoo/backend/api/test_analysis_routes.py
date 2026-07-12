@@ -180,9 +180,7 @@ class _SimpleModel:
 
 schemas_module = types.ModuleType("models.schemas")
 schemas_module.AnalysisPhase = _AnalysisPhase
-schemas_module.AnalysisResult = _SimpleModel
 schemas_module.AnalysisStatus = _AnalysisStatus
-schemas_module.DomainResult = _SimpleModel
 schemas_module.FigureExplanationResponse = _SimpleModel
 schemas_module.FigureInfo = _SimpleModel
 schemas_module.FigureListResponse = _SimpleModel
