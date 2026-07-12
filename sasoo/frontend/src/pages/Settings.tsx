@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Loader2,
 } from 'lucide-react';
@@ -70,12 +71,16 @@ export default function Settings() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const location = useLocation();
+  const costSectionRef = useRef<HTMLDivElement | null>(null);
 
   // Form state
   const [geminiKey, setGeminiKey] = useState('');
   const [openaiKey, setOpenaiKey] = useState('');
   const [libraryPath, setLibraryPath] = useState('');
-  const [theme, setTheme] = useState<'dark' | 'light'>('light');
+  const [theme, setTheme] = useState<'dark' | 'light'>(
+    () => (localStorage.getItem('sasoo-theme') === 'dark' ? 'dark' : 'light')
+  );
   const [density, setDensity] = useState<'comfortable' | 'compact'>(
     () => (localStorage.getItem('sasoo-density') === 'compact' ? 'compact' : 'comfortable')
   );
@@ -106,7 +111,14 @@ export default function Settings() {
 
   const applySettingsToForm = useCallback((data: SettingsType) => {
     setLibraryPath(data.library_path || '');
-    setTheme((data.theme || 'light') as 'dark' | 'light');
+    // Theme is already initialized from localStorage (the live, instantly-applied
+    // preference) and kept in sync by the effect below. Only fall back to the
+    // backend value on a true first run, where no local preference exists yet —
+    // otherwise a stale/unsaved backend value would silently revert an
+    // already-applied theme toggle on every settings reload.
+    if (!localStorage.getItem('sasoo-theme') && data.theme) {
+      setTheme(data.theme as 'dark' | 'light');
+    }
     setAutoAnalyze(data.auto_analyze ?? false);
     setPdfParserMode((data.pdf_parser_mode || 'java') as 'java');
     setExtractionPipelineVersion(
@@ -172,6 +184,16 @@ export default function Settings() {
     document.documentElement.classList.toggle('density-compact', density === 'compact');
     localStorage.setItem('sasoo-density', density);
   }, [density]);
+
+  // -----------------------------------------------------------------------
+  // Deep-link into the cost section (Home "자세히 보기" -> /settings#cost)
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    if (loading) return;
+    if (location.hash === '#cost' && costSectionRef.current) {
+      costSectionRef.current.scrollIntoView({ block: 'start' });
+    }
+  }, [loading, location.hash]);
 
   // -----------------------------------------------------------------------
   // Save settings
@@ -683,13 +705,15 @@ export default function Settings() {
           </div>
         </SettingPanel>
 
-        <SettingPanel
-          kicker={S.settings.sectionCurrent}
-          title={S.settings.usageCosts}
-          description="최근 분석이 얼마나 호출과 비용을 만들었는지 확인합니다."
-        >
-          <CostDashboard />
-        </SettingPanel>
+        <div id="cost" ref={costSectionRef}>
+          <SettingPanel
+            kicker={S.settings.sectionCurrent}
+            title={S.settings.usageCosts}
+            description="최근 분석이 얼마나 호출과 비용을 만들었는지 확인합니다."
+          >
+            <CostDashboard />
+          </SettingPanel>
+        </div>
       </div>
     </div>
   );

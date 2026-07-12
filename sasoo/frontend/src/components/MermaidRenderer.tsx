@@ -49,7 +49,7 @@ type MermaidLayout = 'elk' | 'dagre';
 const LAYOUTS: MermaidLayout[] = ['elk', 'dagre'];
 
 function isDarkTheme(): boolean {
-  return !document.documentElement.classList.contains('light');
+  return document.documentElement.classList.contains('dark');
 }
 
 function initMermaid(isDark = true, layout: MermaidLayout = 'elk') {

@@ -8,6 +8,7 @@ export const S = {
   app: {
     name: 'Sasoo',
     subtitle: 'Research archive',
+    home: '홈',
     upload: '아카이브 시작',
     agents: '에이전트 편성',
     library: '연구 보관함',
@@ -16,6 +17,22 @@ export const S = {
     collapse: '접기',
     expandSidebar: '사이드바 펼치기',
     collapseSidebar: '사이드바 접기',
+  },
+
+  // ── Home ──
+  home: {
+    greeting: '안녕하세요',
+    subGreeting: '오늘 분석할 논문을 올려주세요.',
+    quickActions: '바로가기',
+    actionAgents: '에이전트 편성',
+    actionAgentsDesc: '분석 에이전트를 관리합니다',
+    actionLibrary: '연구 보관함',
+    actionLibraryDesc: '보관된 논문을 둘러봅니다',
+    recentAnalyses: '최근 분석',
+    recentLibrary: '최근 추가',
+    recentEmpty: '아직 논문이 없습니다. 위에서 첫 논문을 올려보세요.',
+    costTitle: '이번 달 비용',
+    costOpenSettings: '자세히 보기',
   },
 
   // ── Upload Page ──
@@ -100,7 +117,7 @@ export const S = {
     panelResize: '패널 크기 조절',
     backToLibrary: '라이브러리',
     assistant: '질문 도우미',
-    assistantWaiting: '스크리닝 완료 후 질문 가능',
+    assistantWaiting: 'PDF 텍스트 추출 후 질문 가능',
     statusRailTitle: '분석 상태',
     inspectNow: '지금 검토하기',
     inspectClaim: '핵심 주장 보기',

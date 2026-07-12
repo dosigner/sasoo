@@ -1,5 +1,6 @@
 import json
 import sys
+import threading
 import types
 import unittest
 from dataclasses import dataclass, field
@@ -228,11 +229,15 @@ def _row(phase: str, result: str, **extra):
 
 
 class _FakeRequest:
-    def __init__(self, payload):
+    def __init__(self, payload, disconnected=False):
         self._payload = payload
+        self._disconnected = disconnected
 
     async def json(self):
         return self._payload
+
+    async def is_disconnected(self):
+        return self._disconnected
 
 
 class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
@@ -509,20 +514,24 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                 self.role = role
                 self.parts = parts
 
-        class DummyModels:
-            def generate_content_stream(self, *, model, contents, config):
+        # Chat streams through the async client so it never takes a thread from
+        # the pool the analysis pipeline saturates.
+        class DummyAsyncModels:
+            async def generate_content_stream(self, *, model, contents, config):
                 captured["model"] = model
                 captured["contents"] = contents
                 captured["config"] = config
                 usage = types.SimpleNamespace(prompt_token_count=10, candidates_token_count=20)
-                return [
-                    types.SimpleNamespace(text="첫", usage_metadata=usage),
-                    types.SimpleNamespace(text="답", usage_metadata=usage),
-                ]
+
+                async def _stream():
+                    yield types.SimpleNamespace(text="첫", usage_metadata=usage)
+                    yield types.SimpleNamespace(text="답", usage_metadata=usage)
+
+                return _stream()
 
         class DummyClient:
             def __init__(self):
-                self.models = DummyModels()
+                self.aio = types.SimpleNamespace(models=DummyAsyncModels())
 
         genai_types = types.SimpleNamespace(
             Content=DummyContent,
@@ -555,6 +564,118 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("CHAT-CONTEXT", system_prompt)
         self.assertIn("스크리닝 결과", system_prompt)
         self.assertTrue(any("done" in str(chunk) for chunk in chunks))
+
+    async def test_chat_streams_without_taking_a_pipeline_thread(self):
+        """채팅 스트리밍은 스레드를 쓰지 않는다 — 파이프라인이 풀을 채워도 굶지 않는다.
+
+        구버전은 asyncio 기본 풀에서 동기 스트림을 돌렸고, 시각화 팬아웃이 풀을
+        채우면 SSE가 헤더만 열린 채 영영 멈췄다.
+        """
+        paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "materials"}
+        stream_threads: list[str] = []
+
+        class DummyAsyncModels:
+            async def generate_content_stream(self, *, model, contents, config):
+                async def _stream():
+                    stream_threads.append(threading.current_thread().name)
+                    yield types.SimpleNamespace(
+                        text="답",
+                        usage_metadata=types.SimpleNamespace(
+                            prompt_token_count=1, candidates_token_count=1
+                        ),
+                    )
+
+                return _stream()
+
+        class DummyClient:
+            def __init__(self):
+                self.aio = types.SimpleNamespace(models=DummyAsyncModels())
+
+        genai_types = types.SimpleNamespace(
+            Content=lambda role, parts: types.SimpleNamespace(role=role, parts=parts),
+            Part=types.SimpleNamespace(from_text=lambda text: {"text": text}),
+            GenerateContentConfig=lambda **kwargs: kwargs,
+        )
+        google_module = types.ModuleType("google")
+        genai_module = types.ModuleType("google.genai")
+        genai_module.types = genai_types
+        google_module.genai = genai_module
+
+        with (
+            patch.dict(sys.modules, {"services.agents": agents_module}),
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)),
+            patch("api.analysis_routes.get_paper_dir", return_value="/tmp/paper"),
+            patch("api.analysis_routes.load_or_build_document_context", return_value={"phase_inputs": {"chat": "CTX"}}),
+            patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value={})),
+            patch("api.analysis_routes._get_gemini_client", return_value=DummyClient()),
+            patch.dict(sys.modules, {"google": google_module, "google.genai": genai_module}),
+        ):
+            response = await analysis_routes._chat_with_agent_impl(
+                7, _FakeRequest({"message": "질문", "history": []})
+            )
+            async for _ in response.body_iterator:
+                pass
+
+        self.assertEqual(len(stream_threads), 1)
+        # 스트림 본문은 이벤트 루프에서 돈다. 워커 스레드 이름이 찍히면 회귀다.
+        self.assertNotIn("sasoo-pipeline", stream_threads[0])
+        self.assertNotIn("ThreadPoolExecutor", stream_threads[0])
+
+    async def test_chat_does_not_duplicate_the_question(self):
+        """백엔드가 message를 최종 turn으로 붙이므로, history에 같은 질문이 또 오면 안 된다."""
+        paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "materials"}
+        captured = {}
+
+        class DummyAsyncModels:
+            async def generate_content_stream(self, *, model, contents, config):
+                captured["contents"] = contents
+
+                async def _stream():
+                    yield types.SimpleNamespace(text="답", usage_metadata=None)
+
+                return _stream()
+
+        class DummyClient:
+            def __init__(self):
+                self.aio = types.SimpleNamespace(models=DummyAsyncModels())
+
+        genai_types = types.SimpleNamespace(
+            Content=lambda role, parts: types.SimpleNamespace(role=role, parts=parts),
+            Part=types.SimpleNamespace(from_text=lambda text: text),
+            GenerateContentConfig=lambda **kwargs: kwargs,
+        )
+        google_module = types.ModuleType("google")
+        genai_module = types.ModuleType("google.genai")
+        genai_module.types = genai_types
+        google_module.genai = genai_module
+
+        # 프론트가 보내는 history: 직전 대화만 담고, 이번 질문은 담지 않는다.
+        history = [
+            {"role": "user", "content": "예전 질문"},
+            {"role": "model", "content": "예전 답변"},
+        ]
+
+        with (
+            patch.dict(sys.modules, {"services.agents": agents_module}),
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)),
+            patch("api.analysis_routes.get_paper_dir", return_value="/tmp/paper"),
+            patch("api.analysis_routes.load_or_build_document_context", return_value={"phase_inputs": {"chat": "CTX"}}),
+            patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value={})),
+            patch("api.analysis_routes._get_gemini_client", return_value=DummyClient()),
+            patch.dict(sys.modules, {"google": google_module, "google.genai": genai_module}),
+        ):
+            response = await analysis_routes._chat_with_agent_impl(
+                7, _FakeRequest({"message": "이번 질문", "history": history})
+            )
+            async for _ in response.body_iterator:
+                pass
+
+        turns = [(c.role, c.parts[0]) for c in captured["contents"]]
+        self.assertEqual(
+            turns,
+            [("user", "예전 질문"), ("model", "예전 답변"), ("user", "이번 질문")],
+        )
+        self.assertEqual([t for t in turns if t[1] == "이번 질문"], [("user", "이번 질문")])
 
 
 class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):

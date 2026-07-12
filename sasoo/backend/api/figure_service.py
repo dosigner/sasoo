@@ -28,6 +28,7 @@ from services.odl_parser import (
     explain_odl_failure,
 )
 from services.analysis_results import get_latest_completed_phase_rows
+from services.concurrency import run_pipeline_blocking
 from services.document_context import load_or_build_document_context
 from services.pricing import calc_cost
 from api.analysis_helpers import _call_gemini
@@ -457,7 +458,7 @@ async def explain_figure_handler(paper_id: int, figure_id: int):
                 if figure_image_path:
                     candidate_path = Path(figure_image_path)
                     resolved_figure_image_path = candidate_path if candidate_path.is_absolute() else (paper_dir / candidate_path)
-        document_context = await asyncio.to_thread(load_or_build_document_context, paper_dir)
+        document_context = await run_pipeline_blocking(load_or_build_document_context, paper_dir)
         figure_detail_context = str(document_context.get("phase_inputs", {}).get("figure_detail", ""))
     except (OdlParserError, OdlRuntimeError, FileNotFoundError) as exc:
         status_code, detail = explain_odl_failure(exc)
