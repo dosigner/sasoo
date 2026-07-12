@@ -12,82 +12,22 @@ function readBundledBackendPort(): number {
 const bundledBackendPort = readBundledBackendPort();
 
 // Type definitions for the exposed API
-export interface FileInfo {
-  path: string;
-  name: string;
-  size: number;
-  lastModified: string;
-}
-
-export interface OpenFileResult {
-  canceled: boolean;
-  filePaths: string[];
-  files?: FileInfo[];
-}
-
-export interface SaveFileResult {
-  canceled: boolean;
-  filePath?: string;
-}
-
 export interface OpenDirectoryResult {
   canceled: boolean;
   directoryPath?: string;
 }
 
-export interface FileReadResult {
-  success: boolean;
-  data?: string;
-  size?: number;
-  error?: string;
-}
-
-export interface ApiResult<T = unknown> {
-  success?: boolean;
-  error?: string;
-  data?: T;
-  [key: string]: unknown;
-}
-
-export interface AppInfo {
-  version: string;
-  name: string;
-  isDev: boolean;
-  platform: string;
-  arch: string;
-  electronVersion: string;
-  nodeVersion: string;
-  backendPort: number;
-}
-
 export interface ElectronAPI {
   // File dialogs
-  openFile: (options?: {
-    title?: string;
-    filters?: { name: string; extensions: string[] }[];
-    multiSelections?: boolean;
-  }) => Promise<OpenFileResult>;
-  saveFile: (options?: {
-    title?: string;
-    defaultPath?: string;
-    filters?: { name: string; extensions: string[] }[];
-  }) => Promise<SaveFileResult>;
   openDirectory: (options?: {
     title?: string;
     defaultPath?: string;
   }) => Promise<OpenDirectoryResult>;
 
-  // File operations
-  readFile: (filePath: string) => Promise<FileReadResult>;
-  readFileText: (filePath: string) => Promise<FileReadResult>;
-  writeFile: (filePath: string, data: string) => Promise<ApiResult>;
-
   // Backend
-  checkBackendHealth: () => Promise<{ healthy: boolean; error?: string }>;
   getBackendPort: () => number;
 
   // App
-  getAppInfo: () => Promise<AppInfo>;
   getAppPath: (name: string) => Promise<string | null>;
 
   // Window controls
@@ -97,7 +37,6 @@ export interface ElectronAPI {
   isMaximized: () => Promise<boolean>;
 
   // Updater
-  checkForUpdate: () => Promise<{ updateAvailable: boolean }>;
   downloadUpdate: () => Promise<{ success?: boolean; opened?: boolean; error?: string }>;
   installUpdate: () => Promise<void>;
 
@@ -107,21 +46,12 @@ export interface ElectronAPI {
 
 const electronAPI: ElectronAPI = {
   // File dialogs
-  openFile: (options) => ipcRenderer.invoke('dialog:openFile', options),
-  saveFile: (options) => ipcRenderer.invoke('dialog:saveFile', options),
   openDirectory: (options) => ipcRenderer.invoke('dialog:openDirectory', options),
 
-  // File operations
-  readFile: (filePath) => ipcRenderer.invoke('file:read', filePath),
-  readFileText: (filePath) => ipcRenderer.invoke('file:readText', filePath),
-  writeFile: (filePath, data) => ipcRenderer.invoke('file:write', filePath, data),
-
   // Backend
-  checkBackendHealth: () => ipcRenderer.invoke('backend:health'),
   getBackendPort: () => bundledBackendPort,
 
   // App
-  getAppInfo: () => ipcRenderer.invoke('app:getInfo'),
   getAppPath: (name) => ipcRenderer.invoke('app:getPath', name),
 
   // Window controls
@@ -131,7 +61,6 @@ const electronAPI: ElectronAPI = {
   isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
 
   // Updater
-  checkForUpdate: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),
   installUpdate: () => ipcRenderer.invoke('updater:install'),
 

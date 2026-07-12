@@ -20,7 +20,6 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
             {"key": "library_path", "value": ""},
             {"key": "pdf_parser_mode", "value": "java"},
             {"key": "extraction_pipeline_version", "value": "resolver_v1"},
-            {"key": "extraction_pipeline_force_fallback", "value": "false"},
         ]
 
         with (
@@ -41,7 +40,6 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
             {"key": "library_path", "value": r"C:\Users\dongj\Documents\sasoo\library"},
             {"key": "pdf_parser_mode", "value": "java"},
             {"key": "extraction_pipeline_version", "value": "resolver_v1"},
-            {"key": "extraction_pipeline_force_fallback", "value": "false"},
         ]
 
         with (
@@ -161,7 +159,6 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
             {"key": "library_path", "value": ""},
             {"key": "pdf_parser_mode", "value": "java"},
             {"key": "extraction_pipeline_version", "value": "resolver_v1"},
-            {"key": "extraction_pipeline_force_fallback", "value": "false"},
         ]
 
         with (
@@ -194,7 +191,6 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
             {"key": "library_path", "value": "/tmp/sasoo-library"},
             {"key": "pdf_parser_mode", "value": "java"},
             {"key": "extraction_pipeline_version", "value": "resolver_v1"},
-            {"key": "extraction_pipeline_force_fallback", "value": "false"},
         ]
 
         with patch("api.settings._ensure_defaults", new=AsyncMock()):
@@ -210,7 +206,6 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
             "library_path": "/tmp/sasoo-library",
             "pdf_parser_mode": "java",
             "extraction_pipeline_version": "resolver_v1",
-            "extraction_pipeline_force_fallback": "false",
         }
 
         async def fake_set_setting(key: str, value: str) -> None:

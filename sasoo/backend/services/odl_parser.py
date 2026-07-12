@@ -17,13 +17,11 @@ import sys
 import time
 import threading
 from urllib.parse import quote
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import fitz  # PyMuPDF
-from PIL import Image
 
 from models.database import DB_PATH, fetch_all, get_db, get_library_root
 from services.document_audit import find_suspect_pages
@@ -37,13 +35,9 @@ from services.concurrency import run_pipeline_blocking
 
 logger = logging.getLogger(__name__)
 
-LEGACY_PARSER_VERSION = "odl-v2"
 RESOLVER_PARSER_VERSION = "odl-v3"
-PARSER_VERSION = LEGACY_PARSER_VERSION
-LEGACY_PIPELINE_VERSION = "legacy"
 RESOLVER_PIPELINE_VERSION = "resolver_v1"
 DEFAULT_EXTRACTION_PIPELINE_VERSION = RESOLVER_PIPELINE_VERSION
-LEGACY_RESOLVER_VERSION = "legacy"
 RESOLVER_VERSION = "resolver-v1"
 PYMUPDF_TEXT_ENGINE = "pymupdf-text"
 TEXT_CACHE_FILENAME = ".text_cache.txt"
@@ -51,7 +45,6 @@ TEXT_CACHE_META_FILENAME = ".text_cache.meta.json"
 MANIFEST_FILENAME = ".odl_manifest.json"
 SUPPORTED_MODES = {"java"}
 RAW_IMAGE_DIRNAME = ".odl_raw_images"
-FIGURE_LABEL_PATTERN = re.compile(r"^\s*(?:Figure|Fig\.?)\s*(\d+[A-Za-z]?)\b", re.IGNORECASE)
 DOI_PATTERN = re.compile(r"10\.\d{4,}/[^\s]+")
 YEAR_PATTERN = re.compile(r"\b((?:19|20)\d{2})\b")
 TITLE_NOISE_PATTERNS = [
@@ -68,8 +61,6 @@ JOURNAL_PATTERNS = [
     r"(?:Published in|Journal of|Proceedings of)\s+(.+?)[\.\n]",
     r"(?:Nature|Science|ACS|IEEE|Optics|Applied|Physical Review)\s*\w*",
 ]
-IMAGE_ELEMENT_TYPES = {"image", "picture"}
-TEXTUAL_FIGURE_TYPES = {"caption", "paragraph", "list item", "text block", "heading"}
 _artifact_tasks: dict[int, asyncio.Task[dict[str, Any]]] = {}
 _artifact_task_errors: dict[int, tuple[int, str]] = {}
 _artifact_tasks_lock = asyncio.Lock()
@@ -81,26 +72,6 @@ class OdlParserError(RuntimeError):
 
 class OdlRuntimeError(OdlParserError):
     """Raised when the runtime is not ready for OpenDataLoader."""
-
-
-@dataclass(slots=True)
-class FlatElement:
-    order: int
-    element: dict[str, Any]
-
-
-@dataclass(slots=True)
-class FigureCaptionCandidate:
-    flat: FlatElement
-    text: str
-
-
-@dataclass(slots=True)
-class FigureVisualTarget:
-    page_number: int
-    bbox: list[float] | None
-    source: str | None
-    image_id: int | None = None
 
 
 def _normalize_title_text(value: str | None) -> str:
@@ -225,30 +196,12 @@ def get_configured_parser_mode() -> str:
 
 
 def get_extraction_pipeline_version() -> str:
-    """Read the extraction pipeline version from settings."""
-    try:
-        with sqlite3.connect(str(DB_PATH)) as conn:
-            row = conn.execute(
-                "SELECT value FROM settings WHERE key = 'extraction_pipeline_version' LIMIT 1"
-            ).fetchone()
-            fallback_row = conn.execute(
-                "SELECT value FROM settings WHERE key = 'extraction_pipeline_force_fallback' LIMIT 1"
-            ).fetchone()
-    except Exception:
-        row = None
-        fallback_row = None
+    """Extraction pipeline version.
 
-    value = (row[0] if row and row[0] else DEFAULT_EXTRACTION_PIPELINE_VERSION).strip().lower() if row else DEFAULT_EXTRACTION_PIPELINE_VERSION
-    fallback_forced = bool(fallback_row and str(fallback_row[0] or "").strip().lower() == "true")
-    if value == LEGACY_PIPELINE_VERSION and not fallback_forced:
-        return RESOLVER_PIPELINE_VERSION
-    return value if value in {LEGACY_PIPELINE_VERSION, RESOLVER_PIPELINE_VERSION} else DEFAULT_EXTRACTION_PIPELINE_VERSION
-
-
-def _runtime_versions(extraction_pipeline_version: str) -> tuple[str, str]:
-    if extraction_pipeline_version == RESOLVER_PIPELINE_VERSION:
-        return (RESOLVER_PARSER_VERSION, RESOLVER_VERSION)
-    return (LEGACY_PARSER_VERSION, LEGACY_RESOLVER_VERSION)
+    Only resolver_v1 is supported; any other stored value (e.g. a legacy row
+    left over from an older database) heals to it unconditionally.
+    """
+    return DEFAULT_EXTRACTION_PIPELINE_VERSION
 
 
 def _pdf_hash(pdf_path: Path) -> str:
@@ -293,11 +246,9 @@ def _resolve_pipeline_request(
     requested_mode = (mode or get_configured_parser_mode()).strip().lower()
     if requested_mode not in SUPPORTED_MODES:
         requested_mode = "java"
-    pipeline_version = (extraction_pipeline_version or get_extraction_pipeline_version()).strip().lower()
-    if pipeline_version not in {LEGACY_PIPELINE_VERSION, RESOLVER_PIPELINE_VERSION}:
-        pipeline_version = DEFAULT_EXTRACTION_PIPELINE_VERSION
-    parser_version, resolver_version = _runtime_versions(pipeline_version)
-    return requested_mode, pipeline_version, parser_version, resolver_version
+    # Only resolver_v1 is supported; any requested/stored value heals to it.
+    pipeline_version = get_extraction_pipeline_version()
+    return requested_mode, pipeline_version, RESOLVER_PARSER_VERSION, RESOLVER_VERSION
 
 
 def _artifact_path_exists(paper_dir: Path, rel_or_abs: str | None) -> bool:
@@ -367,7 +318,7 @@ def _text_manifest_is_current(
         return False
     if manifest.get("parser_version") != parser_version:
         return False
-    if manifest.get("resolver_version", LEGACY_RESOLVER_VERSION) != resolver_version:
+    if manifest.get("resolver_version", "legacy") != resolver_version:
         return False
     return True
 
@@ -393,7 +344,7 @@ def _visual_manifest_is_current(
         return False
     if manifest.get("extraction_pipeline_version", DEFAULT_EXTRACTION_PIPELINE_VERSION) != extraction_pipeline_version:
         return False
-    if manifest.get("resolver_version", LEGACY_RESOLVER_VERSION) != resolver_version:
+    if manifest.get("resolver_version", "legacy") != resolver_version:
         return False
     return bool(manifest.get("visual_artifacts_ready", True))
 
@@ -551,216 +502,6 @@ def _maybe_int(value: Any) -> int | None:
         return None
 
 
-def _flatten_elements(elements: Iterable[dict[str, Any]], counter: list[int], out: list[FlatElement]) -> None:
-    for element in elements:
-        if not isinstance(element, dict):
-            continue
-        out.append(FlatElement(order=counter[0], element=element))
-        counter[0] += 1
-
-        kids = element.get("kids")
-        if isinstance(kids, list):
-            _flatten_elements(kids, counter, out)
-
-        list_items = element.get("list items")
-        if isinstance(list_items, list):
-            _flatten_elements(list_items, counter, out)
-
-        rows = element.get("rows")
-        if isinstance(rows, list):
-            for row in rows:
-                if not isinstance(row, dict):
-                    continue
-                cells = row.get("cells", [])
-                if isinstance(cells, list):
-                    _flatten_elements(cells, counter, out)
-
-
-def _extract_table_text(table: dict[str, Any]) -> str:
-    rows = table.get("rows", [])
-    rendered_rows: list[str] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        rendered_cells: list[str] = []
-        for cell in row.get("cells", []):
-            if not isinstance(cell, dict):
-                continue
-            rendered_cells.append(_extract_plain_text_from_element(cell))
-        if rendered_cells:
-            rendered_rows.append("\t".join(cell for cell in rendered_cells if cell))
-    return "\n".join(rendered_rows).strip()
-
-
-def _extract_plain_text_from_element(element: dict[str, Any]) -> str:
-    parts: list[str] = []
-    content = _maybe_text(element.get("content"))
-    if content:
-        parts.append(content)
-
-    if element.get("type") == "table":
-        table_text = _extract_table_text(element)
-        if table_text:
-            parts.append(table_text)
-
-    kids = element.get("kids", [])
-    if isinstance(kids, list):
-        for kid in kids:
-            if isinstance(kid, dict):
-                kid_text = _extract_plain_text_from_element(kid)
-                if kid_text:
-                    parts.append(kid_text)
-
-    list_items = element.get("list items", [])
-    if isinstance(list_items, list):
-        for item in list_items:
-            if isinstance(item, dict):
-                item_text = _extract_plain_text_from_element(item)
-                if item_text:
-                    parts.append(item_text)
-
-    return "\n".join(part for part in parts if part).strip()
-
-
-def _build_plain_text(flat_elements: list[FlatElement]) -> str:
-    pages: dict[int, list[str]] = {}
-    last_page = 1
-    for flat in flat_elements:
-        page = _element_page(flat.element, last_page)
-        last_page = page
-        text = _extract_plain_text_from_element(flat.element)
-        if not text:
-            continue
-        pages.setdefault(page, []).append(text)
-
-    parts: list[str] = []
-    for page in sorted(pages):
-        parts.append(f"--- Page {page} ---")
-        parts.append("\n".join(pages[page]))
-    return "\n\n".join(parts).strip()
-
-
-def _element_bbox(element: dict[str, Any]) -> list[float] | None:
-    bbox = element.get("bbox")
-    if bbox is None:
-        bbox = element.get("bounding box")
-    if not isinstance(bbox, list) or len(bbox) != 4:
-        return None
-    try:
-        return [float(v) for v in bbox]
-    except (TypeError, ValueError):
-        return None
-
-
-def _element_page(element: dict[str, Any], default: int = 1) -> int:
-    return _maybe_int(element.get("page")) or _maybe_int(element.get("page number")) or default
-
-
-def _element_id(element: dict[str, Any]) -> int | None:
-    return _maybe_int(element.get("id"))
-
-
-def _linked_content_id(element: dict[str, Any]) -> int | None:
-    return _maybe_int(element.get("linked_content_id")) or _maybe_int(element.get("linked content id"))
-
-
-def _bbox_mid_y(bbox: list[float] | None) -> float:
-    if not bbox:
-        return float("inf")
-    return (bbox[1] + bbox[3]) / 2
-
-
-def _normalize_figure_num(caption: str, page_number: int, fallback_index: int, seen: set[str]) -> str:
-    match = FIGURE_LABEL_PATTERN.match(caption or "")
-    if match:
-        base = f"Fig. {match.group(1).upper()}"
-    else:
-        base = f"p{page_number}_fig{fallback_index}"
-
-    if base not in seen:
-        seen.add(base)
-        return base
-
-    counter = 2
-    while f"{base} [{counter}]" in seen:
-        counter += 1
-    deduped = f"{base} [{counter}]"
-    seen.add(deduped)
-    return deduped
-
-
-def _resolve_image_source(output_dir: Path, figures_dir: Path, source: str | None) -> Path | None:
-    if not source:
-        return None
-
-    source_path = Path(source)
-    if source_path.is_absolute() and source_path.exists():
-        return source_path
-
-    candidates = [
-        figures_dir / source_path.name,
-        output_dir / source_path,
-        output_dir / source_path.name,
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return None
-
-
-def _odl_bbox_to_fitz_rect(page_height: float, bbox: list[float]) -> fitz.Rect:
-    left, bottom, right, top = bbox
-    return fitz.Rect(left, page_height - top, right, page_height - bottom)
-
-
-def _render_bbox_crop(pdf_path: Path, page_number: int, bbox: list[float], out_path: Path) -> tuple[str, int, int]:
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    doc = fitz.open(str(pdf_path))
-    try:
-        page = doc[page_number - 1]
-        clip = _odl_bbox_to_fitz_rect(page.rect.height, bbox)
-        mat = fitz.Matrix(200 / 72, 200 / 72)
-        pix = page.get_pixmap(matrix=mat, clip=clip, alpha=False)
-        pix.save(str(out_path))
-        return str(out_path), pix.width, pix.height
-    finally:
-        doc.close()
-
-
-def _copy_or_render_figure(
-    pdf_path: Path,
-    output_dir: Path,
-    figures_dir: Path,
-    figure_num: str,
-    page_number: int,
-    bbox: list[float] | None,
-    source: str | None,
-) -> tuple[str, int, int]:
-    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", figure_num).strip("_") or f"p{page_number}_figure"
-    target_path = figures_dir / f"{safe_name}.png"
-
-    source_path = _resolve_image_source(output_dir, figures_dir, source)
-    if source_path and source_path.exists():
-        if source_path.resolve() != target_path.resolve():
-            shutil.copy2(source_path, target_path)
-        with Image.open(target_path) as image:
-            width, height = image.size
-        return str(target_path), width, height
-
-    if bbox is None:
-        raise OdlParserError(f"No image source or bbox available for {figure_num}")
-
-    return _render_bbox_crop(pdf_path, page_number, bbox, target_path)
-
-
-def _quality_from_dims(width: int, height: int) -> str:
-    if width < 200 or height < 200:
-        return "low"
-    if width < 400 or height < 400:
-        return "medium"
-    return "high"
-
-
 def _extract_metadata(root: dict[str, Any], full_text: str, pdf_path: Path) -> dict[str, Any]:
     title = resolve_paper_title(_maybe_text(root.get("title")), full_text, pdf_path.stem)
     author = _maybe_text(root.get("author")) or None
@@ -794,323 +535,6 @@ def _extract_metadata(root: dict[str, Any], full_text: str, pdf_path: Path) -> d
         "journal": journal,
         "doi": doi,
         "page_count": _maybe_int(root.get("num_pages")) or _maybe_int(root.get("number of pages")) or 0,
-    }
-
-
-def _extract_page_sizes(pdf_path: Path) -> dict[int, tuple[float, float]]:
-    doc = fitz.open(str(pdf_path))
-    try:
-        return {
-            page_number + 1: (doc[page_number].rect.width, doc[page_number].rect.height)
-            for page_number in range(len(doc))
-        }
-    finally:
-        doc.close()
-
-
-def _bbox_dimensions(bbox: list[float] | None) -> tuple[float, float]:
-    if not bbox:
-        return 0.0, 0.0
-    return max(0.0, bbox[2] - bbox[0]), max(0.0, bbox[3] - bbox[1])
-
-
-def _bbox_area(bbox: list[float] | None) -> float:
-    width, height = _bbox_dimensions(bbox)
-    return width * height
-
-
-def _page_ratio_metrics(
-    bbox: list[float] | None,
-    page_size: tuple[float, float] | None,
-) -> tuple[float, float, float]:
-    if not bbox or not page_size:
-        return 0.0, 0.0, 0.0
-    width, height = _bbox_dimensions(bbox)
-    page_width, page_height = page_size
-    width_ratio = width / page_width if page_width else 0.0
-    height_ratio = height / page_height if page_height else 0.0
-    area_ratio = _bbox_area(bbox) / (page_width * page_height) if page_width and page_height else 0.0
-    return width_ratio, height_ratio, area_ratio
-
-
-def _is_page_composite_image(
-    bbox: list[float] | None,
-    page_size: tuple[float, float] | None,
-) -> bool:
-    width_ratio, height_ratio, area_ratio = _page_ratio_metrics(bbox, page_size)
-    return width_ratio >= 0.75 and height_ratio >= 0.7 and area_ratio >= 0.5
-
-
-def _is_strip_like_image(
-    bbox: list[float] | None,
-    page_size: tuple[float, float] | None,
-) -> bool:
-    width_ratio, height_ratio, _ = _page_ratio_metrics(bbox, page_size)
-    return (width_ratio >= 0.55 and height_ratio <= 0.12) or (height_ratio >= 0.55 and width_ratio <= 0.12)
-
-
-def _collect_figure_caption_candidates(flat_elements: list[FlatElement]) -> list[FigureCaptionCandidate]:
-    candidates: list[FigureCaptionCandidate] = []
-    seen_keys: set[tuple[int, str, int | None, tuple[float, float, float, float] | None]] = set()
-    for flat in flat_elements:
-        element_type = flat.element.get("type")
-        if element_type not in TEXTUAL_FIGURE_TYPES:
-            continue
-        text = _extract_plain_text_from_element(flat.element)
-        if not text or not FIGURE_LABEL_PATTERN.match(text):
-            continue
-        bbox = _element_bbox(flat.element)
-        bbox_key = tuple(bbox) if bbox is not None else None
-        key = (
-            _element_page(flat.element, 1),
-            text.strip(),
-            _linked_content_id(flat.element),
-            bbox_key,
-        )
-        if key in seen_keys:
-            continue
-        seen_keys.add(key)
-        candidates.append(FigureCaptionCandidate(flat=flat, text=text))
-    return candidates
-
-
-def _select_page_image_candidate(
-    images: list[FlatElement],
-    page_size: tuple[float, float] | None,
-    caption_order: int | None = None,
-) -> FlatElement | None:
-    usable = [image for image in images if _element_bbox(image.element) is not None]
-    if not usable:
-        return None
-
-    def _selection_key(image: FlatElement) -> tuple[float, float, int]:
-        distance = abs(image.order - caption_order) if caption_order is not None else 0
-        return (_bbox_area(_element_bbox(image.element)), -float(distance), -image.order)
-
-    composites = [image for image in usable if _is_page_composite_image(_element_bbox(image.element), page_size)]
-    if composites:
-        return max(composites, key=_selection_key)
-
-    non_strip = [image for image in usable if not _is_strip_like_image(_element_bbox(image.element), page_size)]
-    if non_strip:
-        return max(non_strip, key=_selection_key)
-
-    return max(usable, key=_selection_key)
-
-
-def _select_visual_target(
-    caption: FigureCaptionCandidate,
-    flat_by_id: dict[int, FlatElement],
-    images_by_page: dict[int, list[FlatElement]],
-    page_sizes: dict[int, tuple[float, float]],
-) -> FigureVisualTarget | None:
-    caption_page = _element_page(caption.flat.element, 1)
-    linked_id = _linked_content_id(caption.flat.element)
-    if linked_id is not None:
-        linked_element = flat_by_id.get(linked_id)
-        if linked_element is not None:
-            linked_page = _element_page(linked_element.element, caption_page)
-            linked_bbox = _element_bbox(linked_element.element) or _element_bbox(caption.flat.element)
-            if linked_element.element.get("type") in IMAGE_ELEMENT_TYPES:
-                return FigureVisualTarget(
-                    page_number=linked_page,
-                    bbox=linked_bbox,
-                    source=_maybe_text(linked_element.element.get("source")) or None,
-                    image_id=_element_id(linked_element.element),
-                )
-            if linked_bbox is not None:
-                return FigureVisualTarget(
-                    page_number=linked_page,
-                    bbox=linked_bbox,
-                    source=None,
-                    image_id=None,
-                )
-
-    candidate_pages = [caption_page]
-    if not images_by_page.get(caption_page):
-        for alt_page in (caption_page + 1, caption_page - 1):
-            if images_by_page.get(alt_page):
-                candidate_pages.append(alt_page)
-
-    for page_number in candidate_pages:
-        image = _select_page_image_candidate(
-            images_by_page.get(page_number, []),
-            page_sizes.get(page_number),
-            caption_order=caption.flat.order,
-        )
-        if image is None:
-            continue
-        return FigureVisualTarget(
-            page_number=page_number,
-            bbox=_element_bbox(image.element),
-            source=_maybe_text(image.element.get("source")) or None,
-            image_id=_element_id(image.element),
-        )
-
-    return None
-
-
-def _fallback_images_for_page(
-    images: list[FlatElement],
-    page_size: tuple[float, float] | None,
-) -> list[FlatElement]:
-    usable = [image for image in images if _element_bbox(image.element) is not None]
-    if not usable:
-        return []
-
-    composites = [image for image in usable if _is_page_composite_image(_element_bbox(image.element), page_size)]
-    if composites:
-        return [max(composites, key=lambda image: (_bbox_area(_element_bbox(image.element)), -image.order))]
-
-    non_strip = [image for image in usable if not _is_strip_like_image(_element_bbox(image.element), page_size)]
-    return non_strip or usable
-
-
-def _build_manifest(
-    pdf_path: Path,
-    paper_dir: Path,
-    output_dir: Path,
-    root: dict[str, Any],
-    markdown_text: str,
-    actual_engine: str,
-    requested_mode: str,
-) -> dict[str, Any]:
-    flat_elements: list[FlatElement] = []
-    _flatten_elements(root.get("kids", []), [0], flat_elements)
-
-    full_text = _build_plain_text(flat_elements) or markdown_text
-    metadata = _extract_metadata(root, full_text, pdf_path)
-    figure_captions = _collect_figure_caption_candidates(flat_elements)
-    images = [item for item in flat_elements if item.element.get("type") in IMAGE_ELEMENT_TYPES]
-    flat_by_id = {
-        element_id: item
-        for item in flat_elements
-        if (element_id := _element_id(item.element)) is not None
-    }
-    images_by_page: dict[int, list[FlatElement]] = {}
-    for image in images:
-        images_by_page.setdefault(_element_page(image.element, 1), []).append(image)
-    page_sizes = _extract_page_sizes(pdf_path)
-
-    figures_dir = paper_dir / "figures"
-    figures_dir.mkdir(parents=True, exist_ok=True)
-    caption_figure_pages: set[int] = set()
-    used_image_ids: set[int] = set()
-    seen_figure_nums: set[str] = set()
-    figures: list[dict[str, Any]] = []
-    fallback_index = 1
-
-    for caption in figure_captions:
-        target = _select_visual_target(caption, flat_by_id, images_by_page, page_sizes)
-        if target is None:
-            continue
-
-        figure_num = _normalize_figure_num(caption.text, target.page_number, fallback_index, seen_figure_nums)
-        file_path, width, height = _copy_or_render_figure(
-            pdf_path=pdf_path,
-            output_dir=output_dir,
-            figures_dir=figures_dir,
-            figure_num=figure_num,
-            page_number=target.page_number,
-            bbox=target.bbox,
-            source=target.source,
-        )
-        relative_path = str(Path(file_path).resolve().relative_to(paper_dir.resolve()))
-        figures.append(
-            {
-                "figure_num": figure_num,
-                "caption": caption.text,
-                "file_path": relative_path,
-                "page_number": target.page_number,
-                "bbox": target.bbox,
-                "quality": _quality_from_dims(width, height),
-                "extraction_engine": actual_engine,
-            }
-        )
-        caption_figure_pages.add(target.page_number)
-        if target.image_id is not None:
-            used_image_ids.add(target.image_id)
-        fallback_index += 1
-
-    for page_number in sorted(images_by_page):
-        if page_number in caption_figure_pages:
-            continue
-        page_size = page_sizes.get(page_number)
-        for image in _fallback_images_for_page(images_by_page[page_number], page_size):
-            image_id = _element_id(image.element)
-            if image_id is not None and image_id in used_image_ids:
-                continue
-            bbox = _element_bbox(image.element)
-            figure_num = _normalize_figure_num("", page_number, fallback_index, seen_figure_nums)
-            file_path, width, height = _copy_or_render_figure(
-                pdf_path=pdf_path,
-                output_dir=output_dir,
-                figures_dir=figures_dir,
-                figure_num=figure_num,
-                page_number=page_number,
-                bbox=bbox,
-                source=_maybe_text(image.element.get("source")) or None,
-            )
-            relative_path = str(Path(file_path).resolve().relative_to(paper_dir.resolve()))
-            figures.append(
-                {
-                    "figure_num": figure_num,
-                    "caption": None,
-                    "file_path": relative_path,
-                    "page_number": page_number,
-                    "bbox": bbox,
-                    "quality": _quality_from_dims(width, height),
-                    "extraction_engine": actual_engine,
-                }
-            )
-            fallback_index += 1
-            if image_id is not None:
-                used_image_ids.add(image_id)
-
-    tables: list[dict[str, Any]] = []
-    table_index = 1
-    for element in flat_elements:
-        if element.element.get("type") != "table":
-            continue
-        tables.append(
-            {
-                "table_num": f"Table {table_index}",
-                "page_number": _element_page(element.element, 1),
-                "bbox": _element_bbox(element.element),
-                "text": _extract_table_text(element.element),
-            }
-        )
-        table_index += 1
-
-    pdf_hash = _pdf_hash(pdf_path)
-    pdf_signature = get_pdf_signature(pdf_path)
-    return {
-        "parser_version": LEGACY_PARSER_VERSION,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "requested_mode": requested_mode,
-        "extraction_pipeline_version": LEGACY_PIPELINE_VERSION,
-        "resolver_version": LEGACY_RESOLVER_VERSION,
-        "engine": actual_engine,
-        "pdf_hash": pdf_hash,
-        "pdf_mtime_ns": pdf_signature["pdf_mtime_ns"],
-        "pdf_size": pdf_signature["pdf_size"],
-        "pdf_file": pdf_path.name,
-        "markdown_file": f"{pdf_path.stem}.md",
-        "json_file": f"{pdf_path.stem}.json",
-        "metadata": metadata,
-        "full_text": full_text,
-        "pages": [],
-        "captions": [],
-        "figure_candidates": [],
-        "table_candidates": [],
-        "figures": figures,
-        "tables": tables,
-        "visual_artifacts_ready": True,
-        "audit": {
-            "triggered": False,
-            "reason": None,
-            "suspect_pages": [],
-        },
     }
 
 
@@ -1277,10 +701,10 @@ def _write_cache_files(paper_dir: Path, manifest: dict[str, Any]) -> None:
     engine = manifest.get("engine", "odl-java")
     pdf_mtime_ns = manifest.get("pdf_mtime_ns")
     pdf_size = manifest.get("pdf_size")
-    parser_version = manifest.get("parser_version", LEGACY_PARSER_VERSION)
+    parser_version = manifest.get("parser_version", "odl-v2")
     requested_mode = manifest.get("requested_mode", "java")
     extraction_pipeline_version = manifest.get("extraction_pipeline_version", DEFAULT_EXTRACTION_PIPELINE_VERSION)
-    resolver_version = manifest.get("resolver_version", LEGACY_RESOLVER_VERSION)
+    resolver_version = manifest.get("resolver_version", "legacy")
     (paper_dir / TEXT_CACHE_FILENAME).write_text(full_text, encoding="utf-8")
     (paper_dir / TEXT_CACHE_META_FILENAME).write_text(
         json.dumps(
@@ -1689,27 +1113,16 @@ def ensure_visual_artifacts(
             output_file.unlink()
 
     root, markdown_text, actual_engine = _run_convert(pdf_path, output_dir, raw_image_dir, requested_mode)
-    if pipeline_version == RESOLVER_PIPELINE_VERSION:
-        manifest = _run_coroutine_sync(
-            _build_resolver_v1_manifest(
-                paper_dir=paper_dir,
-                pdf_path=pdf_path,
-                root=root,
-                markdown_text=markdown_text,
-                actual_engine=actual_engine,
-                requested_mode=requested_mode,
-            )
-        )
-    else:
-        manifest = _build_manifest(
-            pdf_path=pdf_path,
+    manifest = _run_coroutine_sync(
+        _build_resolver_v1_manifest(
             paper_dir=paper_dir,
-            output_dir=output_dir,
+            pdf_path=pdf_path,
             root=root,
             markdown_text=markdown_text,
             actual_engine=actual_engine,
             requested_mode=requested_mode,
         )
+    )
     _ensure_text_contract_files(paper_dir, manifest)
     _write_cache_files(paper_dir, manifest)
     _write_manifest(paper_dir, manifest)

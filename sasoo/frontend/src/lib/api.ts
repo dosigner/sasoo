@@ -273,7 +273,7 @@ export interface Settings {
   max_concurrent_analyses: number;
   paperbanana_profile: PaperBananaProfile;
   pdf_parser_mode: 'java';
-  extraction_pipeline_version: 'legacy' | 'resolver_v1';
+  extraction_pipeline_version: 'resolver_v1';
   research_context: string;
   default_explanation_level: string;
 }
