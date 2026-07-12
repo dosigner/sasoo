@@ -47,7 +47,7 @@ def test_call_interaction_tokens_out_sums_output_and_thought_tokens():
     fake_client = MagicMock()
     fake_client.interactions.create.return_value = _fake_interaction(total_thought_tokens=762)
     with patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        result = asyncio.run(call_interaction("안녕"))
+        result = asyncio.run(call_interaction("안녕", lane="pipeline"))
     assert result["tokens_out"] == 50 + 762
     assert result["tokens_thought"] == 762
 
@@ -161,7 +161,7 @@ def test_stream_interaction_tokens_out_sums_output_and_thought_tokens():
     fake_client.interactions.create.return_value = iter(events)
 
     with patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        result = asyncio.run(_collect(interactions_client.stream_interaction("hi")))
+        result = asyncio.run(_collect(interactions_client.stream_interaction("hi", lane="chat")))
 
     done = result[-1]
     assert done["type"] == "done"
