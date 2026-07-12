@@ -49,6 +49,7 @@ PYMUPDF_TEXT_ENGINE = "pymupdf-text"
 TEXT_CACHE_FILENAME = ".text_cache.txt"
 TEXT_CACHE_META_FILENAME = ".text_cache.meta.json"
 MANIFEST_FILENAME = ".odl_manifest.json"
+GEMINI_ENGINE_NAME = "gemini"
 SUPPORTED_MODES = {"java"}
 RAW_IMAGE_DIRNAME = ".odl_raw_images"
 FIGURE_LABEL_PATTERN = re.compile(r"^\s*(?:Figure|Fig\.?)\s*(\d+[A-Za-z]?)\b", re.IGNORECASE)
@@ -1308,10 +1309,39 @@ def _write_manifest(paper_dir: Path, manifest: dict[str, Any]) -> None:
     )
 
 
+_VALID_ENGINES = {"odl", GEMINI_ENGINE_NAME}
+DEFAULT_TEXT_ENGINE = "odl"
+DEFAULT_VISUAL_ENGINE = GEMINI_ENGINE_NAME
+
+
+def _normalize_engine(value: str | None, default: str) -> str:
+    selected = (value or "").strip().lower()
+    return selected if selected in _VALID_ENGINES else default
+
+
+def _resolve_stage_engine(stage: str, engine_override: str | None = None) -> str:
+    """스테이지(text/visual)별 파서 엔진을 한 곳에서 결정한다.
+
+    우선순위:
+      1. engine_override — 함수 인자(파일럿/폴백 강제)
+      2. 전역 SASOO_PDF_ENGINE — 하위호환. 있으면 두 스테이지 모두를 덮어쓴다.
+      3. 스테이지 env — SASOO_PDF_TEXT_ENGINE / SASOO_PDF_VISUAL_ENGINE
+      4. 스테이지 기본 — text=odl(즉시성/축자), visual=gemini(수식·표·읽기순서)
+    부수효과 없음 — 키 존재 검사·다운그레이드는 _run_convert 디스패치 지점에서만 한다.
+    """
+    if engine_override:
+        return _normalize_engine(engine_override, default=DEFAULT_TEXT_ENGINE)
+    global_override = os.environ.get("SASOO_PDF_ENGINE")
+    if global_override and global_override.strip():
+        return _normalize_engine(global_override, default=DEFAULT_TEXT_ENGINE)
+    if stage == "visual":
+        return _normalize_engine(os.environ.get("SASOO_PDF_VISUAL_ENGINE"), default=DEFAULT_VISUAL_ENGINE)
+    return _normalize_engine(os.environ.get("SASOO_PDF_TEXT_ENGINE"), default=DEFAULT_TEXT_ENGINE)
+
+
 def _resolve_pdf_engine(engine: str | None) -> str:
-    """파서 엔진 선택: 함수 인자(파일럿 오버라이드) > env SASOO_PDF_ENGINE > "odl"."""
-    selected = (engine or os.environ.get("SASOO_PDF_ENGINE") or "odl").strip().lower()
-    return selected if selected in {"odl", "gemini"} else "odl"
+    """하위호환 별칭: 명시 인자 > 전역 SASOO_PDF_ENGINE > "odl" (스테이지 무관)."""
+    return _resolve_stage_engine("text", engine)
 
 
 def _run_convert(
@@ -1320,13 +1350,22 @@ def _run_convert(
     figures_dir: Path,
     mode: str,
     engine: str | None = None,
+    stage: str = "text",
 ) -> tuple[dict[str, Any], str, str]:
     """엔진 디스패처. 반환 계약 (root_json, markdown_text, actual_engine)은 엔진 불문 동일.
 
-    ODL(기본)은 _run_convert_odl로, gemini는 _run_convert_gemini로 위임한다. gemini 실패는
-    OdlParserError로 변환해 기존 폴백 체인(ensure_text_artifacts의 pymupdf 폴백)을 그대로 태운다.
+    스테이지(text/visual)별로 _resolve_stage_engine이 엔진을 고른다. gemini로 결정됐지만
+    GEMINI_API_KEY가 없으면 조용히 ODL로 내려간다(경고 1줄) — 페이지별 재시도 폭주를 피한다.
+    gemini 실행 실패는 _run_convert_gemini가 OdlParserError로 변환한다(상위 폴백 체인이 처리).
+    이 저수준 디스패처는 자동 폴백을 하지 않는다 — 폴백은 프로덕션 경로(ensure_visual_artifacts)가 담당.
     """
-    if _resolve_pdf_engine(engine) == "gemini":
+    selected = _resolve_stage_engine(stage, engine)
+    if selected == GEMINI_ENGINE_NAME and not (os.environ.get("GEMINI_API_KEY") or "").strip():
+        logger.warning(
+            "GEMINI_API_KEY not set; %s stage falling back to ODL parser engine.", stage
+        )
+        selected = "odl"
+    if selected == GEMINI_ENGINE_NAME:
         return _run_convert_gemini(pdf_path, output_dir, figures_dir)
     return _run_convert_odl(pdf_path, output_dir, figures_dir, mode)
 
@@ -1602,6 +1641,69 @@ def _build_text_manifest_from_odl(
     return manifest
 
 
+def _promote_text_from_visual(
+    paper_dir: Path,
+    manifest: dict[str, Any],
+    *,
+    odl_reference_snapshot: str | None,
+    visual_engine: str,
+) -> bool:
+    """visual 단계가 gemini로 성공하면, 그 변환 markdown(=manifest['full_text'])을 text
+    아티팩트로 승격한다. Gemini를 재호출하지 않는다 — 1회 변환으로 두 용도(figure/caption + 본문).
+
+    - odl_reference_snapshot(삭제되기 전에 캡처한 text 스테이지 .md 원문)이 있으면
+      {stem}.odl-reference.md로 보존한다. 멱등의 핵심은 스냅샷 유무다: 재실행(force, PDF 불변)
+      에선 text 스테이지가 이미 gemini current라 스냅샷이 None → 레퍼런스 불변(gemini 텍스트로
+      덮어쓰는 사고 없음). PDF가 바뀌면 text가 ODL을 재생성 → 스냅샷 갱신 → 레퍼런스도 새
+      PDF 기준으로 갱신된다.
+    - .document_context.json 사이드카를 무효화(삭제)한다. 이 사이드카는 pdf서명+parser_version
+      으로만 current 판정하므로, full_text가 ODL→gemini로 바뀌어도 자동 갱신되지 않는다.
+    - manifest에 provenance(text_engine/visual_engine)를 기록한다.
+
+    반환: 승격 시 True — 호출부가 .md/.json 계약 파일을 overwrite로 다시 쓰게 한다. 승격 아님
+    (ODL visual 또는 폴백)이면 False + 필드/파일 불변으로 기존 ODL-only 경로 바이트를 유지한다.
+    """
+    if visual_engine != GEMINI_ENGINE_NAME:
+        return False
+
+    stem = Path(str(manifest.get("pdf_file") or _paper_pdf(paper_dir).name)).stem
+    ref_path = paper_dir / f"{stem}.odl-reference.md"
+    # ODL 원문 보존: 스냅샷이 있을 때만(=이번 사이클에 text 스테이지가 ODL 원문을 새로 만든 경우)
+    # 기록/갱신. 재실행(force, PDF 불변)에선 스냅샷=None → 레퍼런스 불변(멱등).
+    if odl_reference_snapshot:
+        ref_path.write_text(odl_reference_snapshot, encoding="utf-8")
+
+    # stale 파생 캐시 무효화(지연 import로 순환참조 회피).
+    from services.document_context import DOCUMENT_CONTEXT_FILENAME
+
+    (paper_dir / DOCUMENT_CONTEXT_FILENAME).unlink(missing_ok=True)
+
+    manifest["text_engine"] = GEMINI_ENGINE_NAME
+    manifest["visual_engine"] = visual_engine
+    return True
+
+
+def get_odl_reference_text(paper_dir: Path) -> str | None:
+    """승격된 논문의 ODL 축자 레퍼런스({stem}.odl-reference.md) 텍스트를 반환.
+
+    visual 단계가 gemini로 승격되면 원래 ODL .md가 이 파일로 보존된다(환각 0·축자 충실).
+    gemini는 축자 어휘/저자명/grant번호를 산발 변조하므로, 인용·정량 축자 검증 시 이 레퍼런스를
+    교차 확인용으로 쓴다. 승격되지 않았거나 파일이 없으면 None.
+    """
+    paper_dir = Path(paper_dir)
+    try:
+        pdf_stem = _paper_pdf(paper_dir).stem
+    except FileNotFoundError:
+        return None
+    ref_path = paper_dir / f"{pdf_stem}.odl-reference.md"
+    if not ref_path.exists():
+        return None
+    try:
+        return ref_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
 def ensure_text_artifacts(
     paper_dir: Path,
     mode: str | None = None,
@@ -1647,7 +1749,9 @@ def ensure_text_artifacts(
             output_file.unlink()
 
     try:
-        root, markdown_text, actual_engine = _run_convert(pdf_path, output_dir, raw_image_dir, requested_mode)
+        root, markdown_text, actual_engine = _run_convert(
+            pdf_path, output_dir, raw_image_dir, requested_mode, stage="text"
+        )
         manifest = _build_text_manifest_from_odl(
             pdf_path=pdf_path,
             paper_dir=paper_dir,
@@ -1714,6 +1818,20 @@ def ensure_visual_artifacts(
         force=False,
     )
 
+    # 승격 대비: text 스테이지가 어떤 엔진으로 현재 .md를 만들었는지(디스크 manifest 기준).
+    # 아래 clear 단계가 text 스테이지 .md를 지우므로, ODL 원문을 메모리로 먼저 스냅샷한다.
+    # text 스테이지가 이미 gemini(전역 오버라이드/재실행 current)면 보존할 ODL 원문이 없으므로
+    # 스냅샷을 남기지 않는다 → 승격 시 gemini 텍스트가 레퍼런스를 오염시키지 않는다(멱등).
+    text_stage_manifest = _load_manifest(paper_dir)
+    text_stage_engine = str((text_stage_manifest or {}).get("engine", "")).strip().lower()
+    md_path = paper_dir / f"{pdf_path.stem}.md"
+    odl_reference_snapshot: str | None = None
+    if text_stage_engine != GEMINI_ENGINE_NAME and md_path.exists():
+        try:
+            odl_reference_snapshot = md_path.read_text(encoding="utf-8")
+        except OSError:
+            odl_reference_snapshot = None
+
     output_dir = paper_dir
     raw_image_dir = paper_dir / RAW_IMAGE_DIRNAME
     shutil.rmtree(raw_image_dir, ignore_errors=True)
@@ -1722,7 +1840,21 @@ def ensure_visual_artifacts(
         if output_file.exists():
             output_file.unlink()
 
-    root, markdown_text, actual_engine = _run_convert(pdf_path, output_dir, raw_image_dir, requested_mode)
+    try:
+        root, markdown_text, actual_engine = _run_convert(
+            pdf_path, output_dir, raw_image_dir, requested_mode, stage="visual"
+        )
+    except (OdlParserError, OdlRuntimeError) as exc:
+        # 프로덕션 폴백: visual 엔진(gemini) 실패 → ODL로 자동 재시도(사용자 눈엔 visual이 그냥 됨).
+        # 폴백 시엔 승격 없음. _run_convert 저수준은 불변 — 여기서만 engine="odl"로 강제한다.
+        logger.warning(
+            "Visual parser engine failed for %s; retrying with ODL: %s", paper_dir.name, exc
+        )
+        shutil.rmtree(raw_image_dir, ignore_errors=True)
+        raw_image_dir.mkdir(parents=True, exist_ok=True)
+        root, markdown_text, actual_engine = _run_convert(
+            pdf_path, output_dir, raw_image_dir, requested_mode, stage="visual", engine="odl"
+        )
     if pipeline_version == RESOLVER_PIPELINE_VERSION:
         manifest = _run_coroutine_sync(
             _build_resolver_v1_manifest(
@@ -1744,7 +1876,15 @@ def ensure_visual_artifacts(
             actual_engine=actual_engine,
             requested_mode=requested_mode,
         )
-    _ensure_text_contract_files(paper_dir, manifest)
+    # visual이 gemini로 성공했으면 그 변환 markdown을 text 아티팩트로 승격(+ ODL 원문 보존
+    # + document_context 사이드카 무효화 + provenance 기록). ODL visual/폴백이면 no-op(False).
+    promoted = _promote_text_from_visual(
+        paper_dir,
+        manifest,
+        odl_reference_snapshot=odl_reference_snapshot,
+        visual_engine=actual_engine,
+    )
+    _ensure_text_contract_files(paper_dir, manifest, overwrite=promoted)
     _write_cache_files(paper_dir, manifest)
     _write_manifest(paper_dir, manifest)
     return manifest
