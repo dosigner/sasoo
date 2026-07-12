@@ -9,7 +9,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from services.concurrency import CHAT_EXECUTOR, PIPELINE_EXECUTOR, PIPELINE_LLM_SEM
+from services.concurrency import CHAT_EXECUTOR, PIPELINE_EXECUTOR, pipeline_llm_sem
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # asyncio 기본 풀을 암묵적으로 쓰다가 파이프라인 팬아웃이 풀을 채우면
 # 채팅 SSE가 스레드를 못 잡고 무한 대기하는 사고(2026-07-11)의 재발 방지.
 #   "chat"     : 사용자가 실시간으로 기다리는 대화형 경로. 전용 풀, 세마포어 없음.
-#   "pipeline" : 분석 파이프라인. 전용 풀 + PIPELINE_LLM_SEM으로 동시 호출 제한.
+#   "pipeline" : 분석 파이프라인. 전용 풀 + 루프별 pipeline_llm_sem()으로 동시 호출 제한.
 Lane = Literal["chat", "pipeline"]
 
 
@@ -32,7 +32,8 @@ def _executor_for(lane: Lane):
 async def _run_on_lane(lane: Lane, fn):
     loop = asyncio.get_running_loop()
     if lane == "pipeline":
-        async with PIPELINE_LLM_SEM:
+        # 현재 루프 전용 세마포어(크로스루프 바인딩 방지 — concurrency.pipeline_llm_sem 참조).
+        async with pipeline_llm_sem():
             return await loop.run_in_executor(PIPELINE_EXECUTOR, fn)
     return await loop.run_in_executor(_executor_for(lane), fn)
 
@@ -57,6 +58,26 @@ def _get_client():
     return genai.Client(api_key=api_key)
 
 
+def _apply_media_resolution(prompt, media_resolution: str | None):
+    """image 파트에 media_resolution(resolution)을 주입한 새 input을 반환.
+
+    media_resolution이 없거나 prompt가 파트 리스트가 아니면 원본을 그대로 반환한다.
+    Interactions API의 ImageContentParam.resolution(low/medium/high/ultra_high)에
+    대응한다 — 저해상 입력으로 이미지 토큰을 줄이는 통로. 이미지가 없는 기존
+    호출부(예: 채팅 텍스트 호출)는 무영향이며, 원본 파트 dict은 변형하지 않는다.
+    """
+    if not media_resolution or not isinstance(prompt, list):
+        return prompt
+    new_parts = []
+    changed = False
+    for part in prompt:
+        if isinstance(part, dict) and part.get("type") == "image" and "resolution" not in part:
+            part = {**part, "resolution": media_resolution}
+            changed = True
+        new_parts.append(part)
+    return new_parts if changed else prompt
+
+
 async def call_interaction(
     prompt,
     *,
@@ -67,6 +88,7 @@ async def call_interaction(
     previous_interaction_id: str | None = None,
     response_schema: dict | None = None,
     store: bool = True,
+    media_resolution: str | None = None,
 ) -> dict:
     if not store and previous_interaction_id:
         raise ValueError("previous_interaction_id requires store=True")
@@ -75,7 +97,7 @@ async def call_interaction(
         client = _get_client()
         kwargs: dict = {
             "model": model,
-            "input": prompt,
+            "input": _apply_media_resolution(prompt, media_resolution),
             "system_instruction": system_instruction or _SYSTEM_INSTRUCTION_KO,
             "store": store,
         }
@@ -200,7 +222,8 @@ async def stream_interaction(
             asyncio.run_coroutine_threadsafe(q.put(("__end__", None)), loop)
 
     # pipeline lane은 스트림이 살아있는 동안 세마포어 슬롯 하나를 점유한다.
-    sem = PIPELINE_LLM_SEM if lane == "pipeline" else None
+    # 현재 루프 전용 세마포어를 쓴다(크로스루프 바인딩 방지).
+    sem = pipeline_llm_sem() if lane == "pipeline" else None
     if sem is not None:
         await sem.acquire()
     try:

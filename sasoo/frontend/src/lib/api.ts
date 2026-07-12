@@ -274,6 +274,7 @@ export interface Settings {
   paperbanana_profile: PaperBananaProfile;
   pdf_parser_mode: 'java';
   extraction_pipeline_version: 'resolver_v1';
+  pdf_visual_engine: 'gemini' | 'odl';
   research_context: string;
   default_explanation_level: string;
 }

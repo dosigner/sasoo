@@ -94,20 +94,45 @@ async def lifespan(app: FastAPI):
     print(f"[Sasoo] Database: {APP_DATA_ROOT / 'sasoo.db'}")
     print(f"[Sasoo] Library root: {get_library_root()}")
 
-    # Load API keys from database into environment variables (with decryption)
+    # Load API keys + PDF visual-engine preference from the settings table.
+    # F7: 한 번의 fetch_all(IN 절)로 세 키를 함께 읽어 기동 시 DB 왕복을 1회로 줄인다
+    # (예전엔 API 키용 fetch_all + pdf_visual_engine용 fetch_one으로 2회 왕복).
+    # 처리 방식은 다르다: api 키는 암호화 저장되어 복호화가 필요하고, pdf_visual_engine은
+    # 평문 문자열이다. 파싱은 개별 try로 감싸 한쪽 실패가 다른 쪽 로드를 막지 않게 한다.
     from models.database import fetch_all
     from services.crypto import decrypt_value
+    settings_map: dict = {}
     try:
-        rows = await fetch_all("SELECT key, value FROM settings WHERE key IN ('gemini_api_key', 'openai_api_key')")
+        rows = await fetch_all(
+            "SELECT key, value FROM settings "
+            "WHERE key IN ('gemini_api_key', 'openai_api_key', 'pdf_visual_engine')"
+        )
+        settings_map = {row["key"]: row["value"] for row in rows}
+    except Exception as exc:
+        print(f"[Sasoo] Warning: Could not load settings from DB: {exc}")
+
+    try:
         env_names = {"gemini_api_key": "GEMINI_API_KEY", "openai_api_key": "OPENAI_API_KEY"}
-        for row in rows:
-            if row["value"]:
-                decrypted = decrypt_value(row["value"])
+        for setting_key, env_name in env_names.items():
+            value = settings_map.get(setting_key)
+            if value:
+                decrypted = decrypt_value(value)
                 if decrypted:
-                    os.environ[env_names[row["key"]]] = decrypted
+                    os.environ[env_name] = decrypted
         print("[Sasoo] API keys loaded from database into environment.")
     except Exception as exc:
         print(f"[Sasoo] Warning: Could not load API keys from DB: {exc}")
+
+    # PDF visual-engine preference: odl_parser의 _resolve_stage_engine이 호출 시점에
+    # SASOO_PDF_VISUAL_ENGINE을 읽으므로, 저장된 선택을 여기서 env에 심어 이번 세션 첫
+    # 파싱부터 반영한다. (신규 DB엔 행이 없어 resolver 기본값 gemini가 그대로 선다.)
+    try:
+        engine = str(settings_map.get("pdf_visual_engine") or "").strip().lower()
+        if engine in {"gemini", "odl"}:
+            os.environ["SASOO_PDF_VISUAL_ENGINE"] = engine
+            print(f"[Sasoo] PDF visual engine preference loaded: {engine}")
+    except Exception as exc:
+        print(f"[Sasoo] Warning: Could not load PDF visual engine preference: {exc}")
 
     # 프로세스가 중간에 죽으면 papers.status가 'analyzing'으로 영구 고착된다.
     # 기동 시점에 살아있는 분석은 없으므로 전부 error로 정리한다.

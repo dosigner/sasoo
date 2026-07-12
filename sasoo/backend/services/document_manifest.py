@@ -523,7 +523,14 @@ def build_document_manifest(
     flat_elements: list[FlatElement] = []
     _flatten_elements(root.get("kids", []), [0], flat_elements)
 
-    full_text = _build_plain_text(flat_elements) or markdown_text
+    if actual_engine == "gemini":
+        # gemini(gemini_parser.GEMINI_ENGINE_NAME) 엔진은 markdown_text가 완전한 본문
+        # (reading order / GFM 테이블 / LaTeX 수식 / "--- Page N ---" 마커)을 담는다.
+        # slim 스키마에선 트리에 본문 paragraph가 없으므로 markdown을 full_text 원천으로
+        # 삼아 본문 유실을 막는다(트리 조립본보다 품질 우위). ODL 경로는 아래 기존 로직 불변.
+        full_text = markdown_text or _build_plain_text(flat_elements)
+    else:
+        full_text = _build_plain_text(flat_elements) or markdown_text
     page_sizes = _extract_page_sizes(pdf_path)
     metadata = _extract_metadata(root, flat_elements, full_text, pdf_path, page_sizes)
     page_count = metadata.get("page_count") or len(page_sizes)
@@ -622,6 +629,10 @@ def build_document_manifest(
             )
             continue
 
+        # 코드리뷰 F4(주의): gemini slim 스키마의 트리에는 본문 paragraph가 없어(heading/caption만)
+        # per-page text_blocks가 본문을 담지 못한다. 본문 계약은 full_text(=markdown, 위 gemini 분기)로
+        # 보전되고, {stem}.json 텍스트 루트는 odl_parser._manifest_to_text_root가 full_text를 페이지별로
+        # 복원해 채운다. text_blocks 기반의 caption-band 텍스트 확장(figure_candidates)만 slim에서 비활성.
         if element_type in TEXTUAL_TYPES and text:
             idx = text_counts.get(page_number, 0)
             text_counts[page_number] = idx + 1

@@ -23,8 +23,8 @@ from typing import Any
 
 import fitz  # PyMuPDF
 
-from models.database import DB_PATH, fetch_all, get_db, get_library_root
-from services.document_audit import find_suspect_pages
+from models.database import DB_PATH, execute_insert, fetch_all, get_db, get_library_root
+from services.document_audit import _page_text_map, find_suspect_pages
 from services.document_manifest import build_document_manifest
 from services.figure_candidates import build_figure_candidates
 from services.figure_resolver import resolve_figure_candidates
@@ -43,6 +43,11 @@ PYMUPDF_TEXT_ENGINE = "pymupdf-text"
 TEXT_CACHE_FILENAME = ".text_cache.txt"
 TEXT_CACHE_META_FILENAME = ".text_cache.meta.json"
 MANIFEST_FILENAME = ".odl_manifest.json"
+GEMINI_ENGINE_NAME = "gemini"
+# visual 단계 Gemini 파서의 토큰/비용 집계를 _run_convert(mock 경계)를 건드리지 않고
+# _run_convert_gemini → ensure_visual_artifacts로 끌어올리기 위한 out-of-band 채널.
+# 전 호출 경로가 동기·단일 스레드(executor 스레드)라 thread-local이면 논문 병렬 파싱에도 안전하다.
+_visual_parse_usage_channel = threading.local()
 SUPPORTED_MODES = {"java"}
 RAW_IMAGE_DIRNAME = ".odl_raw_images"
 DOI_PATTERN = re.compile(r"10\.\d{4,}/[^\s]+")
@@ -540,6 +545,34 @@ def _extract_metadata(root: dict[str, Any], full_text: str, pdf_path: Path) -> d
 
 def _manifest_to_text_root(manifest: dict[str, Any]) -> dict[str, Any]:
     metadata = dict(manifest.get("metadata", {}))
+    page_count = metadata.get("page_count") or len(manifest.get("pages", []))
+
+    # F4: gemini slim 스키마에선 트리에 본문 paragraph가 없어(heading/caption만) pages[*].text_blocks
+    # 가 본문을 담지 못한다 → 아래 text_blocks 경로로 {stem}.json을 만들면 본문이 공동화되어
+    # 자매 파일 {stem}.md(=full_text)와 본문이 어긋난다. gemini는 full_text가 완전한 본문
+    # (페이지 마커 포함 markdown)이므로, 이를 페이지별로 쪼개 paragraph 노드로 복원해 텍스트 계약이
+    # 본문을 갖게 한다(.md와 .json의 본문 일치). ODL/pymupdf 경로는 기존 text_blocks 로직 불변.
+    engine = str(manifest.get("engine") or "").strip().lower()
+    full_text = str(manifest.get("full_text") or "")
+    if engine == GEMINI_ENGINE_NAME and full_text.strip():
+        page_map = _page_text_map(full_text)  # document_audit과 동일한 "--- Page N ---" 분할
+        if page_map:
+            gemini_kids: list[dict[str, Any]] = []
+            for page_number in sorted(page_map):
+                text = _maybe_text(page_map[page_number])
+                if not text:
+                    continue
+                gemini_kids.append(
+                    {"type": "paragraph", "page number": page_number, "content": text}
+                )
+            if gemini_kids:
+                return {
+                    "title": metadata.get("title"),
+                    "author": metadata.get("authors"),
+                    "number of pages": page_count,
+                    "kids": gemini_kids,
+                }
+
     kids: list[dict[str, Any]] = []
     for page in manifest.get("pages", []):
         page_number = _maybe_int(page.get("page_number")) or 1
@@ -558,7 +591,7 @@ def _manifest_to_text_root(manifest: dict[str, Any]) -> dict[str, Any]:
     return {
         "title": metadata.get("title"),
         "author": metadata.get("authors"),
-        "number of pages": metadata.get("page_count") or len(manifest.get("pages", [])),
+        "number of pages": page_count,
         "kids": kids,
     }
 
@@ -732,7 +765,68 @@ def _write_manifest(paper_dir: Path, manifest: dict[str, Any]) -> None:
     )
 
 
-def _run_convert(pdf_path: Path, output_dir: Path, figures_dir: Path, mode: str) -> tuple[dict[str, Any], str, str]:
+_VALID_ENGINES = {"odl", GEMINI_ENGINE_NAME}
+DEFAULT_TEXT_ENGINE = "odl"
+DEFAULT_VISUAL_ENGINE = GEMINI_ENGINE_NAME
+
+
+def _normalize_engine(value: str | None, default: str) -> str:
+    selected = (value or "").strip().lower()
+    return selected if selected in _VALID_ENGINES else default
+
+
+def _resolve_stage_engine(stage: str, engine_override: str | None = None) -> str:
+    """스테이지(text/visual)별 파서 엔진을 한 곳에서 결정한다.
+
+    우선순위:
+      1. engine_override — 함수 인자(파일럿/폴백 강제)
+      2. 전역 SASOO_PDF_ENGINE — 하위호환. 있으면 두 스테이지 모두를 덮어쓴다.
+      3. 스테이지 env — SASOO_PDF_TEXT_ENGINE / SASOO_PDF_VISUAL_ENGINE
+      4. 스테이지 기본 — text=odl(즉시성/축자), visual=gemini(수식·표·읽기순서)
+    부수효과 없음 — 키 존재 검사·다운그레이드는 _run_convert 디스패치 지점에서만 한다.
+    """
+    if engine_override:
+        return _normalize_engine(engine_override, default=DEFAULT_TEXT_ENGINE)
+    global_override = os.environ.get("SASOO_PDF_ENGINE")
+    if global_override and global_override.strip():
+        return _normalize_engine(global_override, default=DEFAULT_TEXT_ENGINE)
+    if stage == "visual":
+        return _normalize_engine(os.environ.get("SASOO_PDF_VISUAL_ENGINE"), default=DEFAULT_VISUAL_ENGINE)
+    return _normalize_engine(os.environ.get("SASOO_PDF_TEXT_ENGINE"), default=DEFAULT_TEXT_ENGINE)
+
+
+def _resolve_pdf_engine(engine: str | None) -> str:
+    """하위호환 별칭: 명시 인자 > 전역 SASOO_PDF_ENGINE > "odl" (스테이지 무관)."""
+    return _resolve_stage_engine("text", engine)
+
+
+def _run_convert(
+    pdf_path: Path,
+    output_dir: Path,
+    figures_dir: Path,
+    mode: str,
+    engine: str | None = None,
+    stage: str = "text",
+) -> tuple[dict[str, Any], str, str]:
+    """엔진 디스패처. 반환 계약 (root_json, markdown_text, actual_engine)은 엔진 불문 동일.
+
+    스테이지(text/visual)별로 _resolve_stage_engine이 엔진을 고른다. gemini로 결정됐지만
+    GEMINI_API_KEY가 없으면 조용히 ODL로 내려간다(경고 1줄) — 페이지별 재시도 폭주를 피한다.
+    gemini 실행 실패는 _run_convert_gemini가 OdlParserError로 변환한다(상위 폴백 체인이 처리).
+    이 저수준 디스패처는 자동 폴백을 하지 않는다 — 폴백은 프로덕션 경로(ensure_visual_artifacts)가 담당.
+    """
+    selected = _resolve_stage_engine(stage, engine)
+    if selected == GEMINI_ENGINE_NAME and not (os.environ.get("GEMINI_API_KEY") or "").strip():
+        logger.warning(
+            "GEMINI_API_KEY not set; %s stage falling back to ODL parser engine.", stage
+        )
+        selected = "odl"
+    if selected == GEMINI_ENGINE_NAME:
+        return _run_convert_gemini(pdf_path, output_dir, figures_dir)
+    return _run_convert_odl(pdf_path, output_dir, figures_dir, mode)
+
+
+def _run_convert_odl(pdf_path: Path, output_dir: Path, figures_dir: Path, mode: str) -> tuple[dict[str, Any], str, str]:
     ensure_java_runtime()
     odl = _import_odl_module()
 
@@ -758,6 +852,32 @@ def _run_convert(pdf_path: Path, output_dir: Path, figures_dir: Path, mode: str)
     root = json.loads(json_path.read_text(encoding="utf-8"))
     markdown_text = md_path.read_text(encoding="utf-8")
     return root, markdown_text, actual_engine
+
+
+def _run_convert_gemini(pdf_path: Path, output_dir: Path, figures_dir: Path) -> tuple[dict[str, Any], str, str]:
+    """Gemini 비전 엔진 어댑터. 비동기 run_convert_gemini를 기존 동기 브리지로 감싸고,
+    실패는 OdlParserError로 변환해 폴백이 ODL 실패와 동일하게 동작하도록 한다.
+
+    상위 ensure_visual_artifacts가 채널에 빈 usage dict를 심어두면, 그 dict를 그대로
+    run_convert_gemini(usage_out=...)로 넘겨 토큰/비용 집계를 채운다. dict은 참조로
+    전달되므로 _run_coroutine_sync의 자식 스레드에서 채워도 join 후 상위에서 보인다.
+    채널이 비어 있으면(text 단계 등) None을 넘겨 아무것도 집계하지 않는다."""
+    from services.gemini_parser import GeminiParserError, run_convert_gemini
+
+    usage_out = getattr(_visual_parse_usage_channel, "usage", None)
+    try:
+        return _run_coroutine_sync(
+            run_convert_gemini(pdf_path, output_dir, figures_dir, usage_out=usage_out)
+        )
+    except GeminiParserError as exc:
+        raise OdlParserError(f"Gemini parser engine failed: {exc}") from exc
+    except Exception as exc:  # noqa: BLE001 - F1: 비-GeminiParserError도 폴백 대상으로 변환
+        # gemini 경로가 GeminiParserError가 아닌 예외(예: fitz.open의 raw RuntimeError,
+        # _run_coroutine_sync 스레드에서 새어나온 임의 예외)를 던지면, ensure_visual_artifacts의
+        # 폴백(except OdlParserError)이 이를 못 잡아 아티팩트 태스크가 통째로 실패하고
+        # explain_odl_failure가 엔진을 오귀속("OpenDataLoader failed: ...")한다. 이 초크포인트에서
+        # 모든 gemini-경로 예외를 OdlParserError로 감싸(원인 체이닝) 폴백이 ODL 실패와 동일하게 동작.
+        raise OdlParserError(f"Gemini parser engine failed: {exc}") from exc
 
 
 def _convert_error_message(exc: Exception) -> str:
@@ -992,6 +1112,75 @@ def _build_text_manifest_from_odl(
     return manifest
 
 
+def _promote_text_from_visual(
+    paper_dir: Path,
+    manifest: dict[str, Any],
+    *,
+    odl_reference_snapshot: str | None,
+    visual_engine: str,
+) -> bool:
+    """visual 단계가 gemini로 성공하면, 그 변환 markdown(=manifest['full_text'])을 text
+    아티팩트로 승격한다. Gemini를 재호출하지 않는다 — 1회 변환으로 두 용도(figure/caption + 본문).
+
+    - odl_reference_snapshot(삭제되기 전에 캡처한 text 스테이지 .md 원문)이 있으면
+      {stem}.odl-reference.md로 보존한다. 멱등의 핵심은 스냅샷 유무다: 재실행(force, PDF 불변)
+      에선 text 스테이지가 이미 gemini current라 스냅샷이 None → 레퍼런스 불변(gemini 텍스트로
+      덮어쓰는 사고 없음). PDF가 바뀌면 text가 ODL을 재생성 → 스냅샷 갱신 → 레퍼런스도 새
+      PDF 기준으로 갱신된다.
+    - .document_context.json 사이드카를 무효화(삭제)한다. 이 사이드카는 pdf서명+parser_version
+      으로만 current 판정하므로, full_text가 ODL→gemini로 바뀌어도 자동 갱신되지 않는다.
+    - manifest에 provenance(text_engine/visual_engine)를 기록한다.
+
+    반환: 승격 시 True — 호출부가 .md/.json 계약 파일을 overwrite로 다시 쓰게 한다. 승격 아님
+    (ODL visual 또는 폴백)이면 False + 필드/파일 불변으로 기존 ODL-only 경로 바이트를 유지한다.
+
+    설계 노트(코드리뷰 F3, 미수정=의도된 설계): 승격은 본문 텍스트 계약(full_text/{stem}.md/.json)을
+    Gemini 전사본으로 교체하므로, 하류 인용·정량 분석은 ODL 축자 텍스트가 아니라 Gemini 전사
+    기준으로 수행된다(Gemini는 저자명·grant번호·수치를 산발 변조할 수 있다). 이는 수식·표·읽기순서
+    품질을 위해 받아들인 트레이드오프이며, 축자 원문은 {stem}.odl-reference.md로 보존된다
+    (get_odl_reference_text). 인용 검증을 레퍼런스에 배선하는 작업은 별도 보류 과제다.
+    """
+    if visual_engine != GEMINI_ENGINE_NAME:
+        return False
+
+    stem = Path(str(manifest.get("pdf_file") or _paper_pdf(paper_dir).name)).stem
+    ref_path = paper_dir / f"{stem}.odl-reference.md"
+    # ODL 원문 보존: 스냅샷이 있을 때만(=이번 사이클에 text 스테이지가 ODL 원문을 새로 만든 경우)
+    # 기록/갱신. 재실행(force, PDF 불변)에선 스냅샷=None → 레퍼런스 불변(멱등).
+    if odl_reference_snapshot:
+        ref_path.write_text(odl_reference_snapshot, encoding="utf-8")
+
+    # stale 파생 캐시 무효화(지연 import로 순환참조 회피).
+    from services.document_context import DOCUMENT_CONTEXT_FILENAME
+
+    (paper_dir / DOCUMENT_CONTEXT_FILENAME).unlink(missing_ok=True)
+
+    manifest["text_engine"] = GEMINI_ENGINE_NAME
+    manifest["visual_engine"] = visual_engine
+    return True
+
+
+def get_odl_reference_text(paper_dir: Path) -> str | None:
+    """승격된 논문의 ODL 축자 레퍼런스({stem}.odl-reference.md) 텍스트를 반환.
+
+    visual 단계가 gemini로 승격되면 원래 ODL .md가 이 파일로 보존된다(환각 0·축자 충실).
+    gemini는 축자 어휘/저자명/grant번호를 산발 변조하므로, 인용·정량 축자 검증 시 이 레퍼런스를
+    교차 확인용으로 쓴다. 승격되지 않았거나 파일이 없으면 None.
+    """
+    paper_dir = Path(paper_dir)
+    try:
+        pdf_stem = _paper_pdf(paper_dir).stem
+    except FileNotFoundError:
+        return None
+    ref_path = paper_dir / f"{pdf_stem}.odl-reference.md"
+    if not ref_path.exists():
+        return None
+    try:
+        return ref_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
 def ensure_text_artifacts(
     paper_dir: Path,
     mode: str | None = None,
@@ -1037,7 +1226,9 @@ def ensure_text_artifacts(
             output_file.unlink()
 
     try:
-        root, markdown_text, actual_engine = _run_convert(pdf_path, output_dir, raw_image_dir, requested_mode)
+        root, markdown_text, actual_engine = _run_convert(
+            pdf_path, output_dir, raw_image_dir, requested_mode, stage="text"
+        )
         manifest = _build_text_manifest_from_odl(
             pdf_path=pdf_path,
             paper_dir=paper_dir,
@@ -1104,6 +1295,20 @@ def ensure_visual_artifacts(
         force=False,
     )
 
+    # 승격 대비: text 스테이지가 어떤 엔진으로 현재 .md를 만들었는지(디스크 manifest 기준).
+    # 아래 clear 단계가 text 스테이지 .md를 지우므로, ODL 원문을 메모리로 먼저 스냅샷한다.
+    # text 스테이지가 이미 gemini(전역 오버라이드/재실행 current)면 보존할 ODL 원문이 없으므로
+    # 스냅샷을 남기지 않는다 → 승격 시 gemini 텍스트가 레퍼런스를 오염시키지 않는다(멱등).
+    text_stage_manifest = _load_manifest(paper_dir)
+    text_stage_engine = str((text_stage_manifest or {}).get("engine", "")).strip().lower()
+    md_path = paper_dir / f"{pdf_path.stem}.md"
+    odl_reference_snapshot: str | None = None
+    if text_stage_engine != GEMINI_ENGINE_NAME and md_path.exists():
+        try:
+            odl_reference_snapshot = md_path.read_text(encoding="utf-8")
+        except OSError:
+            odl_reference_snapshot = None
+
     output_dir = paper_dir
     raw_image_dir = paper_dir / RAW_IMAGE_DIRNAME
     shutil.rmtree(raw_image_dir, ignore_errors=True)
@@ -1112,7 +1317,28 @@ def ensure_visual_artifacts(
         if output_file.exists():
             output_file.unlink()
 
-    root, markdown_text, actual_engine = _run_convert(pdf_path, output_dir, raw_image_dir, requested_mode)
+    # visual 단계 Gemini 파서의 usage를 담을 빈 dict를 채널에 심는다. 실제 gemini 변환이
+    # 일어날 때만 채워지고, ODL 폴백/키 부재/캐시 히트에선 빈 채로 남는다(→ 미기록).
+    _visual_parse_usage_channel.usage = {}
+    try:
+        try:
+            root, markdown_text, actual_engine = _run_convert(
+                pdf_path, output_dir, raw_image_dir, requested_mode, stage="visual"
+            )
+        except (OdlParserError, OdlRuntimeError) as exc:
+            # 프로덕션 폴백: visual 엔진(gemini) 실패 → ODL로 자동 재시도(사용자 눈엔 visual이 그냥 됨).
+            # 폴백 시엔 승격 없음. _run_convert 저수준은 불변 — 여기서만 engine="odl"로 강제한다.
+            logger.warning(
+                "Visual parser engine failed for %s; retrying with ODL: %s", paper_dir.name, exc
+            )
+            shutil.rmtree(raw_image_dir, ignore_errors=True)
+            raw_image_dir.mkdir(parents=True, exist_ok=True)
+            root, markdown_text, actual_engine = _run_convert(
+                pdf_path, output_dir, raw_image_dir, requested_mode, stage="visual", engine="odl"
+            )
+    finally:
+        visual_parse_usage = getattr(_visual_parse_usage_channel, "usage", None)
+        _visual_parse_usage_channel.usage = None
     manifest = _run_coroutine_sync(
         _build_resolver_v1_manifest(
             paper_dir=paper_dir,
@@ -1123,9 +1349,22 @@ def ensure_visual_artifacts(
             requested_mode=requested_mode,
         )
     )
-    _ensure_text_contract_files(paper_dir, manifest)
+    # visual이 gemini로 성공했으면 그 변환 markdown을 text 아티팩트로 승격(+ ODL 원문 보존
+    # + document_context 사이드카 무효화 + provenance 기록). ODL visual/폴백이면 no-op(False).
+    promoted = _promote_text_from_visual(
+        paper_dir,
+        manifest,
+        odl_reference_snapshot=odl_reference_snapshot,
+        visual_engine=actual_engine,
+    )
+    _ensure_text_contract_files(paper_dir, manifest, overwrite=promoted)
     _write_cache_files(paper_dir, manifest)
     _write_manifest(paper_dir, manifest)
+    # gemini visual 파서가 실제로 돌아 usage가 채워졌을 때만, 디스크 영속(_write_manifest)
+    # 이후에 인메모리 전용 키로 얹는다. 디스크에 남기지 않으므로 캐시 히트 경로(상단 조기 반환)의
+    # manifest엔 이 키가 없고, 상위(_refresh_paper_artifacts)가 이 키 유무로 1회 기록을 판정한다.
+    if visual_parse_usage and visual_parse_usage.get("engine") == GEMINI_ENGINE_NAME:
+        manifest["_visual_parse_usage"] = visual_parse_usage
     return manifest
 
 
@@ -1458,6 +1697,55 @@ async def sync_tables_for_paper(
     return tables
 
 
+async def _record_visual_parse_usage(paper_id: int, usage: dict[str, Any]) -> None:
+    """visual 단계 Gemini 파서의 토큰/비용을 기존 analysis_results 원장에 1회 집계 기록.
+
+    phase는 분석 파이프라인의 "visual"(도표 텍스트 분석)과 충돌하지 않도록 "visual_parse".
+    분석 단계들과 동일하게 (model, tokens_in, tokens_out)로 calc_cost를 재계산해 원장 관례를
+    맞춘다. 기록은 best-effort — DB 미가용/오류로 파이프라인을 깨지 않는다(경고만 남기고 스킵)."""
+    try:
+        model = str(usage.get("model") or "")
+        tokens_in = int(usage.get("tokens_in", 0) or 0)
+        tokens_out = int(usage.get("tokens_out", 0) or 0)
+        if tokens_in <= 0 and tokens_out <= 0:
+            return
+
+        from services.pricing import calc_cost
+        from services.document_context import compute_input_hash
+
+        cost = calc_cost(model, tokens_in, tokens_out)
+        result_payload = json.dumps(
+            {
+                "engine": usage.get("engine"),
+                "model": model,
+                "pages": usage.get("pages"),
+                "tokens_in": tokens_in,
+                "tokens_out": tokens_out,
+                "tokens_thought": usage.get("tokens_thought"),
+            },
+            ensure_ascii=False,
+        )
+        await execute_insert(
+            """
+            INSERT INTO analysis_results
+                (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd, input_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                paper_id,
+                "visual_parse",
+                result_payload,
+                model,
+                tokens_in,
+                tokens_out,
+                cost,
+                compute_input_hash(f"visual_parse:{paper_id}:{usage.get('pages')}"),
+            ),
+        )
+    except Exception:  # noqa: BLE001 - 원장 기록은 best-effort, 파이프라인을 막지 않는다
+        logger.warning("visual_parse usage 기록 실패 (paper %s)", paper_id, exc_info=True)
+
+
 async def _refresh_paper_artifacts(
     paper_id: int,
     paper_dir: Path,
@@ -1471,8 +1759,13 @@ async def _refresh_paper_artifacts(
         extraction_pipeline_version=extraction_pipeline_version,
         force=force,
     )
+    # 인메모리 전용 usage 키를 걷어낸다(디스크엔 애초에 없다). 실제 gemini visual 파싱이
+    # 일어난 이번 refresh에서만 존재하며, 아래에서 원장에 1회 집계 기록한다.
+    visual_parse_usage = manifest.pop("_visual_parse_usage", None)
     await sync_figures_for_paper(paper_id, paper_dir, manifest=manifest)
     await sync_tables_for_paper(paper_id, paper_dir, manifest=manifest)
+    if visual_parse_usage:
+        await _record_visual_parse_usage(paper_id, visual_parse_usage)
     return manifest
 
 

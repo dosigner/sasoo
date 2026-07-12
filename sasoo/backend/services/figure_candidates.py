@@ -235,6 +235,12 @@ def _caption_band_candidates(
         and (_horizontal_overlap_ratio(block["bbox"], [min_x, caption_bbox[1], max_x, caption_bbox[3]]) >= 0.28 or abs(_center(block["bbox"])[0] - ((caption_bbox[0] + caption_bbox[2]) / 2)) <= page_width * 0.18)
         and not _is_tiny_visual(block["bbox"], page)
     ]
+    # 코드리뷰 F4(부분 미수정, 영향 경미): gemini slim 스키마에선 page['text_blocks']에 본문이
+    # 없어(heading/caption만) 이 chart-like 텍스트 매칭이 항상 비게 되고, 아래 caption_band_union_text
+    # 확장(축 라벨을 포함하도록 크롭 bbox를 넓히는 변형)만 사라진다. 기본 image 후보(caption_band_union)
+    # 는 image_blocks에서 그대로 나오므로 figure 후보 자체는 유실되지 않는다(파일럿에서 후보 수 정상).
+    # 완전 해소하려면 gemini 본문을 per-page text_blocks로 채워야 하는데, 이는 매니페스트 비대화 +
+    # 다수 하류 소비자 변경을 수반해 비용 대비 이득이 불명확하다 — 의도적으로 보류(보고서에 기재).
     text_matches = [
         block
         for block in page.get("text_blocks", [])

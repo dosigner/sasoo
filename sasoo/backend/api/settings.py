@@ -44,6 +44,7 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "max_concurrent_analyses": "3",
     "pdf_parser_mode": "java",
     "extraction_pipeline_version": "resolver_v1",
+    "pdf_visual_engine": "gemini",
     "research_context": "",
     "default_explanation_level": "masters",
 }
@@ -213,6 +214,7 @@ async def get_settings():
         max_concurrent_analyses=int(raw.get("max_concurrent_analyses", "3")),
         pdf_parser_mode=raw.get("pdf_parser_mode", "java"),
         extraction_pipeline_version=raw.get("extraction_pipeline_version", "resolver_v1"),
+        pdf_visual_engine=raw.get("pdf_visual_engine", "gemini"),
         research_context=raw.get("research_context", ""),
         default_explanation_level=raw.get("default_explanation_level", "masters"),
     )
@@ -261,6 +263,8 @@ async def update_settings(update: SettingsUpdate):
             raise HTTPException(status_code=400, detail="Slim build supports only 'java' for pdf_parser_mode.")
         if key == "extraction_pipeline_version" and str_value != "resolver_v1":
             raise HTTPException(status_code=400, detail="extraction_pipeline_version must be 'resolver_v1'.")
+        if key == "pdf_visual_engine" and str_value not in {"gemini", "odl"}:
+            raise HTTPException(status_code=400, detail="pdf_visual_engine must be 'gemini' or 'odl'.")
         await _set_setting(key, str_value)
 
     # If API keys changed, update environment variables for current session
@@ -269,6 +273,12 @@ async def update_settings(update: SettingsUpdate):
         os.environ["GEMINI_API_KEY"] = update_data["gemini_api_key"]
     if "openai_api_key" in update_data and update_data["openai_api_key"]:
         os.environ["OPENAI_API_KEY"] = update_data["openai_api_key"]
+
+    # odl_parser._resolve_stage_engine reads SASOO_PDF_VISUAL_ENGINE from
+    # os.environ at call time, so updating it here takes effect on the next
+    # parse without a restart.
+    if "pdf_visual_engine" in update_data and update_data["pdf_visual_engine"]:
+        os.environ["SASOO_PDF_VISUAL_ENGINE"] = update_data["pdf_visual_engine"]
 
     return await get_settings()
 
