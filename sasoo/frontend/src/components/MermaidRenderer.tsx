@@ -243,6 +243,42 @@ async function downloadPng(svg: string, name: string, scale = 2) {
 const ZOOM_MIN = 0.2;
 const ZOOM_MAX = 8;
 
+// Pan momentum (Apple-style exponential decay): release velocity is sampled
+// from recent pointer history, then decays every frame until it drops below
+// the stop threshold.
+const MOMENTUM_DECAY_PER_MS = 0.998;
+const MOMENTUM_STOP_SPEED = 20; // px/s — momentum loop halts below this
+const MOMENTUM_MIN_RELEASE_SPEED = 50; // px/s — slower releases skip momentum entirely
+const VELOCITY_SAMPLE_WINDOW_MS = 100; // pointer history window used to compute release velocity
+const VELOCITY_SAMPLE_MAX = 6; // cap on retained samples within the window
+
+// Wheel-zoom rubber-banding: boundary overshoot is resisted exponentially and
+// capped near this fraction, then springs back once wheel input goes idle.
+const ZOOM_RUBBER_BAND_MAX_OVERSHOOT = 0.08; // ~8% past ZOOM_MIN/MAX at full resistance
+const ZOOM_WHEEL_IDLE_MS = 180; // debounce before the boundary spring-back kicks in
+const ZOOM_SPRING_DURATION_MS = 200; // felt duration of the critically-damped return
+const ZOOM_SPRING_TAU_MS = ZOOM_SPRING_DURATION_MS / 5;
+
+function rubberBandScale(rawValue: number): number {
+  if (rawValue < ZOOM_MIN) {
+    const over = ZOOM_MIN - rawValue;
+    const limit = ZOOM_MIN * ZOOM_RUBBER_BAND_MAX_OVERSHOOT;
+    return ZOOM_MIN - limit * (1 - Math.exp(-over / limit));
+  }
+  if (rawValue > ZOOM_MAX) {
+    const over = rawValue - ZOOM_MAX;
+    const limit = ZOOM_MAX * ZOOM_RUBBER_BAND_MAX_OVERSHOOT;
+    return ZOOM_MAX + limit * (1 - Math.exp(-over / limit));
+  }
+  return rawValue;
+}
+
+// Critically-damped spring step response (0 -> 1 progress) over t ms, scaled by tau.
+function criticallyDampedProgress(tMs: number, tauMs: number): number {
+  const x = tMs / tauMs;
+  return 1 - Math.exp(-x) * (1 + x);
+}
+
 function MermaidModal({
   svg,
   title,
@@ -256,14 +292,118 @@ function MermaidModal({
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  // Recent pointer samples (position + time) used to compute release velocity.
+  const pointerHistoryRef = useRef<{ x: number; y: number; t: number }[]>([]);
+  // Mirrors of state that stay accurate between renders, so momentum/rubber-band
+  // loops and interrupt handlers never read a stale value.
+  const scaleRef = useRef(scale);
+  const offsetRef = useRef(offset);
+  const prefersReducedMotionRef = useRef(false);
+  const momentumRafRef = useRef<number | null>(null);
+  const zoomSpringRafRef = useRef<number | null>(null);
+  const wheelIdleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const zoomBy = useCallback((factor: number) => {
-    setScale((s) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, s * factor)));
+  useEffect(() => { scaleRef.current = scale; }, [scale]);
+  useEffect(() => { offsetRef.current = offset; }, [offset]);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    prefersReducedMotionRef.current = mq.matches;
+    const handler = (e: MediaQueryListEvent) => { prefersReducedMotionRef.current = e.matches; };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
   }, []);
 
+  const cancelMomentum = useCallback(() => {
+    if (momentumRafRef.current !== null) {
+      cancelAnimationFrame(momentumRafRef.current);
+      momentumRafRef.current = null;
+    }
+  }, []);
+
+  const cancelZoomSpring = useCallback(() => {
+    if (zoomSpringRafRef.current !== null) {
+      cancelAnimationFrame(zoomSpringRafRef.current);
+      zoomSpringRafRef.current = null;
+    }
+  }, []);
+
+  const cancelWheelIdleTimer = useCallback(() => {
+    if (wheelIdleTimeoutRef.current !== null) {
+      clearTimeout(wheelIdleTimeoutRef.current);
+      wheelIdleTimeoutRef.current = null;
+    }
+  }, []);
+
+  // Button/reset zoom is a discrete action, not a gesture — always hard clamp,
+  // and cancel any in-flight wheel rubber-band/spring so it can't fight this.
+  const zoomBy = useCallback((factor: number) => {
+    cancelZoomSpring();
+    cancelWheelIdleTimer();
+    setScale((s) => {
+      const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, s * factor));
+      scaleRef.current = next;
+      return next;
+    });
+  }, [cancelZoomSpring, cancelWheelIdleTimer]);
+
   const resetView = useCallback(() => {
+    cancelZoomSpring();
+    cancelWheelIdleTimer();
+    cancelMomentum();
+    scaleRef.current = 1;
+    offsetRef.current = { x: 0, y: 0 };
     setScale(1);
     setOffset({ x: 0, y: 0 });
+  }, [cancelZoomSpring, cancelWheelIdleTimer, cancelMomentum]);
+
+  // Animates scale from `from` back to the nearest ZOOM_MIN/MAX bound with a
+  // critically damped step response (~200ms felt duration).
+  const startZoomSpring = useCallback((from: number) => {
+    const target = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, from));
+    if (target === from) return;
+    const start = performance.now();
+    const step = (now: number) => {
+      const t = now - start;
+      const progress = criticallyDampedProgress(t, ZOOM_SPRING_TAU_MS);
+      if (progress >= 0.99 || t > ZOOM_SPRING_DURATION_MS * 2.5) {
+        scaleRef.current = target;
+        setScale(target);
+        zoomSpringRafRef.current = null;
+        return;
+      }
+      const next = from + (target - from) * progress;
+      scaleRef.current = next;
+      setScale(next);
+      zoomSpringRafRef.current = requestAnimationFrame(step);
+    };
+    zoomSpringRafRef.current = requestAnimationFrame(step);
+  }, []);
+
+  // Pan momentum: decays the release velocity exponentially (Apple-style)
+  // each frame until it drops below the stop threshold.
+  const startMomentum = useCallback((vx: number, vy: number) => {
+    let velocity = { x: vx, y: vy };
+    let lastT = performance.now();
+    const step = (now: number) => {
+      const dtMs = now - lastT;
+      lastT = now;
+      const decay = Math.pow(MOMENTUM_DECAY_PER_MS, dtMs);
+      velocity = { x: velocity.x * decay, y: velocity.y * decay };
+      const dtSec = dtMs / 1000;
+      const next = {
+        x: offsetRef.current.x + velocity.x * dtSec,
+        y: offsetRef.current.y + velocity.y * dtSec,
+      };
+      offsetRef.current = next;
+      setOffset(next);
+      if (Math.hypot(velocity.x, velocity.y) < MOMENTUM_STOP_SPEED) {
+        momentumRafRef.current = null;
+        return;
+      }
+      momentumRafRef.current = requestAnimationFrame(step);
+    };
+    momentumRafRef.current = requestAnimationFrame(step);
   }, []);
 
   // Wheel zoom needs a non-passive listener to preventDefault page scroll.
@@ -272,11 +412,30 @@ function MermaidModal({
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      zoomBy(e.deltaY < 0 ? 1.12 : 1 / 1.12);
+      cancelZoomSpring();
+      cancelWheelIdleTimer();
+      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      const raw = scaleRef.current * factor;
+      // Reduced motion: no overshoot, no spring-back — hard clamp like before.
+      const next = prefersReducedMotionRef.current
+        ? Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, raw))
+        : rubberBandScale(raw);
+      scaleRef.current = next;
+      setScale(next);
+
+      if (!prefersReducedMotionRef.current) {
+        wheelIdleTimeoutRef.current = setTimeout(() => {
+          wheelIdleTimeoutRef.current = null;
+          const current = scaleRef.current;
+          if (current < ZOOM_MIN || current > ZOOM_MAX) {
+            startZoomSpring(current);
+          }
+        }, ZOOM_WHEEL_IDLE_MS);
+      }
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [zoomBy]);
+  }, [cancelZoomSpring, cancelWheelIdleTimer, startZoomSpring]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -285,6 +444,15 @@ function MermaidModal({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  // Clean up any in-flight rAF loop / timer on unmount.
+  useEffect(() => {
+    return () => {
+      cancelMomentum();
+      cancelZoomSpring();
+      cancelWheelIdleTimer();
+    };
+  }, [cancelMomentum, cancelZoomSpring, cancelWheelIdleTimer]);
 
   return (
     <div
@@ -341,15 +509,45 @@ function MermaidModal({
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);
-          dragRef.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
+          cancelMomentum();
+          dragRef.current = { x: e.clientX, y: e.clientY, ox: offsetRef.current.x, oy: offsetRef.current.y };
+          pointerHistoryRef.current = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
         }}
         onPointerMove={(e) => {
           const drag = dragRef.current;
           if (!drag) return;
-          setOffset({ x: drag.ox + (e.clientX - drag.x), y: drag.oy + (e.clientY - drag.y) });
+          const next = { x: drag.ox + (e.clientX - drag.x), y: drag.oy + (e.clientY - drag.y) };
+          offsetRef.current = next;
+          setOffset(next);
+
+          const now = performance.now();
+          const history = pointerHistoryRef.current;
+          history.push({ x: e.clientX, y: e.clientY, t: now });
+          while (history.length > 0 && now - history[0].t > VELOCITY_SAMPLE_WINDOW_MS) {
+            history.shift();
+          }
+          while (history.length > VELOCITY_SAMPLE_MAX) {
+            history.shift();
+          }
         }}
-        onPointerUp={() => { dragRef.current = null; }}
-        onPointerCancel={() => { dragRef.current = null; }}
+        onPointerUp={() => {
+          dragRef.current = null;
+          const history = pointerHistoryRef.current;
+          pointerHistoryRef.current = [];
+          if (prefersReducedMotionRef.current || history.length < 2) return;
+          const first = history[0];
+          const last = history[history.length - 1];
+          const dt = (last.t - first.t) / 1000;
+          if (dt <= 0) return;
+          const vx = (last.x - first.x) / dt;
+          const vy = (last.y - first.y) / dt;
+          if (Math.hypot(vx, vy) < MOMENTUM_MIN_RELEASE_SPEED) return;
+          startMomentum(vx, vy);
+        }}
+        onPointerCancel={() => {
+          dragRef.current = null;
+          pointerHistoryRef.current = [];
+        }}
         onDoubleClick={resetView}
       >
         <div

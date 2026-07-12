@@ -14,7 +14,7 @@ function Content({
     <RadixPopover.Portal>
       <RadixPopover.Content
         sideOffset={sideOffset}
-        className={`z-50 border border-border bg-surface p-3 shadow-lg rounded-surface animate-fade-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${className}`}
+        className={`z-50 border border-border bg-surface p-3 shadow-lg rounded-surface animate-pop-in [transform-origin:var(--radix-popover-content-transform-origin)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${className}`}
         {...props}
       />
     </RadixPopover.Portal>

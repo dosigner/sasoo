@@ -94,6 +94,7 @@ export default function ChatPanel({
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [totalCost, setTotalCost] = useState(0);
+  const [scrolled, setScrolled] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // Aborts the turn currently on the wire; queued turns have not started yet.
@@ -111,6 +112,7 @@ export default function ChatPanel({
     runningRef.current = false;
     setMessages([]);
     setTotalCost(0);
+    setScrolled(false);
   }, [paperId]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -282,6 +284,13 @@ export default function ChatPanel({
     abortRef.current?.abort();
   }, []);
 
+  // Scroll edge effect: the header's border/shadow only appears once content
+  // has actually scrolled behind it, not as a permanent hairline.
+  const handleMessagesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const next = e.currentTarget.scrollTop > 0;
+    setScrolled((prev) => (prev === next ? prev : next));
+  }, []);
+
   const clearConversation = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -332,7 +341,7 @@ export default function ChatPanel({
 
         {open && (
           <div className="chat-floating-card">
-            <div className="chat-floating-header">
+            <div className="chat-floating-header" data-scrolled={scrolled || undefined}>
               <div className="min-w-0">
                 <div className="mb-1 flex items-center gap-2">
                   <span
@@ -394,7 +403,7 @@ export default function ChatPanel({
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-4 py-4">
+                <div className="flex-1 overflow-y-auto px-4 py-4" onScroll={handleMessagesScroll}>
                   {!hasMessages && (
                     <div className="chat-empty-state">
                       <div className="chat-empty-icon">

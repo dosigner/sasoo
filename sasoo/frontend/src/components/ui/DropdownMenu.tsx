@@ -12,7 +12,7 @@ function Content({
     <RadixDropdownMenu.Portal>
       <RadixDropdownMenu.Content
         sideOffset={sideOffset}
-        className={`z-50 min-w-[10rem] border border-border bg-surface p-1 shadow-lg rounded-surface animate-fade-in ${className}`}
+        className={`z-50 min-w-[10rem] border border-border bg-surface p-1 shadow-lg rounded-surface animate-pop-in [transform-origin:var(--radix-dropdown-menu-content-transform-origin)] ${className}`}
         {...props}
       />
     </RadixDropdownMenu.Portal>

@@ -19,7 +19,7 @@ export default function Modal({ open, onClose, children, maxWidth = 'max-w-md' }
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm animate-fade-in" />
         <Dialog.Content
-          className={`fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] ${maxWidth} -translate-x-1/2 -translate-y-1/2 border border-border bg-surface p-6 shadow-lg rounded-surface animate-slide-up focus:outline-none`}
+          className={`fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] ${maxWidth} border border-border bg-surface p-6 shadow-lg rounded-surface animate-modal-slide-up focus:outline-none`}
         >
           <Dialog.Title asChild>
             <span className="sr-only">대화상자</span>

@@ -147,9 +147,10 @@ export default function ProgressTracker({
       {/* Overall progress bar */}
       <div className="h-1 bg-border rounded-full mb-5 overflow-hidden">
         <div
-          className="h-full rounded-full transition-all duration-500 ease-out"
+          className="h-full w-full transition-transform duration-300 ease-out"
           style={{
-            width: `${overallProgress}%`,
+            transformOrigin: 'left',
+            transform: `scaleX(${overallProgress / 100})`,
             background: isComplete
               ? 'rgb(var(--success))'
               : 'linear-gradient(90deg, rgb(var(--accent)), rgb(var(--accent-hover)))',

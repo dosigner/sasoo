@@ -9,7 +9,7 @@ export interface TooltipProps {
 }
 
 export function TooltipProvider({ children }: { children: ReactNode }) {
-  return <RadixTooltip.Provider delayDuration={300}>{children}</RadixTooltip.Provider>;
+  return <RadixTooltip.Provider delayDuration={300} skipDelayDuration={600}>{children}</RadixTooltip.Provider>;
 }
 
 export default function Tooltip({ children, content, side = 'top', className = '' }: TooltipProps) {
@@ -20,7 +20,7 @@ export default function Tooltip({ children, content, side = 'top', className = '
         <RadixTooltip.Content
           side={side}
           sideOffset={6}
-          className={`z-50 border border-border bg-surface px-2 py-1 text-2xs text-fg shadow-lg rounded-control animate-fade-in ${className}`}
+          className={`z-50 border border-border bg-surface px-2 py-1 text-2xs text-fg shadow-lg rounded-control animate-fade-in data-[state=instant-open]:animate-none ${className}`}
         >
           {content}
           <RadixTooltip.Arrow className="fill-surface" />

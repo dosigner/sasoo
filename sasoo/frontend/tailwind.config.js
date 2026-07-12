@@ -69,11 +69,12 @@ export default {
       },
       animation: {
         // ≤150ms per docs/04-design/design-tokens.md §5 (pulse-subtle is a decorative loop, exempt)
-        'fade-in': 'fadeIn 0.15s ease-out',
-        'fade-out': 'fadeOut 0.15s ease-out',
-        'slide-in-right': 'slideInRight 0.15s ease-out',
-        'slide-in-left': 'slideInLeft 0.15s ease-out',
-        'slide-up': 'slideUp 0.15s ease-out',
+        'fade-in': 'fadeIn 0.15s cubic-bezier(0.23, 1, 0.32, 1)',
+        'fade-out': 'fadeOut 0.15s cubic-bezier(0.23, 1, 0.32, 1)',
+        'slide-in-right': 'slideInRight 0.15s cubic-bezier(0.23, 1, 0.32, 1)',
+        'slide-in-left': 'slideInLeft 0.15s cubic-bezier(0.23, 1, 0.32, 1)',
+        'slide-up': 'slideUp 0.15s cubic-bezier(0.23, 1, 0.32, 1)',
+        'pop-in': 'popIn 0.15s cubic-bezier(0.23, 1, 0.32, 1)',
         'pulse-subtle': 'pulseSubtle 2s ease-in-out infinite',
       },
       keyframes: {
@@ -96,6 +97,10 @@ export default {
         slideUp: {
           '0%': { transform: 'translateY(0.5rem)', opacity: '0' },
           '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
+        popIn: {
+          '0%': { opacity: '0', transform: 'scale(0.97)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
         },
         pulseSubtle: {
           '0%, 100%': { opacity: '1' },

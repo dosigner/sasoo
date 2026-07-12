@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { AppIcon } from '@/components/icons';
 
 // ---------------------------------------------------------------------------
@@ -49,33 +49,56 @@ interface ToastItemProps {
 
 function ToastItem({ toast, onRemove }: ToastItemProps) {
   const [isExiting, setIsExiting] = useState(false);
-  const [progress, setProgress] = useState(100);
   const duration = toast.duration || 3000;
+  const barRef = useRef<HTMLDivElement>(null);
+  const animRef = useRef<Animation | null>(null);
+  const hoveredRef = useRef(false);
 
   useEffect(() => {
-    // Progress bar animation
-    const startTime = Date.now();
-    const timer = setInterval(() => {
-      const elapsed = Date.now() - startTime;
-      const remaining = Math.max(0, 100 - (elapsed / duration) * 100);
-      setProgress(remaining);
+    // One WAAPI animation drives both the progress bar and auto-dismiss,
+    // so pausing (hover, hidden window) keeps them in sync.
+    const bar = barRef.current;
+    if (!bar) return;
 
-      if (remaining === 0) {
-        clearInterval(timer);
+    const anim = bar.animate(
+      [{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }],
+      { duration, easing: 'linear', fill: 'forwards' },
+    );
+    animRef.current = anim;
+
+    let exitTimer: ReturnType<typeof setTimeout> | undefined;
+    anim.finished
+      .then(() => {
+        setIsExiting(true);
+        exitTimer = setTimeout(() => onRemove(toast.id), 200);
+      })
+      .catch(() => {}); // cancelled on unmount
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        if (anim.playState === 'running') anim.pause();
+      } else if (anim.playState === 'paused' && !hoveredRef.current) {
+        anim.play();
       }
-    }, 16); // ~60fps
-
-    // Auto-dismiss timer
-    const dismissTimer = setTimeout(() => {
-      setIsExiting(true);
-      setTimeout(() => onRemove(toast.id), 200);
-    }, duration);
+    };
+    document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
-      clearInterval(timer);
-      clearTimeout(dismissTimer);
+      document.removeEventListener('visibilitychange', onVisibility);
+      anim.cancel();
+      if (exitTimer) clearTimeout(exitTimer);
     };
   }, [toast.id, duration, onRemove]);
+
+  const handleMouseEnter = () => {
+    hoveredRef.current = true;
+    if (animRef.current?.playState === 'running') animRef.current.pause();
+  };
+
+  const handleMouseLeave = () => {
+    hoveredRef.current = false;
+    if (animRef.current?.playState === 'paused' && !document.hidden) animRef.current.play();
+  };
 
   const handleClose = () => {
     setIsExiting(true);
@@ -110,12 +133,14 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
 
   return (
     <div
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       className={`
         relative overflow-hidden rounded-xl shadow-lg border
         w-96 max-w-full
-        transition-all duration-200
+        transition-[opacity,transform] duration-200 ease-out
         ${isExiting ? 'opacity-0 translate-x-4' : 'opacity-100 translate-x-0 animate-slide-in-right'}
-        bg-surface/90 backdrop-blur-lg border-border/50
+        toast-surface border-border/50
       `}
     >
       {/* Content */}
@@ -153,8 +178,9 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
       {/* Progress bar */}
       <div className="absolute bottom-0 left-0 right-0 h-1 bg-surface/20">
         <div
-          className={`h-full ${progressBg} transition-all duration-75 ease-linear`}
-          style={{ width: `${progress}%` }}
+          ref={barRef}
+          className={`h-full ${progressBg}`}
+          style={{ transformOrigin: 'left' }}
         />
       </div>
     </div>
