@@ -801,38 +801,6 @@ export async function getCostSummary(): Promise<CostSummary> {
 }
 
 // ---------------------------------------------------------------------------
-// Agent endpoints
-// ---------------------------------------------------------------------------
-
-export interface AgentDetail {
-  name: string;
-  display_name: string;
-  display_name_ko: string;
-  personality: string;
-  quote: string;
-  color: string;
-  domain: string;
-  domain_display: string;
-  domain_display_ko: string;
-  keywords: string[];
-  weighted_keywords: string[];
-  recipe_parameters: string[];
-  model: string;
-  enabled: boolean;
-  builtin: boolean;
-  prompts: Record<string, string>;
-  raw_md?: string;
-}
-
-export async function getAgents(): Promise<AgentDetail[]> {
-  return request<AgentDetail[]>('/agents');
-}
-
-export async function getAgent(name: string): Promise<AgentDetail> {
-  return request<AgentDetail>(`/agents/${name}`);
-}
-
-// ---------------------------------------------------------------------------
 // PDF URL helper
 // ---------------------------------------------------------------------------
 
@@ -870,6 +838,3 @@ export function getLibraryAssetUrl(assetPath: string | null | undefined): string
 
   return getStaticUrl(assetPath);
 }
-
-// Domain list is now dynamic - fetched from /api/agents
-// Use getAgents() and map agent.domain for domain lists

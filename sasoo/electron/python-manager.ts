@@ -447,17 +447,4 @@ export class PythonManager {
     await this.start();
   }
 
-  /**
-   * Check if the Python process is currently running.
-   */
-  isRunning(): boolean {
-    return this.process !== null && !this.process.killed;
-  }
-
-  /**
-   * Get the port the server is running on.
-   */
-  getPort(): number {
-    return this.config.port;
-  }
 }

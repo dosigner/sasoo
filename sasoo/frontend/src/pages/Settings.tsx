@@ -648,7 +648,6 @@ export default function Settings() {
                 onValueChange={(value) => setExtractionPipelineVersion(value as 'legacy' | 'resolver_v1')}
                 aria-label={S.settings.extractionPipeline}
                 options={[
-                  { value: 'legacy', label: S.settings.extractionPipelineLegacy },
                   { value: 'resolver_v1', label: S.settings.extractionPipelineResolverV1 },
                 ]}
               />

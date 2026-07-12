@@ -224,53 +224,6 @@ def parse_agent_md(text: str) -> AgentProfile:
     )
 
 
-def serialize_agent_md(profile: AgentProfile) -> str:
-    """Serialize an AgentProfile back to .md format with YAML frontmatter."""
-    frontmatter_data = {
-        "name": profile.agent_name,
-        "display_name": profile.display_name,
-        "display_name_ko": profile.display_name_ko,
-        "personality": profile.personality,
-        "quote": profile.quote,
-        "color": profile.color,
-        "domain": profile.domain,
-        "domain_display": profile.domain_display,
-        "domain_display_ko": profile.domain_display_ko,
-        "keywords": profile.keywords,
-        "weighted_keywords": profile.weighted_keywords,
-        "recipe_parameters": profile.recipe_parameters,
-        "model": profile.model,
-        "enabled": profile.enabled,
-    }
-
-    fm_str = yaml.dump(
-        frontmatter_data,
-        allow_unicode=True,
-        default_flow_style=False,
-        sort_keys=False,
-    )
-
-    # Serialize prompts back to # heading sections
-    _PROMPT_HEADINGS = {
-        "screening": "# Screening",
-        "visual": "# Visual",
-        "recipe": "# Recipe",
-        "deepdive": "# Deep Dive",
-    }
-
-    sections = []
-    for key, heading in _PROMPT_HEADINGS.items():
-        if key in profile.prompts and profile.prompts[key]:
-            sections.append(f"{heading}\n\n{profile.prompts[key]}")
-
-    body = "\n\n".join(sections)
-    return f"---\n{fm_str}---\n\n{body}\n" if body else f"---\n{fm_str}---\n"
-
-
-# ---------------------------------------------------------------------------
-# File I/O
-# ---------------------------------------------------------------------------
-
 def load_agent_file(path: Path) -> Optional[AgentProfile]:
     """Load a single .md agent file from disk."""
     try:
@@ -284,26 +237,6 @@ def load_agent_file(path: Path) -> Optional[AgentProfile]:
     except Exception as exc:
         logger.error("Failed to load agent file %s: %s", path, exc)
         return None
-
-
-def save_agent_file(agent_name: str, profile: AgentProfile) -> None:
-    """Save an agent profile to the user agents directory."""
-    user_dir = get_user_agents_directory()
-    path = user_dir / f"{agent_name}.md"
-    md = serialize_agent_md(profile)
-    path.write_text(md, encoding="utf-8")
-    logger.info("Saved agent '%s' to %s", agent_name, path)
-
-
-def delete_agent_file(agent_name: str) -> bool:
-    """Delete a user agent file. Returns True if deleted, False if not found."""
-    user_dir = get_user_agents_directory()
-    path = user_dir / f"{agent_name}.md"
-    if path.exists():
-        path.unlink()
-        logger.info("Deleted agent file: %s", path)
-        return True
-    return False
 
 
 def is_builtin_agent(agent_name: str) -> bool:

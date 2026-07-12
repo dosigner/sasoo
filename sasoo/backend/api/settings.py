@@ -12,7 +12,6 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from models.database import (
-    LEGACY_LIBRARY_PATH_KEY,
     fetch_all,
     fetch_one,
     get_db,

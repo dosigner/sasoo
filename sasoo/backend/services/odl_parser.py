@@ -1739,21 +1739,6 @@ def ensure_parsed_artifacts(
     )
 
 
-async def ensure_parsed_artifacts_async(
-    paper_dir: Path,
-    mode: str | None = None,
-    extraction_pipeline_version: str | None = None,
-    force: bool = False,
-) -> dict[str, Any]:
-    return await run_pipeline_blocking(
-        ensure_parsed_artifacts,
-        paper_dir,
-        mode,
-        extraction_pipeline_version,
-        force,
-    )
-
-
 async def ensure_text_artifacts_async(
     paper_dir: Path,
     mode: str | None = None,

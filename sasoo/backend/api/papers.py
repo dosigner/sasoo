@@ -8,7 +8,6 @@ import logging
 import re
 import shutil
 import uuid
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
@@ -23,7 +22,6 @@ from models.database import (
     fetch_all,
     fetch_one,
     get_db,
-    get_figures_dir,
     get_paper_dir,
 )
 from models.schemas import (
@@ -198,88 +196,6 @@ def _clean_domain_classification_text(text: str) -> str:
     return "\n".join(cleaned_lines)
 
 
-# ---------------------------------------------------------------------------
-# PDF Metadata Extraction
-# ---------------------------------------------------------------------------
-
-def extract_pdf_metadata(pdf_path: str) -> dict:
-    """
-    Extract metadata and first-page text from a PDF using PyMuPDF.
-    Returns dict with title, authors, year, etc.
-    """
-    doc = fitz.open(pdf_path)
-    meta = doc.metadata or {}
-
-    # Extract text from first 3 pages for classification
-    full_text_parts: list[str] = []
-    for page_num in range(min(3, len(doc))):
-        page = doc[page_num]
-        full_text_parts.append(page.get_text())
-
-    first_pages_text = "\n".join(full_text_parts)
-
-    # Try to get title from metadata or first line of text
-    title = resolve_paper_title(meta.get("title", ""), first_pages_text, Path(pdf_path).stem)
-
-    # Authors
-    authors = meta.get("author", "").strip() or None
-
-    # Year - try metadata, then regex from text
-    year = None
-    creation_date = meta.get("creationDate", "")
-    if creation_date:
-        year_match = re.search(r"(\d{4})", creation_date)
-        if year_match:
-            y = int(year_match.group(1))
-            if 1900 <= y <= 2100:
-                year = y
-    if year is None:
-        # Find all 4-digit years in the first 3000 characters
-        year_matches = re.findall(r"\b((?:19|20)\d{2})\b", first_pages_text[:3000])
-        if year_matches:
-            from collections import Counter
-            year_counts = Counter(int(y) for y in year_matches if 1990 <= int(y) <= 2100)
-            if year_counts:
-                year = year_counts.most_common(1)[0][0]
-
-    # DOI
-    doi = None
-    doi_match = re.search(r"10\.\d{4,}/[^\s]+", first_pages_text)
-    if doi_match:
-        doi = doi_match.group(0).rstrip(".,;)")
-
-    # Journal - heuristic: check common patterns
-    journal = None
-    journal_patterns = [
-        r"(?:Published in|Journal of|Proceedings of)\s+(.+?)[\.\n]",
-        r"(?:Nature|Science|ACS|IEEE|Optics|Applied|Physical Review)\s*\w*",
-    ]
-    for pat in journal_patterns:
-        jm = re.search(pat, first_pages_text[:2000], re.IGNORECASE)
-        if jm:
-            journal = jm.group(0).strip()[:100]
-            break
-
-    # Domain classification
-    domain, agent = classify_domain(_clean_domain_classification_text(first_pages_text))
-
-    # Total pages
-    total_pages = len(doc)
-    doc.close()
-
-    return {
-        "title": title,
-        "authors": authors,
-        "year": year,
-        "journal": journal,
-        "doi": doi,
-        "domain": domain.value,
-        "agent_used": agent.value,
-        "total_pages": total_pages,
-        "first_pages_text": first_pages_text,
-    }
-
-
 def extract_figure_captions(pdf_path: str) -> list[tuple[int, int, str]]:
     """
     Extract figure captions from a PDF using regex.
@@ -373,124 +289,6 @@ def match_captions_to_figures(
                 break
 
     return result
-
-
-def _group_image_rects(rects: list[fitz.Rect], margin: float = 20) -> list[list[fitz.Rect]]:
-    """
-    Group image rectangles that overlap or are close together (same figure).
-    Uses union-find to cluster spatially adjacent images.
-    """
-    n = len(rects)
-    if n == 0:
-        return []
-    if n == 1:
-        return [rects]
-
-    parent = list(range(n))
-
-    def find(x: int) -> int:
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    def union(a: int, b: int) -> None:
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[ra] = rb
-
-    # Expand each rect by margin and check overlaps
-    for i in range(n):
-        expanded = fitz.Rect(
-            rects[i].x0 - margin, rects[i].y0 - margin,
-            rects[i].x1 + margin, rects[i].y1 + margin,
-        )
-        for j in range(i + 1, n):
-            if expanded.intersects(rects[j]):
-                union(i, j)
-
-    # Group by root
-    groups: dict[int, list[fitz.Rect]] = {}
-    for i in range(n):
-        root = find(i)
-        groups.setdefault(root, []).append(rects[i])
-
-    return list(groups.values())
-
-
-def extract_figures_from_pdf(pdf_path: str, output_dir: str) -> list[dict]:
-    """
-    Extract whole figures from a PDF by detecting image regions on each page
-    and rendering them as page clips.  Nearby images (e.g. sub-panels a, b, c)
-    are grouped together so each logical figure is saved as one image.
-    """
-    doc = fitz.open(pdf_path)
-    figures: list[dict] = []
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    RENDER_DPI = 200
-    MIN_IMAGE_DIM = 50   # Skip tiny images (icons, bullets)
-    GROUP_MARGIN = 20     # Points: distance to merge sub-panels
-    CLIP_PADDING = 8      # Points: padding around the rendered region
-
-    for page_num in range(len(doc)):
-        page = doc[page_num]
-        page_rect = page.rect
-
-        # Collect bounding boxes of all images on this page
-        image_rects: list[fitz.Rect] = []
-        for img_info in page.get_image_info():
-            bbox = fitz.Rect(img_info["bbox"])
-            if bbox.width < MIN_IMAGE_DIM or bbox.height < MIN_IMAGE_DIM:
-                continue
-            image_rects.append(bbox)
-
-        if not image_rects:
-            continue
-
-        # Group nearby images into logical figures
-        groups = _group_image_rects(image_rects, margin=GROUP_MARGIN)
-
-        for group_idx, group_rects in enumerate(groups):
-            # Compute bounding rect of the group (union of all sub-rects)
-            union_rect = group_rects[0]
-            for r in group_rects[1:]:
-                union_rect = union_rect | r
-
-            # Add padding, clamped to page bounds
-            clip_rect = fitz.Rect(
-                max(union_rect.x0 - CLIP_PADDING, page_rect.x0),
-                max(union_rect.y0 - CLIP_PADDING, page_rect.y0),
-                min(union_rect.x1 + CLIP_PADDING, page_rect.x1),
-                min(union_rect.y1 + CLIP_PADDING, page_rect.y1),
-            )
-
-            # Render this region as a high-resolution PNG
-            mat = fitz.Matrix(RENDER_DPI / 72, RENDER_DPI / 72)
-            pix = page.get_pixmap(matrix=mat, clip=clip_rect, alpha=False)
-
-            fig_num = f"p{page_num + 1}_fig{group_idx + 1}"
-            fig_filename = f"{fig_num}.png"
-            fig_path = output_path / fig_filename
-            pix.save(str(fig_path))
-
-            width, height = pix.width, pix.height
-            quality = "high"
-            if width < 200 or height < 200:
-                quality = "low"
-            elif width < 400 or height < 400:
-                quality = "medium"
-
-            figures.append({
-                "figure_num": fig_num,
-                "caption": None,
-                "file_path": str(fig_path),
-                "quality": quality,
-            })
-
-    doc.close()
-    return figures
 
 
 # ---------------------------------------------------------------------------

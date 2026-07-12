@@ -200,14 +200,6 @@ export function buildChatStarterPrompts({
   return prompts.slice(0, 3);
 }
 
-export function statusMeta(status: AnalysisStatus | null): string | null {
-  if (!status || status.overall_status === 'pending') return null;
-  if (status.overall_status === 'running' || status.overall_status === 'analyzing') {
-    return `분석 ${Math.round(status.progress_pct || 0)}%`;
-  }
-  return '분석 완료';
-}
-
 export function buildWorkbenchStatusSummary({
   status,
   artifactStatus,

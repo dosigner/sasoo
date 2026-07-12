@@ -5,24 +5,9 @@ Handles report generation, _format_phase_data helper, and generate_paperbanana e
 
 import json
 import logging
-from datetime import datetime
 from pathlib import Path
-from typing import Optional
-
-from fastapi import APIRouter, HTTPException
 
 logger = logging.getLogger(__name__)
-
-from models.database import (
-    fetch_all,
-    fetch_one,
-    get_paperbanana_dir,
-)
-from models.schemas import (
-    PaperBananaRequest,
-    PaperBananaResponse,
-    ReportResponse,
-)
 
 # ---------------------------------------------------------------------------
 # Helper functions
