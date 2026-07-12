@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { NavLink } from 'react-router-dom';
 import { S } from '@/lib/strings';
-import logoImg from '@/assets/logo.png';
+import appIcon32 from '@/assets/brand/app-icon-32.svg';
 import { AppIcon, type AppIconName } from '@/components/icons';
 
 const COLLAPSE_KEY = 'sasoo-sidebar-collapsed';
@@ -48,7 +48,7 @@ export default function AppSidebar() {
       aria-label={S.app.name}
     >
       <div className="app-sidebar-brand">
-        <img src={logoImg} alt="Sasoo" className="h-8 w-8 rounded-xl shrink-0" />
+        <img src={appIcon32} alt="Sasoo" className="h-8 w-8 shrink-0" />
         {!collapsed && <span className="app-sidebar-brand-name">{S.app.name}</span>}
       </div>
 
