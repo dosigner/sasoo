@@ -4,8 +4,13 @@ Classifies academic papers into domains for agent routing.
 
 Classification pipeline:
   Step 1: Keyword matching (fast, no API call)
-  Step 2: If confidence < 0.7, fall back to Gemini Flash semantic classification
-  Step 3: If still uncertain, flag needs_confirmation=True for user review
+  Step 2: If confidence < 0.7 (or the top two scores are ambiguously close),
+          flag needs_confirmation=True for user review. There is no semantic
+          LLM fallback — the screening phase re-detects the domain from the
+          PDF body right after upload, and the upload UI offers a manual
+          domain dropdown, so a second classification pass here would be
+          redundant.
+  Step 3: needs_confirmation=True routes to user review.
 
 Domains are loaded dynamically from .md agent profiles.
 """
@@ -16,8 +21,6 @@ import logging
 import re
 from dataclasses import dataclass, field
 from typing import Optional
-
-from services.llm.gemini_client import GeminiClient
 
 logger = logging.getLogger(__name__)
 
@@ -88,8 +91,7 @@ class DomainRouter:
     CONFIDENCE_THRESHOLD = 0.7
     AMBIGUITY_GAP = 0.15
 
-    def __init__(self, gemini_client: Optional[GeminiClient] = None) -> None:
-        self._gemini = gemini_client
+    def __init__(self) -> None:
         self._domains: dict[str, DomainSpec] = {}
         self._patterns: dict[str, list[re.Pattern]] = {}
         self._weighted_patterns: dict[str, list[re.Pattern]] = {}
@@ -260,104 +262,28 @@ class DomainRouter:
         )
 
     # ------------------------------------------------------------------
-    # Step 2: Semantic classification
+    # Step 2: Semantic classification fallback (removed)
     # ------------------------------------------------------------------
 
     async def _semantic_classify(
         self, title: str, abstract: str, keyword_result: DomainResult,
     ) -> DomainResult:
-        if self._gemini is None:
-            keyword_result.needs_confirmation = True
-            keyword_result.reasoning += " (Semantic fallback unavailable.)"
-            return keyword_result
+        """No semantic LLM fallback — always defer to user confirmation.
 
-        try:
-            semantic = await self._gemini.classify_domain(title, abstract)
-        except Exception as exc:
-            logger.error("Semantic classification failed: %s", exc)
-            keyword_result.needs_confirmation = True
-            keyword_result.reasoning += f" (Semantic fallback failed: {exc})"
-            return keyword_result
-
-        semantic_domain = semantic.get("domain", "unknown")
-        semantic_confidence = float(semantic.get("confidence", 0.0))
-        semantic_reasoning = semantic.get("reasoning", "")
-
-        if semantic_domain == keyword_result.domain:
-            combined_confidence = min(
-                1.0,
-                (keyword_result.confidence + semantic_confidence) / 2 + 0.15,
-            )
-            spec = self._domains.get(semantic_domain)
-            if spec is None:
-                return self._make_unknown_result(keyword_result, semantic_reasoning)
-            return DomainResult(
-                domain=semantic_domain,
-                display_name=spec.display_name,
-                display_name_ko=spec.display_name_ko,
-                agent_name=spec.agent_name,
-                confidence=round(combined_confidence, 3),
-                method="semantic",
-                needs_confirmation=False,
-                keyword_matches=keyword_result.keyword_matches,
-                all_scores=keyword_result.all_scores,
-                reasoning=(
-                    f"Keyword and semantic agree on '{semantic_domain}'. "
-                    f"Semantic reasoning: {semantic_reasoning}"
-                ),
-            )
-
-        if semantic_confidence > keyword_result.confidence and semantic_domain in self._domains:
-            spec = self._domains[semantic_domain]
-            adjusted = semantic_confidence * 0.85
-            needs_confirm = adjusted < self.CONFIDENCE_THRESHOLD
-            return DomainResult(
-                domain=semantic_domain,
-                display_name=spec.display_name,
-                display_name_ko=spec.display_name_ko,
-                agent_name=spec.agent_name,
-                confidence=round(adjusted, 3),
-                method="semantic",
-                needs_confirmation=needs_confirm,
-                keyword_matches=keyword_result.keyword_matches,
-                all_scores=keyword_result.all_scores,
-                reasoning=(
-                    f"Semantic ({semantic_domain}, {semantic_confidence:.2f}) "
-                    f"overrides keyword ({keyword_result.domain}, "
-                    f"{keyword_result.confidence:.2f}). "
-                    f"Semantic reasoning: {semantic_reasoning}"
-                ),
-            )
-
-        if keyword_result.domain != "unknown" and keyword_result.confidence > 0:
-            keyword_result.needs_confirmation = True
-            keyword_result.reasoning = (
-                f"Methods disagree: keyword={keyword_result.domain} "
-                f"({keyword_result.confidence:.2f}), "
-                f"semantic={semantic_domain} ({semantic_confidence:.2f}). "
-                f"Semantic reasoning: {semantic_reasoning}. "
-                "User confirmation recommended."
-            )
-            return keyword_result
-
-        return self._make_unknown_result(keyword_result, semantic_reasoning)
+        The screening phase re-detects the domain from the PDF body right
+        after upload and can correct a low-confidence/ambiguous keyword
+        guess, and the upload UI offers a manual domain dropdown. A second
+        LLM classification pass here would be redundant, so keyword-only
+        results that don't clear the confidence/ambiguity bar are simply
+        flagged for confirmation instead.
+        """
+        keyword_result.needs_confirmation = True
+        keyword_result.reasoning += " (No semantic fallback; user confirmation required.)"
+        return keyword_result
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-
-    def _make_unknown_result(
-        self, keyword_result: DomainResult, semantic_reasoning: str,
-    ) -> DomainResult:
-        return DomainResult(
-            domain="unknown", display_name="Unknown",
-            display_name_ko="미분류", agent_name="",
-            confidence=0.0, method="semantic",
-            needs_confirmation=True,
-            keyword_matches=keyword_result.keyword_matches,
-            all_scores=keyword_result.all_scores,
-            reasoning=f"Could not determine domain. {semantic_reasoning}",
-        )
 
     def get_available_domains(self) -> list[dict]:
         """Return list of all available domains with metadata."""
