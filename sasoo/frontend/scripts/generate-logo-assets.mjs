@@ -15,7 +15,7 @@ const jobs = [
 
 for (const { src, out, width, height } of jobs) {
   await mkdir(dirname(out), { recursive: true });
-  await sharp(src, { density: 300 }).resize(width, height).png().toFile(out);
+  await sharp(src, { density: 600 }).resize(width, height).png().toFile(out);
   const meta = await sharp(out).metadata();
   if (meta.width !== width || meta.height !== height) {
     console.error(`FAIL ${out}: ${meta.width}x${meta.height}, expected ${width}x${height}`);
