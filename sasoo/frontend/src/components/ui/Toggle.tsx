@@ -14,10 +14,10 @@ export default function Toggle({ checked, onChange, label, description, disabled
       {(label || description) && (
         <div className="min-w-0 mr-3">
           {label && (
-            <span className="text-xs text-surface-300">{label}</span>
+            <span className="text-xs text-fg-secondary">{label}</span>
           )}
           {description && (
-            <p className="text-2xs text-surface-600 mt-0.5">{description}</p>
+            <p className="text-2xs text-fg-muted mt-0.5">{description}</p>
           )}
         </div>
       )}
@@ -25,7 +25,7 @@ export default function Toggle({ checked, onChange, label, description, disabled
         onClick={() => !disabled && onChange(!checked)}
         className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
           disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-        } ${checked ? 'bg-primary-500' : 'bg-surface-600'}`}
+        } ${checked ? 'bg-accent' : 'bg-border'}`}
         type="button"
         role="switch"
         aria-checked={checked}
@@ -33,7 +33,7 @@ export default function Toggle({ checked, onChange, label, description, disabled
         disabled={disabled}
       >
         <span
-          className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+          className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-surface shadow-sm transition-transform duration-200 ${
             checked ? 'translate-x-5' : 'translate-x-0'
           }`}
         />

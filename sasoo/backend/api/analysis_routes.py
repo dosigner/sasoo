@@ -12,6 +12,7 @@ Phases:
 import asyncio
 import json
 import logging
+import re
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,6 +41,7 @@ from models.schemas import (
     FigureInfo,
     FigureListResponse,
     FullAnalysisResponse,
+    MermaidRepairRequest,
     MermaidResult,
     PaperBananaRequest,
     PaperBananaResponse,
@@ -65,6 +67,7 @@ from services.analysis_results import (
     get_latest_completed_phase_rows,
 )
 from services.artifact_status import resolve_artifact_status_contract
+from services.concurrency import run_chat_blocking, run_pipeline_blocking
 from services.document_context import (
     build_visual_partial_cache_input,
     compute_input_hash,
@@ -81,10 +84,13 @@ from api.analysis_helpers import (
     _is_error_result,
     _SYSTEM_INSTRUCTION_KO,
 )
+from services.models import (
+    MODEL_VIZ_PLANNING,
+    MODEL_CHAT,
+)
 from api.report_service import (
     _format_phase_data,
     _generate_paperbanana_image,
-    _wrap_text,
 )
 from api.figure_service import explain_figure_handler
 
@@ -370,6 +376,7 @@ JSON key 이름만 영어로 유지하고, value는 전부 한국어로 써줘.
 
     result = await call_interaction(
         prompt,
+        lane="pipeline",
         model="gemini-3.1-flash-lite",
         thinking_level="minimal",
         response_schema=_SCREENING_SCHEMA,
@@ -506,7 +513,7 @@ Return ONLY valid JSON (마크다운 펜스 없이):
             return cached
 
         try:
-            result = await call_interaction(llm_prompt, model="gemini-3.5-flash", store=False)
+            result = await call_interaction(llm_prompt, lane="pipeline", model="gemini-3.5-flash", store=False)
             cleaned_text = _clean_llm_json(result["text"])
 
             try:
@@ -748,6 +755,7 @@ async def _run_chain_stage(
             contents = prompt_chain
         return await call_interaction(
             contents,
+            lane="pipeline",
             model="gemini-3.5-flash",
             system_instruction=system_instruction,
             thinking_level=_STAGE_THINKING[phase],
@@ -757,6 +765,7 @@ async def _run_chain_stage(
         )
     return await call_interaction(
         prompt_fallback,
+        lane="pipeline",
         model="gemini-3.5-flash",
         system_instruction=system_instruction,
         thinking_level=_STAGE_THINKING[phase],
@@ -1284,14 +1293,185 @@ suggested_improvements(개선 제안 리스트), follow_up_questions(후속 질�
 
 _MERMAID_SYNTAX_RULES = """CRITICAL RULES (Mermaid v10.x compatibility):
 1. Start with the diagram type keyword (flowchart TD, flowchart LR, sequenceDiagram, mindmap, etc.).
-2. NEVER use --- frontmatter blocks or accTitle/accDescr.
+2. NEVER use --- frontmatter blocks, accTitle/accDescr, or %%{init: ...}%% directives.
 3. Use simple alphanumeric node IDs (A, B, step1). NEVER use Korean in node IDs.
 4. ALWAYS wrap labels containing special characters in double quotes: A["레이저 소스 (1064nm)"].
 5. Special characters that MUST be quoted: parentheses (), colons :, semicolons ;, pipes |, angles <>.
 6. For edge labels use: A -->|"label text"| B
 7. Keep labels concise (under 30 chars). Use Korean for all labels.
 8. Do NOT use HTML tags except <br/> for line breaks.
-9. Return ONLY the Mermaid code. No markdown fences, no explanation."""
+9. NEVER use the `A & B --> C` multi-link shorthand — write each edge on its own line.
+10. Return ONLY the Mermaid code. No markdown fences, no explanation."""
+
+_MERMAID_STYLE_RULES = """STYLING RULES — make the diagram visually rich and easy to scan (색·모양·화살표로 의미를 구분해):
+
+A. Flowchart (flowchart TD/LR) — ALWAYS apply styling:
+   - Give EVERY node a semantic class with :::className, e.g. A["입력 데이터"]:::data
+   - Define all classDefs at the END of the diagram. Use this theme-safe palette
+     (dark fill + bright stroke + pale text — readable on dark AND light backgrounds):
+       classDef data fill:#1e3a5f,stroke:#4a9eff,stroke-width:2px,color:#e8f4ff
+       classDef process fill:#3b2a5f,stroke:#a78bfa,stroke-width:2px,color:#f3e8ff
+       classDef measure fill:#134e4a,stroke:#2dd4bf,stroke-width:2px,color:#e0fffb
+       classDef decision fill:#5f4a1e,stroke:#fbbf24,stroke-width:2px,color:#fff7e0
+       classDef result fill:#1e5f3a,stroke:#34d399,stroke-width:2px,color:#e0fff0
+       classDef caution fill:#5f1e2a,stroke:#fb7185,stroke-width:2px,color:#ffe8ec
+     Only define the classes you actually use. You may add more classes in the
+     same format (keep fill dark, color pale).
+   - Vary node shapes by meaning: ["단계"] 일반, ("시작/끝"), {"판단"}, [("데이터 저장")], (("핵심 개념")), [["서브루틴"]]
+   - Vary arrow styles by meaning:
+       ==>   핵심 주 흐름 (굵은 선)
+       -->   일반 흐름
+       -.->  피드백 / 반복 / 선택적 경로
+       --o   참조 / 데이터 연결
+       --x   실패 / 배제 경로
+       <-->  양방향 상호작용
+   - Group related steps with subgraphs (alphanumeric id + quoted title), then style them:
+       subgraph SG1["학습 파이프라인"] ... end
+       style SG1 fill:transparent,stroke:#8b5cf6,stroke-width:1.5px,stroke-dasharray:5 5
+   - Color important arrows with linkStyle (0-based edge index, counted in
+     order of appearance from the top). Use bright strokes from the palette:
+       linkStyle 0,3 stroke:#4a9eff,stroke-width:2.5px
+       linkStyle 1 stroke:#fb7185,stroke-width:2px
+     e.g. 주 흐름=파랑, 피드백=보라, 실패 경로=장미. Count indices carefully.
+
+B. sequenceDiagram:
+   - Use autonumber and participant aliases: participant A as 레이저 소스
+   - Group phases with translucent backgrounds (alpha <= 0.2 so both themes stay readable):
+       rect rgba(94, 106, 210, 0.15) ... end
+   - Vary arrows: ->> 요청/명령, -->> 응답(점선), -x 실패, -) 비동기
+   - Use Note over/left of/right of for annotations.
+   - classDef/linkStyle are NOT supported here — do not use them.
+
+C. mindmap / timeline:
+   - classDef, style, linkStyle are NOT supported — never emit them.
+   - For mindmap, vary node shapes instead: root((중심)), (둥근), [사각], ((원)).
+
+EXAMPLE (flowchart pattern to imitate — structure, shapes, arrows, classes):
+flowchart TD
+    A("논문 입력"):::data ==> B["전처리"]:::process
+    B --> C{"품질 충족?"}:::decision
+    C -->|"예"| D[["모델 학습"]]:::process
+    C -.->|"아니오"| B
+    D --o E[("결과 DB")]:::data
+    D ==> F["성능 평가"]:::measure
+    F --x G["과적합 사례"]:::caution
+    F ==> H(("최종 모델")):::result
+    subgraph SG1["학습 루프"]
+        B
+        C
+        D
+    end
+    style SG1 fill:transparent,stroke:#8b5cf6,stroke-width:1.5px,stroke-dasharray:5 5
+    classDef data fill:#1e3a5f,stroke:#4a9eff,stroke-width:2px,color:#e8f4ff
+    classDef process fill:#3b2a5f,stroke:#a78bfa,stroke-width:2px,color:#f3e8ff
+    classDef measure fill:#134e4a,stroke:#2dd4bf,stroke-width:2px,color:#e0fffb
+    classDef decision fill:#5f4a1e,stroke:#fbbf24,stroke-width:2px,color:#fff7e0
+    classDef result fill:#1e5f3a,stroke:#34d399,stroke-width:2px,color:#e0fff0
+    classDef caution fill:#5f1e2a,stroke:#fb7185,stroke-width:2px,color:#ffe8ec"""
+
+_MERMAID_KEYWORDS = (
+    "flowchart",
+    "graph",
+    "sequenceDiagram",
+    "mindmap",
+    "timeline",
+    "classDiagram",
+    "stateDiagram",
+    "erDiagram",
+    "gantt",
+    "pie",
+    "quadrantChart",
+    "journey",
+)
+
+
+# Flowchart edge connectors: -->, ---, -.->, ==>, ===, --o, --x, <-->, ~~~ …
+# Greedy quantifiers collapse long forms (---->) into a single match.
+_MERMAID_LINK_RE = re.compile(r"<?(?:-{2,}[>ox]?|={2,}[>x]?|-\.+->?|~{3,})")
+
+_MERMAID_NON_EDGE_PREFIXES = (
+    "classDef",
+    "class ",
+    "style ",
+    "linkStyle",
+    "subgraph",
+    "direction",
+    "%%",
+)
+
+
+def _filter_out_of_range_linkstyles(code: str) -> str:
+    """Drop numbered linkStyle lines whose edge index cannot exist.
+
+    Mermaid hard-fails the whole diagram on an out-of-range linkStyle index,
+    so guarding here lets the prompt use per-edge colors freely. Counting is
+    done on quote-stripped non-style lines; `&` multi-links make the count
+    ambiguous, in which case every numbered linkStyle is dropped.
+    """
+    lines = code.split("\n")
+    first = lines[0].strip() if lines else ""
+    if not first.startswith(("flowchart", "graph")):
+        return code
+
+    edge_count = 0
+    ambiguous = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith(_MERMAID_NON_EDGE_PREFIXES):
+            continue
+        unquoted = re.sub(r'"[^"]*"', '""', stripped)
+        if "&" in unquoted:
+            ambiguous = True
+        edge_count += len(_MERMAID_LINK_RE.findall(unquoted))
+
+    kept: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped.startswith("linkStyle"):
+            kept.append(line)
+            continue
+        if stripped.startswith("linkStyle default"):
+            kept.append(line)
+            continue
+        match = re.match(r"linkStyle\s+((?:\d+\s*,\s*)*\d+)\b", stripped)
+        if match is None or ambiguous:
+            continue
+        indices = [int(n) for n in re.findall(r"\d+", match.group(1))]
+        if all(i < edge_count for i in indices):
+            kept.append(line)
+    return "\n".join(kept)
+
+
+def _sanitize_mermaid_code(raw: str) -> str:
+    """Best-effort cleanup of LLM-generated Mermaid code (v10.x compatibility)."""
+    code = raw.strip()
+
+    # Strip markdown fences
+    if code.startswith("```"):
+        code = "\n".join(
+            line for line in code.split("\n") if not line.strip().startswith("```")
+        ).strip()
+
+    # Strip YAML frontmatter block
+    fm_match = re.match(r"^\s*---\s*\n.*?\n\s*---\s*\n?", code, re.DOTALL)
+    if fm_match:
+        code = code[fm_match.end():]
+
+    # Strip init directives and accessibility lines (not supported / theme conflicts)
+    code = re.sub(r"%%\{init:.*?\}%%\s*", "", code, flags=re.DOTALL)
+    code = re.sub(r"^\s*accTitle\s*:.*$", "", code, flags=re.MULTILINE)
+    code = re.sub(r"^\s*accDescr\s*:.*$", "", code, flags=re.MULTILINE)
+    code = code.strip()
+
+    # Drop any prose before the first diagram keyword line
+    lines = code.split("\n")
+    if lines and not lines[0].strip().startswith(_MERMAID_KEYWORDS):
+        for i, line in enumerate(lines):
+            if line.strip().startswith(_MERMAID_KEYWORDS):
+                code = "\n".join(lines[i:])
+                break
+
+    return _filter_out_of_range_linkstyles(code.strip()).strip()
 
 
 async def _plan_visualizations(
@@ -1305,7 +1485,7 @@ async def _plan_visualizations(
     pdf_uri: Optional[str] = None,
 ) -> list[dict]:
     """
-    Decide which visualizations (up to 5) best help understand the paper's
+    Decide which visualizations (6-10) best help understand the paper's
     methodology. Final stage of the stateful chain. Returns a plan as a list of dicts.
     """
     phase_status = PhaseStatus(
@@ -1319,8 +1499,9 @@ async def _plan_visualizations(
 
     instruction = """너는 연구 논문 분석 시스템의 시각화 기획자야.
 
-이 논문의 방법론과 기여를 완전히 이해하는 데 가장 도움이 될 다이어그램/그림을 결정해줘.
-반드시 3~5개의 시각화 항목을 반환해. 가장 임팩트 있는 것을 선택해.
+반드시 6~10개의 시각화 항목을 반환해. 가장 임팩트 있는 것을 선택해.
+논문의 핵심 개념과 작동 원리를 시각적으로 설명하는 일러스트(paperbanana 개념도)를
+충분히 포함해 — 방법론 다이어그램만으로 채우지 마.
 
 각 시각화를 두 가지 도구 중 하나로 분류해:
 - "mermaid": 구조적/논리적 다이어그램 (플로우차트, 시퀀스, 마인드맵, 타임라인, 비교)
@@ -1385,8 +1566,8 @@ category(experimental_protocol|algorithm_flow|signal_flow|system_architecture|co
             "category": "experimental_protocol",
         }]
 
-    # Cap at 5
-    items = items[:5]
+    # Cap at 10
+    items = items[:10]
 
     # Store the plan in DB
     result_text = json.dumps({"visualizations": items}, ensure_ascii=False)
@@ -1412,8 +1593,6 @@ async def _generate_single_mermaid(
     previous_results: list[str],
 ) -> str:
     """Generate Mermaid code for a single visualization item using Gemini Pro 3."""
-    import re as _re
-
     title = viz_item.get("title", "Diagram")
     diagram_type = viz_item.get("diagram_type", "flowchart")
     description = viz_item.get("description", "")
@@ -1426,6 +1605,9 @@ async def _generate_single_mermaid(
 설명: {description}
 
 {_MERMAID_SYNTAX_RULES}
+
+{_MERMAID_STYLE_RULES}
+
 추가 규칙: 모든 노드 레이블과 엣지 레이블을 반드시 한국어로 작성해.
 
 분석 데이터와 논문 텍스트를 소스로 사용해:
@@ -1439,24 +1621,9 @@ async def _generate_single_mermaid(
 다이어그램 타입 키워드로 시작하는 유효한 Mermaid 코드만 반환해.
 """
 
-    result = await call_interaction(prompt, model="gemini-3.5-flash", store=False)
+    result = await call_interaction(prompt, lane="pipeline", model="gemini-3.5-flash", store=False)
 
-    mermaid_code = result["text"].strip()
-    # Remove markdown fences
-    if mermaid_code.startswith("```"):
-        lines = mermaid_code.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        mermaid_code = "\n".join(lines).strip()
-
-    # Sanitize: remove frontmatter + accTitle
-    fm_match = _re.match(r"^\s*---\s*\n.*?\n\s*---\s*\n?", mermaid_code, _re.DOTALL)
-    if fm_match:
-        mermaid_code = mermaid_code[fm_match.end():]
-    mermaid_code = _re.sub(r"^\s*accTitle\s*:.*$", "", mermaid_code, flags=_re.MULTILINE)
-    mermaid_code = _re.sub(r"^\s*accDescr\s*:.*$", "", mermaid_code, flags=_re.MULTILINE)
-    mermaid_code = mermaid_code.strip()
-
-    return mermaid_code
+    return _sanitize_mermaid_code(result["text"])
 
 
 async def _generate_single_paperbanana(
@@ -1469,14 +1636,14 @@ async def _generate_single_paperbanana(
 ) -> dict:
     """
     Generate a PaperBanana illustration for a single visualization item.
-    Returns {"image_url": ..., "image_path": ...} or empty dict on failure.
+    Returns {"image_path": ..., "image_url": ..., "provider": ..., "duration_s": ...,
+    "cost_usd": ...} on success, or {"error": ...} on failure.
     """
     import logging as _logging
     _logger = _logging.getLogger(__name__)
 
     title = viz_item.get("title", "Illustration")
     description = viz_item.get("description", "")
-    category = viz_item.get("category", "conceptual_illustration")
     enriched_item = dict(viz_item)
     context_parts = [description]
     if recipe_result:
@@ -1487,101 +1654,71 @@ async def _generate_single_paperbanana(
         context_parts.append(f"Paper context: {visualization_input[:2200]}")
     enriched_item["description"] = "\n\n".join(part for part in context_parts if part)
 
-    # Try using the PaperBanana bridge.
-    # NOTE: We directly await the bridge's async generate method on the
-    # current event loop. This keeps the google-genai SDK's httpx/gRPC
-    # clients on the same loop they were created on (moving to a worker
-    # thread via asyncio.to_thread caused silent SDK failures → purple
-    # placeholders).
-    try:
-        from services.viz.paperbanana_bridge import PaperBananaBridge
-        bridge = PaperBananaBridge()
-        _logger.info("PaperBanana bridge.is_available: %s for '%s'", bridge.is_available, title)
-        if not bridge.is_available:
-            _logger.warning("PaperBanana bridge not available: %s", bridge.last_error)
-        else:
-            paper_dir = str(get_paper_dir(folder_name))
+    from services.viz.figure_gen import generate_illustration
+    from api.settings import _get_all_settings
 
-            path = await asyncio.wait_for(
-                bridge.generate_illustration(enriched_item, paper_dir),
-                timeout=300.0,  # 5 minute timeout per illustration
-            )
-            if path:
-                # Bridge saves to library/{folder}/paperbanana/{file}
-                url = f"/static/library/{folder_name}/paperbanana/{Path(path).name}"
-                return {"image_path": path, "image_url": url}
-    except asyncio.TimeoutError:
-        _logger.warning("PaperBanana generation timed out for '%s'", title)
-    except Exception as exc:
-        _logger.warning("PaperBanana bridge failed for '%s': %s", title, exc)
-        _logger.warning("Traceback: %s", traceback.format_exc())
+    settings = await _get_all_settings()
+    result = await generate_illustration(
+        enriched_item,
+        str(get_paper_dir(folder_name)),
+        preferred_provider=settings.get("image_provider", "openai"),
+        quality=settings.get("image_quality", "high"),
+    )
+    if result.path:
+        url = f"/static/library/{folder_name}/paperbanana/{Path(result.path).name}"
+        _logger.info(
+            "figure_gen ok '%s' via %s in %.1fs ($%.3f)",
+            title, result.provider, result.duration_s, result.cost_usd,
+        )
+        return {
+            "image_path": result.path,
+            "image_url": url,
+            "provider": result.provider,
+            "duration_s": result.duration_s,
+            "cost_usd": result.cost_usd,
+        }
+    _logger.warning("figure_gen failed for '%s': %s", title, result.error)
+    return {"error": result.error or "generation failed"}
 
-    # Fallback: Generate with PIL (simple diagram placeholder)
-    _logger.info("Using PIL fallback for '%s'", title)
-    try:
-        output_dir = get_paperbanana_dir(folder_name)
-        output_dir.mkdir(parents=True, exist_ok=True)
 
-        from PIL import Image, ImageDraw, ImageFont
-        import re as _re
+async def _store_visualization_progress(
+    paper_id: int, items: list[dict], cache_input: str, done: bool
+) -> None:
+    """항목이 하나 끝날 때마다 visualization 행을 갱신한다 (중간 사망 시 유실 방지).
 
-        safe_title = _re.sub(r"[^\w\s-]", "", title).strip()
-        safe_title = _re.sub(r"[-\s]+", "_", safe_title).lower() or "illustration"
-        output_path = output_dir / f"{safe_title}_{paper_id}.png"
-
-        width, height = 800, 600
-        img = Image.new("RGB", (width, height), (30, 41, 59))
-        draw = ImageDraw.Draw(img)
-
-        # Try fonts with Korean support (platform-specific)
-        font_lg = None
-        font_sm = None
-        font_candidates = [
-            # Windows (Malgun Gothic - all Korean Windows)
-            "C:/Windows/Fonts/malgunbd.ttf",
-            "C:/Windows/Fonts/malgun.ttf",
-            # macOS
-            "/System/Library/Fonts/AppleSDGothicNeo.ttc",
-            # Linux
-            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        ]
-        for fpath in font_candidates:
-            try:
-                font_lg = ImageFont.truetype(fpath, 24)
-                font_sm = ImageFont.truetype(fpath, 16)
-                break
-            except (OSError, IOError):
-                continue
-        if font_lg is None:
-            font_lg = ImageFont.load_default()
-            font_sm = ImageFont.load_default()
-
-        # Header
-        draw.rectangle([(0, 0), (width, 60)], fill=(79, 70, 229))
-        draw.text((20, 16), f"PaperBanana: {title[:40]}", fill=(255, 255, 255), font=font_lg)
-
-        # Category badge
-        draw.text((20, 80), f"Category: {category}", fill=(148, 163, 184), font=font_sm)
-
-        # Description
-        y = 120
-        for line in _wrap_text(description, font_sm, width - 40):
-            draw.text((20, y), line, fill=(226, 232, 240), font=font_sm)
-            y += 24
-            if y > height - 60:
-                break
-
-        # Footer
-        draw.rectangle([(0, height - 40), (width, height)], fill=(79, 70, 229))
-        draw.text((20, height - 32), "Generated by Sasoo (placeholder)", fill=(200, 200, 255), font=font_sm)
-
-        img.save(str(output_path), "PNG")
-        # PIL fallback saves to library/{folder}/paperbanana/ — use /static/library/ mount
-        url = f"/static/library/{folder_name}/paperbanana/{output_path.name}"
-        return {"image_path": str(output_path), "image_url": url}
-    except Exception:
-        return {}
+    UPDATE 대상 SELECT는 input_hash까지 걸어 같은 실행(run)의 행만 찾는다. paper_id+phase
+    최신 1건만 보면, 재분석(다른 input_hash로 재실행)이 이전 실행의 완료된 행을 이어달리기로
+    착각하고 덮어써버린다 — 새 실행은 반드시 새 행을 INSERT해야 한다.
+    """
+    input_hash = compute_input_hash(cache_input)
+    total_cost_usd = sum(it.get("cost_usd") or 0 for it in items)
+    payload = json.dumps(
+        {
+            "items": sorted(items, key=lambda x: x.get("id", 0)),
+            "total_count": len(items),
+            "model_used": MODEL_VIZ_PLANNING,
+            "planned_at": _utcnow_iso(),
+            "complete": done,
+        },
+        ensure_ascii=False,
+    )
+    row = await fetch_one(
+        """
+        SELECT id FROM analysis_results
+        WHERE paper_id = ? AND phase = 'visualization' AND input_hash = ?
+        ORDER BY id DESC LIMIT 1
+        """,
+        (paper_id, input_hash),
+    )
+    if row:
+        await execute_update(
+            "UPDATE analysis_results SET result = ?, input_hash = ?, cost_usd = ? WHERE id = ?",
+            (payload, input_hash, total_cost_usd, row["id"]),
+        )
+    else:
+        await _insert_analysis_result(
+            paper_id, "visualization", payload, MODEL_VIZ_PLANNING, 0, 0, total_cost_usd, cache_input,
+        )
 
 
 async def _run_visualizations(
@@ -1599,7 +1736,7 @@ async def _run_visualizations(
 ) -> list[dict]:
     """
     Full visualization pipeline:
-    1. Gemini Pro 3 plans up to 5 visualizations
+    1. Gemini Pro 3 plans up to 10 visualizations
     2. Generate each (Mermaid or PaperBanana) in parallel
     3. Store results in DB
     """
@@ -1617,8 +1754,14 @@ async def _run_visualizations(
     if cached is not None:
         try:
             cached_data = json.loads(cached["text"])
-            status.progress_pct = 100.0
-            return list(cached_data.get("items", []))
+            # `complete` was introduced with per-item checkpointing (f577fe2): a mid-run
+            # crash can leave behind a partial checkpoint row (complete=False) that shares
+            # the same input_hash as a full run. Rows written before checkpointing existed
+            # have no `complete` field at all, but every one of them was a final save, so
+            # default to True for those and only reject an explicit complete=False.
+            if cached_data.get("complete", True) is not False:
+                status.progress_pct = 100.0
+                return list(cached_data.get("items", []))
         except (json.JSONDecodeError, TypeError, AttributeError):
             pass
 
@@ -1666,7 +1809,17 @@ async def _run_visualizations(
                 )
                 result_item["image_url"] = pb_result.get("image_url")
                 result_item["image_path"] = pb_result.get("image_path")
-                result_item["status"] = "completed" if pb_result else "error"
+                if pb_result.get("image_path"):
+                    result_item["status"] = "completed"
+                    if pb_result.get("provider"):
+                        result_item["provider"] = pb_result["provider"]
+                    if pb_result.get("duration_s") is not None:
+                        result_item["duration_s"] = pb_result["duration_s"]
+                    if pb_result.get("cost_usd") is not None:
+                        result_item["cost_usd"] = pb_result["cost_usd"]
+                else:
+                    result_item["status"] = "error"
+                    result_item["error_message"] = pb_result.get("error", "generation failed")
             else:
                 result_item["status"] = "error"
                 result_item["error_message"] = f"Unknown tool: {tool}"
@@ -1681,15 +1834,23 @@ async def _run_visualizations(
     other_items = [(i, item) for i, item in enumerate(viz_plan)
                    if item.get("tool") not in ("mermaid", "paperbanana")]
 
+    # Accumulates completed items so far, so a mid-run crash doesn't lose progress.
+    accumulated: list[dict] = []
+
     # Run mermaid generations in parallel
     mermaid_tasks = [generate_one(i, item) for i, item in mermaid_items]
     mermaid_results = await asyncio.gather(*mermaid_tasks, return_exceptions=False) if mermaid_tasks else []
+    if mermaid_results:
+        accumulated.extend(mermaid_results)
+        await _store_visualization_progress(paper_id, accumulated, visualization_cache_input, done=False)
 
     # Run paperbanana generations sequentially to avoid API rate limits
     paperbanana_results = []
     for idx, (i, item) in enumerate(paperbanana_items):
         result = await generate_one(i, item)
         paperbanana_results.append(result)
+        accumulated.append(result)
+        await _store_visualization_progress(paper_id, accumulated, visualization_cache_input, done=False)
         # Small delay between PaperBanana calls to avoid rate limiting
         if idx < len(paperbanana_items) - 1:
             await asyncio.sleep(2.0)
@@ -1697,28 +1858,16 @@ async def _run_visualizations(
     # Run other tool types in parallel
     other_tasks = [generate_one(i, item) for i, item in other_items]
     other_results = await asyncio.gather(*other_tasks, return_exceptions=False) if other_tasks else []
+    if other_results:
+        accumulated.extend(other_results)
+        await _store_visualization_progress(paper_id, accumulated, visualization_cache_input, done=False)
 
     # Combine and sort by original index
     all_results = list(mermaid_results) + paperbanana_results + list(other_results)
     generated_items = sorted(all_results, key=lambda x: x.get("id", 0))
 
-    # Step 3: Store all visualization results in DB
-    viz_result = {
-        "items": list(generated_items),
-        "total_count": len(generated_items),
-        "model_used": "gemini-3.5-flash",
-        "planned_at": _utcnow_iso(),
-    }
-    await _insert_analysis_result(
-        paper_id,
-        "visualization",
-        json.dumps(viz_result, ensure_ascii=False),
-        "gemini-3.5-flash",
-        0,
-        0,
-        0.0,
-        visualization_cache_input,
-    )
+    # Step 3: Store all visualization results in DB (final, complete=True)
+    await _store_visualization_progress(paper_id, generated_items, visualization_cache_input, done=True)
 
     # Visualization complete — set progress to 100%
     status.progress_pct = 100.0
@@ -1764,7 +1913,7 @@ async def _run_full_analysis(paper_id: int):
         folder_name = paper["folder_name"]
         paper_dir = get_paper_dir(folder_name)
 
-        document_context = await asyncio.to_thread(load_or_build_document_context, paper_dir)
+        document_context = await run_pipeline_blocking(load_or_build_document_context, paper_dir)
         phase_inputs = document_context.get("phase_inputs", {})
         sections = document_context.get("sections", {})
         try:
@@ -1935,7 +2084,7 @@ async def _run_full_analysis(paper_id: int):
             previous.append(r4["text"])
 
         # Phase 6: Visualization Planning & Generation (Gemini Pro 3)
-        # Gemini Pro 3 decides up to 5 visualizations, each Mermaid or PaperBanana
+        # Gemini Pro 3 decides up to 10 visualizations, each Mermaid or PaperBanana
         all_results = []
         if r1.get("text") and not _is_error_result(r1["text"]):
             all_results.append(r1["text"])
@@ -2330,7 +2479,7 @@ async def get_mermaid(paper_id: int):
     visualization_input = ""
     recipe_text = ""
     try:
-        document_context = await asyncio.to_thread(load_or_build_document_context, paper_dir)
+        document_context = await run_pipeline_blocking(load_or_build_document_context, paper_dir)
         visualization_input = str(document_context.get("phase_inputs", {}).get("visualization", ""))
     except FileNotFoundError:
         pass
@@ -2340,16 +2489,11 @@ async def get_mermaid(paper_id: int):
 
     prompt = f"""Generate a Mermaid flowchart diagram that shows the experimental process/methodology flow of this research paper.
 
-CRITICAL RULES (Mermaid v10.x compatibility):
-1. Return ONLY the Mermaid code. No markdown fences, no explanation.
-2. Start with "flowchart TD" or "flowchart LR". Do NOT use "graph TD".
-3. NEVER use --- frontmatter blocks or accTitle/accDescr.
-4. Use simple alphanumeric node IDs (A, B, step1, step2). NEVER use Korean in node IDs.
-5. ALWAYS wrap labels containing special characters in double quotes: A["레이저 소스 (1064nm)"]
-6. Special characters that MUST be quoted: parentheses (), colons :, semicolons ;, pipes |, angles <>.
-7. For edge labels use: A -->|"label text"| B
-8. Keep labels concise (under 30 chars).
-9. Do NOT use HTML tags in labels except <br/> for line breaks.
+{_MERMAID_SYNTAX_RULES}
+
+{_MERMAID_STYLE_RULES}
+
+추가 규칙: 모든 노드 레이블과 엣지 레이블을 반드시 한국어로 작성해.
 
 Paper title: {paper['title']}
 {recipe_text}
@@ -2360,27 +2504,9 @@ Paper text excerpt:
 Return ONLY valid Mermaid syntax starting with "flowchart TD" or "flowchart LR".
 """
 
-    result = await call_interaction(prompt, model="gemini-3.5-flash", store=False)
+    result = await call_interaction(prompt, lane="chat", model="gemini-3.5-flash", store=False)
 
-    # Clean up the mermaid code
-    mermaid_code = result["text"].strip()
-    # Remove markdown code fence if present
-    if mermaid_code.startswith("```"):
-        lines = mermaid_code.split("\n")
-        # Remove first and last line (fences)
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        mermaid_code = "\n".join(lines).strip()
-
-    # Sanitize: remove frontmatter and accTitle if LLM included them anyway
-    import re as _re
-    # Strip --- frontmatter block
-    fm_match = _re.match(r"^\s*---\s*\n.*?\n\s*---\s*\n?", mermaid_code, _re.DOTALL)
-    if fm_match:
-        mermaid_code = mermaid_code[fm_match.end():]
-    # Strip accTitle/accDescr lines
-    mermaid_code = _re.sub(r"^\s*accTitle\s*:.*$", "", mermaid_code, flags=_re.MULTILINE)
-    mermaid_code = _re.sub(r"^\s*accDescr\s*:.*$", "", mermaid_code, flags=_re.MULTILINE)
-    mermaid_code = mermaid_code.strip()
+    mermaid_code = _sanitize_mermaid_code(result["text"])
 
     return MermaidResult(
         paper_id=paper_id,
@@ -2394,7 +2520,7 @@ Return ONLY valid Mermaid syntax starting with "flowchart TD" or "flowchart LR".
 async def get_visualizations(paper_id: int):
     """
     Get the visualization plan and generated diagrams/figures for a paper.
-    Gemini Pro 3 plans up to 5 visualizations (Mermaid + PaperBanana mix).
+    Gemini Pro 3 plans up to 10 visualizations (Mermaid + PaperBanana mix).
     """
     paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
     if paper is None:
@@ -2419,6 +2545,155 @@ async def get_visualizations(paper_id: int):
         )
     except (json.JSONDecodeError, TypeError):
         return VisualizationPlanResponse(paper_id=paper_id)
+
+
+async def _update_stored_visualization_item(
+    paper_id: int, viz_id: int, new_fields: dict
+) -> Optional[dict]:
+    """Patch one item inside the latest stored visualization row.
+
+    Returns the updated item dict, or None when no stored row/item matches.
+    """
+    viz_row = await get_latest_completed_phase_row(paper_id, "visualization")
+    if viz_row is None:
+        return None
+    data = viz_row.get("parsed_result")
+    if not isinstance(data, dict):
+        return None
+    items = data.get("items")
+    if not isinstance(items, list):
+        return None
+
+    updated_item = None
+    for item in items:
+        if isinstance(item, dict) and item.get("id") == viz_id:
+            item.update(new_fields)
+            updated_item = item
+            break
+    if updated_item is None:
+        return None
+
+    await execute_update(
+        "UPDATE analysis_results SET result = ? WHERE id = ?",
+        (json.dumps(data, ensure_ascii=False), viz_row["id"]),
+    )
+    return updated_item
+
+
+@router.post("/{paper_id}/mermaid/repair", response_model=MermaidResult)
+async def repair_mermaid(paper_id: int, request: MermaidRepairRequest):
+    """
+    Self-heal a Mermaid diagram that failed to parse in the renderer.
+
+    The client sends the failing code plus the parser error message; Gemini
+    fixes the code while keeping the content and styling. When viz_id is
+    given, the repaired code is persisted into the stored visualization row.
+    """
+    paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
+    if paper is None:
+        raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
+
+    prompt = f"""아래 Mermaid 코드가 파서 오류로 렌더링에 실패했어. 오류를 고친 전체 코드를 반환해줘.
+
+{_MERMAID_SYNTAX_RULES}
+
+파서 오류 메시지:
+{request.error_message[:500]}
+
+실패한 코드:
+{request.mermaid_code[:6000]}
+
+지침:
+- 다이어그램의 내용(노드, 엣지, 레이블)과 스타일(classDef 색상, 화살표 종류)은 최대한 유지해.
+- 파서 오류의 원인만 최소한으로 고쳐.
+- linkStyle 인덱스가 엣지 수를 벗어나면 해당 linkStyle 줄을 삭제해.
+- 수정된 전체 Mermaid 코드만 반환해. 설명 금지."""
+
+    result = await call_interaction(prompt, lane="chat", model="gemini-3.5-flash", store=False)
+    repaired = _sanitize_mermaid_code(result["text"])
+    if not repaired:
+        raise HTTPException(status_code=502, detail="Repair produced empty Mermaid code.")
+
+    if request.viz_id is not None:
+        await _update_stored_visualization_item(
+            paper_id,
+            request.viz_id,
+            {"mermaid_code": repaired, "status": "completed", "error_message": None},
+        )
+
+    return MermaidResult(
+        paper_id=paper_id,
+        mermaid_code=repaired,
+        diagram_type="flowchart",
+        description=None,
+    )
+
+
+@router.post(
+    "/{paper_id}/visualizations/{viz_id}/regenerate",
+    response_model=VisualizationItem,
+)
+async def regenerate_visualization(paper_id: int, viz_id: int):
+    """
+    Regenerate a single Mermaid visualization item with the current prompt
+    (styling rules included) and persist it, without re-running the analysis.
+    """
+    paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
+    if paper is None:
+        raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
+
+    viz_row = await get_latest_completed_phase_row(paper_id, "visualization")
+    data = (viz_row or {}).get("parsed_result") or {}
+    items = data.get("items") if isinstance(data, dict) else None
+    stored_item = next(
+        (it for it in items or [] if isinstance(it, dict) and it.get("id") == viz_id),
+        None,
+    )
+    if stored_item is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Visualization {viz_id} not found for paper {paper_id}.",
+        )
+    if stored_item.get("tool") != "mermaid":
+        raise HTTPException(
+            status_code=400,
+            detail="Only mermaid visualizations can be regenerated here.",
+        )
+
+    # Rebuild the generation contexts the pipeline used
+    visualization_input = ""
+    try:
+        document_context = await run_pipeline_blocking(
+            load_or_build_document_context, get_paper_dir(paper["folder_name"])
+        )
+        visualization_input = str(
+            document_context.get("phase_inputs", {}).get("visualization", "")
+        )
+    except FileNotFoundError:
+        pass
+
+    phase_rows = await get_latest_completed_phase_rows(
+        paper_id,
+        phases=["screening", "citation", "visual", "recipe", "deep_dive"],
+    )
+    previous_results = [
+        _phase_result_snippet(phase_rows[phase], 3000)
+        for phase in ["screening", "citation", "visual", "recipe", "deep_dive"]
+        if phase in phase_rows
+    ]
+
+    code = await _generate_single_mermaid(
+        paper_id, stored_item, visualization_input, previous_results
+    )
+    if not code:
+        raise HTTPException(status_code=502, detail="Regeneration produced empty Mermaid code.")
+
+    updated = await _update_stored_visualization_item(
+        paper_id,
+        viz_id,
+        {"mermaid_code": code, "status": "completed", "error_message": None},
+    )
+    return VisualizationItem(**(updated or {**stored_item, "mermaid_code": code}))
 
 
 @router.get("/{paper_id}/report", response_model=ReportResponse)
@@ -2612,7 +2887,7 @@ async def _generate_experiment_plan_impl(paper_id: int):
     paper_dir = get_paper_dir(paper["folder_name"])
     recipe_context = ""
     try:
-        document_context = await asyncio.to_thread(load_or_build_document_context, paper_dir)
+        document_context = await run_pipeline_blocking(load_or_build_document_context, paper_dir)
         recipe_context = str(document_context.get("phase_inputs", {}).get("recipe", ""))
     except FileNotFoundError:
         pass
@@ -2665,7 +2940,7 @@ Return ONLY valid JSON (마크다운 펜스 없이):
 }}
 """
 
-    result = await call_interaction(prompt, model="gemini-3.5-flash", store=False)
+    result = await call_interaction(prompt, lane="chat", model="gemini-3.5-flash", store=False)
     cleaned_text = _clean_llm_json(result["text"])
 
     # Validate JSON
@@ -2731,7 +3006,11 @@ async def get_experiment_plan(paper_id: int):
 # Agent Chat (SSE streaming)
 # ---------------------------------------------------------------------------
 
-_CHAT_MODEL = "gemini-3.5-flash"
+_CHAT_MODEL = MODEL_CHAT
+
+# The analysis path already retries transient failures; chat used to fail on the
+# first blip, which is exactly when the pipeline is hammering the same quota.
+_CHAT_MAX_ATTEMPTS = 3
 
 
 @router.post("/{paper_id}/chat")
@@ -2765,10 +3044,15 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
     paper_dir = get_paper_dir(paper["folder_name"])
     chat_context = ""
     try:
-        document_context = await asyncio.to_thread(load_or_build_document_context, paper_dir)
+        # Reserved pool: the pipeline must never be able to queue a question
+        # behind its own fan-out.
+        document_context = await run_chat_blocking(load_or_build_document_context, paper_dir)
         chat_context = str(document_context.get("phase_inputs", {}).get("chat", ""))
-    except FileNotFoundError:
-        pass
+    except (FileNotFoundError, RuntimeError) as exc:
+        # A `force` artifact refresh deletes and rebuilds the text sidecar; a chat
+        # request landing inside that window raises rather than 404s. Answer from
+        # the phase snippets alone instead of failing the turn.
+        logger.warning("Chat context unavailable for paper %s: %s", paper_id, exc)
 
     latest_phase_rows = await get_latest_completed_phase_rows(
         paper_id,
@@ -2830,23 +3114,50 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
     transcript_parts.append(f"사용자: {message}")
     chat_input = "\n".join(transcript_parts)
 
-    # 6. Stream via SSE — stream_interaction이 executor+Queue 브릿지를 담당한다.
+    # 6. Stream via SSE — stream_interaction(lane="chat")이 전용 풀에서 브릿지를 담당한다.
+    #
+    # 파이프라인과 같은 쿼터를 때리는 순간이 곧 채팅이 실패하기 쉬운 순간이라,
+    # 분석 경로처럼 재시도한다. 단 토큰이 이미 나간 뒤의 실패는 답변을 되감을 수
+    # 없으므로 terminal이다. 클라이언트가 끊으면 즉시 소비를 멈춘다.
     async def event_generator():
-        try:
-            async for ev in stream_interaction(
-                chat_input,
-                model=_CHAT_MODEL,
-                system_instruction=system_prompt,
-                store=False,
-            ):
-                if ev["type"] == "token":
-                    yield f"data: {json.dumps({'type': 'token', 'content': ev['text']}, ensure_ascii=False)}\n\n"
-                elif ev["type"] == "done":
-                    cost = calc_cost(_CHAT_MODEL, ev["tokens_in"], ev["tokens_out"])
-                    yield f"data: {json.dumps({'type': 'done', 'tokens_in': ev['tokens_in'], 'tokens_out': ev['tokens_out'], 'cost_usd': cost}, ensure_ascii=False)}\n\n"
-        except Exception as exc:
-            logger.error("Chat stream error: %s", exc)
-            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
+        last_error: Exception | None = None
+        streamed_any = False
+
+        for attempt in range(_CHAT_MAX_ATTEMPTS):
+            try:
+                async for ev in stream_interaction(
+                    chat_input,
+                    lane="chat",
+                    model=_CHAT_MODEL,
+                    system_instruction=system_prompt,
+                    store=False,
+                ):
+                    if await request.is_disconnected():
+                        logger.info(
+                            "Chat client disconnected for paper %s; abandoning stream", paper_id
+                        )
+                        return
+                    if ev["type"] == "token":
+                        streamed_any = True
+                        yield f"data: {json.dumps({'type': 'token', 'content': ev['text']}, ensure_ascii=False)}\n\n"
+                    elif ev["type"] == "done":
+                        cost = calc_cost(_CHAT_MODEL, ev["tokens_in"], ev["tokens_out"])
+                        yield f"data: {json.dumps({'type': 'done', 'tokens_in': ev['tokens_in'], 'tokens_out': ev['tokens_out'], 'cost_usd': cost}, ensure_ascii=False)}\n\n"
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "Chat stream failed for paper %s (attempt %d/%d): %s",
+                    paper_id, attempt + 1, _CHAT_MAX_ATTEMPTS, exc,
+                )
+                if streamed_any or attempt == _CHAT_MAX_ATTEMPTS - 1:
+                    break
+                await asyncio.sleep(2 ** attempt)
+
+        logger.error("Chat stream error for paper %s: %s", paper_id, last_error)
+        yield f"data: {json.dumps({'type': 'error', 'message': str(last_error)}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -2926,6 +3237,7 @@ async def rewrite_section(paper_id: int, req: RewriteRequest):
             raise RuntimeError("no chain id")
         result = await call_interaction(
             prompt,
+            lane="chat",
             model="gemini-3.5-flash",
             thinking_level="low",
             previous_interaction_id=chain_id,
@@ -2935,6 +3247,7 @@ async def rewrite_section(paper_id: int, req: RewriteRequest):
         result = await call_interaction(
             f"다음 논문 분석 결과를 읽고 아래 수준으로 다시 설명해줘. {level_instruction}\n\n"
             f"분석 결과:\n{original['result']}",
+            lane="chat",
             model="gemini-3.5-flash",
             thinking_level="low",
             store=False,

@@ -260,6 +260,11 @@ export interface VisualizationPlan {
 // Settings types
 export interface Settings {
   gemini_api_key: string;
+  gemini_key_unreadable: boolean;
+  openai_api_key: string;
+  openai_key_unreadable: boolean;
+  image_provider: 'openai' | 'gemini';
+  image_quality: 'low' | 'medium' | 'high';
   library_path: string;
   theme: 'dark' | 'light';
   default_domain: string;
@@ -393,10 +398,10 @@ async function request<T>(
   if (!response.ok) {
     let errorMessage =
       response.status >= 500
-        ? '서버 응답을 기다리는 중 문제가 발생했습니다.'
+        ? '서버 응답을 기다리는 동안 문제가 생겼어요.'
         : response.status === 404
-          ? '요청한 항목을 찾을 수 없습니다.'
-          : '요청을 처리하지 못했습니다.';
+          ? '요청한 항목을 찾지 못했어요.'
+          : '요청을 처리하지 못했어요.';
     let details: unknown = undefined;
     try {
       const errorBody = await response.json();
@@ -585,6 +590,32 @@ export async function getMermaid(paperId: string): Promise<MermaidDiagram> {
 }
 
 
+export interface MermaidRepairRequest {
+  mermaid_code: string;
+  error_message: string;
+  viz_id?: number | null;
+}
+
+export async function repairMermaid(
+  paperId: string | number,
+  data: MermaidRepairRequest
+): Promise<MermaidDiagram> {
+  return request<MermaidDiagram>(`/analysis/${paperId}/mermaid/repair`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function regenerateVisualization(
+  paperId: string | number,
+  vizId: number
+): Promise<VisualizationItem> {
+  return request<VisualizationItem>(
+    `/analysis/${paperId}/visualizations/${vizId}/regenerate`,
+    { method: 'POST' }
+  );
+}
+
 export async function getVisualizations(
   paperId: string
 ): Promise<VisualizationPlan> {
@@ -639,9 +670,15 @@ export async function generateExperimentPlan(
 // Agent Chat (SSE streaming)
 // ---------------------------------------------------------------------------
 
+/** Lifecycle of a single chat turn, tracked per message so several can coexist. */
+export type ChatMessageStatus = 'pending' | 'streaming' | 'done' | 'error';
+
 export interface ChatMessage {
+  id: string;
   role: 'user' | 'agent';
   content: string;
+  status: ChatMessageStatus;
+  error?: string;
 }
 
 export interface ChatDoneMeta {
@@ -650,19 +687,32 @@ export interface ChatDoneMeta {
   cost_usd: number;
 }
 
+/** Raised when the backend reports a failure through the SSE `error` event. */
+export class ChatStreamError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ChatStreamError';
+  }
+}
+
+/**
+ * `history` must NOT contain `message` — the backend appends it as the final
+ * user turn, so including it here would send the question to Gemini twice.
+ */
 export async function chatWithAgent(
   paperId: string,
   message: string,
   history: ChatMessage[],
   onToken: (text: string) => void,
   onDone: (meta: ChatDoneMeta) => void,
-  onError: (error: string) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const url = `${getApiBase()}/analysis/${paperId}/chat`;
 
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    signal,
     body: JSON.stringify({
       message,
       history: history.map((m) => ({
@@ -683,34 +733,49 @@ export async function chatWithAgent(
   const decoder = new TextDecoder();
   let buffer = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
 
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+
+        let data: {
+          type?: string;
+          content?: string;
+          message?: string;
+          tokens_in?: number;
+          tokens_out?: number;
+          cost_usd?: number;
+        };
         try {
-          const data = JSON.parse(line.slice(6));
-          if (data.type === 'token') {
-            onToken(data.content);
-          } else if (data.type === 'done') {
-            onDone({
-              tokens_in: data.tokens_in,
-              tokens_out: data.tokens_out,
-              cost_usd: data.cost_usd,
-            });
-          } else if (data.type === 'error') {
-            onError(data.message);
-          }
+          data = JSON.parse(line.slice(6));
         } catch {
-          // ignore SSE parse errors
+          throw new ChatStreamError('응답 스트림을 해석하지 못했습니다.');
+        }
+
+        if (data.type === 'token') {
+          onToken(data.content ?? '');
+        } else if (data.type === 'done') {
+          onDone({
+            tokens_in: data.tokens_in ?? 0,
+            tokens_out: data.tokens_out ?? 0,
+            cost_usd: data.cost_usd ?? 0,
+          });
+          return;
+        } else if (data.type === 'error') {
+          throw new ChatStreamError(data.message || 'Chat failed');
         }
       }
     }
+  } finally {
+    // Frees the connection when we return on `done`, throw, or the caller aborts.
+    void reader.cancel().catch(() => {});
   }
 }
 

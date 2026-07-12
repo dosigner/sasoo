@@ -69,23 +69,23 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
       // Default fallback UI
       return (
-        <div className="flex h-full min-h-screen items-center justify-center bg-surface-900 p-4 [.light_&]:bg-surface-50">
-          <div className="w-full max-w-md rounded-xl border border-surface-700 bg-surface-800 p-8 shadow-xl [.light_&]:border-surface-200 [.light_&]:bg-white">
+        <div className="flex h-full min-h-screen items-center justify-center bg-bg p-4">
+          <div className="w-full max-w-md rounded-xl border border-border bg-surface p-8 shadow-xl">
             {/* Error Icon */}
             <div className="flex justify-center mb-6">
-              <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-                <AlertTriangle className="w-8 h-8 text-red-400 [.light_&]:text-red-600" />
+              <div className="w-16 h-16 rounded-full bg-danger/10 border border-danger/20 flex items-center justify-center">
+                <AlertTriangle className="w-8 h-8 text-danger" />
               </div>
             </div>
 
             {/* Error Title */}
-            <h1 className="mb-3 text-center text-xl font-bold text-surface-100 [.light_&]:text-surface-900">
-              오류가 발생했습니다
+            <h1 className="mb-3 text-center text-xl font-semibold text-fg">
+              오류가 생겼어요
             </h1>
 
             {/* Error Message */}
-            <p className="mb-6 break-words text-center text-sm text-surface-400 [.light_&]:text-surface-600">
-              {error?.message || '알 수 없는 오류가 발생했습니다.'}
+            <p className="mb-6 break-words text-center text-sm text-fg-muted">
+              {error?.message || '알 수 없는 오류가 생겼어요.'}
             </p>
 
             {/* Action Buttons */}
@@ -93,7 +93,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
               {/* Retry Button */}
               <button
                 onClick={this.handleReset}
-                className="w-full px-4 py-2.5 bg-primary-500 hover:bg-primary-600 active:bg-primary-700 text-white rounded-lg font-medium transition-colors duration-200 shadow-sm hover:shadow-md"
+                className="w-full px-4 py-2.5 bg-fg hover:bg-fg/85 active:bg-fg/85 text-bg rounded-lg font-medium transition-colors duration-200"
               >
                 다시 시도
               </button>
@@ -101,7 +101,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
               {/* Home Button */}
               <Link
                 to="/"
-                className="w-full rounded-lg border border-surface-600 bg-surface-700 px-4 py-2.5 text-center font-medium text-surface-200 transition-colors duration-200 hover:bg-surface-600 [.light_&]:border-surface-300 [.light_&]:bg-surface-100 [.light_&]:text-surface-700 [.light_&]:hover:bg-surface-200"
+                className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-center font-medium text-fg transition-colors duration-200 hover:bg-surface-hover"
               >
                 홈으로 돌아가기
               </Link>
@@ -109,11 +109,11 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
             {/* Developer Info (only in development) */}
             {process.env.NODE_ENV === 'development' && error && (
-              <details className="mt-6 rounded-lg border border-surface-700 bg-surface-900 p-4 [.light_&]:border-surface-200 [.light_&]:bg-surface-50">
-                <summary className="cursor-pointer text-xs font-medium text-surface-300 hover:text-surface-200 [.light_&]:text-surface-600 [.light_&]:hover:text-surface-700">
+              <details className="mt-6 rounded-lg border border-border bg-bg p-4">
+                <summary className="cursor-pointer text-xs font-medium text-fg-secondary hover:text-fg">
                   개발자 정보 (Development Only)
                 </summary>
-                <pre className="mt-3 max-h-40 overflow-auto text-2xs text-red-400 [.light_&]:text-red-600">
+                <pre className="mt-3 max-h-40 overflow-auto text-2xs text-danger">
                   {error.stack}
                 </pre>
               </details>

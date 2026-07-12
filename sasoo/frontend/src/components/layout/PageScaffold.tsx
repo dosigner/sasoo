@@ -17,7 +17,7 @@ export default function PageScaffold({
         : 'page-scaffold-default';
 
   return (
-    <div className={`page-scaffold ${variantClass}`}>
+    <div className={`page-scaffold scroll-stable ${variantClass}`}>
       {children}
     </div>
   );

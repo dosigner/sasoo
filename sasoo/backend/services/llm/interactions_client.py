@@ -7,8 +7,34 @@ import asyncio
 import logging
 import os
 from datetime import datetime, timedelta, timezone
+from typing import Literal
+
+from services.concurrency import CHAT_EXECUTOR, PIPELINE_EXECUTOR, PIPELINE_LLM_SEM
 
 logger = logging.getLogger(__name__)
+
+# 모든 호출은 lane을 명시해야 한다 — 기본값을 두지 않는 것이 핵심이다.
+# asyncio 기본 풀을 암묵적으로 쓰다가 파이프라인 팬아웃이 풀을 채우면
+# 채팅 SSE가 스레드를 못 잡고 무한 대기하는 사고(2026-07-11)의 재발 방지.
+#   "chat"     : 사용자가 실시간으로 기다리는 대화형 경로. 전용 풀, 세마포어 없음.
+#   "pipeline" : 분석 파이프라인. 전용 풀 + PIPELINE_LLM_SEM으로 동시 호출 제한.
+Lane = Literal["chat", "pipeline"]
+
+
+def _executor_for(lane: Lane):
+    if lane == "chat":
+        return CHAT_EXECUTOR
+    if lane == "pipeline":
+        return PIPELINE_EXECUTOR
+    raise ValueError(f"unknown lane: {lane!r}")
+
+
+async def _run_on_lane(lane: Lane, fn):
+    loop = asyncio.get_running_loop()
+    if lane == "pipeline":
+        async with PIPELINE_LLM_SEM:
+            return await loop.run_in_executor(PIPELINE_EXECUTOR, fn)
+    return await loop.run_in_executor(_executor_for(lane), fn)
 
 _SYSTEM_INSTRUCTION_KO = (
     "너는 Sasoo(사수)라는 한국어 AI 연구 보조원이야. "
@@ -34,6 +60,7 @@ def _get_client():
 async def call_interaction(
     prompt,
     *,
+    lane: Lane,
     model: str = "gemini-3.5-flash",
     system_instruction: str | None = None,
     thinking_level: str | None = None,
@@ -90,12 +117,13 @@ async def call_interaction(
                     time.sleep(_RETRY_DELAYS[attempt])
         raise RuntimeError(f"Interactions API call failed after retries: {last_err}")
 
-    return await asyncio.get_event_loop().run_in_executor(None, _sync_call)
+    return await _run_on_lane(lane, _sync_call)
 
 
 async def stream_interaction(
     prompt,
     *,
+    lane: Lane,
     model: str = "gemini-3.5-flash",
     system_instruction: str | None = None,
     thinking_level: str | None = None,
@@ -171,32 +199,40 @@ async def stream_interaction(
         finally:
             asyncio.run_coroutine_threadsafe(q.put(("__end__", None)), loop)
 
-    loop.run_in_executor(None, _sync_stream)
+    # pipeline lane은 스트림이 살아있는 동안 세마포어 슬롯 하나를 점유한다.
+    sem = PIPELINE_LLM_SEM if lane == "pipeline" else None
+    if sem is not None:
+        await sem.acquire()
+    try:
+        loop.run_in_executor(_executor_for(lane), _sync_stream)
 
-    done_seen = False
-    while True:
-        kind, data = await q.get()
-        if kind == "token":
-            yield {"type": "token", "text": data}
-        elif kind == "done":
-            done_seen = True
-            yield {"type": "done", **data}
-        elif kind == "error":
-            raise RuntimeError(f"Interactions API stream failed: {data}")
-        else:  # "__end__"
-            if not done_seen:
-                # SDK 스트림이 interaction.completed 없이 정상 종료한 경우
-                # (예: 서버가 종료 이벤트를 누락) — done 없이 조용히 끝나면
-                # 프론트 onDone(비용 집계·액션 버튼)이 영영 호출되지 않는다.
-                # 폴백 done을 yield해 소비자가 항상 종료를 인지하게 한다.
-                yield {
-                    "type": "done",
-                    "tokens_in": 0,
-                    "tokens_out": 0,
-                    "tokens_thought": 0,
-                    "interaction_id": None,
-                }
-            break
+        done_seen = False
+        while True:
+            kind, data = await q.get()
+            if kind == "token":
+                yield {"type": "token", "text": data}
+            elif kind == "done":
+                done_seen = True
+                yield {"type": "done", **data}
+            elif kind == "error":
+                raise RuntimeError(f"Interactions API stream failed: {data}")
+            else:  # "__end__"
+                if not done_seen:
+                    # SDK 스트림이 interaction.completed 없이 정상 종료한 경우
+                    # (예: 서버가 종료 이벤트를 누락) — done 없이 조용히 끝나면
+                    # 프론트 onDone(비용 집계·액션 버튼)이 영영 호출되지 않는다.
+                    # 폴백 done을 yield해 소비자가 항상 종료를 인지하게 한다.
+                    yield {
+                        "type": "done",
+                        "tokens_in": 0,
+                        "tokens_out": 0,
+                        "tokens_thought": 0,
+                        "interaction_id": None,
+                    }
+                break
+    finally:
+        if sem is not None:
+            sem.release()
 
 
 async def _cached_pdf_uri(paper_id: int) -> str | None:
@@ -240,7 +276,7 @@ async def upload_pdf_for_paper(paper_id: int, pdf_path: str) -> str:
             uploaded = client.files.upload(file=pdf_path)
             return uploaded.uri
 
-        uri = await asyncio.get_event_loop().run_in_executor(None, _sync_upload)
+        uri = await asyncio.get_running_loop().run_in_executor(PIPELINE_EXECUTOR, _sync_upload)
         now = datetime.now(timezone.utc)
         await execute_update(
             "UPDATE papers SET pdf_file_uri = ?, pdf_file_expires_at = ? WHERE id = ?",

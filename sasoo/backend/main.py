@@ -98,21 +98,28 @@ async def lifespan(app: FastAPI):
     from models.database import fetch_all
     from services.crypto import decrypt_value
     try:
-        rows = await fetch_all("SELECT key, value FROM settings WHERE key = 'gemini_api_key'")
+        rows = await fetch_all("SELECT key, value FROM settings WHERE key IN ('gemini_api_key', 'openai_api_key')")
+        env_names = {"gemini_api_key": "GEMINI_API_KEY", "openai_api_key": "OPENAI_API_KEY"}
         for row in rows:
-            k, v = row["key"], row["value"]
-            if v:
-                decrypted = decrypt_value(v)
-                if decrypted and k == "gemini_api_key":
-                    os.environ["GEMINI_API_KEY"] = decrypted
+            if row["value"]:
+                decrypted = decrypt_value(row["value"])
+                if decrypted:
+                    os.environ[env_names[row["key"]]] = decrypted
         print("[Sasoo] API keys loaded from database into environment.")
     except Exception as exc:
         print(f"[Sasoo] Warning: Could not load API keys from DB: {exc}")
 
-    # Always sync GOOGLE_API_KEY with GEMINI_API_KEY (PaperBanana uses this)
-    gemini_key = os.environ.get("GEMINI_API_KEY", "")
-    if gemini_key:
-        os.environ["GOOGLE_API_KEY"] = gemini_key
+    # 프로세스가 중간에 죽으면 papers.status가 'analyzing'으로 영구 고착된다.
+    # 기동 시점에 살아있는 분석은 없으므로 전부 error로 정리한다.
+    try:
+        from models.database import execute_update
+        n = await execute_update(
+            "UPDATE papers SET status = 'error' WHERE status = 'analyzing'"
+        )
+        if n:
+            print(f"[Sasoo] Recovered {n} paper(s) stuck in 'analyzing'.")
+    except Exception as exc:
+        print(f"[Sasoo] Warning: stuck-analysis recovery failed: {exc}")
 
     # Load .md agent profiles and initialize domain router
     from services.agents import load_all_agents

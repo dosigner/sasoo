@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useLocation, Link } from 'react-router-dom';
 import {
   Loader2,
 } from 'lucide-react';
@@ -9,10 +10,9 @@ import {
 } from '@/lib/api';
 import CostDashboard from '@/components/CostDashboard';
 import { useToast } from '@/components/Toast';
-import { Toggle } from '@/components/ui';
+import { Select, Toggle } from '@/components/ui';
 import { S } from '@/lib/strings';
 import { AppIcon } from '@/components/icons';
-import LevelSlider, { type LevelKey } from '@/components/LevelSlider';
 
 function SettingPanel({
   kicker,
@@ -48,6 +48,11 @@ function SettingPanel({
 export default function Settings() {
   const defaultSettings: SettingsType = {
     gemini_api_key: '',
+    gemini_key_unreadable: false,
+    openai_api_key: '',
+    openai_key_unreadable: false,
+    image_provider: 'openai',
+    image_quality: 'high',
     library_path: '',
     default_domain: 'optics',
     auto_analyze: false,
@@ -67,39 +72,61 @@ export default function Settings() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const location = useLocation();
+  const costSectionRef = useRef<HTMLDivElement | null>(null);
 
   // Form state
   const [geminiKey, setGeminiKey] = useState('');
+  const [openaiKey, setOpenaiKey] = useState('');
   const [libraryPath, setLibraryPath] = useState('');
-  const [theme, setTheme] = useState<'dark' | 'light'>('light');
+  const [theme, setTheme] = useState<'dark' | 'light'>(
+    () => (localStorage.getItem('sasoo-theme') === 'dark' ? 'dark' : 'light')
+  );
+  const [density, setDensity] = useState<'comfortable' | 'compact'>(
+    () => (localStorage.getItem('sasoo-density') === 'compact' ? 'compact' : 'comfortable')
+  );
   const [autoAnalyze, setAutoAnalyze] = useState(false);
   const [pdfParserMode, setPdfParserMode] = useState<'java'>('java');
   const [extractionPipelineVersion, setExtractionPipelineVersion] = useState<'legacy' | 'resolver_v1'>('resolver_v1');
-  const [researchContext, setResearchContext] = useState('');
-  const [defaultLevel, setDefaultLevel] = useState<LevelKey>('masters');
+  const [imageProvider, setImageProvider] = useState<'openai' | 'gemini'>('openai');
+  const [imageQuality, setImageQuality] = useState<'low' | 'medium' | 'high'>('high');
 
   // API key status (masked value from server, for display only)
   const [geminiKeyStatus, setGeminiKeyStatus] = useState('');
+  const [geminiKeyUnreadable, setGeminiKeyUnreadable] = useState(false);
+  const [openaiKeyStatus, setOpenaiKeyStatus] = useState('');
+  const [openaiKeyUnreadable, setOpenaiKeyUnreadable] = useState(false);
 
   // Visibility toggles
   const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [showOpenaiKey, setShowOpenaiKey] = useState(false);
   const geminiInputRef = useRef<HTMLInputElement | null>(null);
+  const openaiInputRef = useRef<HTMLInputElement | null>(null);
 
   const clearApiKeyInputs = useCallback(() => {
     setGeminiKey('');
     if (geminiInputRef.current) geminiInputRef.current.value = '';
+    setOpenaiKey('');
+    if (openaiInputRef.current) openaiInputRef.current.value = '';
   }, []);
 
   const applySettingsToForm = useCallback((data: SettingsType) => {
     setLibraryPath(data.library_path || '');
-    setTheme((data.theme || 'light') as 'dark' | 'light');
+    // Theme is already initialized from localStorage (the live, instantly-applied
+    // preference) and kept in sync by the effect below. Only fall back to the
+    // backend value on a true first run, where no local preference exists yet —
+    // otherwise a stale/unsaved backend value would silently revert an
+    // already-applied theme toggle on every settings reload.
+    if (!localStorage.getItem('sasoo-theme') && data.theme) {
+      setTheme(data.theme as 'dark' | 'light');
+    }
     setAutoAnalyze(data.auto_analyze ?? false);
     setPdfParserMode((data.pdf_parser_mode || 'java') as 'java');
     setExtractionPipelineVersion(
       (data.extraction_pipeline_version || 'resolver_v1') as 'legacy' | 'resolver_v1'
     );
-    setResearchContext(data.research_context || '');
-    setDefaultLevel((data.default_explanation_level || 'masters') as LevelKey);
+    setImageProvider((data.image_provider || 'openai') as 'openai' | 'gemini');
+    setImageQuality((data.image_quality || 'high') as 'low' | 'medium' | 'high');
   }, []);
 
   // -----------------------------------------------------------------------
@@ -114,6 +141,9 @@ export default function Settings() {
         if (cancelled) return;
         // Store masked keys for status display, but DON'T populate inputs
         setGeminiKeyStatus(data.gemini_api_key || '');
+        setGeminiKeyUnreadable(data.gemini_key_unreadable ?? false);
+        setOpenaiKeyStatus(data.openai_api_key || '');
+        setOpenaiKeyUnreadable(data.openai_key_unreadable ?? false);
         // Key inputs start empty — user types new key only when they want to change
         clearApiKeyInputs();
         applySettingsToForm(data);
@@ -149,6 +179,24 @@ export default function Settings() {
   }, [theme]);
 
   // -----------------------------------------------------------------------
+  // Apply density (localStorage-only UI preference, no backend field)
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    document.documentElement.classList.toggle('density-compact', density === 'compact');
+    localStorage.setItem('sasoo-density', density);
+  }, [density]);
+
+  // -----------------------------------------------------------------------
+  // Deep-link into the cost section (Home "자세히 보기" -> /settings#cost)
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    if (loading) return;
+    if (location.hash === '#cost' && costSectionRef.current) {
+      costSectionRef.current.scrollIntoView({ block: 'start' });
+    }
+  }, [loading, location.hash]);
+
+  // -----------------------------------------------------------------------
   // Save settings
   // -----------------------------------------------------------------------
   const handleSave = useCallback(async () => {
@@ -164,16 +212,20 @@ export default function Settings() {
         auto_analyze: autoAnalyze,
         pdf_parser_mode: pdfParserMode,
         extraction_pipeline_version: extractionPipelineVersion,
-        research_context: researchContext,
-        default_explanation_level: defaultLevel,
+        image_provider: imageProvider,
+        image_quality: imageQuality,
       };
       if (geminiKey.trim()) payload.gemini_api_key = geminiKey.trim();
+      if (openaiKey.trim()) payload.openai_api_key = openaiKey.trim();
 
       const updated = await updateSettings(payload);
       setBaselineSettings(updated);
       applySettingsToForm(updated);
       // Update status badges with new masked values
       setGeminiKeyStatus(updated.gemini_api_key || '');
+      setGeminiKeyUnreadable(updated.gemini_key_unreadable ?? false);
+      setOpenaiKeyStatus(updated.openai_api_key || '');
+      setOpenaiKeyUnreadable(updated.openai_key_unreadable ?? false);
       // Clear key inputs after save. This also fights password-manager autofill
       // that can leave the settings screen permanently "dirty".
       clearApiKeyInputs();
@@ -187,7 +239,7 @@ export default function Settings() {
     } finally {
       setSaving(false);
     }
-  }, [geminiKey, libraryPath, theme, autoAnalyze, pdfParserMode, extractionPipelineVersion, researchContext, defaultLevel, toast, applySettingsToForm, clearApiKeyInputs]);
+  }, [geminiKey, openaiKey, libraryPath, theme, autoAnalyze, pdfParserMode, extractionPipelineVersion, imageProvider, imageQuality, toast, applySettingsToForm, clearApiKeyInputs]);
 
   const handleBrowseDirectory = useCallback(async () => {
     if (!window.electronAPI?.openDirectory) {
@@ -231,8 +283,8 @@ export default function Settings() {
     setAutoAnalyze(baselineSettings.auto_analyze ?? false);
     setPdfParserMode((baselineSettings.pdf_parser_mode || 'java') as 'java');
     setExtractionPipelineVersion((baselineSettings.extraction_pipeline_version || 'resolver_v1') as 'legacy' | 'resolver_v1');
-    setResearchContext(baselineSettings.research_context || '');
-    setDefaultLevel((baselineSettings.default_explanation_level || 'masters') as LevelKey);
+    setImageProvider((baselineSettings.image_provider || 'openai') as 'openai' | 'gemini');
+    setImageQuality((baselineSettings.image_quality || 'high') as 'low' | 'medium' | 'high');
     setSaved(false);
   }, [baselineSettings, clearApiKeyInputs]);
 
@@ -241,20 +293,21 @@ export default function Settings() {
   // -----------------------------------------------------------------------
   const hasChanges =
     geminiKey.trim() !== '' ||
+    openaiKey.trim() !== '' ||
     libraryPath !== (baselineSettings.library_path || '') ||
     theme !== (baselineSettings.theme || 'light') ||
     autoAnalyze !== (baselineSettings.auto_analyze ?? false) ||
     pdfParserMode !== (baselineSettings.pdf_parser_mode || 'java') ||
     extractionPipelineVersion !== (baselineSettings.extraction_pipeline_version || 'resolver_v1') ||
-    researchContext !== (baselineSettings.research_context || '') ||
-    defaultLevel !== ((baselineSettings.default_explanation_level || 'masters') as LevelKey);
+    imageProvider !== (baselineSettings.image_provider || 'openai') ||
+    imageQuality !== (baselineSettings.image_quality || 'high');
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-6 h-6 text-primary-400 animate-spin" />
-          <span className="text-sm text-surface-400">{S.settings.loadingSettings}</span>
+          <Loader2 className="w-6 h-6 text-accent animate-spin" />
+          <span className="text-sm text-fg-muted">{S.settings.loadingSettings}</span>
         </div>
       </div>
     );
@@ -327,28 +380,46 @@ export default function Settings() {
         </div>
       )}
 
+      <Link
+        to="/profile"
+        className="mb-4 inline-flex items-center gap-1.5 text-sm text-accent transition-colors hover:text-accent-hover"
+      >
+        <AppIcon name="agents" className="w-4 h-4" />
+        {S.settings.openProfileLink}
+        <AppIcon name="arrow-right" className="w-3.5 h-3.5" />
+      </Link>
+
       <div className="space-y-4">
         <SettingPanel
           kicker={S.settings.sectionCurrent}
           title={S.settings.apiKeys}
-          description="현재 연결 상태를 먼저 확인하고, 바꿀 키만 새로 입력합니다."
+          description="현재 연결 상태를 먼저 확인하고, 바꿀 키만 새로 입력해요."
         >
           <div className="space-y-4">
             <div>
               <div className="flex items-center gap-2 mb-1.5">
-                <label className="text-xs text-surface-400">
+                <label className="text-xs text-fg-muted">
                   {S.settings.geminiKey}
                 </label>
                 {geminiKeyStatus ? (
-                  <span className="text-2xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
+                  <span className="text-2xs text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded">
                     {S.settings.keyConfigured} ({geminiKeyStatus})
                   </span>
+                ) : geminiKeyUnreadable ? (
+                  <span className="text-2xs text-danger bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded">
+                    {S.settings.keyUnreadable}
+                  </span>
                 ) : (
-                  <span className="text-2xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">
+                  <span className="text-2xs text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded">
                     {S.settings.keyNotConfigured}
                   </span>
                 )}
               </div>
+              {geminiKeyUnreadable && (
+                <p className="text-2xs text-danger mb-1.5">
+                  {S.settings.keyUnreadableHelp}
+                </p>
+              )}
               <div className="relative">
                 <input
                   ref={geminiInputRef}
@@ -366,7 +437,7 @@ export default function Settings() {
                 />
                 <button
                   onClick={() => setShowGeminiKey(!showGeminiKey)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-surface-500 hover:text-surface-300 transition-colors"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-fg-muted hover:text-fg-secondary transition-colors"
                   style={{ borderRadius: 'var(--radius-control)' }}
                   type="button"
                 >
@@ -377,13 +448,13 @@ export default function Settings() {
                   )}
                 </button>
               </div>
-              <p className="text-2xs text-surface-600 mt-1">
+              <p className="text-2xs text-fg-muted mt-1">
                 {S.settings.geminiHelp}{' '}
                 <a
                   href="https://aistudio.google.com/api-keys"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-primary-400 hover:text-primary-300 underline underline-offset-2"
+                  className="text-accent hover:text-accent-hover underline underline-offset-2"
                 >
                   Google AI Studio
                 </a>
@@ -395,44 +466,120 @@ export default function Settings() {
 
         <SettingPanel
           kicker={S.settings.sectionEdit}
-          title={S.settings.researcherProfile}
-          description={S.settings.researcherProfileDesc}
+          title={S.settings.imageSection}
+          description={S.settings.imageSectionDesc}
         >
           <div className="space-y-4">
+
             <div>
-              <label className="settings-label text-xs text-surface-400 block mb-1.5" htmlFor="research-context">
-                {S.settings.researchContext}
-              </label>
-              <input
-                id="research-context"
-                type="text"
-                value={researchContext}
-                onChange={(e) => setResearchContext(e.target.value)}
-                placeholder={S.settings.researchContextPlaceholder}
-                className="input"
-              />
-              <p className="settings-helper text-2xs text-surface-600 mt-1">
-                {S.settings.researchContextHelper}
+              <div className="flex items-center gap-2 mb-1.5">
+                <label className="text-xs text-fg-muted">
+                  {S.settings.openaiKey}
+                </label>
+                {openaiKeyStatus ? (
+                  <span className="text-2xs text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded">
+                    {S.settings.keyConfigured} ({openaiKeyStatus})
+                  </span>
+                ) : openaiKeyUnreadable ? (
+                  <span className="text-2xs text-danger bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded">
+                    {S.settings.keyUnreadable}
+                  </span>
+                ) : (
+                  <span className="text-2xs text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded">
+                    {S.settings.keyNotConfigured}
+                  </span>
+                )}
+              </div>
+              {openaiKeyUnreadable && (
+                <p className="text-2xs text-danger mb-1.5">
+                  {S.settings.keyUnreadableHelp}
+                </p>
+              )}
+              <div className="relative">
+                <input
+                  ref={openaiInputRef}
+                  type={showOpenaiKey ? 'text' : 'password'}
+                  value={openaiKey}
+                  onChange={(e) => setOpenaiKey(e.target.value)}
+                  name="sasoo-openai-api-key"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-bwignore="true"
+                  spellCheck={false}
+                  placeholder={S.settings.enterNewKey}
+                  className="input pr-10"
+                />
+                <button
+                  onClick={() => setShowOpenaiKey(!showOpenaiKey)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-fg-muted hover:text-fg-secondary transition-colors"
+                  style={{ borderRadius: 'var(--radius-control)' }}
+                  type="button"
+                >
+                  {showOpenaiKey ? (
+                    <AppIcon name="eye-off" className="w-4 h-4" />
+                  ) : (
+                    <AppIcon name="eye" className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+              <p className="text-2xs text-fg-muted mt-1">
+                {S.settings.openaiHelp}{' '}
+                <a
+                  href="https://platform.openai.com/api-keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent hover:text-accent-hover underline underline-offset-2"
+                >
+                  OpenAI Platform
+                </a>
+                {S.settings.getKeyAt('')}
               </p>
             </div>
 
-            <div>
-              <label className="settings-label text-xs text-surface-400 block mb-1.5">
-                {S.settings.defaultLevel}
-              </label>
-              <LevelSlider value={defaultLevel} onChange={setDefaultLevel} />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs text-fg-muted mb-1.5 block">
+                  {S.settings.imageProvider}
+                </label>
+                <Select
+                  value={imageProvider}
+                  onValueChange={(value) => setImageProvider(value as 'openai' | 'gemini')}
+                  aria-label={S.settings.imageProvider}
+                  options={[
+                    { value: 'openai', label: S.settings.imageProviderOpenai },
+                    { value: 'gemini', label: S.settings.imageProviderGemini },
+                  ]}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-fg-muted mb-1.5 block">
+                  {S.settings.imageQuality}
+                </label>
+                <Select
+                  value={imageQuality}
+                  onValueChange={(value) => setImageQuality(value as 'low' | 'medium' | 'high')}
+                  aria-label={S.settings.imageQuality}
+                  options={[
+                    { value: 'high', label: 'high ($0.17/장)' },
+                    { value: 'medium', label: 'medium ($0.04/장)' },
+                    { value: 'low', label: 'low ($0.005/장)' },
+                  ]}
+                />
+              </div>
             </div>
+
           </div>
         </SettingPanel>
 
         <SettingPanel
           kicker={S.settings.sectionEdit}
           title={S.settings.librarySection}
-          description="논문이 쌓이는 경로와 업로드 직후의 기본 동작을 정리합니다."
+          description="논문이 쌓이는 경로와 업로드 직후의 기본 동작을 정리해요."
         >
           <div className="space-y-4">
             <div>
-              <label className="text-xs text-surface-400 block mb-1.5">
+              <label className="text-xs text-fg-muted block mb-1.5">
                 {S.settings.libraryPath}
               </label>
               <div className="flex flex-wrap gap-2">
@@ -465,7 +612,7 @@ export default function Settings() {
                   {saving ? S.settings.saving : S.settings.save}
                 </button>
               </div>
-              <p className="text-2xs text-surface-600 mt-1">
+              <p className="text-2xs text-fg-muted mt-1">
                 {S.settings.libraryPathHelp}
               </p>
             </div>
@@ -478,34 +625,34 @@ export default function Settings() {
             />
 
             <div>
-              <label className="text-xs text-surface-400 block mb-1.5">
+              <label className="text-xs text-fg-muted block mb-1.5">
                 {S.settings.pdfParser}
               </label>
-              <select
+              <Select
                 value={pdfParserMode}
-                onChange={(e) => setPdfParserMode(e.target.value as 'java')}
-                className="input"
-              >
-                <option value="java">{S.settings.pdfParserJava}</option>
-              </select>
-              <p className="text-2xs text-surface-600 mt-1">
+                onValueChange={(value) => setPdfParserMode(value as 'java')}
+                aria-label={S.settings.pdfParser}
+                options={[{ value: 'java', label: S.settings.pdfParserJava }]}
+              />
+              <p className="text-2xs text-fg-muted mt-1">
                 {S.settings.pdfParserHelp}
               </p>
             </div>
 
             <div>
-              <label className="text-xs text-surface-400 block mb-1.5">
+              <label className="text-xs text-fg-muted block mb-1.5">
                 {S.settings.extractionPipeline}
               </label>
-              <select
+              <Select
                 value={extractionPipelineVersion}
-                onChange={(e) => setExtractionPipelineVersion(e.target.value as 'legacy' | 'resolver_v1')}
-                className="input"
-              >
-                <option value="legacy">{S.settings.extractionPipelineLegacy}</option>
-                <option value="resolver_v1">{S.settings.extractionPipelineResolverV1}</option>
-              </select>
-              <p className="text-2xs text-surface-600 mt-1">
+                onValueChange={(value) => setExtractionPipelineVersion(value as 'legacy' | 'resolver_v1')}
+                aria-label={S.settings.extractionPipeline}
+                options={[
+                  { value: 'legacy', label: S.settings.extractionPipelineLegacy },
+                  { value: 'resolver_v1', label: S.settings.extractionPipelineResolverV1 },
+                ]}
+              />
+              <p className="text-2xs text-fg-muted mt-1">
                 {S.settings.extractionPipelineHelp}
               </p>
             </div>
@@ -515,14 +662,14 @@ export default function Settings() {
         <SettingPanel
           kicker={S.settings.sectionEdit}
           title={S.settings.appearance}
-          description="현재 작업 환경에 맞게 화면 톤을 조정합니다."
+          description="현재 작업 환경에 맞게 화면 톤을 조정해요."
         >
           <div className="flex items-center gap-3">
             <button
               onClick={() => setTheme('dark')}
               className={`settings-appearance-option flex items-center gap-2 px-4 py-3 border transition-colors ${
                 theme === 'dark'
-                  ? 'settings-appearance-option-active border-primary-500 bg-primary-500/10 text-primary-400'
+                  ? 'settings-appearance-option-active border-accent bg-accent/10 text-accent'
                   : 'settings-appearance-option-inactive'
               }`}
               style={{ borderRadius: 'var(--radius-control)' }}
@@ -534,7 +681,7 @@ export default function Settings() {
               onClick={() => setTheme('light')}
               className={`settings-appearance-option flex items-center gap-2 px-4 py-3 border transition-colors ${
                 theme === 'light'
-                  ? 'settings-appearance-option-active border-primary-500 bg-primary-500/10 text-primary-400'
+                  ? 'settings-appearance-option-active border-accent bg-accent/10 text-accent'
                   : 'settings-appearance-option-inactive'
               }`}
               style={{ borderRadius: 'var(--radius-control)' }}
@@ -543,15 +690,49 @@ export default function Settings() {
               <span className="text-sm">{S.settings.light}</span>
             </button>
           </div>
+
+          <div className="mt-4">
+            <label className="text-xs text-fg-muted block mb-1.5">
+              {S.settings.density}
+            </label>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setDensity('comfortable')}
+                className={`settings-appearance-option flex items-center gap-2 px-4 py-3 border transition-colors ${
+                  density === 'comfortable'
+                    ? 'settings-appearance-option-active border-accent bg-accent/10 text-accent'
+                    : 'settings-appearance-option-inactive'
+                }`}
+                style={{ borderRadius: 'var(--radius-control)' }}
+              >
+                <AppIcon name="grid" className="w-4 h-4" />
+                <span className="text-sm">{S.settings.densityComfortable}</span>
+              </button>
+              <button
+                onClick={() => setDensity('compact')}
+                className={`settings-appearance-option flex items-center gap-2 px-4 py-3 border transition-colors ${
+                  density === 'compact'
+                    ? 'settings-appearance-option-active border-accent bg-accent/10 text-accent'
+                    : 'settings-appearance-option-inactive'
+                }`}
+                style={{ borderRadius: 'var(--radius-control)' }}
+              >
+                <AppIcon name="list" className="w-4 h-4" />
+                <span className="text-sm">{S.settings.densityCompact}</span>
+              </button>
+            </div>
+          </div>
         </SettingPanel>
 
-        <SettingPanel
-          kicker={S.settings.sectionCurrent}
-          title={S.settings.usageCosts}
-          description="최근 분석이 얼마나 호출과 비용을 만들었는지 확인합니다."
-        >
-          <CostDashboard />
-        </SettingPanel>
+        <div id="cost" ref={costSectionRef}>
+          <SettingPanel
+            kicker={S.settings.sectionCurrent}
+            title={S.settings.usageCosts}
+            description="최근 분석이 얼마나 호출과 비용을 만들었는지 확인해요."
+          >
+            <CostDashboard />
+          </SettingPanel>
+        </div>
       </div>
     </div>
   );

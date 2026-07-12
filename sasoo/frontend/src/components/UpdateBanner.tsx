@@ -51,23 +51,23 @@ export default function UpdateBanner() {
   if (state === 'hidden' || dismissed) return null;
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2 bg-primary-500/10 border-b border-primary-500/20 text-sm shrink-0">
+    <div className="flex items-center gap-3 px-4 py-2 bg-accent/10 border-b border-accent/20 text-sm shrink-0">
       <div className="flex-1 min-w-0 flex items-center gap-2">
         {state === 'available' && (
           <>
-            <Download className="w-3.5 h-3.5 text-primary-400 shrink-0" />
-            <span className="text-surface-200 truncate">
-              새 버전 <strong className="text-primary-400">v{version}</strong> 사용 가능
+            <Download className="w-3.5 h-3.5 text-accent shrink-0" />
+            <span className="text-fg truncate">
+              새 버전 <strong className="text-accent">v{version}</strong>, 지금 받을 수 있어요
             </span>
           </>
         )}
         {state === 'downloading' && (
           <>
-            <RefreshCw className="w-3.5 h-3.5 text-primary-400 shrink-0 animate-spin" />
-            <span className="text-surface-200">다운로드 중... {progress}%</span>
-            <div className="flex-1 max-w-48 h-1.5 bg-surface-700 rounded-full overflow-hidden">
+            <RefreshCw className="w-3.5 h-3.5 text-accent shrink-0 animate-spin" />
+            <span className="text-fg">다운로드 중... {progress}%</span>
+            <div className="flex-1 max-w-48 h-1.5 bg-surface rounded-full overflow-hidden">
               <div
-                className="h-full bg-primary-500 rounded-full transition-all duration-300"
+                className="h-full bg-accent rounded-full transition-all duration-300"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -75,9 +75,9 @@ export default function UpdateBanner() {
         )}
         {state === 'ready' && (
           <>
-            <Download className="w-3.5 h-3.5 text-green-400 shrink-0" />
-            <span className="text-surface-200">
-              <strong className="text-green-400">v{version}</strong> 다운로드 완료
+            <Download className="w-3.5 h-3.5 text-success shrink-0" />
+            <span className="text-fg">
+              <strong className="text-success">v{version}</strong> 다운로드 완료
             </span>
           </>
         )}
@@ -88,7 +88,7 @@ export default function UpdateBanner() {
         {state === 'available' && (
           <button
             onClick={handleDownload}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-primary-500 hover:bg-primary-600 text-white text-xs font-medium transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-accent hover:bg-accent-hover text-accent-fg text-xs font-medium transition-colors"
           >
             {isMac ? (
               <>
@@ -106,7 +106,7 @@ export default function UpdateBanner() {
         {state === 'ready' && (
           <button
             onClick={handleInstall}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-green-600 hover:bg-green-700 text-white text-xs font-medium transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-success text-accent-fg hover:bg-success/90 text-xs font-medium transition-colors"
           >
             <RefreshCw className="w-3 h-3" />
             재시작하여 설치
@@ -115,7 +115,7 @@ export default function UpdateBanner() {
         {state !== 'downloading' && (
           <button
             onClick={() => setDismissed(true)}
-            className="p-1 rounded text-surface-500 hover:text-surface-300 hover:bg-surface-700/50 transition-colors"
+            className="p-1 rounded text-fg-muted hover:text-fg-secondary hover:bg-surface-hover/50 transition-colors"
             aria-label="닫기"
           >
             <X className="w-3.5 h-3.5" />

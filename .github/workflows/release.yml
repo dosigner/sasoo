@@ -82,6 +82,14 @@ jobs:
         env:
           npm_config_frozen_lockfile: "false"
 
+      - name: Reinstall electron-builder binaries (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (Test-Path node_modules) { Remove-Item -Recurse -Force node_modules }
+          if (Test-Path "$env:LOCALAPPDATA\electron-builder\Cache") { Remove-Item -Recurse -Force "$env:LOCALAPPDATA\electron-builder\Cache" }
+          pnpm install --no-frozen-lockfile
+
       - name: Build (${{ runner.os }})
         shell: bash
         run: |
@@ -140,83 +148,94 @@ jobs:
           3. If launch is still blocked, right-click `Sasoo.app` and choose `Open`.
           EOF
 
-          RELEASE_JSON=""
+          CREATED_DRAFT_RELEASE="false"
+          EXISTING_RELEASE_WAS_DRAFT="false"
 
           if RELEASE_JSON="$(gh api "repos/$GH_REPO/releases/tags/$TAG_NAME" 2>/dev/null)"; then
             echo "Found existing release for $TAG_NAME"
-          else
-            echo "No tagged release for $TAG_NAME; looking for a reusable draft release"
-            RELEASE_JSON="$(
-              gh api "repos/$GH_REPO/releases?per_page=100" \
-                --jq '.[] | select(.draft and .name == env.TAG_NAME) | @json' \
-                | head -n 1
-            )"
-          fi
-
-          RELEASE_PAYLOAD="$(jq -n \
-            --arg tag "$TAG_NAME" \
-            --arg name "$TAG_NAME" \
-            --arg body "$(cat release-notes.md)" \
-            '{
-              tag_name: $tag,
-              name: $name,
-              body: $body,
-              draft: true
-            }'
-          )"
-
-          if [[ -n "$RELEASE_JSON" ]]; then
             RELEASE_ID="$(jq -r '.id' <<<"$RELEASE_JSON")"
+            EXISTING_RELEASE_WAS_DRAFT="$(jq -r '.draft // false' <<<"$RELEASE_JSON")"
+            RELEASE_PAYLOAD="$(jq -n \
+              --arg body "$(cat release-notes.md)" \
+              '{
+                body: $body
+              }'
+            )"
             gh api \
               --method PATCH \
               "repos/$GH_REPO/releases/$RELEASE_ID" \
               --input - <<<"$RELEASE_PAYLOAD" \
               >/dev/null
           else
+            echo "No published release for $TAG_NAME; checking for an existing draft release"
             RELEASE_JSON="$(
-              gh api \
-                --method POST \
-                "repos/$GH_REPO/releases" \
-                --input - <<<"$RELEASE_PAYLOAD"
-            )"
-            RELEASE_ID="$(jq -r '.id' <<<"$RELEASE_JSON")"
-          fi
-
-          RELEASE_JSON="$(gh api "repos/$GH_REPO/releases/$RELEASE_ID")"
-          UPLOAD_URL="$(jq -r '.upload_url' <<<"$RELEASE_JSON" | sed 's/{?name,label}//')"
-
-          for asset_path in artifacts/*; do
-            asset_name="$(basename "$asset_path")"
-            existing_asset_id="$(
-              jq -r --arg name "$asset_name" \
-                '.assets[]? | select(.name == $name) | .id' \
-                <<<"$RELEASE_JSON" \
+              gh api "repos/$GH_REPO/releases?per_page=100" \
+                --jq '.[] | select(.draft and (.tag_name == env.TAG_NAME or .name == env.TAG_NAME)) | @json' \
                 | head -n 1
             )"
 
-            if [[ -n "$existing_asset_id" ]]; then
+            if [[ -n "$RELEASE_JSON" ]]; then
+              echo "Found existing draft release for $TAG_NAME"
+              RELEASE_ID="$(jq -r '.id' <<<"$RELEASE_JSON")"
+              EXISTING_RELEASE_WAS_DRAFT="true"
+              RELEASE_PAYLOAD="$(jq -n \
+                --arg tag "$TAG_NAME" \
+                --arg name "$TAG_NAME" \
+                --arg body "$(cat release-notes.md)" \
+                '{
+                  tag_name: $tag,
+                  name: $name,
+                  body: $body
+                }'
+              )"
               gh api \
-                --method DELETE \
-                "repos/$GH_REPO/releases/assets/$existing_asset_id" \
+                --method PATCH \
+                "repos/$GH_REPO/releases/$RELEASE_ID" \
+                --input - <<<"$RELEASE_PAYLOAD" \
                 >/dev/null
+            else
+              echo "No release exists for $TAG_NAME; creating a new draft release"
+              RELEASE_PAYLOAD="$(jq -n \
+                --arg tag "$TAG_NAME" \
+                --arg name "$TAG_NAME" \
+                --arg body "$(cat release-notes.md)" \
+                '{
+                  tag_name: $tag,
+                  name: $name,
+                  body: $body,
+                  draft: true
+                }'
+              )"
+              RELEASE_JSON="$(
+                gh api \
+                  --method POST \
+                  "repos/$GH_REPO/releases" \
+                  --input - <<<"$RELEASE_PAYLOAD"
+              )"
+              RELEASE_ID="$(jq -r '.id' <<<"$RELEASE_JSON")"
+              CREATED_DRAFT_RELEASE="true"
             fi
+          fi
 
-            encoded_name="$(jq -rn --arg v "$asset_name" '$v|@uri')"
-            content_type="$(file --brief --mime-type "$asset_path")"
-
-            gh api \
-              --method POST \
-              --header "Content-Type: $content_type" \
-              "${UPLOAD_URL}?name=${encoded_name}" \
-              --input "$asset_path" \
+          for asset_path in artifacts/*; do
+            gh release upload "$TAG_NAME" "$asset_path" \
+              --clobber \
+              -R "$GH_REPO" \
               >/dev/null
           done
 
-          gh api \
-            --method PATCH \
-            "repos/$GH_REPO/releases/$RELEASE_ID" \
-            --input - <<EOF
-          {
-            "draft": false
-          }
-          EOF
+          if [[ "$CREATED_DRAFT_RELEASE" == "true" || "$EXISTING_RELEASE_WAS_DRAFT" == "true" ]]; then
+            RELEASE_PAYLOAD="$(jq -n \
+              --arg tag "$TAG_NAME" \
+              --arg name "$TAG_NAME" \
+              '{
+                tag_name: $tag,
+                name: $name,
+                draft: false
+              }'
+            )"
+            gh api \
+              --method PATCH \
+              "repos/$GH_REPO/releases/$RELEASE_ID" \
+              --input - <<<"$RELEASE_PAYLOAD"
+          fi

@@ -19,19 +19,19 @@ const TONE_STYLES: Record<NonNullable<ContentStateProps['tone']>, {
   icon: string;
 }> = {
   default: {
-    shell: 'border-surface-700/45 bg-surface-900/45',
-    iconWrap: 'bg-primary-500/10 border-primary-500/10',
-    icon: 'text-primary-400',
+    shell: 'border-border/45 bg-surface/45',
+    iconWrap: 'bg-accent/10 border-accent/10',
+    icon: 'text-accent',
   },
   error: {
-    shell: 'border-red-500/20 bg-red-500/5',
-    iconWrap: 'bg-red-500/10 border-red-500/10',
-    icon: 'text-red-400',
+    shell: 'border-danger/20 bg-danger/5',
+    iconWrap: 'bg-danger/10 border-danger/10',
+    icon: 'text-danger',
   },
   muted: {
-    shell: 'border-surface-700/45 bg-surface-900/35',
-    iconWrap: 'bg-surface-800/90 border-surface-700/60',
-    icon: 'text-surface-500',
+    shell: 'border-border/45 bg-surface/35',
+    iconWrap: 'bg-surface/90 border-border/60',
+    icon: 'text-fg-muted',
   },
 };
 
@@ -67,11 +67,11 @@ export default function ContentState({
           <Icon className={`${styles.icon} ${compact ? 'h-4 w-4' : 'h-5 w-5'}`} />
         )}
       </div>
-      <h3 className={`${compact ? 'text-xs' : 'text-sm'} font-semibold text-surface-200`}>
+      <h3 className={`${compact ? 'text-xs' : 'text-sm'} font-semibold text-fg`}>
         {title}
       </h3>
       {description && (
-        <p className={`mt-1 max-w-sm text-surface-400 ${compact ? 'text-2xs' : 'text-xs'}`}>
+        <p className={`mt-1 max-w-sm text-fg-muted ${compact ? 'text-2xs' : 'text-xs'}`}>
           {description}
         </p>
       )}

@@ -27,7 +27,7 @@ def test_call_interaction_basic():
     fake_client = MagicMock()
     fake_client.interactions.create.return_value = _fake_interaction(total_thought_tokens=50)
     with patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        result = asyncio.run(call_interaction("안녕"))
+        result = asyncio.run(call_interaction("안녕", lane="pipeline"))
     assert result["text"] == "결과"
     assert result["interaction_id"] == "int_1"
     assert result["tokens_in"] == 100
@@ -47,7 +47,7 @@ def test_call_interaction_tokens_out_sums_output_and_thought_tokens():
     fake_client = MagicMock()
     fake_client.interactions.create.return_value = _fake_interaction(total_thought_tokens=762)
     with patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        result = asyncio.run(call_interaction("안녕"))
+        result = asyncio.run(call_interaction("안녕", lane="pipeline"))
     assert result["tokens_out"] == 50 + 762
     assert result["tokens_thought"] == 762
 
@@ -56,7 +56,7 @@ def test_call_interaction_no_disallowed_params_with_thinking_level():
     fake_client = MagicMock()
     fake_client.interactions.create.return_value = _fake_interaction()
     with patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        asyncio.run(call_interaction("안녕", thinking_level="high"))
+        asyncio.run(call_interaction("안녕", lane="pipeline", thinking_level="high"))
     kwargs = fake_client.interactions.create.call_args.kwargs
     assert set(kwargs.keys()) == {"model", "input", "system_instruction", "store", "generation_config"}
     generation_config = kwargs["generation_config"]
@@ -68,7 +68,7 @@ def test_call_interaction_chains_previous_id():
     fake_client = MagicMock()
     fake_client.interactions.create.return_value = _fake_interaction(interaction_id="int_2")
     with patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        asyncio.run(call_interaction("후속", previous_interaction_id="int_1"))
+        asyncio.run(call_interaction("후속", lane="pipeline", previous_interaction_id="int_1"))
     assert fake_client.interactions.create.call_args.kwargs["previous_interaction_id"] == "int_1"
 
 
@@ -79,7 +79,7 @@ def test_call_interaction_retries_on_error():
     ]
     with patch("services.llm.interactions_client._get_client", return_value=fake_client), \
          patch("services.llm.interactions_client._RETRY_DELAYS", [0, 0]):
-        result = asyncio.run(call_interaction("재시도"))
+        result = asyncio.run(call_interaction("재시도", lane="pipeline"))
     assert result["text"] == "결과"
     assert fake_client.interactions.create.call_count == 3
 
@@ -87,7 +87,7 @@ def test_call_interaction_retries_on_error():
 def test_call_interaction_store_false_with_previous_id_raises():
     with pytest.raises(ValueError, match="previous_interaction_id requires store=True"):
         asyncio.run(
-            call_interaction("후속", previous_interaction_id="int_1", store=False)
+            call_interaction("후속", lane="pipeline", previous_interaction_id="int_1", store=False)
         )
 
 
@@ -129,7 +129,7 @@ def test_stream_interaction_yields_tokens_then_done():
     fake_client.interactions.create.return_value = iter(events)
 
     with patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        result = asyncio.run(_collect(interactions_client.stream_interaction("hi")))
+        result = asyncio.run(_collect(interactions_client.stream_interaction("hi", lane="chat")))
 
     assert result[0] == {"type": "token", "text": "안"}
     assert result[1] == {"type": "token", "text": "녕"}
@@ -161,7 +161,7 @@ def test_stream_interaction_tokens_out_sums_output_and_thought_tokens():
     fake_client.interactions.create.return_value = iter(events)
 
     with patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        result = asyncio.run(_collect(interactions_client.stream_interaction("hi")))
+        result = asyncio.run(_collect(interactions_client.stream_interaction("hi", lane="chat")))
 
     done = result[-1]
     assert done["type"] == "done"
@@ -184,7 +184,7 @@ def test_stream_interaction_ignores_non_text_events():
     fake_client.interactions.create.return_value = iter(events)
 
     with patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        result = asyncio.run(_collect(interactions_client.stream_interaction("hi")))
+        result = asyncio.run(_collect(interactions_client.stream_interaction("hi", lane="chat")))
 
     tokens = [e for e in result if e["type"] == "token"]
     assert tokens == [{"type": "token", "text": "본문"}]
@@ -197,7 +197,7 @@ def test_stream_interaction_thinking_level_passed_without_disallowed_params():
     fake_client.interactions.create.return_value = iter(events)
 
     with patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        asyncio.run(_collect(interactions_client.stream_interaction("hi", thinking_level="low")))
+        asyncio.run(_collect(interactions_client.stream_interaction("hi", lane="chat", thinking_level="low")))
 
     kwargs = fake_client.interactions.create.call_args.kwargs
     assert kwargs["generation_config"] == {"thinking_level": "low"}
@@ -210,7 +210,7 @@ def test_stream_interaction_store_false_with_previous_id_raises():
         asyncio.run(
             _collect(
                 interactions_client.stream_interaction(
-                    "후속", previous_interaction_id="int_1", store=False
+                    "후속", lane="chat", previous_interaction_id="int_1", store=False
                 )
             )
         )
@@ -232,7 +232,7 @@ def test_stream_interaction_does_not_block_event_loop():
     fake_client.interactions.create.return_value = fake_events()
 
     async def _run():
-        agen = interactions_client.stream_interaction("hi")
+        agen = interactions_client.stream_interaction("hi", lane="chat")
         first = await agen.__anext__()
         # 이 지점에 도달했다는 것 자체가 생산자 스레드가 블록된 동안
         # 이벤트 루프가 살아 있었다는 증거다.
@@ -259,7 +259,7 @@ def test_stream_interaction_yields_fallback_done_when_stream_ends_without_comple
     fake_client.interactions.create.return_value = iter(events)
 
     with patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        result = asyncio.run(_collect(interactions_client.stream_interaction("hi")))
+        result = asyncio.run(_collect(interactions_client.stream_interaction("hi", lane="chat")))
 
     assert result[0] == {"type": "token", "text": "안"}
     assert result[1] == {"type": "token", "text": "녕"}
@@ -278,7 +278,7 @@ def test_stream_interaction_raises_on_stream_error():
     fake_client.interactions.create.side_effect = RuntimeError("boom")
 
     async def _run():
-        return await _collect(interactions_client.stream_interaction("hi"))
+        return await _collect(interactions_client.stream_interaction("hi", lane="chat"))
 
     with patch("services.llm.interactions_client._get_client", return_value=fake_client):
         with pytest.raises(RuntimeError, match="boom"):
@@ -408,3 +408,51 @@ def test_upload_pdf_for_paper_concurrent_calls_upload_once():
     assert results == ["uri-concurrent", "uri-concurrent"]
     fake_client.files.upload.assert_called_once_with(file="/tmp/fake.pdf")
     assert table.update_calls == 1
+
+
+# ---------------------------------------------------------------------------
+# Lane isolation — 채팅이 파이프라인 풀·세마포어에 절대 얽히지 않음을 고정한다.
+# ---------------------------------------------------------------------------
+
+def test_call_interaction_requires_lane():
+    with pytest.raises(TypeError):
+        asyncio.run(call_interaction("안녕"))  # lane 없이는 호출 자체가 성립하지 않는다
+
+
+def test_chat_lane_runs_on_chat_executor_and_skips_pipeline_sem():
+    from services.concurrency import PIPELINE_LLM_SEM
+    baseline = PIPELINE_LLM_SEM._value
+    seen = {}
+
+    def fake_create(**kwargs):
+        seen["thread"] = threading.current_thread().name
+        seen["sem_during"] = PIPELINE_LLM_SEM._value
+        return _fake_interaction()
+
+    fake_client = MagicMock()
+    fake_client.interactions.create.side_effect = fake_create
+    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+        asyncio.run(call_interaction("안녕", lane="chat"))
+
+    assert seen["thread"].startswith("sasoo-chat")
+    assert seen["sem_during"] == baseline  # chat lane은 파이프라인 세마포어를 잡지 않는다
+
+
+def test_pipeline_lane_runs_on_pipeline_executor_and_holds_sem():
+    from services.concurrency import PIPELINE_LLM_SEM
+    baseline = PIPELINE_LLM_SEM._value
+    seen = {}
+
+    def fake_create(**kwargs):
+        seen["thread"] = threading.current_thread().name
+        seen["sem_during"] = PIPELINE_LLM_SEM._value
+        return _fake_interaction()
+
+    fake_client = MagicMock()
+    fake_client.interactions.create.side_effect = fake_create
+    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+        asyncio.run(call_interaction("안녕", lane="pipeline"))
+
+    assert seen["thread"].startswith("sasoo-pipeline")
+    assert seen["sem_during"] == baseline - 1  # 호출 중 슬롯 하나 점유
+    assert PIPELINE_LLM_SEM._value == baseline  # 종료 후 반납

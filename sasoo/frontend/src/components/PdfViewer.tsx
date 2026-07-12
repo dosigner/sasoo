@@ -359,7 +359,7 @@ export default function PdfViewer({
       })
       .catch((loadError: Error) => {
         if (cancelled) return;
-        setError(loadError.message || 'PDF 문서를 렌더링하지 못했습니다.');
+        setError(loadError.message || 'PDF 문서를 렌더링하지 못했어요.');
         setLoading(false);
       });
 
@@ -549,11 +549,11 @@ export default function PdfViewer({
   return (
     <div
       ref={rootRef}
-      className="pdf-viewer-shell flex h-full flex-col bg-surface-950 [.light_&]:bg-white"
+      className="pdf-viewer-shell flex h-full flex-col bg-bg"
       aria-label={title || 'PDF viewer'}
       tabIndex={-1}
     >
-      <div className="flex flex-wrap items-center gap-2 border-b border-surface-800/80 bg-surface-950/92 px-3 py-2 [.light_&]:border-surface-200/80 [.light_&]:bg-white/92">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border/80 bg-surface/92 px-3 py-2">
         <button
           type="button"
           onClick={goToPreviousPage}
@@ -582,7 +582,7 @@ export default function PdfViewer({
             className="input h-8 w-14 px-2 py-1 text-center text-xs"
             aria-label="페이지 번호"
           />
-          <span className="text-xs font-medium text-surface-400">/ {Math.max(totalPages, 1)}</span>
+          <span className="text-xs font-medium text-fg-muted">/ {Math.max(totalPages, 1)}</span>
         </div>
 
         <button
@@ -596,7 +596,7 @@ export default function PdfViewer({
           <AppIcon name="chevron-right" className="h-4 w-4" />
         </button>
 
-        <div className="h-5 w-px bg-surface-800/80 [.light_&]:bg-surface-200/80" />
+        <div className="h-5 w-px bg-border/80" />
 
         <button
           type="button"
@@ -608,7 +608,7 @@ export default function PdfViewer({
           <AppIcon name="minimize" className="h-4 w-4" />
         </button>
 
-        <span className="min-w-[3.5rem] text-center text-xs font-medium text-surface-300">
+        <span className="min-w-[3.5rem] text-center text-xs font-medium text-fg-secondary">
           {scalePercent}%
         </span>
 
@@ -631,11 +631,11 @@ export default function PdfViewer({
         </button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-surface-800/80 bg-surface-950/88 px-3 py-2 [.light_&]:border-surface-200/80 [.light_&]:bg-white/90">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border/80 bg-surface/88 px-3 py-2">
         <div className="relative min-w-[14rem] flex-1">
           <AppIcon
             name="search"
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-500"
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted"
           />
           <input
             ref={searchInputRef}
@@ -684,12 +684,12 @@ export default function PdfViewer({
           <AppIcon name="chevron-right" className="h-4 w-4" />
         </button>
 
-        <div className="min-w-[7rem] text-right text-xs font-medium text-surface-400">
+        <div className="min-w-[7rem] text-right text-xs font-medium text-fg-muted">
           {matchCount.total > 0 ? `${matchCount.current} / ${matchCount.total}` : searchStatusLabel}
         </div>
       </div>
 
-      <div className="min-h-0 flex flex-1 overflow-hidden bg-[#09090b] [.light_&]:bg-white">
+      <div className="min-h-0 flex flex-1 overflow-hidden bg-bg">
         <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
           <div ref={viewerContainerRef} className="pdfjs-viewer-container absolute inset-0 h-full overflow-auto">
             <div ref={viewerRef} className="pdfViewer pdfjs-viewer-pages" />
@@ -700,7 +700,7 @@ export default function PdfViewer({
               <ContentState
                 icon={(props) => <AppIcon name="library" {...props} />}
                 title={S.pdf.loading}
-                description="문서 뷰어를 준비하고 있습니다."
+                description="문서 뷰어를 준비하고 있어요."
                 loading
                 tone="muted"
               />
@@ -724,7 +724,7 @@ export default function PdfViewer({
             <ContentState
               icon={(props) => <AppIcon name="library" {...props} />}
               title={S.pdf.loadFailed}
-              description="PDF 보기를 위해 JavaScript가 필요합니다."
+              description="JavaScript를 켜면 PDF를 볼 수 있어요."
               tone="error"
             />
           </div>

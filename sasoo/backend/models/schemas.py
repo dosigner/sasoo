@@ -8,9 +8,10 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
+
 
 
 # ---------------------------------------------------------------------------
@@ -383,16 +384,8 @@ class FullAnalysisResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# VizRouter / Mermaid
+# Mermaid
 # ---------------------------------------------------------------------------
-
-class VizRouterResult(BaseModel):
-    """Result from the visualization router."""
-    paper_id: int
-    recommended_viz: list[str] = Field(default_factory=list)
-    mermaid_code: Optional[str] = None
-    chart_configs: list[dict] = Field(default_factory=list)
-
 
 class MermaidResult(BaseModel):
     """Mermaid diagram generated for a paper's process flow."""
@@ -400,6 +393,13 @@ class MermaidResult(BaseModel):
     mermaid_code: str
     diagram_type: str = "flowchart"  # flowchart | sequence | state | class
     description: Optional[str] = None
+
+
+class MermaidRepairRequest(BaseModel):
+    """Client-reported parse failure asking the LLM to fix the diagram code."""
+    mermaid_code: str
+    error_message: str
+    viz_id: Optional[int] = None  # visualization item ordinal to persist into; None = don't persist
 
 
 # ---------------------------------------------------------------------------
@@ -422,6 +422,14 @@ class DomainResult(BaseModel):
 class SettingsModel(BaseModel):
     """Application settings."""
     gemini_api_key: Optional[str] = None
+    # True when a key IS stored but no available encryption key opens it.
+    # Without this the UI shows a bare "not configured" and the user has no
+    # way to tell that re-entering the key is what fixes it.
+    gemini_key_unreadable: bool = False
+    openai_api_key: Optional[str] = None
+    openai_key_unreadable: bool = False
+    image_provider: Literal["openai", "gemini"] = "openai"
+    image_quality: Literal["low", "medium", "high"] = "high"
     library_path: str = "./library"
     default_domain: DomainType = DomainType.OPTICS
     auto_analyze: bool = True
@@ -445,6 +453,9 @@ class SettingsModel(BaseModel):
 class SettingsUpdate(BaseModel):
     """Partial settings update."""
     gemini_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None
+    image_provider: Optional[Literal["openai", "gemini"]] = None
+    image_quality: Optional[Literal["low", "medium", "high"]] = None
     library_path: Optional[str] = None
     default_domain: Optional[DomainType] = None
     auto_analyze: Optional[bool] = None

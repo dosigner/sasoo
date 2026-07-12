@@ -60,9 +60,25 @@ class RuntimeLibraryPathTests(unittest.TestCase):
 
 
 class CryptoStorageTests(unittest.TestCase):
-    def test_packaged_production_prefers_file_key_storage(self) -> None:
+    """
+    Encryption must not depend on the OS keyring.
+
+    Keyring backends can block or fail inside bundled Python subprocesses on
+    macOS, so packaged builds have always used the file key. The key store used
+    to be chosen by launch mode, which meant a key written in development was
+    unreadable once packaged. Encryption now uses the file key in every mode;
+    the keyring is read-only fallback for values sealed by older builds.
+    """
+
+    def test_encryption_uses_the_file_key_not_the_keyring(self) -> None:
         fake_key = b"fake-key"
-        with patch.dict(os.environ, {"SASOO_ENV": "production"}, clear=False):
-            with patch("services.crypto._get_or_create_file_key", return_value=fake_key) as file_key:
-                self.assertEqual(crypto._get_or_create_fernet_key(), fake_key)
-                file_key.assert_called_once()
+        for env in ("production", "development"):
+            with self.subTest(env=env):
+                with patch.dict(os.environ, {"SASOO_ENV": env}, clear=False):
+                    with (
+                        patch("services.crypto._read_file_key", return_value=fake_key) as file_key,
+                        patch("services.crypto._read_keyring_key") as keyring_key,
+                    ):
+                        self.assertEqual(crypto._encryption_key(), fake_key)
+                        file_key.assert_called_once()
+                        keyring_key.assert_not_called()

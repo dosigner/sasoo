@@ -13,7 +13,9 @@ import { useToast } from '@/components/Toast';
 import { S } from '@/lib/strings';
 import { buildChatStarterPrompts, buildWorkbenchStatusSummary } from '@/lib/workbenchSummaries';
 import WorkbenchHeader from '@/components/workbench/WorkbenchHeader';
-import { ContentState, Modal } from '@/components/ui';
+import type { CitationFocus } from '@/components/AnalysisPanel';
+import type { CitationTarget } from '@/components/ChatPanel';
+import { ContentState, Modal, Select } from '@/components/ui';
 import { useWorkbenchLayout } from '@/hooks/useWorkbenchLayout';
 import { useWorkbenchAnalysisControls } from '@/hooks/useWorkbenchAnalysisControls';
 import { getAgentMeta, getAllAgents, type AgentMeta } from '@/lib/agents';
@@ -48,6 +50,7 @@ export default function Workbench() {
   const [paperLoading, setPaperLoading] = useState(true);
   const [paperError, setPaperError] = useState<string | null>(null);
   const [navigationRequest, setNavigationRequest] = useState<PdfNavigationRequest | null>(null);
+  const [citationFocus, setCitationFocus] = useState<CitationFocus | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatDraft, setChatDraft] = useState('');
   const [agentChanging, setAgentChanging] = useState(false);
@@ -136,7 +139,50 @@ export default function Workbench() {
   useEffect(() => {
     setChatOpen(false);
     setChatDraft('');
+    setCitationFocus(null);
   }, [paper?.id]);
+
+  // Chat citation click-back → jump the PDF and/or focus a gallery item.
+  const handleCitationClick = useCallback((target: CitationTarget) => {
+    const stamp = Date.now();
+
+    if (target.type === 'page') {
+      setNavigationRequest({
+        page: target.n,
+        requestId: `cite-p${target.n}-${stamp}`,
+        source: 'citation',
+      });
+      return;
+    }
+
+    if (target.type === 'figure') {
+      const match = (figures?.figures ?? []).find(
+        (f) => f.figure_num?.match(/\d+/)?.[0] === String(target.n),
+      );
+      setCitationFocus({ tab: 'figures', anchor: `figure-${target.n}`, token: stamp });
+      if (match && typeof match.page_number === 'number') {
+        setNavigationRequest({
+          page: match.page_number,
+          requestId: `cite-f${target.n}-${stamp}`,
+          source: 'citation',
+        });
+      }
+      return;
+    }
+
+    // table
+    const match = (tables?.tables ?? []).find(
+      (t) => t.table_num?.match(/\d+/)?.[0] === String(target.n),
+    );
+    setCitationFocus({ tab: 'tables', anchor: `table-${target.n}`, token: stamp });
+    if (match && typeof match.page_number === 'number') {
+      setNavigationRequest({
+        page: match.page_number,
+        requestId: `cite-t${target.n}-${stamp}`,
+        source: 'citation',
+      });
+    }
+  }, [figures, tables]);
 
   const onConfirmAnalysis = useCallback(async (selection?: AnalysisProfileSelection) => {
     try {
@@ -176,7 +222,7 @@ export default function Workbench() {
         <ContentState
           icon={(props) => <AppIcon name="spinner" {...props} />}
           title={S.workbench.loading}
-          description="논문 메타데이터와 분석 워크벤치를 준비하고 있습니다."
+          description="논문 메타데이터와 분석 워크벤치를 준비하고 있어요."
           loading
           tone="muted"
         />
@@ -199,7 +245,6 @@ export default function Workbench() {
 
   const pdfUrl = getPdfUrl(String(paper.id));
   const paperId = id ?? String(paper.id);
-  const screeningCompleted = status?.phases.some((phase) => phase.phase === 'screening' && phase.status === 'completed') ?? false;
   const artifactStatus = {
     text_ready: paper.text_ready,
     visual_ready: paper.visual_ready,
@@ -225,30 +270,26 @@ export default function Workbench() {
   return (
     <div className="flex h-full flex-col">
       <Modal open={showAnalysisConfirm} onClose={() => setShowAnalysisConfirm(false)}>
-        <h3 className="mb-2 text-lg font-semibold text-surface-100">분석을 시작할까요?</h3>
-        <p className="mb-4 text-sm text-surface-400">
-          논문 분석에 Gemini API를 사용합니다.
-          예상 비용: <span className="font-medium text-primary-400">$0.5 ~ $2.0</span> / 논문
+        <h3 className="mb-2 text-lg font-semibold text-fg">분석을 시작할까요?</h3>
+        <p className="mb-4 text-sm text-fg-muted">
+          논문 분석에 Gemini API를 사용해요.
+          예상 비용: <span className="font-medium text-accent">$0.5 ~ $2.0</span> / 논문
         </p>
         <div className="mb-4">
-          <label className="mb-1.5 block text-xs text-surface-400">
+          <label className="mb-1.5 block text-xs text-fg-muted">
             {S.workbench.paperbananaProfile}
           </label>
-          <select
+          <Select
             value={analysisProfileSelection}
-            onChange={(e) => setAnalysisProfileSelection(e.target.value as AnalysisProfileSelection)}
-            className="input w-full"
-          >
-            <option value="default">
-              {S.workbench.useDefaultProfile(getProfileLabel(defaultPaperBananaProfile))}
-            </option>
-            {ANALYSIS_PROFILE_OPTIONS.map((profile) => (
-              <option key={profile} value={profile}>
-                {getProfileLabel(profile)}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-2xs text-surface-500">
+            onValueChange={(value) => setAnalysisProfileSelection(value as AnalysisProfileSelection)}
+            className="w-full"
+            aria-label={S.workbench.paperbananaProfile}
+            options={[
+              { value: 'default', label: S.workbench.useDefaultProfile(getProfileLabel(defaultPaperBananaProfile)) },
+              ...ANALYSIS_PROFILE_OPTIONS.map((profile) => ({ value: profile, label: getProfileLabel(profile) })),
+            ]}
+          />
+          <p className="mt-1 text-2xs text-fg-muted">
             {S.workbench.paperbananaProfileHelp}
           </p>
         </div>
@@ -264,7 +305,7 @@ export default function Workbench() {
             onClick={() => setShowAnalysisConfirm(false)}
             className="btn-ghost flex-1 py-2 text-sm"
           >
-            나중에
+            닫기
           </button>
         </div>
       </Modal>
@@ -303,7 +344,7 @@ export default function Workbench() {
               fallback={
                 <PanelFallback
                   title={S.pdf.loading}
-                  description="문서 뷰어를 준비하고 있습니다."
+                  description="문서 뷰어를 준비하고 있어요."
                 />
               }
             >
@@ -336,7 +377,7 @@ export default function Workbench() {
         )}
 
         <div
-          className="flex h-full overflow-hidden bg-surface-900"
+          className="flex h-full overflow-hidden bg-bg"
           style={{ width: pdfCollapsed ? '100%' : `${100 - splitPosition}%` }}
         >
           <div className="min-w-0 flex-1">
@@ -344,7 +385,7 @@ export default function Workbench() {
               fallback={
                 <PanelFallback
                   title={S.analysis.loadingResults}
-                  description="분석 패널을 준비하고 있습니다."
+                  description="분석 패널을 준비하고 있어요."
                 />
               }
             >
@@ -362,6 +403,7 @@ export default function Workbench() {
                 paperId={paperId}
                 paperLevel={paper.explanation_level}
                 terminalState={terminalState}
+                citationFocus={citationFocus}
                 onJumpToFigurePage={(figure) => {
                   if (typeof figure.page_number !== 'number') return;
                   setNavigationRequest({
@@ -387,8 +429,8 @@ export default function Workbench() {
       <Suspense
         fallback={
           <PanelFallback
-            title="채팅 불러오는 중..."
-            description="에이전트 채팅 패널을 준비하고 있습니다."
+            title="채팅 불러오고 있어요..."
+            description="에이전트 채팅 패널을 준비하고 있어요."
           />
         }
       >
@@ -396,12 +438,13 @@ export default function Workbench() {
           paperId={paperId}
           agentName={paper.agent_used}
           open={chatOpen}
-          ready={screeningCompleted}
+          ready={paper.text_ready}
           readyMessage={S.workbench.assistantWaiting}
           draft={chatDraft}
           starters={chatStarters}
           onToggleOpen={() => setChatOpen((prev) => !prev)}
           onDraftChange={setChatDraft}
+          onCitationClick={handleCitationClick}
         />
       </Suspense>
     </div>

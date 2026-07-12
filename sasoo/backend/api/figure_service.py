@@ -28,6 +28,7 @@ from services.odl_parser import (
     explain_odl_failure,
 )
 from services.analysis_results import get_latest_completed_phase_rows
+from services.concurrency import run_pipeline_blocking
 from services.document_context import load_or_build_document_context
 from services.pricing import calc_cost
 from services.llm.interactions_client import call_interaction
@@ -456,7 +457,7 @@ async def explain_figure_handler(paper_id: int, figure_id: int):
                 if figure_image_path:
                     candidate_path = Path(figure_image_path)
                     resolved_figure_image_path = candidate_path if candidate_path.is_absolute() else (paper_dir / candidate_path)
-        document_context = await asyncio.to_thread(load_or_build_document_context, paper_dir)
+        document_context = await run_pipeline_blocking(load_or_build_document_context, paper_dir)
         figure_detail_context = str(document_context.get("phase_inputs", {}).get("figure_detail", ""))
     except (OdlParserError, OdlRuntimeError, FileNotFoundError) as exc:
         status_code, detail = explain_odl_failure(exc)
@@ -559,9 +560,9 @@ Be exhaustive. Do NOT summarize or abbreviate. Include every relevant numerical 
             contents = prompt
 
     try:
-        result = await call_interaction(contents, model="gemini-3.5-flash", thinking_level="high", store=False)
+        result = await call_interaction(contents, lane="chat", model="gemini-3.5-flash", thinking_level="high", store=False)
     except Exception:
-        result = await call_interaction(contents, model="gemini-3.5-flash", store=False)
+        result = await call_interaction(contents, lane="chat", model="gemini-3.5-flash", store=False)
 
     explanation = result["text"].strip()
 

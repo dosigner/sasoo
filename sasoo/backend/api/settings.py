@@ -7,13 +7,21 @@ import json
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from models.database import fetch_all, fetch_one, get_db, get_library_root
+from models.database import (
+    LEGACY_LIBRARY_PATH_KEY,
+    fetch_all,
+    fetch_one,
+    get_db,
+    get_library_root,
+    library_path_setting_key,
+    usable_library_path,
+)
 from models.schemas import SettingsModel, SettingsUpdate
-from services.crypto import decrypt_value, encrypt_value, is_encrypted
+from services.crypto import decrypt_value, encrypt_value, is_encrypted, is_unreadable
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -21,8 +29,13 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 # Default settings
 # ---------------------------------------------------------------------------
 
+# library_path is deliberately absent: it is per-machine, so it lives under a
+# platform-scoped key and is seeded by _ensure_library_path() below.
 DEFAULT_SETTINGS: dict[str, str] = {
     "gemini_api_key": "",
+    "openai_api_key": "",
+    "image_provider": "openai",
+    "image_quality": "high",
     "library_path": str(get_library_root()),
     "default_domain": "optics",
     "auto_analyze": "true",
@@ -41,15 +54,37 @@ DEFAULT_SETTINGS: dict[str, str] = {
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _normalize_library_path_value(value: Any) -> str:
-    """Normalize configured library paths and recover from empty values."""
-    text = str(value or "").strip()
-    if not text:
-        return str(get_library_root())
-    return str(Path(text).expanduser().resolve(strict=False))
+async def _ensure_library_path(db) -> None:
+    """
+    Give this platform its own library path, and repair an unusable one.
+
+    get_library_root() resolves in order: this platform's key, then the legacy
+    single-platform key (only if it is absolute here), then the platform
+    default. So a Windows path found on a Mac -- or a stale value glued onto
+    the working directory by an older build -- is replaced rather than used.
+    """
+    key = library_path_setting_key()
+    row = await fetch_one("SELECT value FROM settings WHERE key = ?", (key,))
+    stored = str((row or {}).get("value") or "").strip()
+    resolved = str(get_library_root().resolve(strict=False))
+
+    if stored == resolved:
+        return
+
+    Path(resolved).mkdir(parents=True, exist_ok=True)
+    if row is None:
+        await db.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?)", (key, resolved)
+        )
+    else:
+        await db.execute(
+            "UPDATE settings SET value = ?, updated_at = ? WHERE key = ?",
+            (resolved, datetime.utcnow().isoformat(), key),
+        )
+
 
 async def _ensure_defaults() -> None:
-    """Insert default settings for any missing keys, and sync library_path."""
+    """Insert default settings for any missing keys, and sync the library path."""
     db = await get_db()
     for key, value in DEFAULT_SETTINGS.items():
         existing = await fetch_one("SELECT key, value FROM settings WHERE key = ?", (key,))
@@ -58,14 +93,6 @@ async def _ensure_defaults() -> None:
                 "INSERT INTO settings (key, value) VALUES (?, ?)",
                 (key, value),
             )
-        elif key == "library_path":
-            normalized_path = _normalize_library_path_value(existing.get("value"))
-            if str(existing.get("value") or "").strip() != normalized_path:
-                Path(normalized_path).mkdir(parents=True, exist_ok=True)
-                await db.execute(
-                    "UPDATE settings SET value = ?, updated_at = ? WHERE key = ?",
-                    (normalized_path, datetime.utcnow().isoformat(), key),
-                )
         elif key == "extraction_pipeline_version":
             fallback_row = await fetch_one(
                 "SELECT value FROM settings WHERE key = 'extraction_pipeline_force_fallback' LIMIT 1"
@@ -77,10 +104,27 @@ async def _ensure_defaults() -> None:
                     "UPDATE settings SET value = ?, updated_at = ? WHERE key = ?",
                     ("resolver_v1", datetime.utcnow().isoformat(), key),
                 )
+    await _ensure_library_path(db)
     await db.commit()
 
 
-_API_KEY_FIELDS = {"gemini_api_key"}
+_API_KEY_FIELDS = {"gemini_api_key", "openai_api_key"}
+
+
+async def _unreadable_api_keys() -> set[str]:
+    """
+    API keys that are stored but cannot be decrypted.
+
+    From the outside this looks exactly like "no key configured", which is why
+    a lost encryption key used to be undiagnosable. Callers surface it so the
+    user is told to re-enter the key rather than left guessing.
+    """
+    rows = await fetch_all("SELECT key, value FROM settings")
+    return {
+        row["key"]
+        for row in rows
+        if row["key"] in _API_KEY_FIELDS and is_unreadable(row["value"])
+    }
 
 
 async def _get_all_settings() -> dict[str, str]:
@@ -105,11 +149,9 @@ async def _get_all_settings() -> dict[str, str]:
     if result.get("extraction_pipeline_version") == "legacy" and result.get("extraction_pipeline_force_fallback", "false").lower() != "true":
         await _set_setting("extraction_pipeline_version", "resolver_v1")
         result["extraction_pipeline_version"] = "resolver_v1"
-    normalized_library_path = _normalize_library_path_value(result.get("library_path"))
-    if result.get("library_path") != normalized_library_path:
-        Path(normalized_library_path).mkdir(parents=True, exist_ok=True)
-        await _set_setting("library_path", normalized_library_path)
-        result["library_path"] = normalized_library_path
+    # The API always speaks of "library_path" -- the path for THIS machine --
+    # while storage keeps one per platform.
+    result["library_path"] = str(get_library_root())
     return result
 
 
@@ -156,9 +198,15 @@ async def get_settings():
     API keys are masked for security.
     """
     raw = await _get_all_settings()
+    unreadable = await _unreadable_api_keys()
 
     return SettingsModel(
         gemini_api_key=_mask_api_key(raw.get("gemini_api_key", "")),
+        gemini_key_unreadable="gemini_api_key" in unreadable,
+        openai_api_key=_mask_api_key(raw.get("openai_api_key", "")),
+        openai_key_unreadable="openai_api_key" in unreadable,
+        image_provider=raw.get("image_provider", "openai"),
+        image_quality=raw.get("image_quality", "high"),
         library_path=raw.get("library_path", str(get_library_root())),
         default_domain=raw.get("default_domain", "optics"),
         auto_analyze=raw.get("auto_analyze", "true").lower() == "true",
@@ -185,9 +233,17 @@ async def update_settings(update: SettingsUpdate):
         raise HTTPException(status_code=400, detail="No settings to update.")
 
     if "library_path" in update_data and update_data["library_path"] is not None:
-        new_path = Path(_normalize_library_path_value(update_data["library_path"]))
+        candidate = usable_library_path(update_data.pop("library_path"))
+        if candidate is None:
+            raise HTTPException(
+                status_code=400,
+                detail="보관함 경로는 절대 경로여야 합니다. (예: /Users/이름/Documents/sasoo)",
+            )
+        new_path = candidate.resolve(strict=False)
         new_path.mkdir(parents=True, exist_ok=True)
-        update_data["library_path"] = str(new_path)
+        # Stored per platform, so a Mac and a Windows machine sharing this
+        # settings database each keep their own.
+        await _set_setting(library_path_setting_key(), str(new_path))
 
     for key, value in update_data.items():
         # Convert booleans and enums to string for storage
@@ -217,7 +273,8 @@ async def update_settings(update: SettingsUpdate):
     # (use original plaintext value, not encrypted)
     if "gemini_api_key" in update_data and update_data["gemini_api_key"]:
         os.environ["GEMINI_API_KEY"] = update_data["gemini_api_key"]
-        os.environ["GOOGLE_API_KEY"] = update_data["gemini_api_key"]  # PaperBanana uses this
+    if "openai_api_key" in update_data and update_data["openai_api_key"]:
+        os.environ["OPENAI_API_KEY"] = update_data["openai_api_key"]
 
     return await get_settings()
 
@@ -430,160 +487,6 @@ async def get_cost_summary(
     }
 
 
-# ---------------------------------------------------------------------------
-# Debug endpoints (only available in development or when SASOO_DEBUG=1)
-# ---------------------------------------------------------------------------
-
-def _is_debug_enabled() -> bool:
-    """Check if debug endpoints should be available."""
-    return os.environ.get("SASOO_ENV") != "production" or os.environ.get("SASOO_DEBUG") == "1"
-
-
-if _is_debug_enabled():
-
-    @router.get("/debug/paperbanana")
-    async def debug_paperbanana():
-        """
-        Diagnostic endpoint: check PaperBanana availability and configuration.
-        Visit http://localhost:8000/api/settings/debug/paperbanana in browser.
-        """
-        import sys
-
-        from services.viz.paperbanana_bridge import (
-            _IS_FROZEN,
-            _IMPORT_ERROR_DETAIL,
-            _MEIPASS,
-            _PAPERBANANA_AVAILABLE,
-            PaperBananaBridge,
-        )
-
-        bridge = PaperBananaBridge()
-        pipeline_ok = bridge.is_available
-
-        result = {
-            "frozen": _IS_FROZEN,
-            "meipass": str(_MEIPASS) if _MEIPASS else None,
-            "import_ok": _PAPERBANANA_AVAILABLE,
-            "import_error": _IMPORT_ERROR_DETAIL[:500] if _IMPORT_ERROR_DETAIL else None,
-            "pipeline_ok": pipeline_ok,
-            "pipeline_error": bridge.last_error or None,
-            "env": {
-                "GEMINI_API_KEY": bool(os.environ.get("GEMINI_API_KEY")),
-                "GOOGLE_API_KEY": bool(os.environ.get("GOOGLE_API_KEY")),
-            },
-        }
-
-        # Check data file paths if frozen
-        if _IS_FROZEN and _MEIPASS:
-            meipass = Path(str(_MEIPASS))
-            result["data_files"] = {
-                "prompts_dir": str(meipass / "prompts"),
-                "prompts_exists": (meipass / "prompts").exists(),
-                "data_dir": str(meipass / "data"),
-                "data_exists": (meipass / "data").exists(),
-                "configs_dir": str(meipass / "configs"),
-                "configs_exists": (meipass / "configs").exists(),
-            }
-
-        return result
-
-
-    @router.get("/debug/paperbanana/test")
-    async def test_paperbanana_generation():
-        """
-        Actually test PaperBanana generation step-by-step.
-        Visit http://localhost:8000/api/settings/debug/paperbanana/test
-        """
-        import traceback
-
-        from services.viz.paperbanana_bridge import (
-            _IS_FROZEN,
-            _MEIPASS,
-            _PAPERBANANA_AVAILABLE,
-            PaperBananaBridge,
-        )
-
-        steps: dict[str, Any] = {}
-
-        # Step 1: Bridge availability
-        try:
-            bridge = PaperBananaBridge()
-            available = bridge.is_available
-            steps["1_bridge_available"] = available
-            if not available:
-                steps["1_error"] = bridge.last_error
-                return {"steps": steps, "conclusion": "Bridge not available"}
-        except Exception as exc:
-            steps["1_error"] = f"{exc.__class__.__name__}: {exc}"
-            return {"steps": steps, "conclusion": "Bridge init failed"}
-
-        # Step 2: Check prompt loading
-        try:
-            pipeline = bridge._pipeline
-            agent = pipeline.retriever
-            prompt_dir = agent.prompt_dir
-            steps["2_prompt_dir"] = str(prompt_dir)
-            steps["2_prompt_dir_exists"] = prompt_dir.exists() if hasattr(prompt_dir, 'exists') else "N/A"
-
-            # Try loading a prompt
-            prompt_text = agent.load_prompt("diagram")
-            steps["2_prompt_loaded"] = True
-            steps["2_prompt_length"] = len(prompt_text)
-        except Exception as exc:
-            steps["2_prompt_loaded"] = False
-            steps["2_error"] = f"{exc.__class__.__name__}: {exc}"
-            return {"steps": steps, "conclusion": f"Prompt loading failed: {exc}"}
-
-        # Step 3: Check VLM provider
-        try:
-            vlm = pipeline._vlm
-            steps["3_vlm_type"] = type(vlm).__name__
-            steps["3_vlm_model"] = getattr(vlm, '_model', 'unknown')
-            steps["3_vlm_has_key"] = bool(getattr(vlm, '_api_key', None))
-
-            # Try a minimal VLM call
-            vlm_result = await vlm.generate("Reply with just the word 'OK'.")
-            steps["3_vlm_test"] = True
-            steps["3_vlm_response"] = vlm_result[:100]
-        except Exception as exc:
-            steps["3_vlm_test"] = False
-            steps["3_error"] = f"{exc.__class__.__name__}: {exc}"
-            steps["3_traceback"] = traceback.format_exc()[-500:]
-            return {"steps": steps, "conclusion": f"VLM call failed: {exc}"}
-
-        # Step 4: Check image gen provider
-        try:
-            image_gen = pipeline._image_gen
-            steps["4_image_gen_type"] = type(image_gen).__name__
-            steps["4_image_gen_model"] = getattr(image_gen, '_model', 'unknown')
-            steps["4_image_gen_has_key"] = bool(getattr(image_gen, '_api_key', None))
-            steps["4_image_gen_available"] = image_gen.is_available()
-        except Exception as exc:
-            steps["4_error"] = f"{exc.__class__.__name__}: {exc}"
-
-        # Step 5: Check settings paths
-        try:
-            settings = pipeline.settings
-            steps["5_reference_set_path"] = settings.reference_set_path
-            steps["5_guidelines_path"] = settings.guidelines_path
-            steps["5_output_dir"] = settings.output_dir
-            steps["5_ref_exists"] = Path(settings.reference_set_path).exists()
-            steps["5_guide_exists"] = Path(settings.guidelines_path).exists()
-            steps["5_api_key_in_settings"] = bool(settings.google_api_key)
-        except Exception as exc:
-            steps["5_error"] = f"{exc.__class__.__name__}: {exc}"
-
-        # Step 6: Check reference store
-        try:
-            refs = pipeline.reference_store.get_all()
-            steps["6_reference_count"] = len(refs)
-        except Exception as exc:
-            steps["6_error"] = f"{exc.__class__.__name__}: {exc}"
-            steps["6_traceback"] = traceback.format_exc()[-500:]
-
-        return {"steps": steps, "conclusion": "All checks passed (VLM working)"}
-
-
 @router.get("/keys/status")
 async def check_api_keys():
     """
@@ -591,6 +494,7 @@ async def check_api_keys():
     Useful for the frontend to show setup status.
     """
     raw = await _get_all_settings()
+    unreadable = await _unreadable_api_keys()
 
     gemini_key = raw.get("gemini_api_key", "")
 
@@ -598,5 +502,12 @@ async def check_api_keys():
         "gemini": {
             "configured": bool(gemini_key),
             "masked": _mask_api_key(gemini_key),
+            # Stored, but the key it was encrypted with is gone.
+            "unreadable": "gemini_api_key" in unreadable,
+        },
+        "openai": {
+            "configured": bool(raw.get("openai_api_key", "")),
+            "masked": _mask_api_key(raw.get("openai_api_key", "")),
+            "unreadable": "openai_api_key" in unreadable,
         },
     }

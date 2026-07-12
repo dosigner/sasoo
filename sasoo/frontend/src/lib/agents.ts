@@ -37,10 +37,16 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/**
+ * @deprecated Prefer the `.agent-tinted` CSS class with an injected
+ * `--agent-color` variable — it resolves dark/light contrast via `color-mix`
+ * in CSS instead of a fixed alpha here. Kept for any remaining callers.
+ */
 export function agentBgStyle(color: string, opacity = 0.1): React.CSSProperties {
   return { backgroundColor: hexToRgba(color, opacity) };
 }
 
+/** @deprecated See {@link agentBgStyle} — use the `.agent-tinted` class. */
 export function agentBorderStyle(color: string, opacity = 0.2): React.CSSProperties {
   return { borderColor: hexToRgba(color, opacity) };
 }
