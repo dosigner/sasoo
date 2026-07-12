@@ -3,6 +3,8 @@ import * as crypto from 'crypto';
 import * as path from 'path';
 import * as fs from 'fs';
 
+import { LogBatcher } from './log-batcher';
+
 export interface PythonManagerConfig {
   backendPath: string;
   port: number;
@@ -24,6 +26,11 @@ export class PythonManager {
   private usesBundledBackend: boolean = false;
   private shutdownToken: string = '';
   private logForwarder: ((level: string, message: string) => void) | null = null;
+  // One IPC message per backend log line scales with request volume, so lines
+  // are batched before crossing to the renderer.
+  private logBatcher = new LogBatcher((level, message) => {
+    this.logForwarder?.(level, message);
+  });
 
   /** Set a callback to forward backend logs to the renderer process. */
   setLogForwarder(fn: (level: string, message: string) => void): void {
@@ -158,7 +165,9 @@ export class PythonManager {
         'main:app',
         '--host', '127.0.0.1',
         '--port', String(this.config.port),
-        '--log-level', this.config.isDev ? 'debug' : 'info',
+        // debug logging in dev multiplied per-request output and, with it,
+        // the log-forwarding traffic below; uvicorn stays at info everywhere.
+        '--log-level', 'info',
       ];
 
       if (this.config.isDev) {
@@ -179,27 +188,30 @@ export class PythonManager {
       });
     }
 
-    // Log stdout — forward to renderer DevTools via IPC
+    // Log stdout — forward to renderer DevTools via IPC (batched)
     this.process.stdout?.on('data', (data: Buffer) => {
       const message = data.toString().trim();
       if (message) {
         console.log(`[FastAPI] ${message}`);
-        this.logForwarder?.('info', message);
+        this.logBatcher.push('info', message);
       }
     });
 
-    // Log stderr — forward to renderer DevTools via IPC
+    // Log stderr — forward to renderer DevTools via IPC (batched)
     this.process.stderr?.on('data', (data: Buffer) => {
       const message = data.toString().trim();
       if (message) {
         console.error(`[FastAPI:err] ${message}`);
-        this.logForwarder?.('error', message);
+        this.logBatcher.push('error', message);
       }
     });
 
     // Handle process exit
     this.process.on('exit', (code, signal) => {
       console.log(`[PythonManager] Process exited with code ${code}, signal ${signal}`);
+      // The lines just before death (tracebacks) must reach the renderer now,
+      // not one batch interval later.
+      this.logBatcher.flush();
       this.process = null;
       this.handleUnexpectedExit(code);
     });
@@ -361,6 +373,7 @@ export class PythonManager {
   async stop(): Promise<void> {
     this.isShuttingDown = true;
     this.stopHealthChecks();
+    this.logBatcher.flush();
 
     if (!this.process) {
       console.log('[PythonManager] No process to stop');
