@@ -10,12 +10,7 @@ import json
 # System instruction
 # ---------------------------------------------------------------------------
 
-_SYSTEM_INSTRUCTION_KO = (
-    "너는 Sasoo(사수)라는 한국어 AI 연구 보조원이야. "
-    "모든 출력 텍스트를 반드시 한국어로 작성해. "
-    "JSON key 이름만 영어로 유지하고, 모든 value(문장, 설명, 리스트 항목 등)는 한국어로 써. "
-    "영어로 쓰지 마."
-)
+from services.llm.interactions_client import _SYSTEM_INSTRUCTION_KO  # noqa: F401 - 단일 소스 재노출
 
 
 # ---------------------------------------------------------------------------
