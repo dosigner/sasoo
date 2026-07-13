@@ -90,6 +90,55 @@ jobs:
           if (Test-Path "$env:LOCALAPPDATA\electron-builder\Cache") { Remove-Item -Recurse -Force "$env:LOCALAPPDATA\electron-builder\Cache" }
           pnpm install --no-frozen-lockfile
 
+      - name: Cache bundled Java runtime (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: sasoo/backend/.jre-cache
+          key: jre-${{ runner.os }}-jdk-21.0.10+7
+
+      - name: Configure macOS signing (env-gated)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CSC_LINK_S: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD_S: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID_S: ${{ secrets.APPLE_ID }}
+          APPLE_PW_S: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID_S: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [[ -n "$CSC_LINK_S" ]]; then
+            echo "CSC_LINK=$CSC_LINK_S" >> "$GITHUB_ENV"
+            echo "CSC_KEY_PASSWORD=$CSC_KEY_PASSWORD_S" >> "$GITHUB_ENV"
+            echo "macOS signing: ENABLED"
+          else
+            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+            echo "macOS signing: DISABLED (unsigned build)"
+          fi
+          if [[ -n "$APPLE_ID_S" && -n "$APPLE_PW_S" && -n "$APPLE_TEAM_ID_S" ]]; then
+            echo "APPLE_ID=$APPLE_ID_S" >> "$GITHUB_ENV"
+            echo "APPLE_APP_SPECIFIC_PASSWORD=$APPLE_PW_S" >> "$GITHUB_ENV"
+            echo "APPLE_TEAM_ID=$APPLE_TEAM_ID_S" >> "$GITHUB_ENV"
+            echo "notarization: ENABLED"
+          else
+            echo "notarization: DISABLED"
+          fi
+
+      - name: Configure Windows signing (env-gated)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          WIN_CSC_LINK_S: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD_S: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          if [[ -n "$WIN_CSC_LINK_S" ]]; then
+            echo "WIN_CSC_LINK=$WIN_CSC_LINK_S" >> "$GITHUB_ENV"
+            echo "WIN_CSC_KEY_PASSWORD=$WIN_CSC_KEY_PASSWORD_S" >> "$GITHUB_ENV"
+            echo "Windows signing: ENABLED"
+          else
+            echo "Windows signing: DISABLED (unsigned build)"
+          fi
+
       - name: Build (${{ runner.os }})
         shell: bash
         run: |

@@ -105,6 +105,74 @@ Recommended signing/notarization secrets for GitHub Actions:
 
 If those secrets are not configured, the workflows still build artifacts, but users may see OS trust warnings.
 
+### How the env-gated signing scaffolding works
+
+Signing and notarization are wired to activate purely by registering the GitHub
+Actions secrets above — no code change is needed when a certificate is obtained.
+
+- `.github/workflows/release.yml` runs a `Configure macOS signing (env-gated)`
+  step (and a `Configure Windows signing (env-gated)` step) that inject each
+  secret into `GITHUB_ENV` **only when it is non-empty**. An empty `CSC_LINK`
+  would make electron-builder call `importCertificate("")` and break the build,
+  so absent secrets leave the environment untouched — the build is byte-for-byte
+  identical to the current unsigned pipeline. Each step logs `ENABLED`/`DISABLED`.
+- When no macOS certificate is present, the step sets
+  `CSC_IDENTITY_AUTO_DISCOVERY=false` so electron-builder never picks up an
+  unrelated keychain identity.
+- `package.json` `build.mac` sets `hardenedRuntime`, `entitlements`
+  ([build/entitlements.mac.plist](/Users/dongj/Documents/논문/sasoo/build/entitlements.mac.plist)),
+  and `entitlementsInherit`
+  ([build/entitlements.mac.inherit.plist](/Users/dongj/Documents/논문/sasoo/build/entitlements.mac.inherit.plist)).
+  These keys are only consumed when a signing identity exists, so they are inert
+  for unsigned builds. The entitlements enable JIT, unsigned executable memory,
+  and library-validation bypass required by the bundled JVM and the PyInstaller
+  backend.
+- `build.mac.notarize` is set to `false` to disable electron-builder's built-in
+  notarization (which is ambiguous about `teamId`). Notarization is handled
+  exclusively by the `afterSign` hook
+  ([scripts/notarize.js](/Users/dongj/Documents/논문/sasoo/scripts/notarize.js)),
+  which is a no-op unless `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and
+  `APPLE_TEAM_ID` are all set.
+- `@electron/osx-sign` signs Mach-O binaries inside `extraResources`
+  automatically once an identity is present, so the bundled backend needs no
+  manual `codesign` step.
+
+### Verifying a signed build once certificates are available
+
+macOS (run on the packaged `Sasoo.app`):
+
+- `codesign --verify --deep --strict --verbose=2 /Applications/Sasoo.app`
+- `spctl --assess --type execute --verbose=2 /Applications/Sasoo.app`
+- `xcrun stapler validate /Applications/Sasoo.app`
+
+Windows (run on the packaged installer `.exe`):
+
+- `signtool verify /pa /v Sasoo-Setup.exe`
+- or `powershell -Command "Get-AuthenticodeSignature -LiteralPath 'Sasoo-Setup.exe' | Format-List"`
+
+The artifact verifiers automate the conditional form of these checks:
+
+- [verify-mac-artifacts.js](/Users/dongj/Documents/논문/sasoo/scripts/verify-mac-artifacts.js)
+  runs `codesign` and, if the app is signed, `spctl` and `xcrun stapler`. On an
+  unsigned build it logs `unsigned build — signature checks skipped` and passes.
+- [verify-win-artifacts.js](/Users/dongj/Documents/논문/sasoo/scripts/verify-win-artifacts.js)
+  runs `Get-AuthenticodeSignature`; `NotSigned` is skipped, `Valid` passes, any
+  other status fails.
+- Set `SASOO_REQUIRE_SIGNED=1` to promote an unsigned artifact to a hard failure
+  (use this once signing is expected on every release).
+- macOS verifiers also assert the bundled Java runtime is present; set
+  `SASOO_SKIP_JAVA_BUNDLE=1` to skip that check for backend-less test builds.
+
+### Follow-up after signing is stable
+
+The macOS auto-update download currently bypasses `electron-updater` because
+unsigned builds cannot be installed by Squirrel.Mac. Once signing and
+notarization are verified on real releases, switch the mac branch in
+[electron/updater.ts](/Users/dongj/Documents/논문/sasoo/electron/updater.ts) (the
+`updater:download` handler around lines 49-53) from opening the GitHub Releases
+page in the browser back to `autoUpdater.downloadUpdate()`, so macOS gets the
+same in-app update flow as Windows.
+
 ## Release Completion
 
 1. Confirm the draft GitHub release contains:

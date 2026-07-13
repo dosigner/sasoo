@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
@@ -112,6 +112,105 @@ function verifyUpdateManifest(zipFiles) {
   log('latest-mac.yml matches generated artifacts.');
 }
 
+function verifyJavaRuntime(appDir) {
+  if (process.env.SASOO_SKIP_JAVA_BUNDLE === '1') {
+    log('SASOO_SKIP_JAVA_BUNDLE=1 → skipping bundled Java runtime check.');
+    return;
+  }
+
+  const runtimeRoot = path.join(
+    appDir,
+    'Contents',
+    'Resources',
+    'backend',
+    'sasoo-backend',
+    '_internal',
+    'java-runtime'
+  );
+  const candidates = [
+    path.join(runtimeRoot, 'bin', 'java'),
+    path.join(runtimeRoot, 'Contents', 'Home', 'bin', 'java'),
+  ];
+
+  const found = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!found) {
+    fail(`Bundled Java runtime not found. Checked:\n  ${candidates.join('\n  ')}`);
+  }
+
+  log(`Bundled Java runtime present: ${found}`);
+}
+
+function verifySignature(appDir) {
+  const requireSigned = process.env.SASOO_REQUIRE_SIGNED === '1';
+
+  // Identity check first: unsigned bundles and Electron's factory ad-hoc
+  // signatures (Signature=adhoc, TeamIdentifier=not set) both count as
+  // "no real signing identity", and --verify --deep --strict rejects them
+  // with different messages, so string-matching the verify output is not
+  // a reliable unsigned detector.
+  const display = spawnSync('codesign', ['-dvv', appDir], { encoding: 'utf8' });
+  if (display.error) {
+    fail(`Failed to run codesign: ${display.error.message}`);
+  }
+  const displayOutput = `${display.stdout || ''}${display.stderr || ''}`;
+  const hasIdentity =
+    display.status === 0 &&
+    !/Signature=adhoc/i.test(displayOutput) &&
+    !/TeamIdentifier=not set/i.test(displayOutput);
+
+  if (!hasIdentity) {
+    if (requireSigned) {
+      fail(
+        `SASOO_REQUIRE_SIGNED=1 but the app has no signing identity:\n${displayOutput.trim()}`
+      );
+    }
+    log('unsigned build (no signing identity) — signature checks skipped');
+    return;
+  }
+
+  log(`Running codesign verification on ${path.basename(appDir)}`);
+  const codesign = spawnSync(
+    'codesign',
+    ['--verify', '--deep', '--strict', '--verbose=2', appDir],
+    { encoding: 'utf8' }
+  );
+
+  if (codesign.error) {
+    fail(`Failed to run codesign: ${codesign.error.message}`);
+  }
+
+  if (codesign.status !== 0) {
+    const codesignOutput = `${codesign.stdout || ''}${codesign.stderr || ''}`;
+    fail(`codesign verification failed (exit ${codesign.status}):\n${codesignOutput.trim()}`);
+  }
+
+  log('codesign --verify --deep --strict passed.');
+
+  const spctl = spawnSync('spctl', ['--assess', '--type', 'execute', '--verbose=2', appDir], {
+    encoding: 'utf8',
+  });
+  if (spctl.error) {
+    fail(`Failed to run spctl: ${spctl.error.message}`);
+  }
+  if (spctl.status !== 0) {
+    fail(
+      `spctl --assess --type execute failed (exit ${spctl.status}):\n${`${spctl.stdout || ''}${spctl.stderr || ''}`.trim()}`
+    );
+  }
+  log('spctl --assess --type execute passed.');
+
+  const stapler = spawnSync('xcrun', ['stapler', 'validate', appDir], { encoding: 'utf8' });
+  if (stapler.error) {
+    fail(`Failed to run xcrun stapler: ${stapler.error.message}`);
+  }
+  if (stapler.status !== 0) {
+    fail(
+      `xcrun stapler validate failed (exit ${stapler.status}):\n${`${stapler.stdout || ''}${stapler.stderr || ''}`.trim()}`
+    );
+  }
+  log('xcrun stapler validate passed.');
+}
+
 function verifyZip(zipPath) {
   log(`Checking ZIP archive ${path.basename(zipPath)}`);
   run('unzip', ['-t', zipPath]);
@@ -128,6 +227,10 @@ function verifyZip(zipPath) {
     if (appCandidates.length !== 1) {
       fail(`Expected exactly one .app in ${zipPath}, found ${appCandidates.length}`);
     }
+
+    const appDir = appCandidates[0];
+    verifyJavaRuntime(appDir);
+    verifySignature(appDir);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

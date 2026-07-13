@@ -93,6 +93,45 @@ jobs:
         shell: bash
         run: pnpm install --no-frozen-lockfile
 
+      - name: Configure macOS signing (env-gated)
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Only inject secrets into the build environment when they are actually
+          # set. An empty CSC_LINK would make electron-builder call
+          # importCertificate("") and break the build, so absent secrets must
+          # leave the environment untouched (identical to the unsigned pipeline).
+          SIGNING="DISABLED"
+          if [[ -n "$CSC_LINK" && -n "$CSC_KEY_PASSWORD" ]]; then
+            {
+              echo "CSC_LINK=$CSC_LINK"
+              echo "CSC_KEY_PASSWORD=$CSC_KEY_PASSWORD"
+            } >> "$GITHUB_ENV"
+            SIGNING="ENABLED"
+          else
+            # No certificate: disable auto-discovery so electron-builder does not
+            # try to sign with an unrelated keychain identity.
+            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+          fi
+
+          NOTARIZE="DISABLED"
+          if [[ -n "$APPLE_ID" && -n "$APPLE_APP_SPECIFIC_PASSWORD" && -n "$APPLE_TEAM_ID" ]]; then
+            {
+              echo "APPLE_ID=$APPLE_ID"
+              echo "APPLE_APP_SPECIFIC_PASSWORD=$APPLE_APP_SPECIFIC_PASSWORD"
+              echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
+            } >> "$GITHUB_ENV"
+            NOTARIZE="ENABLED"
+          fi
+
+          echo "macOS code signing: $SIGNING"
+          echo "macOS notarization: $NOTARIZE"
+
       - name: Build macOS release
         shell: bash
         run: pnpm build:mac:release
@@ -145,6 +184,30 @@ jobs:
         shell: pwsh
         run: pnpm install --no-frozen-lockfile
 
+      - name: Cache Java runtime
+        uses: actions/cache@v4
+        with:
+          path: backend/.jre-cache
+          key: jre-${{ runner.os }}-jdk-21.0.10+7
+
+      - name: Configure Windows signing (env-gated)
+        shell: bash
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          # Same gating rationale as macOS: only inject the certificate when it
+          # exists, otherwise electron-builder auto-skips Windows signing.
+          SIGNING="DISABLED"
+          if [[ -n "$WIN_CSC_LINK" && -n "$WIN_CSC_KEY_PASSWORD" ]]; then
+            {
+              echo "WIN_CSC_LINK=$WIN_CSC_LINK"
+              echo "WIN_CSC_KEY_PASSWORD=$WIN_CSC_KEY_PASSWORD"
+            } >> "$GITHUB_ENV"
+            SIGNING="ENABLED"
+          fi
+          echo "Windows code signing: $SIGNING"
+
       - name: Build Windows release
         shell: pwsh
         run: pnpm build:win:release
@@ -181,33 +244,7 @@ jobs:
           TAG: ${{ needs.resolve.outputs.tag }}
         shell: bash
         run: |
-          PREV_TAG="$(
-            python3 - <<'PY'
-import os
-import re
-import subprocess
-
-target = os.environ["TAG"]
-match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", target)
-if not match:
-    raise SystemExit(0)
-
-current = tuple(int(part) for part in match.groups())
-tags = subprocess.check_output(["git", "tag"], text=True).splitlines()
-older = []
-
-for tag in tags:
-    parsed = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", tag)
-    if not parsed:
-        continue
-    version = tuple(int(part) for part in parsed.groups())
-    if version < current:
-        older.append((version, tag))
-
-if older:
-    print(max(older)[1])
-PY
-          )"
+          PREV_TAG="$(python3 .github/scripts/previous_tag.py)"
 
           if [[ -n "$PREV_TAG" ]]; then
             RANGE="$PREV_TAG..$TAG"

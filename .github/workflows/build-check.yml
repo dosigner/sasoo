@@ -1,0 +1,82 @@
+name: Build Check
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "sasoo/**"
+      - ".github/workflows/build-check.yml"
+      - ".github/workflows/release.yml"
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: sasoo
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: sasoo/pnpm-lock.yaml
+
+      # setup-java는 의도적으로 생략한다 — 시스템 Java가 없는 러너에서
+      # scripts/ensure-java-runtime.js가 JRE를 내려받아 번들하는 경로를 검증한다.
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: sasoo/backend/requirements.txt
+
+      - name: Cache bundled Java runtime
+        uses: actions/cache@v4
+        with:
+          path: sasoo/backend/.jre-cache
+          key: jre-${{ runner.os }}-jdk-21.0.10+7
+
+      - name: Install Python dependencies
+        shell: bash
+        run: |
+          pip install -r backend/requirements.txt
+          pip install pyinstaller
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+        env:
+          npm_config_frozen_lockfile: "false"
+
+      - name: Reinstall electron-builder binaries
+        shell: pwsh
+        run: |
+          if (Test-Path node_modules) { Remove-Item -Recurse -Force node_modules }
+          if (Test-Path "$env:LOCALAPPDATA\electron-builder\Cache") { Remove-Item -Recurse -Force "$env:LOCALAPPDATA\electron-builder\Cache" }
+          pnpm install --no-frozen-lockfile
+
+      - name: Build (Windows, unsigned)
+        shell: bash
+        run: pnpm build:win:release
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sasoo-windows-build-check
+          path: |
+            sasoo/dist/*.exe
+            sasoo/dist/latest.yml
+          retention-days: 7
+          if-no-files-found: error

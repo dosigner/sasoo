@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { spawnSync } = require('child_process');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
@@ -70,6 +71,54 @@ function verifyPortableExecutable(exePath) {
   if (header.length < 2 || header[0] !== 0x4d || header[1] !== 0x5a) {
     fail(`${path.basename(exePath)} is not a valid PE executable (missing MZ header).`);
   }
+}
+
+function verifyAuthenticode(exePath) {
+  const requireSigned = process.env.SASOO_REQUIRE_SIGNED === '1';
+
+  // Get-AuthenticodeSignature prints just the Status enum name:
+  // Valid, NotSigned, HashMismatch, UnknownError, NotTrusted, etc.
+  const escaped = exePath.replace(/'/g, "''");
+  const psCommand = `(Get-AuthenticodeSignature -LiteralPath '${escaped}').Status`;
+  const result = spawnSync(
+    'powershell',
+    ['-NoProfile', '-NonInteractive', '-Command', psCommand],
+    { encoding: 'utf8' }
+  );
+
+  if (result.error || typeof result.status !== 'number') {
+    const reason = result.error ? result.error.message : 'no exit status';
+    if (requireSigned) {
+      fail(`SASOO_REQUIRE_SIGNED=1 but Get-AuthenticodeSignature could not run: ${reason}`);
+    }
+    log(`WARNING: could not run Get-AuthenticodeSignature (${reason}); skipping signature check.`);
+    return;
+  }
+
+  const status = `${result.stdout || ''}`.trim();
+
+  if (status === 'Valid') {
+    log(`Authenticode signature Valid for ${path.basename(exePath)}.`);
+    return;
+  }
+
+  if (status === 'NotSigned') {
+    if (requireSigned) {
+      fail(`SASOO_REQUIRE_SIGNED=1 but ${path.basename(exePath)} is NotSigned.`);
+    }
+    log(`unsigned build — Authenticode check skipped for ${path.basename(exePath)}.`);
+    return;
+  }
+
+  if (status === '') {
+    if (requireSigned) {
+      fail(`SASOO_REQUIRE_SIGNED=1 but Authenticode status for ${path.basename(exePath)} could not be determined.`);
+    }
+    log(`WARNING: empty Authenticode status for ${path.basename(exePath)}; skipping signature check.`);
+    return;
+  }
+
+  fail(`Authenticode signature check failed for ${path.basename(exePath)}: status ${status}.`);
 }
 
 function verifyUpdateManifest(installerPaths) {
@@ -153,6 +202,7 @@ for (const exePath of exeFiles) {
     fail(`${path.basename(exePath)} is empty.`);
   }
   verifyPortableExecutable(exePath);
+  verifyAuthenticode(exePath);
   log(`Verified installer ${path.basename(exePath)} (${Math.round(stat.size / 1024 / 1024)} MB).`);
 }
 

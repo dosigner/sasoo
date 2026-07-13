@@ -26,13 +26,14 @@
     "verify:win-artifact": "node scripts/verify-win-artifacts.js",
     "test:unit": "vitest run",
     "start": "electron . --no-sandbox",
-    "clean": "rm -rf dist dist-electron frontend/dist backend/dist backend/build",
+    "clean": "node -e \"for(const d of ['dist','dist-electron','frontend/dist','backend/dist','backend/build'])require('fs').rmSync(d,{recursive:true,force:true})\"",
     "postinstall": "cd frontend && pnpm install"
   },
   "dependencies": {
     "electron-updater": "^6.8.3"
   },
   "devDependencies": {
+    "@electron/notarize": "^2.2.1",
     "@types/node": "^20.11.16",
     "concurrently": "^8.2.2",
     "electron": "^28.2.1",
@@ -47,6 +48,7 @@
       "output": "dist",
       "buildResources": "build"
     },
+    "afterSign": "scripts/notarize.js",
     "files": [
       "!backend",
       "!electron",
@@ -70,7 +72,12 @@
       "category": "public.app-category.education",
       "target": [
         "zip"
-      ]
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "notarize": false
     },
     "win": {
       "target": [
