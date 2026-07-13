@@ -698,6 +698,7 @@ _RECIPE_SCHEMA = {
                     "value": {"type": "string"},
                     "unit": {"type": "string"},
                     "notes": {"type": "string"},
+                    "source_tag": {"type": "string", "enum": ["explicit", "inferred"]},
                 },
                 "required": ["name", "value"],
             },
@@ -709,6 +710,7 @@ _RECIPE_SCHEMA = {
         "confidence": {"type": "number"},
         "missing_info": {"type": "array", "items": {"type": "string"}},
         "reproducibility_score": {"type": "number"},
+        "score_rationale": {"type": "string"},
     },
     "required": ["title", "objective", "parameters", "steps"],
 }
@@ -1129,29 +1131,27 @@ voltages, currents, frequencies, distances, speeds, sizes, ratios, percentages, 
         except (json.JSONDecodeError, TypeError):
             pass
 
-    instruction = f"""너는 Sasoo(사수)라는 AI Co-Scientist야. 이 연구 논문에서 실험 레시피를 완전하고 철저하게 추출해줘.
-
-모든 텍스트 내용은 반드시 한국어로 작성해. JSON key 이름만 영어로 유지해.
+    instruction = f"""이 연구 논문에서 재현 가능한 실험 레시피를 추출해줘.
 
 핵심 지시사항:
-1. 논문에 언급된 모든 정량적 파라미터를 추출해. Results나 Discussion에 있는 것도 포함.
-2. 각 파라미터마다 name, value, unit, notes(출처/컨텍스트)를 반드시 포함.
-3. 값이 불명확해도 notes="추정값" 또는 notes="근사값"으로 포함시켜.
-4. 사소해 보이는 파라미터도 절대 건너뛰지 마 — 재현성을 위해 모든 세부사항 필요.
-5. Methods 섹션뿐 아니라 논문 전체에서 파라미터를 찾아.
+1. 재현에 필요한 정량 파라미터를 논문 전체(Methods뿐 아니라 Results·Discussion·그림 캡션·표·부록)에서 빠짐없이 찾아.
+2. 각 파라미터마다 name, value, unit, notes(출처 섹션/문맥), source_tag를 포함해.
+3. source_tag 규칙:
+   - "explicit": 논문에 값이 직접 명시됨.
+   - "inferred": 논문에 명시된 다른 값에서 계산·추론 가능 — notes에 근거와 계산을 적어.
+4. 개수 목표는 없어. 논문에 실제로 있는 항목만 추출하고, 통상 기본값·상식·장비 기본 설정을 논문 값처럼 보충하지 마.
+5. 재현에 필요한데 논문에 없는 항목은 parameters에 넣지 말고 missing_info에 기록해.
+6. reproducibility_score는 explicit 핵심 파라미터의 충족도와 missing_info를 근거로 매기고, 그 근거를 score_rationale에 한 문장으로 적어.
 {domain_hint}
 
 출력 필드: title(레시피 제목, 한국어), objective(실험 목적), materials(재료 리스트, 규격 포함),
-equipment(장비 리스트, 모델번호 포함), parameters(각 항목 name/value/unit/notes),
+equipment(장비 리스트, 모델번호 포함), parameters(각 항목 name/value/unit/notes/source_tag),
 steps(단계별 상세 설명, 온도·시간·속도 등 포함), critical_notes(재현 중요 참고사항),
 expected_results(예상 결과), safety_notes(안전 주의사항), confidence(0.0~1.0),
-missing_info(논문에서 찾지 못한 세부사항), reproducibility_score(0.0~1.0).
-
-중요: "parameters" 배열에 최소 8-15개 항목이 있어야 해.
-5개 미만이면 텍스트를 다시 꼼꼼히 읽어 — 분명 놓친 게 있을 거야."""
+missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibility_score(0.0~1.0), score_rationale(점수 근거)."""
 
     prompt_chain = f"{instruction}\n\n위 논문 PDF와 이전 분석을 바탕으로 실험 레시피를 추출해줘."
-    prompt_fallback = f"{instruction}\n\n논문 텍스트:\n{recipe_input}"
+    prompt_fallback = f"논문 텍스트:\n{recipe_input}\n\n{instruction}"
     cache_key = prompt_fallback
 
     cached = await _get_cached_phase_result(paper_id, "recipe", cache_key)

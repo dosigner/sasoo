@@ -382,6 +382,44 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("DOMAIN-SPECIFIC PARAMETERS (Materials Science)", captured["prompt"])
         self.assertIs(captured["store"], False)
 
+    async def test_recipe_prompt_removes_count_floor_and_adds_source_tag(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        captured = {}
+
+        async def _fake_call(prompt, **kwargs):
+            captured["prompt"] = prompt
+            captured.update(kwargs)
+            return {
+                "text": '{"title":"레시피","objective":"목적","parameters":[],"steps":[]}',
+                "model": "gemini", "tokens_in": 10, "tokens_out": 20, "interaction_id": None,
+            }
+
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            await analysis_routes._run_recipe(
+                7,
+                "Recipe context body",
+                status,
+                screening_result_text='{"domain":"optics","relevance_score":0.9,"recipe_applicable":true,"deep_dive_applicable":true,"key_topics":["광학"],"is_experimental":true}',
+            )
+
+        prompt = captured["prompt"]
+        # 날조 유인 제거
+        self.assertNotIn("최소 8-15개", prompt)
+        self.assertNotIn("추정값", prompt)
+        # 정직 추출 규칙
+        self.assertIn("source_tag", prompt)
+        self.assertIn("missing_info에 기록해", prompt)
+        # 폴백 경로: 문서 먼저, 지시 나중
+        self.assertLess(prompt.index("Recipe context body"), prompt.index("핵심 지시사항"))
+        # 스키마 보강
+        param_props = captured["response_schema"]["properties"]["parameters"]["items"]["properties"]
+        self.assertEqual(param_props["source_tag"]["enum"], ["explicit", "inferred"])
+        self.assertIn("score_rationale", captured["response_schema"]["properties"])
+
     async def test_run_recipe_skips_when_screening_signal_is_weak(self):
         status = AnalysisStatus(
             paper_id=7,
