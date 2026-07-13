@@ -258,6 +258,69 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(should_skip)
         self.assertEqual(reason, "low_confidence_screening")
 
+    def test_screening_gate_uses_phase_applicable_flags(self):
+        payload = (
+            '{"relevance_score":0.8,"domain":"optics","key_topics":["광학"],'
+            '"is_experimental":false,"recipe_applicable":false,"deep_dive_applicable":true}'
+        )
+        skip_recipe, reason_recipe = analysis_routes._screening_gate_decision(payload, phase="recipe")
+        skip_deep, _ = analysis_routes._screening_gate_decision(payload, phase="deep_dive")
+
+        self.assertTrue(skip_recipe)
+        self.assertEqual(reason_recipe, "not_applicable_recipe")
+        self.assertFalse(skip_deep)
+
+    def test_screening_gate_applicable_true_overrides_low_confidence_heuristic(self):
+        # 리뷰 논문: relevance 0.45 + general이어도 deep_dive_applicable=true면 실행
+        payload = (
+            '{"relevance_score":0.45,"domain":"general","key_topics":["주제1"],'
+            '"is_experimental":false,"recipe_applicable":false,"deep_dive_applicable":true}'
+        )
+        skip_deep, _ = analysis_routes._screening_gate_decision(payload, phase="deep_dive")
+        self.assertFalse(skip_deep)
+
+    def test_screening_schema_gate_contract(self):
+        schema = analysis_routes._SCREENING_SCHEMA
+        self.assertEqual(
+            schema["properties"]["agent_recommended"]["enum"],
+            ["photon", "cell", "neural", "circuit"],
+        )
+        self.assertEqual(schema["properties"]["relevance_score"]["minimum"], 0.0)
+        self.assertEqual(schema["properties"]["relevance_score"]["maximum"], 1.0)
+        for field in ("key_topics", "is_experimental", "methodology_type",
+                      "recipe_applicable", "deep_dive_applicable"):
+            self.assertIn(field, schema["required"])
+
+    async def test_screening_prompt_puts_document_first(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        calls = {}
+
+        async def _fake_call(prompt, **kwargs):
+            calls["prompt"] = prompt
+            calls.update(kwargs)
+            return {
+                "text": '{"domain":"optics","summary":"요약","relevance_score":0.9,'
+                        '"key_topics":["광학"],"is_experimental":true,'
+                        '"methodology_type":"experimental",'
+                        '"recipe_applicable":true,"deep_dive_applicable":true}',
+                "model": "gemini-3.1-flash-lite",
+                "tokens_in": 10, "tokens_out": 10, "interaction_id": None,
+            }
+
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            await analysis_routes._run_screening(7, "본문 내용", status)
+
+        prompt = calls["prompt"]
+        # 문서 먼저, 지시 나중 (Gemini long-context 권장)
+        self.assertLess(prompt.index("논문 텍스트"), prompt.index("판정 기준"))
+        # system instruction이 정체성을 담당하므로 user 프롬프트의 중복 제거
+        self.assertNotIn("너는 Sasoo", prompt)
+        self.assertIn("recipe_applicable", prompt)
+
     async def test_status_results_and_report_use_latest_phase_rows(self):
         paper = {"id": 7, "title": "Latest Paper", "status": "completed", "authors": "Kim", "year": 2026, "journal": "Nature", "doi": None, "domain": "materials", "agent_used": "crystal", "analyzed_at": "2026-03-26T12:00:00"}
         latest_rows = {

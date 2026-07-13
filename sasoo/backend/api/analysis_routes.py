@@ -161,7 +161,14 @@ async def _get_cached_phase_result(paper_id: int, phase: str, input_text: str) -
     }
 
 
-def _screening_gate_decision(screening_result_text: Optional[str]) -> tuple[bool, str]:
+def _screening_gate_decision(
+    screening_result_text: Optional[str], phase: str = "recipe"
+) -> tuple[bool, str]:
+    """스크리닝 결과로 phase(recipe|deep_dive)의 자동 실행 여부를 정한다.
+
+    신규 스크리닝 결과는 phase별 applicable 플래그를 신뢰하고(리뷰 논문은
+    recipe만 스킵, deep_dive는 실행), 플래그가 없는 과거 캐시 결과는 기존
+    relevance 휴리스틱으로 폴백한다."""
     if not screening_result_text:
         return (False, "")
     try:
@@ -177,12 +184,19 @@ def _screening_gate_decision(screening_result_text: Optional[str]) -> tuple[bool
     except (TypeError, ValueError):
         return (False, "")
 
+    if relevance < 0.35:
+        return (True, "low_relevance_screening")
+
+    applicable = payload.get(f"{phase}_applicable")
+    if applicable is False:
+        return (True, f"not_applicable_{phase}")
+    if applicable is True:
+        return (False, "")
+
+    # 레거시 결과(applicable 플래그 없음): 기존 휴리스틱 유지
     domain = str(payload.get("domain") or "").strip().lower()
     key_topics = payload.get("key_topics") or []
     is_experimental = bool(payload.get("is_experimental", True))
-
-    if relevance < 0.35:
-        return (True, "low_relevance_screening")
     if relevance < 0.5 and domain in {"general", "unknown"} and (not is_experimental or len(key_topics) < 2):
         return (True, "low_confidence_screening")
     return (False, "")
@@ -318,16 +332,23 @@ _SCREENING_SCHEMA = {
     "type": "object",
     "properties": {
         "domain": {"type": "string", "enum": ["optics", "bio", "ai_ml", "ee", "general"]},
-        "agent_recommended": {"type": "string"},
-        "relevance_score": {"type": "number"},
+        "agent_recommended": {"type": "string", "enum": ["photon", "cell", "neural", "circuit"]},
+        "relevance_score": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+        "recipe_applicable": {"type": "boolean"},
+        "deep_dive_applicable": {"type": "boolean"},
+        "applicability_reason": {"type": "string"},
         "key_topics": {"type": "array", "items": {"type": "string"}},
         "methodology_type": {"type": "string", "enum": ["experimental", "computational", "theoretical", "review"]},
         "summary": {"type": "string"},
         "is_experimental": {"type": "boolean"},
         "has_figures": {"type": "boolean"},
         "estimated_complexity": {"type": "string", "enum": ["low", "medium", "high"]},
+        "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
     },
-    "required": ["domain", "summary", "relevance_score"],
+    "required": [
+        "domain", "summary", "relevance_score", "key_topics", "is_experimental",
+        "methodology_type", "recipe_applicable", "deep_dive_applicable",
+    ],
 }
 
 
@@ -340,24 +361,29 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.SCREENING
-    prompt = f"""너는 Sasoo(사수)라는 AI Co-Scientist야. 이 연구 논문을 분석해서 스크리닝 평가를 해줘.
+    prompt = f"""논문 텍스트:
+{screening_input}
 
-모든 텍스트 내용(summary, key_topics 등)은 반드시 한국어로 작성해.
-JSON key 이름만 영어로 유지하고, value는 전부 한국어로 써줘.
+위 논문을 후속 분석 단계에 배정하기 위한 스크리닝 평가를 해줘.
 
-평가 항목:
+판정 기준:
 - domain: optics|bio|ai_ml|ee|general 중 하나
 - agent_recommended: photon|cell|neural|circuit 중 하나
-- relevance_score: 0.0~1.0
+- relevance_score: 연구 논문으로서 분석할 실질이 있는지 (0.0=분석할 내용 없음, 1.0=분석 가치가 충분한 연구 논문)
+- recipe_applicable: 재현 가능한 실험·학습·설계 절차가 논문에 있는지
+- deep_dive_applicable: 기여·방법·근거·한계를 분석할 실질 내용이 있는지
+- applicability_reason: 위 두 판정의 근거 1문장 (한국어)
 - key_topics: 핵심 주제 리스트
 - methodology_type: experimental|computational|theoretical|review 중 하나
 - summary: 2-3문장 요약 (한국어)
-- is_experimental: 실험 논문 여부
-- has_figures: 그림 포함 여부
+- is_experimental: 실험 논문 여부 / has_figures: 그림 포함 여부
 - estimated_complexity: low|medium|high 중 하나
+- confidence: 이 스크리닝 판정 자체의 확신도 (0.0~1.0)
 
-논문 텍스트:
-{screening_input}
+경계 예시:
+- 리뷰 논문: recipe_applicable=false, deep_dive_applicable=true
+- 실험 세부가 없는 사설·초록만 있는 문서: 둘 다 false 가능
+불확실하면 applicable을 성급히 false로 두지 말고 confidence를 낮춰.
 """
 
     cached = await _get_cached_phase_result(paper_id, "screening", prompt)
@@ -983,7 +1009,7 @@ async def _run_recipe(
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.RECIPE
 
-    should_skip, skip_reason = _screening_gate_decision(screening_result_text)
+    should_skip, skip_reason = _screening_gate_decision(screening_result_text, phase="recipe")
     if should_skip:
         return await _store_skipped_phase_result(
             paper_id=paper_id,
@@ -1180,7 +1206,7 @@ async def _run_deep_dive(
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.DEEP_DIVE
 
-    should_skip, skip_reason = _screening_gate_decision(screening_result_text)
+    should_skip, skip_reason = _screening_gate_decision(screening_result_text, phase="deep_dive")
     if should_skip:
         return await _store_skipped_phase_result(
             paper_id=paper_id,
