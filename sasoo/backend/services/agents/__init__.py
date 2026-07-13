@@ -37,9 +37,12 @@ def get_agent_for_domain(domain: str) -> BaseAgent:
         load_all_agents()
     if domain in _AGENT_CACHE:
         return _AGENT_CACHE[domain]
-    # Fallback to first agent
+    # 결정적 폴백: 기본 도메인(optics/photon) → 없으면 이름순 첫 에이전트.
+    # dict 삽입 순서에 따라 우연히 cell로 떨어지던 오배정을 막는다.
+    if "optics" in _AGENT_CACHE:
+        return _AGENT_CACHE["optics"]
     if _AGENT_CACHE:
-        return next(iter(_AGENT_CACHE.values()))
+        return _AGENT_CACHE[sorted(_AGENT_CACHE)[0]]
     # Emergency fallback: create a minimal agent
     from services.agents.md_loader import AgentProfile as _AP
     return MdAgent(_AP(agent_name="unknown", domain="unknown",

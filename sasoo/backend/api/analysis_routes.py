@@ -317,7 +317,7 @@ async def _get_visual_contract(
 _SCREENING_SCHEMA = {
     "type": "object",
     "properties": {
-        "domain": {"type": "string", "enum": ["optics", "materials", "bio", "energy", "quantum", "general"]},
+        "domain": {"type": "string", "enum": ["optics", "bio", "ai_ml", "ee", "general"]},
         "agent_recommended": {"type": "string"},
         "relevance_score": {"type": "number"},
         "key_topics": {"type": "array", "items": {"type": "string"}},
@@ -346,8 +346,8 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
 JSON key 이름만 영어로 유지하고, value는 전부 한국어로 써줘.
 
 평가 항목:
-- domain: optics|materials|bio|energy|quantum|general 중 하나
-- agent_recommended: photon|crystal|helix|volt|qubit|atlas 중 하나
+- domain: optics|bio|ai_ml|ee|general 중 하나
+- agent_recommended: photon|cell|neural|circuit 중 하나
 - relevance_score: 0.0~1.0
 - key_topics: 핵심 주제 리스트
 - methodology_type: experimental|computational|theoretical|review 중 하나
@@ -1027,6 +1027,15 @@ learning_rate, batch_size, epochs, training_time, regularization,
 dropout_rate, weight_initialization, training_data_size, test_data_split,
 loss_function, evaluation_metric, GPU_type, precision (fp16/fp32),
 augmentation_method, pretrained_model, fine_tuning_strategy"""
+            elif domain in ("ee", "circuit", "electrical"):
+                domain_hint = """
+DOMAIN-SPECIFIC PARAMETERS (Electrical/Electronics) — extract ALL of these if mentioned:
+technology_node (nm), supply_voltage (V), threshold_voltage (V), bias_current (uA/mA),
+power_consumption (mW/uW), clock_frequency (Hz/MHz/GHz), gain (dB), bandwidth (Hz),
+transistor_count, channel_length/width (nm/um), load_capacitance (fF/pF),
+input_impedance (ohm), output_impedance (ohm), noise_figure (dB), SNR/SNDR (dB),
+ENOB (bits), sampling_rate (S/s), slew_rate (V/us), phase_margin (deg),
+figure_of_merit (FoM), die_area (mm2), efficiency (%)"""
             elif domain in ("materials", "crystal"):
                 domain_hint = """
 DOMAIN-SPECIFIC PARAMETERS (Materials Science) — extract ALL of these if mentioned:
@@ -1968,6 +1977,13 @@ async def _run_full_analysis(paper_id: int):
         except (_json.JSONDecodeError, TypeError):
             focus = None
         level_key = paper.get("explanation_level") or settings_raw.get("default_explanation_level", "masters")
+        # 오버라이드 없이 프로필 기본값으로 분석한 논문도, 실제 적용된 설명 수준을
+        # 논문에 남겨 라이브러리에서 진실되게 표시되도록 한다.
+        if not paper.get("explanation_level"):
+            await execute_update(
+                "UPDATE papers SET explanation_level = ? WHERE id = ?",
+                (level_key, paper_id),
+            )
         chain_system_instruction = build_chain_system_instruction(
             persona_prompt=_build_persona_prompt(agent),
             research_context=settings_raw.get("research_context", ""),

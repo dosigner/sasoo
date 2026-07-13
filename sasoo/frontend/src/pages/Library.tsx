@@ -3,12 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Loader2,
   AlertCircle,
 } from 'lucide-react';
 import { usePapers } from '@/hooks/usePapers';
 import { type Paper, type PaperStatus } from '@/lib/api';
-import { getAgentMeta, getAllAgents } from '@/lib/agents';
+import { getAllAgents } from '@/lib/agents';
+import { LEVEL_LABELS, type LevelKey } from '@/components/LevelSlider';
 import { S } from '@/lib/strings';
 import { useToast } from '@/components/Toast';
 import { Modal, Select } from '@/components/ui';
@@ -95,216 +98,158 @@ function activityLabel(paper: Paper): string {
   return date ? formatDate(date) : '-';
 }
 
-function tagsForPaper(paper: Paper): string[] {
-  return (paper.tags ?? '')
-    .split(',')
-    .map((tag) => tag.trim())
-    .filter(Boolean)
-    .slice(0, 2);
-}
-
 function statusMetaCount(papers: Paper[], status: PaperStatus): number {
   return papers.filter((paper) => paper.status === status).length;
 }
 
-interface PaperItemProps {
+// 분석 시 실제 적용된 설명 수준 라벨. 값이 없으면(구 데이터·미분석) '미지정'.
+function explanationLevelLabel(paper: Paper): string {
+  const key = paper.explanation_level as LevelKey | null | undefined;
+  return key && key in LEVEL_LABELS ? LEVEL_LABELS[key] : '미지정';
+}
+
+type TableSortKey = 'title' | 'year' | 'analyzed_at';
+
+interface SortableThProps {
+  label: string;
+  colKey: TableSortKey;
+  activeKey?: string;
+  order?: 'asc' | 'desc';
+  onSort: (key: TableSortKey) => void;
+}
+
+function SortableTh({ label, colKey, activeKey, order, onSort }: SortableThProps) {
+  const active = activeKey === colKey;
+  return (
+    <th
+      scope="col"
+      aria-sort={active ? (order === 'asc' ? 'ascending' : 'descending') : 'none'}
+      className="library-th-sortable"
+    >
+      <button
+        type="button"
+        onClick={() => onSort(colKey)}
+        className="inline-flex items-center gap-1 uppercase tracking-[inherit]"
+      >
+        {label}
+        {active &&
+          (order === 'asc' ? (
+            <ChevronUp className="h-3 w-3" />
+          ) : (
+            <ChevronDown className="h-3 w-3" />
+          ))}
+      </button>
+    </th>
+  );
+}
+
+interface PaperTableRowProps {
   paper: Paper;
   onOpen: (id: string) => void;
   onDelete: (id: string, title: string) => void;
-  menuOpen: boolean;
-  onToggleMenu: (id: string) => void;
 }
 
-type RowMenuProps = Omit<PaperItemProps, 'onOpen'>;
-
-function RowMenu({ paper, onDelete, menuOpen, onToggleMenu }: RowMenuProps) {
-  return (
-    <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
-      <button
-        onClick={() => onToggleMenu(String(paper.id))}
-        className="flex h-9 w-9 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
-        title={S.library.more}
-        aria-label={S.library.more}
-      >
-        <AppIcon name="more" className="w-4 h-4" />
-      </button>
-      {menuOpen && (
-        <div
-          className="absolute right-0 top-11 z-20 min-w-[9rem] border border-border/50 bg-surface/95 p-1.5 shadow-2xl backdrop-blur"
-          style={{ borderRadius: 'var(--radius-surface)' }}
-        >
-          <button
-            onClick={() => onDelete(String(paper.id), paper.title)}
-            className="flex w-full items-center px-3 py-2 text-left text-xs text-danger transition-colors hover:bg-danger/10"
-            style={{ borderRadius: 'var(--radius-control)' }}
-          >
-            {S.library.delete}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PaperShelfRow({ paper, onOpen, onDelete, menuOpen, onToggleMenu }: PaperItemProps) {
+function PaperTableRow({ paper, onOpen, onDelete }: PaperTableRowProps) {
   const tone = statusTone(paper.status);
-  const agent = getAgentMeta(paper.agent_used);
-  const tags = tagsForPaper(paper);
-  const rowToneClass = `library-shelf-row--${paper.status}`;
 
   return (
-    <article
-      role="button"
+    <tr
       tabIndex={0}
+      role="button"
       aria-label={`${paper.title} 워크벤치 열기`}
-      className={`library-shelf-row ${rowToneClass} group relative grid cursor-pointer gap-3 border-b border-border/65 px-4 py-[var(--density-row-py)] transition-colors hover:bg-surface-hover/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-inset md:grid-cols-[10px_minmax(0,1.8fr)_minmax(9rem,0.85fr)_minmax(9rem,0.72fr)_auto] md:items-center md:px-6`}
       onClick={() => onOpen(String(paper.id))}
       onKeyDown={(event) => handleInteractiveKeyDown(event, () => onOpen(String(paper.id)))}
     >
-      <div className={`h-full min-h-[64px] w-[3px] rounded-full ${tone.line} md:w-[4px]`} />
-
-      <div className="min-w-0">
-        <div className="mb-1.5 flex flex-wrap items-center gap-2">
-          <span className="library-status-badge">
-            <span className="library-status-dot" />
-            {statusLabel(paper.status)}
-          </span>
-          {paper.year && (
-            <span className="text-2xs text-fg-muted">{paper.year}</span>
-          )}
-        </div>
-        <h3 className="library-record-title transition-colors group-hover:text-fg">
-          {paper.title}
-        </h3>
-        <div className="library-record-meta">
-          {paper.authors && <span className="truncate">{paper.authors}</span>}
-          {paper.journal && (
-            <>
-              <span className="h-1 w-1 rounded-full bg-border" />
-              <span className="truncate">{paper.journal}</span>
-            </>
-          )}
-        </div>
-        {tags.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {tags.map((tag) => (
-              <span
-                key={tag}
-                className="rounded-full border border-border/50 px-2 py-1 text-2xs text-fg-muted"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="grid gap-1.5 text-xs text-fg-muted">
-        <div>
-          <div className="library-meta-label mb-1">분류</div>
-          <div className="library-meta-value">{paper.domain}</div>
-        </div>
-        {agent && (
-          <div>
-            <div className="library-meta-label mb-1">담당 에이전트</div>
-            <div className="library-agent-label">
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: agent.color }} />
-              {agent.nameKo}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="grid gap-1.5 text-xs text-fg-muted">
-        <div>
-          <div className="library-meta-label mb-1">최근 활동</div>
-          <div className="library-meta-value">{activityLabel(paper)}</div>
-        </div>
-        {paper.doi && (
-          <div className="truncate text-2xs font-mono text-fg-muted">
-            DOI {paper.doi}
-          </div>
-        )}
-      </div>
-
-      <div className="flex items-center justify-end">
-        <RowMenu
-          paper={paper}
-          onDelete={onDelete}
-          menuOpen={menuOpen}
-          onToggleMenu={onToggleMenu}
-        />
-      </div>
-    </article>
-  );
-}
-
-function PaperArchiveCard({ paper, onOpen, onDelete, menuOpen, onToggleMenu }: PaperItemProps) {
-  const tone = statusTone(paper.status);
-  const agent = getAgentMeta(paper.agent_used);
-  const tags = tagsForPaper(paper);
-  const cardToneClass = `library-archive-card--${paper.status}`;
-
-  return (
-    <article
-      role="button"
-      tabIndex={0}
-      aria-label={`${paper.title} 워크벤치 열기`}
-      className={`library-archive-card ${cardToneClass} group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-bg`}
-      onClick={() => onOpen(String(paper.id))}
-      onKeyDown={(event) => handleInteractiveKeyDown(event, () => onOpen(String(paper.id)))}
-    >
-      <div className={`absolute inset-x-4 top-0 h-1 rounded-b-full ${tone.line}`} />
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <div className="text-2xs text-fg-muted">
-            {paper.year || '연도 미상'} · {paper.domain}
-          </div>
-          <div className="mt-2 line-clamp-3 text-base font-semibold leading-snug text-fg group-hover:text-fg">
+      <td>
+        <div className="min-w-0 max-w-[38rem]">
+          <div className="line-clamp-2 font-medium leading-snug text-fg" title={paper.title}>
             {paper.title}
           </div>
+          {paper.authors && (
+            <div className="mt-0.5 truncate text-2xs text-fg-muted" title={paper.authors}>
+              {paper.authors}
+            </div>
+          )}
         </div>
-        <span className={`shrink-0 rounded-full border px-2 py-1 text-2xs ${tone.badge}`}>
+      </td>
+      <td>
+        <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+          <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+          {statusLabel(paper.status)}
+        </span>
+      </td>
+      <td className="whitespace-nowrap">{paper.domain || '—'}</td>
+      <td className="whitespace-nowrap">{explanationLevelLabel(paper)}</td>
+      <td className="library-cell-num">{paper.year || '—'}</td>
+      <td className="library-cell-num">{activityLabel(paper)}</td>
+      <td>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(String(paper.id), paper.title);
+          }}
+          className="library-row-action ml-auto"
+          title={S.library.delete}
+          aria-label={`${paper.title} ${S.library.delete}`}
+        >
+          <AppIcon name="delete" className="h-4 w-4" />
+        </button>
+      </td>
+    </tr>
+  );
+}
+
+function PaperArchiveCard({ paper, onOpen, onDelete }: PaperTableRowProps) {
+  const tone = statusTone(paper.status);
+
+  return (
+    <article
+      role="button"
+      tabIndex={0}
+      aria-label={`${paper.title} 워크벤치 열기`}
+      className="library-soft-card group"
+      onClick={() => onOpen(String(paper.id))}
+      onKeyDown={(event) => handleInteractiveKeyDown(event, () => onOpen(String(paper.id)))}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-2xs text-fg-muted">
+          {paper.year || '연도 미상'} · {paper.domain}
+        </div>
+        <span className="library-soft-pill">
+          <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
           {statusLabel(paper.status)}
         </span>
       </div>
 
-      <div className="space-y-2.5 text-sm leading-5 text-fg-muted">
-        {paper.authors && <div className="line-clamp-2">{paper.authors}</div>}
-        <div className="flex items-center justify-between gap-3">
-          <span>최근 활동</span>
-          <span className="text-fg">{activityLabel(paper)}</span>
+      <h3
+        className="mt-3 line-clamp-2 text-[0.95rem] font-semibold leading-snug tracking-[-0.01em] text-fg"
+        title={paper.title}
+      >
+        {paper.title}
+      </h3>
+      {paper.authors && (
+        <div className="mt-1.5 line-clamp-1 text-xs text-fg-muted" title={paper.authors}>
+          {paper.authors}
         </div>
-        {agent && (
-          <div className="flex items-center justify-between gap-3">
-            <span>담당 에이전트</span>
-            <span className="inline-flex items-center gap-2 text-fg">
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: agent.color }} />
-              {agent.nameKo}
-            </span>
-          </div>
-        )}
-        {tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {tags.map((tag) => (
-              <span
-                key={tag}
-                className="rounded-full border border-border/50 px-2 py-1 text-2xs text-fg-muted"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
+      )}
 
-      <div className="mt-4 flex items-center justify-end gap-2 border-t border-border/40 pt-3">
-        <RowMenu
-          paper={paper}
-          onDelete={onDelete}
-          menuOpen={menuOpen}
-          onToggleMenu={onToggleMenu}
-        />
+      <div className="mt-auto flex items-center justify-between gap-2 pt-4">
+        <div className="flex min-w-0 items-center gap-2 text-xs text-fg-muted">
+          <span className="truncate text-fg-secondary">{explanationLevelLabel(paper)}</span>
+          <span className="h-1 w-1 shrink-0 rounded-full bg-border" />
+          <span className="library-cell-num truncate">{activityLabel(paper)}</span>
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(String(paper.id), paper.title);
+          }}
+          className="library-row-action shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+          title={S.library.delete}
+          aria-label={`${paper.title} ${S.library.delete}`}
+        >
+          <AppIcon name="delete" className="h-4 w-4" />
+        </button>
       </div>
     </article>
   );
@@ -316,7 +261,6 @@ export default function Library() {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [showFilters, setShowFilters] = useState(false);
   const [searchValue, setSearchValue] = useState('');
-  const [menuPaperId, setMenuPaperId] = useState<string | null>(null);
   const [deleteModal, setDeleteModal] = useState<{
     show: boolean;
     paperId: string | null;
@@ -350,14 +294,12 @@ export default function Library() {
 
   const handleOpenPaper = useCallback(
     (id: string) => {
-      setMenuPaperId(null);
       navigate(`/workbench/${id}`);
     },
     [navigate]
   );
 
   const handleDeletePaper = useCallback(async (id: string, title: string) => {
-    setMenuPaperId(null);
     setDeleteModal({
       show: true,
       paperId: id,
@@ -403,6 +345,18 @@ export default function Library() {
   const from = (page - 1) * (filters.page_size || 20) + 1;
   const to = Math.min(page * (filters.page_size || 20), total);
   const handleGoUpload = useCallback(() => navigate('/'), [navigate]);
+
+  // 테이블 헤더 클릭 정렬: 같은 컬럼이면 방향 토글, 다른 컬럼이면 그 컬럼의 기본 방향으로.
+  const toggleSort = useCallback(
+    (key: TableSortKey) => {
+      if (filters.sort_by === key) {
+        setFilters({ sort_order: filters.sort_order === 'asc' ? 'desc' : 'asc' });
+      } else {
+        setFilters({ sort_by: key, sort_order: key === 'title' ? 'asc' : 'desc' });
+      }
+    },
+    [filters.sort_by, filters.sort_order, setFilters]
+  );
 
   return (
     <div className="page-container-wide">
@@ -465,27 +419,29 @@ export default function Library() {
             />
           </button>
 
-          <Select
-            value={`${filters.sort_by}:${filters.sort_order}`}
-            onValueChange={(value) => {
-              const [sort_by, sort_order] = value.split(':') as [
-                'created_at' | 'title' | 'year' | 'analyzed_at',
-                'asc' | 'desc',
-              ];
-              setFilters({ sort_by, sort_order });
-            }}
-            aria-label="정렬 기준"
-            className="rounded-full"
-            options={[
-              { value: 'created_at:desc', label: S.library.newestFirst },
-              { value: 'created_at:asc', label: S.library.oldestFirst },
-              { value: 'title:asc', label: S.library.titleAZ },
-              { value: 'title:desc', label: S.library.titleZA },
-              { value: 'year:desc', label: S.library.yearNewest },
-              { value: 'year:asc', label: S.library.yearOldest },
-              { value: 'analyzed_at:desc', label: S.library.recentlyAnalyzed },
-            ]}
-          />
+          {viewMode === 'grid' && (
+            <Select
+              value={`${filters.sort_by}:${filters.sort_order}`}
+              onValueChange={(value) => {
+                const [sort_by, sort_order] = value.split(':') as [
+                  'created_at' | 'title' | 'year' | 'analyzed_at',
+                  'asc' | 'desc',
+                ];
+                setFilters({ sort_by, sort_order });
+              }}
+              aria-label="정렬 기준"
+              className="rounded-full"
+              options={[
+                { value: 'created_at:desc', label: S.library.newestFirst },
+                { value: 'created_at:asc', label: S.library.oldestFirst },
+                { value: 'title:asc', label: S.library.titleAZ },
+                { value: 'title:desc', label: S.library.titleZA },
+                { value: 'year:desc', label: S.library.yearNewest },
+                { value: 'year:asc', label: S.library.yearOldest },
+                { value: 'analyzed_at:desc', label: S.library.recentlyAnalyzed },
+              ]}
+            />
+          )}
 
           <div className="inline-flex items-center rounded-full border border-border bg-surface p-1">
             <button
@@ -678,24 +634,50 @@ export default function Library() {
       )}
 
       {!loading && papers.length > 0 && viewMode === 'list' && (
-        <section className="library-shelf">
-          <div className="grid gap-4 px-4 py-3 text-2xs uppercase tracking-[0.16em] text-fg-muted md:grid-cols-[10px_minmax(0,1.8fr)_minmax(9rem,0.85fr)_minmax(9rem,0.72fr)_auto] md:px-6">
-            <div />
-            <div>{S.library.shelfTitle}</div>
-            <div>분류</div>
-            <div>활동</div>
-            <div className="text-right">메뉴</div>
-          </div>
-          {papers.map((paper) => (
-            <PaperShelfRow
-              key={paper.id}
-              paper={paper}
-              onOpen={handleOpenPaper}
-              onDelete={handleDeletePaper}
-              menuOpen={menuPaperId === String(paper.id)}
-              onToggleMenu={(id) => setMenuPaperId((prev) => (prev === id ? null : id))}
-            />
-          ))}
+        <section className="overflow-x-auto rounded-surface border border-border/60 bg-surface/90">
+          <table className="library-table min-w-[720px]">
+            <thead>
+              <tr>
+                <SortableTh
+                  label="제목"
+                  colKey="title"
+                  activeKey={filters.sort_by}
+                  order={filters.sort_order}
+                  onSort={toggleSort}
+                />
+                <th scope="col">{S.library.status}</th>
+                <th scope="col">분류</th>
+                <th scope="col">설명 수준</th>
+                <SortableTh
+                  label={S.library.year}
+                  colKey="year"
+                  activeKey={filters.sort_by}
+                  order={filters.sort_order}
+                  onSort={toggleSort}
+                />
+                <SortableTh
+                  label={S.library.recentActivity}
+                  colKey="analyzed_at"
+                  activeKey={filters.sort_by}
+                  order={filters.sort_order}
+                  onSort={toggleSort}
+                />
+                <th scope="col" className="w-12">
+                  <span className="sr-only">{S.library.more}</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {papers.map((paper) => (
+                <PaperTableRow
+                  key={paper.id}
+                  paper={paper}
+                  onOpen={handleOpenPaper}
+                  onDelete={handleDeletePaper}
+                />
+              ))}
+            </tbody>
+          </table>
         </section>
       )}
 
@@ -707,8 +689,6 @@ export default function Library() {
               paper={paper}
               onOpen={handleOpenPaper}
               onDelete={handleDeletePaper}
-              menuOpen={menuPaperId === String(paper.id)}
-              onToggleMenu={(id) => setMenuPaperId((prev) => (prev === id ? null : id))}
             />
           ))}
         </section>

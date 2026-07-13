@@ -41,10 +41,21 @@
 </div>
 
 <div align="center">
-  <img src="sasoo/docs/assets/procedure.png" alt="Sasoo workflow" width="900" />
+  <img src="sasoo/docs/assets/procedure.ko.svg" alt="Sasoo 5단계 분석 워크플로" width="900" />
 </div>
 
+<!-- README-I18N:START -->
+
+**한국어** | [English](./README.en.md)
+
+<!-- README-I18N:END -->
+
 ---
+
+<div align="center">
+  <img src="sasoo/docs/assets/storyline.png" alt="Sasoo 스토리라인: 논문 더미 정리, figure 검토, 라이브러리 보관" width="900" />
+  <p><sub>읽기 전 — 구조를 세우고 · 읽는 동안 — figure를 해석하고 · 읽은 뒤 — 재현 파라미터까지 남깁니다</sub></p>
+</div>
 
 ## Why Sasoo
 
@@ -60,7 +71,7 @@
 </td>
 <td width="33%" valign="top">
 <strong>Agent-routed</strong><br/>
-광학, 바이오, 딥러닝, 회로 계열 에이전트와 커스텀 에이전트를 붙여 논문마다 다른 시선으로 읽게 합니다.
+광학, 바이오, 딥러닝, 회로 계열 에이전트로 논문마다 다른 시선으로 읽고, 사용자 데이터 폴더에 `.md` 파일을 넣어 나만의 에이전트도 더할 수 있습니다.
 </td>
 </tr>
 </table>
@@ -73,7 +84,7 @@
 - 데스크톱 설정 저장과 라이브러리 경로 처리 안정화가 반영됐습니다.
 - `resolver_v1` 기반 figure/table 추출 경로가 기본값입니다.
 - 릴리즈 빌드에서 Java 기반 OpenDataLoader 런타임을 함께 패키징합니다.
-- Workbench, Library, Agents, Settings, Experiment Plan 흐름이 한 묶음으로 정리되어 있습니다.
+- Workbench, Library, 연구자 프로필, Settings, Experiment Plan 흐름이 한 묶음으로 정리되어 있습니다.
 
 ## What You Get
 
@@ -82,19 +93,18 @@
 | Upload | PDF 업로드, 파일 검증, 최근 분석/라이브러리 기록, 도메인 및 담당 에이전트 확인 |
 | Workbench | PDF 뷰어와 분석 패널을 나란히 두고 요약, figure, table, recipe, experiment plan, chat을 함께 검토 |
 | Library | 제목, 저자, DOI, 태그, 상태, 연도 기준으로 검색하고 다시 열기 |
-| Agents | 기본 에이전트 외에 커스텀 `.md` 에이전트를 생성하고 수정 |
-| Settings | Gemini/Anthropic 키, 라이브러리 경로, 자동 분석, 테마, 추출 파이프라인, 비용 대시보드 관리 |
-| Reports | 분석 결과를 재현 가능한 markdown 리포트와 artifact 상태로 남김 |
+| Profile | 연구 배경과 기본 설명 수준을 관리하는 연구자 프로필 |
+| Settings | Gemini/OpenAI 키, 라이브러리 경로, 자동 분석, 테마, 추출 파이프라인, 비용 대시보드 관리 |
 
 ## Domain Agents
 
 | Agent | Focus |
 | --- | --- |
-| Photon | 광학, 레이저, FSO, 실험 셋업 검토 |
-| Cell | 바이오, 분자생물학, 샘플 수와 실험 조건 점검 |
-| Neural | 딥러닝, CV, NLP, ablation과 비교 실험 검토 |
-| Circuit | 회로, 반도체, 신호처리, 조건과 FoM 정리 |
-| Custom agents | 앱 안에서 생성한 `.md` 기반 도메인 프롬프트 |
+| **Photon** | 광학, 레이저, FSO, 실험 셋업 검토 |
+| **Cell** | 바이오, 분자생물학, 샘플 수와 실험 조건 점검 |
+| **Neural** | 딥러닝, CV, NLP, ablation과 비교 실험 검토 |
+| **Circuit** | 회로, 반도체, 신호처리, 조건과 FoM 정리 |
+| **User overrides** | 사용자 데이터 폴더에 `.md` 파일을 직접 추가해 에이전트 확장 |
 
 ## Workflow
 
@@ -102,21 +112,23 @@
 flowchart LR
     A["PDF 업로드"] --> B["도메인 분류 + 에이전트 배정"]
     B --> C["텍스트/figure/table artifact 생성"]
-    C --> D["4단계 분석 실행"]
+    C --> D["5단계 분석 실행"]
     D --> E["Workbench 검토"]
     E --> F["Library 보관"]
     E --> G["Chat / Experiment Plan"]
 ```
 
-### 4-Phase Analysis
+### 5-Phase Analysis
 
 1. `Screening`
    논문의 도메인, 핵심 주장, 실험성, relevance를 빠르게 거릅니다.
-2. `Visual Verification`
+2. `Citation Analysis`
+   참고문헌을 정리하고 인용 빈도와 역할을 분석합니다.
+3. `Visual Verification`
    figure/table을 중심으로 축, 품질, caption 맥락, 시각 artifact 상태를 확인합니다.
-3. `Recipe Extraction`
+4. `Recipe Extraction`
    방법론과 실험 파라미터를 구조화된 recipe 카드로 뽑습니다.
-4. `Deep Dive`
+5. `Deep Dive`
    claim, evidence, weak point, follow-up 질문, Mermaid 기반 설명 흐름까지 확장합니다.
 
 ## Installation
@@ -142,10 +154,10 @@ xattr -dr com.apple.quarantine /Applications/Sasoo.app
 
 ## API Keys
 
-전체 기능을 안정적으로 쓰려면 `Gemini`와 `Anthropic` 키를 둘 다 넣는 것이 좋습니다.
+핵심 분석은 `Gemini` 키만으로 동작합니다. 기본 이미지 생성 경로가 OpenAI라서, 그대로 쓰려면 `OpenAI` 키도 넣는 것이 좋습니다.
 
-- Gemini: screening, visual 분석, 일부 resolver/visual generation 경로
-- Anthropic: deep dive, Mermaid/diagram 생성, 일부 고급 분석 경로
+- Gemini: screening, visual 분석, deep dive, Mermaid/diagram 생성 등 대부분의 텍스트·비전 분석
+- OpenAI: figure/이미지 생성(기본 이미지 프로바이더 — `Settings`에서 이미지 생성을 Gemini로 바꾸면 OpenAI 키 없이도 동작)
 
 설치 후 `Settings`에서 바로 입력할 수 있습니다.
 
@@ -168,8 +180,8 @@ flowchart TB
     C --> E["Library storage"]
     C --> F["OpenDataLoader + resolver_v1"]
     C --> G["Gemini"]
-    C --> H["Claude"]
-    B --> I["Upload / Workbench / Library / Agents / Settings"]
+    C --> H["OpenAI"]
+    B --> I["Upload / Workbench / Library / Profile / Settings"]
 ```
 
 ### Main pieces
@@ -179,7 +191,7 @@ flowchart TB
 - Backend API: FastAPI
 - Persistence: SQLite + filesystem library storage
 - Extraction: Java-based OpenDataLoader, resolver-based figure/table pipeline
-- LLM layer: Gemini + Claude
+- LLM layer: Gemini(텍스트·비전 분석) + OpenAI(이미지 생성)
 
 ## Local Development
 

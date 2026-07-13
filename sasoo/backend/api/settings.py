@@ -47,6 +47,10 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "extraction_pipeline_force_fallback": "false",
     "research_context": "",
     "default_explanation_level": "masters",
+    "research_areas": "[]",
+    "field_expertise": "major",
+    "reading_experience": "regular",
+    "research_role": "grad_student",
 }
 
 
@@ -187,6 +191,20 @@ def _mask_api_key(key: str) -> str:
     return f"{key[:8]}...{key[-4:]}"
 
 
+MAX_RESEARCH_AREAS = 3
+
+
+def _parse_research_areas(raw: str) -> list[str]:
+    """Decode the JSON-encoded research_areas setting, tolerating bad/legacy values."""
+    try:
+        parsed = json.loads(raw) if raw else []
+    except (json.JSONDecodeError, TypeError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(item) for item in parsed if isinstance(item, str)][:MAX_RESEARCH_AREAS]
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -217,6 +235,10 @@ async def get_settings():
         extraction_pipeline_version=raw.get("extraction_pipeline_version", "resolver_v1"),
         research_context=raw.get("research_context", ""),
         default_explanation_level=raw.get("default_explanation_level", "masters"),
+        research_areas=_parse_research_areas(raw.get("research_areas", "[]")),
+        field_expertise=raw.get("field_expertise", "major"),
+        reading_experience=raw.get("reading_experience", "regular"),
+        research_role=raw.get("research_role", "grad_student"),
     )
 
 
@@ -246,8 +268,12 @@ async def update_settings(update: SettingsUpdate):
         await _set_setting(library_path_setting_key(), str(new_path))
 
     for key, value in update_data.items():
-        # Convert booleans and enums to string for storage
-        if isinstance(value, bool):
+        # Convert booleans, enums, and list-valued settings to string for storage
+        if key == "research_areas":
+            if not isinstance(value, list):
+                raise HTTPException(status_code=400, detail="research_areas must be a list of strings.")
+            str_value = json.dumps([str(item) for item in value][:MAX_RESEARCH_AREAS])
+        elif isinstance(value, bool):
             str_value = "true" if value else "false"
         elif hasattr(value, "value"):
             str_value = value.value

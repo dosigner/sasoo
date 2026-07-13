@@ -488,7 +488,7 @@ async def explain_figure_handler(paper_id: int, figure_id: int):
 
     # Domain-specific expert agent persona
     domain = paper.get("domain", "general")
-    agent = paper.get("agent_used", "atlas")
+    agent = paper.get("agent_used", "photon")
 
     persona = AGENT_PERSONAS.get(agent, DEFAULT_PERSONA)
 

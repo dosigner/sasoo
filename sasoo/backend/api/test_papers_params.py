@@ -123,12 +123,12 @@ class UpdatePaperDomainSyncsAgentUsedTests(unittest.IsolatedAsyncioTestCase):
         existing_row = _base_paper_row(paper_id)  # domain=optics, agent_used=photon
 
         updated_row = dict(existing_row)
-        updated_row["domain"] = "materials"
-        updated_row["agent_used"] = "crystal"
+        updated_row["domain"] = "ai_ml"
+        updated_row["agent_used"] = "neural"
 
-        update = PaperUpdate(domain="materials")
+        update = PaperUpdate(domain="ai_ml")
 
-        fake_agent = type("FakeAgent", (), {"name": "crystal"})()
+        fake_agent = type("FakeAgent", (), {"name": "neural"})()
 
         with (
             patch("api.papers.fetch_one", new=AsyncMock(side_effect=[existing_row, updated_row])),
@@ -141,13 +141,13 @@ class UpdatePaperDomainSyncsAgentUsedTests(unittest.IsolatedAsyncioTestCase):
             response = await papers.update_paper(paper_id, update)
 
         # agent_used must be derived from the new domain, not left stale.
-        get_agent_mock.assert_called_once_with("materials")
+        get_agent_mock.assert_called_once_with("ai_ml")
         sql, params = execute_update_mock.await_args.args
         self.assertIn("domain = ?", sql)
         self.assertIn("agent_used = ?", sql)
-        self.assertIn("crystal", params)
-        self.assertEqual(response.agent_used, "crystal")
-        self.assertEqual(response.domain, "materials")
+        self.assertIn("neural", params)
+        self.assertEqual(response.agent_used, "neural")
+        self.assertEqual(response.domain, "ai_ml")
 
     async def test_patch_explicit_agent_used_not_overridden(self) -> None:
         """If the caller explicitly sets agent_used, domain-based recompute must not clobber it."""
@@ -155,10 +155,10 @@ class UpdatePaperDomainSyncsAgentUsedTests(unittest.IsolatedAsyncioTestCase):
         existing_row = _base_paper_row(paper_id)
 
         updated_row = dict(existing_row)
-        updated_row["domain"] = "materials"
-        updated_row["agent_used"] = "atlas"
+        updated_row["domain"] = "ai_ml"
+        updated_row["agent_used"] = "circuit"
 
-        update = PaperUpdate(domain="materials", agent_used="atlas")
+        update = PaperUpdate(domain="ai_ml", agent_used="circuit")
 
         with (
             patch("api.papers.fetch_one", new=AsyncMock(side_effect=[existing_row, updated_row])),
@@ -172,8 +172,8 @@ class UpdatePaperDomainSyncsAgentUsedTests(unittest.IsolatedAsyncioTestCase):
 
         get_agent_mock.assert_not_called()
         sql, params = execute_update_mock.await_args.args
-        self.assertIn("atlas", params)
-        self.assertEqual(response.agent_used, "atlas")
+        self.assertIn("circuit", params)
+        self.assertEqual(response.agent_used, "circuit")
 
 
 if __name__ == "__main__":

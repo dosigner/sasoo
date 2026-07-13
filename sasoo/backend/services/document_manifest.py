@@ -300,7 +300,9 @@ def _clean_author_text(text: str) -> str:
     cleaned = EMAIL_PATTERN.sub("", text)
     cleaned = re.sub(r"[\*\d†‡§¶]+", " ", cleaned)
     cleaned = re.sub(r"\s{2,}", " ", cleaned)
-    return cleaned.strip(" ,;")
+    cleaned = cleaned.strip(" ,;")
+    # "[]", "()" 같은 문자 없는 플레이스홀더는 저자명이 아니다.
+    return cleaned if re.search(r"[^\W\d_]", cleaned) else ""
 
 
 def _extract_authors_from_blocks(root_author: str, title_block: dict[str, Any] | None, blocks: list[dict[str, Any]], page_sizes: dict[int, tuple[float, float]]) -> str | None:

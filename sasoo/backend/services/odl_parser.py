@@ -763,7 +763,9 @@ def _quality_from_dims(width: int, height: int) -> str:
 
 def _extract_metadata(root: dict[str, Any], full_text: str, pdf_path: Path) -> dict[str, Any]:
     title = resolve_paper_title(_maybe_text(root.get("title")), full_text, pdf_path.stem)
-    author = _maybe_text(root.get("author")) or None
+    # "[]" 같은 문자 없는 플레이스홀더 메타데이터는 저자명으로 취급하지 않는다.
+    author_text = _maybe_text(root.get("author"))
+    author = author_text if re.search(r"[^\W\d_]", author_text) else None
     creation_date = _maybe_text(root.get("creation_date")) or _maybe_text(root.get("creation date"))
 
     year = None

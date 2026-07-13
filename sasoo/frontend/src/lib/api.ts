@@ -276,6 +276,10 @@ export interface Settings {
   extraction_pipeline_version: 'legacy' | 'resolver_v1';
   research_context: string;
   default_explanation_level: string;
+  research_areas: string[];
+  field_expertise: string;
+  reading_experience: string;
+  research_role: string;
 }
 
 export interface ModelStats {
