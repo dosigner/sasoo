@@ -693,7 +693,7 @@ quality_summary(그림 품질 전체 평가, 한국어), key_findings_from_visua
 - key_findings_from_visuals의 각 항목은 근거가 된 그림/표 번호로 시작해(예: "Fig. 3: ...", "Table 2: ...").
 - 그림에서 실제로 읽을 수 있는 내용만 관찰로 적어. 수치·글자가 안 읽히면 추측하지 말고 "판독 불가"라고 표시해.
 - 본문 주장과 그림 내용이 어긋나는 지점이 보이면 짚어줘.
-- 아래에 주어지는 figure/table 메타데이터(quality/confidence 등)는 추출 파이프라인 상태 정보일 뿐, 그림 내용의 과학적 타당성 근거가 아니야."""
+- 함께 제공되는 figure/table 메타데이터(quality/confidence 등)는 추출 파이프라인 상태 정보일 뿐, 그림 내용의 과학적 타당성 근거가 아니야."""
 
 _RECIPE_SCHEMA = {
     "type": "object",
