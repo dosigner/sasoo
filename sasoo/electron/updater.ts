@@ -1,6 +1,5 @@
 import { autoUpdater, UpdateInfo } from 'electron-updater';
 import { BrowserWindow, ipcMain, shell } from 'electron';
-import { app } from 'electron';
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 const INITIAL_DELAY_MS = 5000; // 5 seconds after launch

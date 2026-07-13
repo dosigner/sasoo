@@ -142,6 +142,9 @@ export class PythonManager {
       this.process = spawn(bundledBackend, args, {
         cwd: path.dirname(bundledBackend),
         stdio: ['pipe', 'pipe', 'pipe'],
+        // The PyInstaller backend is a console executable; without this a black
+        // console window pops up alongside the app on Windows.
+        windowsHide: true,
         env: {
           ...process.env,
           PYTHONUTF8: '1',           // Force UTF-8 encoding (Korean Windows cp949 fix)
@@ -177,6 +180,8 @@ export class PythonManager {
       this.process = spawn(pythonPath, args, {
         cwd: this.config.backendPath,
         stdio: ['pipe', 'pipe', 'pipe'],
+        // Suppress the console window uvicorn/python would otherwise open on Windows.
+        windowsHide: true,
         env: {
           ...process.env,
           PYTHONUTF8: '1',           // Force UTF-8 encoding (Korean Windows cp949 fix)
