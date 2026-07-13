@@ -551,6 +551,26 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(json.loads(result["text"])["domain"], "optics")
         self.assertEqual(result["tokens_out"], 120)  # 실패분 합산
 
+    async def test_screening_returns_last_result_when_retry_also_fails(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        calls = []
+
+        async def _fake_call(prompt, **kwargs):
+            calls.append(kwargs)
+            return {"text": "not json", "model": "m", "tokens_in": 3, "tokens_out": 5, "interaction_id": None}
+
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            result = await analysis_routes._run_screening(7, "본문", status)
+
+        self.assertEqual(len(calls), 2)  # 1회 재시도 후 중단
+        payload = json.loads(result["text"])
+        self.assertIn("_parse_error", payload)
+        self.assertEqual(payload["_raw"], "not json")
+
     async def test_chain_stage_retries_once_on_parse_failure(self):
         calls = []
 
@@ -574,6 +594,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(calls), 2)
         self.assertEqual(result["text"], '{"ok": true}')
         self.assertEqual(result["tokens_out"], 120)  # 실패분 합산
+        self.assertEqual(result["interaction_id"], "i2")  # 실패 호출 id가 새지 않음
 
     async def test_chain_stage_returns_last_result_when_retry_also_fails(self):
         async def _fake_call(prompt, **kwargs):
