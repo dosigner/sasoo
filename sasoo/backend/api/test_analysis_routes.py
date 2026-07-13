@@ -867,6 +867,15 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(analysis_routes._build_persona_prompt(_BareAgent(), "visual"), "말투")
 
+    def test_visual_instruction_requires_figure_grounding(self):
+        instruction = analysis_routes._VISUAL_INSTRUCTION
+        self.assertIn("Fig.", instruction)                # 출처 표기 예시
+        self.assertIn("판독 불가", instruction)            # 추측 금지
+        self.assertIn("본문", instruction)                 # 그림-본문 일치 확인
+        self.assertNotIn("너는 Sasoo", instruction)        # system과 중복 제거
+        # 추출 파이프라인 메타데이터를 과학적 근거로 오인하지 않도록 명시
+        self.assertIn("과학적 타당성", instruction)
+
 
 class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):
     async def test_figure_prompt_uses_figure_detail_context_and_latest_phase_snippets(self):

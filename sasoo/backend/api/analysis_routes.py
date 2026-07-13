@@ -682,6 +682,19 @@ _VISUAL_SCHEMA = {
     "required": ["quality_summary", "key_findings_from_visuals"],
 }
 
+_VISUAL_INSTRUCTION = """이 논문의 그림·표·수식을 검증해줘.
+
+figure_count(그림 수), tables_found(표 수), equations_found(수식 수),
+diagram_types(다이어그램 종류: SEM/TEM/spectrum/graph/photograph/schematic 등),
+quality_summary(그림 품질 전체 평가, 한국어), key_findings_from_visuals(시각자료에서
+읽어낸 핵심 사항 리스트, 한국어)를 채워줘.
+
+규칙:
+- key_findings_from_visuals의 각 항목은 근거가 된 그림/표 번호로 시작해(예: "Fig. 3: ...", "Table 2: ...").
+- 그림에서 실제로 읽을 수 있는 내용만 관찰로 적어. 수치·글자가 안 읽히면 추측하지 말고 "판독 불가"라고 표시해.
+- 본문 주장과 그림 내용이 어긋나는 지점이 보이면 짚어줘.
+- 아래에 주어지는 figure/table 메타데이터(quality/confidence 등)는 추출 파이프라인 상태 정보일 뿐, 그림 내용의 과학적 타당성 근거가 아니야."""
+
 _RECIPE_SCHEMA = {
     "type": "object",
     "properties": {
@@ -961,15 +974,10 @@ async def _run_visual(
                 f"method={table.get('parse_method')}, resolver={table.get('resolver_version')}"
             )
 
-    instruction = """너는 Sasoo(사수)라는 AI Co-Scientist야. 이 연구 논문의 시각적 요소를 분석해줘.
-
-모든 텍스트 내용(quality_summary, key_findings_from_visuals 등)은 반드시 한국어로 작성해.
-JSON key 이름만 영어로 유지하고, value는 전부 한국어로 써줘.
-
-figure_count(그림 수), tables_found(표 수), equations_found(수식 수), diagram_types(다이어그램 종류 리스트: SEM/TEM/spectrum/graph/photograph/schematic 등), quality_summary(그림 품질 전체 평가, 한국어), key_findings_from_visuals(시각자료에서 발견한 핵심 사항 리스트, 한국어)를 채워줘."""
+    instruction = _VISUAL_INSTRUCTION
 
     prompt_chain = f"{instruction}\n\n위 논문 PDF를 직접 보고 시각 요소를 분석해줘.{figure_desc}"
-    prompt_fallback = f"{instruction}\n\n논문 관련 텍스트:\n{visual_input}\n{figure_desc}"
+    prompt_fallback = f"논문 관련 텍스트:\n{visual_input}\n{figure_desc}\n\n{instruction}"
     cache_key = prompt_fallback
 
     cached = await _get_cached_phase_result(paper_id, "visual", cache_key)
