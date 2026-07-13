@@ -85,7 +85,13 @@ from api.analysis_helpers import (
     _SYSTEM_INSTRUCTION_KO,
 )
 from services.models import (
+    MODEL_SCREENING,
+    MODEL_CITATION,
+    MODEL_VISUAL,
+    MODEL_RECIPE,
+    MODEL_DEEP_DIVE,
     MODEL_VIZ_PLANNING,
+    MODEL_MERMAID,
     MODEL_CHAT,
 )
 from api.report_service import (
@@ -434,7 +440,7 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
     result = await call_interaction(
         prompt,
         lane="pipeline",
-        model="gemini-3.1-flash-lite",
+        model=MODEL_SCREENING,
         thinking_level="minimal",
         response_schema=_SCREENING_SCHEMA,
         store=False,
@@ -565,7 +571,7 @@ async def _run_citation(
             result = await call_interaction(
                 llm_prompt,
                 lane="pipeline",
-                model="gemini-3.5-flash",
+                model=MODEL_CITATION,
                 thinking_level="low",
                 response_schema=_CITATION_SCHEMA,
                 store=False,
@@ -668,6 +674,13 @@ async def _run_citation(
 
 # 단계별 thinking_level (visual=low, recipe=medium, deep_dive=high, visualization=medium)
 _STAGE_THINKING = {"visual": "low", "recipe": "medium", "deep_dive": "high", "visualization": "medium"}
+
+_STAGE_MODELS = {
+    "visual": MODEL_VISUAL,
+    "recipe": MODEL_RECIPE,
+    "deep_dive": MODEL_DEEP_DIVE,
+    "visualization": MODEL_VIZ_PLANNING,
+}
 
 _VISUAL_SCHEMA = {
     "type": "object",
@@ -893,7 +906,7 @@ async def _run_chain_stage(
         return await call_interaction(
             contents,
             lane="pipeline",
-            model="gemini-3.5-flash",
+            model=_STAGE_MODELS[phase],
             system_instruction=system_instruction,
             thinking_level=_STAGE_THINKING[phase],
             previous_interaction_id=previous_interaction_id,
@@ -903,7 +916,7 @@ async def _run_chain_stage(
     return await call_interaction(
         prompt_fallback,
         lane="pipeline",
-        model="gemini-3.5-flash",
+        model=_STAGE_MODELS[phase],
         system_instruction=system_instruction,
         thinking_level=_STAGE_THINKING[phase],
         response_schema=response_schema,
@@ -1750,7 +1763,7 @@ async def _generate_single_mermaid(
 다이어그램 타입 키워드로 시작하는 유효한 Mermaid 코드만 반환해.
 """
 
-    result = await call_interaction(prompt, lane="pipeline", model="gemini-3.5-flash", store=False)
+    result = await call_interaction(prompt, lane="pipeline", model=MODEL_MERMAID, store=False)
 
     return _sanitize_mermaid_code(result["text"])
 

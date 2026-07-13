@@ -910,6 +910,21 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         # 추출 파이프라인 메타데이터를 과학적 근거로 오인하지 않도록 명시
         self.assertIn("과학적 타당성", instruction)
 
+    def test_stage_models_match_constants_and_effective_values(self):
+        from services import models as m
+        # 상수 파일이 실효 동작(Flash)과 일치해야 한다 (Pro 승격은 A/B 후 별도 결정)
+        self.assertEqual(m.MODEL_RECIPE, "gemini-3.5-flash")
+        self.assertEqual(m.MODEL_DEEP_DIVE, "gemini-3.5-flash")
+        self.assertEqual(m.MODEL_VIZ_PLANNING, "gemini-3.5-flash")
+        self.assertEqual(m.MODEL_MERMAID, "gemini-3.5-flash")
+        # 체인 스테이지 → 모델 매핑이 상수를 사용
+        self.assertEqual(analysis_routes._STAGE_MODELS, {
+            "visual": m.MODEL_VISUAL,
+            "recipe": m.MODEL_RECIPE,
+            "deep_dive": m.MODEL_DEEP_DIVE,
+            "visualization": m.MODEL_VIZ_PLANNING,
+        })
+
 
 class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):
     async def test_figure_prompt_uses_figure_detail_context_and_latest_phase_snippets(self):
