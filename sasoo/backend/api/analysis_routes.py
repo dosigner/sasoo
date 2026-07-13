@@ -768,6 +768,8 @@ def _stateless_digest(screening_result_text: str, citation_result_text: str) -> 
     if screening_result_text:
         try:
             s = json.loads(_clean_llm_json(screening_result_text))
+            if not isinstance(s, dict):
+                raise TypeError("digest 입력이 dict가 아님")
             parts.append(
                 "[스크리닝] "
                 f"도메인={s.get('domain', '?')}, 관련성={s.get('relevance_score', '?')}, "
@@ -780,6 +782,8 @@ def _stateless_digest(screening_result_text: str, citation_result_text: str) -> 
     if citation_result_text:
         try:
             c = json.loads(_clean_llm_json(citation_result_text))
+            if not isinstance(c, dict):
+                raise TypeError("digest 입력이 dict가 아님")
             parts.append(
                 "[인용 분석] "
                 f"총 참고문헌={c.get('total_references', '?')}, 균형={c.get('citation_balance', '?')}, "

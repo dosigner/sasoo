@@ -854,6 +854,12 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("[스크리닝 결과]", digest)
         self.assertIn("json 아님", digest)
 
+    def test_stateless_digest_falls_back_on_non_dict_json(self):
+        # json.loads는 성공하지만 dict가 아닌 경우 — 예외 없이 절단 폴백으로 처리
+        digest = analysis_routes._stateless_digest('[1, 2]', '"그냥 문자열"')
+        self.assertIn("[스크리닝 결과]", digest)
+        self.assertIn("[인용 분석 결과]", digest)
+
     def test_deep_dive_instruction_enforces_evidence_priority(self):
         instruction = analysis_routes._DEEP_DIVE_INSTRUCTION
         self.assertIn("탐색용 힌트", instruction)      # 이전 단계 = 힌트
