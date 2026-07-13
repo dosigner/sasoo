@@ -435,14 +435,30 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
         status.total_tokens_out += cached["tokens_out"]
         return cached
 
-    result = await call_interaction(
-        prompt,
-        lane="pipeline",
-        model=MODEL_SCREENING,
-        thinking_level="minimal",
-        response_schema=_SCREENING_SCHEMA,
-        store=False,
-    )
+    async def _invoke() -> dict:
+        return await call_interaction(
+            prompt,
+            lane="pipeline",
+            model=MODEL_SCREENING,
+            thinking_level="minimal",
+            response_schema=_SCREENING_SCHEMA,
+            store=False,
+        )
+
+    result = await _invoke()
+    try:
+        json.loads(_clean_llm_json(result.get("text") or ""))
+    except (json.JSONDecodeError, TypeError):
+        logger.warning(
+            "screening JSON parse failed (tokens_out=%s); retrying once",
+            result.get("tokens_out"),
+        )
+        retry = await _invoke()
+        # 재시도 사용량을 합산해 비용 추적이 실사용을 반영하게 한다
+        retry["tokens_in"] = (result.get("tokens_in") or 0) + (retry.get("tokens_in") or 0)
+        retry["tokens_out"] = (result.get("tokens_out") or 0) + (retry.get("tokens_out") or 0)
+        result = retry
+
     # structured output 실패 대비 안전망: 마크다운 펜스 제거 후 JSON 검증
     cleaned_text = _clean_llm_json(result["text"])
 
@@ -887,40 +903,60 @@ async def _run_chain_stage(
       케이스에는 restart_context(이전 스테이지 결과 텍스트)를 PDF와 함께 프롬프트에 실어
       서버 상태 단절로 잃은 이전 분석 컨텍스트를 복원한다.
     - pdf_uri 없음(폴백): stateless(store=False). 기존 phase_inputs 텍스트를 프롬프트에 삽입한다.
+
+    확률적 반복 루프 등으로 결과 텍스트가 JSON 파싱 불가면 1회 재시도한다(재시도도
+    실패하면 그대로 반환 — 기존 `_raw`/`_parse_error` 경로가 처리).
     """
-    if pdf_uri:
-        if previous_interaction_id is None:
-            chain_text = prompt_chain
-            if restart_context:
-                chain_text = (
-                    f"{prompt_chain}\n\n"
-                    f"이전 분석 단계 결과(체인 재시작으로 복원):\n{restart_context}"
-                )
-            contents = [
-                {"type": "document", "uri": pdf_uri, "mime_type": "application/pdf"},
-                {"type": "text", "text": chain_text},
-            ]
-        else:
-            contents = prompt_chain
+
+    async def _invoke() -> dict:
+        if pdf_uri:
+            if previous_interaction_id is None:
+                chain_text = prompt_chain
+                if restart_context:
+                    chain_text = (
+                        f"{prompt_chain}\n\n"
+                        f"이전 분석 단계 결과(체인 재시작으로 복원):\n{restart_context}"
+                    )
+                contents = [
+                    {"type": "document", "uri": pdf_uri, "mime_type": "application/pdf"},
+                    {"type": "text", "text": chain_text},
+                ]
+            else:
+                contents = prompt_chain
+            return await call_interaction(
+                contents,
+                lane="pipeline",
+                model=_STAGE_MODELS[phase],
+                system_instruction=system_instruction,
+                thinking_level=_STAGE_THINKING[phase],
+                previous_interaction_id=previous_interaction_id,
+                response_schema=response_schema,
+                store=True,
+            )
         return await call_interaction(
-            contents,
+            prompt_fallback,
             lane="pipeline",
             model=_STAGE_MODELS[phase],
             system_instruction=system_instruction,
             thinking_level=_STAGE_THINKING[phase],
-            previous_interaction_id=previous_interaction_id,
             response_schema=response_schema,
-            store=True,
+            store=False,
         )
-    return await call_interaction(
-        prompt_fallback,
-        lane="pipeline",
-        model=_STAGE_MODELS[phase],
-        system_instruction=system_instruction,
-        thinking_level=_STAGE_THINKING[phase],
-        response_schema=response_schema,
-        store=False,
-    )
+
+    result = await _invoke()
+    try:
+        json.loads(_clean_llm_json(result.get("text") or ""))
+    except (json.JSONDecodeError, TypeError):
+        logger.warning(
+            "chain stage %s JSON parse failed (tokens_out=%s); retrying once",
+            phase, result.get("tokens_out"),
+        )
+        retry = await _invoke()
+        # 재시도 사용량을 합산해 비용 추적이 실사용을 반영하게 한다
+        retry["tokens_in"] = (result.get("tokens_in") or 0) + (retry.get("tokens_in") or 0)
+        retry["tokens_out"] = (result.get("tokens_out") or 0) + (retry.get("tokens_out") or 0)
+        result = retry
+    return result
 
 
 async def _run_visual(

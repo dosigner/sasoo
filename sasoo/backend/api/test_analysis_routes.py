@@ -524,6 +524,73 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(merged["top_cited"][0]["evidence_context"], "이 방법은 [1]을 따른다")
         self.assertEqual(merged["citation_limitations"], "상위 10개 기반 평가")
 
+    async def test_screening_retries_once_on_parse_failure(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        calls = []
+
+        async def _fake_call(prompt, **kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                return {"text": '{"broken": ', "model": "m", "tokens_in": 10, "tokens_out": 100, "interaction_id": "i1"}
+            return {
+                "text": '{"domain":"optics","summary":"요약","relevance_score":0.9,'
+                        '"key_topics":["광학"],"is_experimental":true,'
+                        '"methodology_type":"experimental",'
+                        '"recipe_applicable":true,"deep_dive_applicable":true}',
+                "model": "m", "tokens_in": 10, "tokens_out": 20, "interaction_id": "i2",
+            }
+
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            result = await analysis_routes._run_screening(7, "논문 텍스트", status)
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(json.loads(result["text"])["domain"], "optics")
+        self.assertEqual(result["tokens_out"], 120)  # 실패분 합산
+
+    async def test_chain_stage_retries_once_on_parse_failure(self):
+        calls = []
+
+        async def _fake_call(prompt, **kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                return {"text": '{"broken": ', "model": "m", "tokens_in": 10, "tokens_out": 100, "interaction_id": "i1"}
+            return {"text": '{"ok": true}', "model": "m", "tokens_in": 10, "tokens_out": 20, "interaction_id": "i2"}
+
+        with patch("api.analysis_routes.call_interaction", new=_fake_call):
+            result = await analysis_routes._run_chain_stage(
+                phase="recipe",
+                prompt_chain="지시",
+                prompt_fallback="폴백",
+                system_instruction="si",
+                previous_interaction_id=None,
+                pdf_uri=None,
+                response_schema={"type": "object"},
+            )
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(result["text"], '{"ok": true}')
+        self.assertEqual(result["tokens_out"], 120)  # 실패분 합산
+
+    async def test_chain_stage_returns_last_result_when_retry_also_fails(self):
+        async def _fake_call(prompt, **kwargs):
+            return {"text": "not json", "model": "m", "tokens_in": 1, "tokens_out": 2, "interaction_id": None}
+
+        with patch("api.analysis_routes.call_interaction", new=_fake_call):
+            result = await analysis_routes._run_chain_stage(
+                phase="recipe",
+                prompt_chain="지시",
+                prompt_fallback="폴백",
+                system_instruction="si",
+                previous_interaction_id=None,
+                pdf_uri=None,
+                response_schema={"type": "object"},
+            )
+        self.assertEqual(result["text"], "not json")  # 기존 _parse_error 경로가 이어받음
+
     async def test_store_visualization_progress_updates_existing_row(self):
         items = [
             {"id": 1, "title": "A", "status": "completed", "cost_usd": 0.02},
