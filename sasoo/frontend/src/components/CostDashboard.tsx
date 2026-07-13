@@ -145,13 +145,13 @@ interface AccordionProps {
 
 function Accordion({ icon, title, children }: AccordionProps) {
   return (
-    <details className="card group">
+    <details className="card group/acc">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
         <span className="flex items-center gap-2 text-xs font-semibold text-fg-secondary">
           {icon}
           {title}
         </span>
-        <ChevronDown className="h-4 w-4 shrink-0 text-fg-muted transition-transform duration-200 group-open:rotate-180" />
+        <ChevronDown className="h-4 w-4 shrink-0 text-fg-muted transition-transform duration-200 group-open/acc:rotate-180" />
       </summary>
       <div className="mt-3 border-t border-border pt-3">{children}</div>
     </details>
