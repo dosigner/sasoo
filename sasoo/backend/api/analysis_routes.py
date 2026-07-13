@@ -519,7 +519,7 @@ async def _run_citation(
         top_refs_text = ""
         for i, ref in enumerate(top_refs, 1):
             contexts = ref.get("cite_contexts", [])
-            ctx_str = "; ".join(c.get("sentence", "")[:100] for c in contexts[:3])
+            ctx_str = "; ".join(c.get("sentence", "")[:300] for c in contexts[:3])
             top_refs_text += (
                 f"{i}. {ref.get('ref_id', '')} {ref.get('authors', '')} "
                 f"({ref.get('year', '?')}): \"{ref.get('title', '')}\" "
@@ -543,8 +543,9 @@ async def _run_citation(
 위 데이터에 근거해서만 이 논문 내부의 인용 사용 패턴을 분석해줘.
 
 규칙:
-- citation_role은 제공된 인용 맥락에서 확인되는 기능만으로 분류해. 근거가 부족하면 "unclear"를 써.
-- evidence_context에는 분류의 근거가 된 인용 맥락 문장을 위 자료에서 한 구절 그대로 옮겨 적어.
+- citation_role은 인용 맥락과 참고문헌의 제목·저널 정보를 근거로 가장 그럴듯한 역할을 골라. 제목·저널도 위에 제공된 데이터니까 이를 근거로 판단하는 건 날조가 아니야.
+- "unclear"는 최후 수단이야 — 인용 맥락과 제목·저널 어느 쪽으로도 판단할 수 없을 때만 써.
+- evidence_context에는 분류 근거가 된 인용 맥락 문장을 위 자료에서 한 구절 그대로 옮겨 적어. 맥락이 아닌 제목·저널로 판단했다면 "(제목 근거)"라고 적어.
 - why_cited는 왜 자주 인용됐는지 2-3문장(한국어)으로 써.
 - 참고문헌의 실제 내용·존재 여부·학계 전체 영향력은 검증된 것처럼 말하지 마.
 - key_influences는 위에 제시된 참고문헌 안에서만 골라 — 목록에 없는 연구를 추가하지 마.

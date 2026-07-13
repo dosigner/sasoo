@@ -475,6 +475,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                 "tokens_in": 10, "tokens_out": 10, "interaction_id": None,
             }
 
+        long_sentence = "가" * 120 + "MARKER456"
         local_result = {
             "total_references": 12,
             "citation_style": "numbered",
@@ -483,7 +484,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             "top_cited": [{
                 "ref_id": "[1]", "authors": "Kim", "year": 2024, "title": "T",
                 "journal": "J", "cite_count": 3,
-                "cite_contexts": [{"sentence": "이 방법은 [1]을 따른다"}],
+                "cite_contexts": [{"sentence": long_sentence}],
             }],
         }
         fake_analysis = types.SimpleNamespace(to_dict=lambda: local_result)
@@ -514,6 +515,10 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("Return ONLY valid JSON", captured["prompt"])
         # grounding 규칙
         self.assertIn("목록에 없는 연구를 추가하지 마", captured["prompt"])
+        # unclear는 최후 수단
+        self.assertIn("최후 수단", captured["prompt"])
+        # 인용 맥락 스니펫이 100자를 넘어 300자까지 포함됨
+        self.assertIn("MARKER456", captured["prompt"])
         # 병합: evidence_context가 top_cited에 반영
         merged = json.loads(result["text"])
         self.assertEqual(merged["top_cited"][0]["evidence_context"], "이 방법은 [1]을 따른다")
