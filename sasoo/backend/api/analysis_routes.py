@@ -1181,34 +1181,6 @@ transistor_count, channel_length/width (nm/um), load_capacitance (fF/pF),
 input_impedance (ohm), output_impedance (ohm), noise_figure (dB), SNR/SNDR (dB),
 ENOB (bits), sampling_rate (S/s), slew_rate (V/us), phase_margin (deg),
 figure_of_merit (FoM), die_area (mm2), efficiency (%)"""
-            elif domain in ("materials", "crystal"):
-                domain_hint = """
-DOMAIN-SPECIFIC PARAMETERS (Materials Science) — extract ALL of these if mentioned:
-substrate_type, substrate_temperature (C/K), deposition_rate (nm/s, A/s), chamber_pressure (Pa/Torr),
-film_thickness (nm/um), annealing_temperature (C/K), annealing_duration (min/h), annealing_atmosphere,
-precursor_materials, target_composition, sputtering_power (W), RF_frequency (MHz),
-grain_size (nm/um), crystal_structure, lattice_parameter (A/nm), surface_roughness (nm),
-hardness (GPa), Young_modulus (GPa), thermal_conductivity (W/mK), electrical_resistivity (ohm*cm),
-XRD_peaks (2theta), FWHM, crystallinity (%), porosity (%)"""
-            elif domain in ("energy", "volt"):
-                domain_hint = """
-DOMAIN-SPECIFIC PARAMETERS (Energy) — extract ALL of these if mentioned:
-cell_efficiency (%), open_circuit_voltage (V), short_circuit_current (mA/cm2),
-fill_factor, bandgap (eV), absorber_thickness (nm/um), electrode_material,
-electrolyte_composition, charge_capacity (mAh/g), discharge_rate (C),
-cycle_number, capacity_retention (%), coulombic_efficiency (%),
-power_density (W/kg), energy_density (Wh/kg), internal_resistance (ohm),
-operating_temperature (C), illumination_intensity (mW/cm2, sun),
-active_area (cm2), HTL_material, ETL_material, perovskite_composition"""
-            elif domain in ("quantum", "qubit"):
-                domain_hint = """
-DOMAIN-SPECIFIC PARAMETERS (Quantum) — extract ALL of these if mentioned:
-qubit_type, coherence_time_T1 (us/ms), coherence_time_T2 (us/ms), gate_fidelity (%),
-readout_fidelity (%), operating_temperature (mK/K), coupling_strength (MHz/GHz),
-resonator_frequency (GHz), anharmonicity (MHz), quantum_volume,
-error_rate, circuit_depth, number_of_qubits, connectivity,
-magnetic_field (T/mT), microwave_frequency (GHz), microwave_power (dBm),
-Rabi_frequency (MHz), detuning (MHz), photon_number, squeezing_parameter (dB)"""
             else:
                 domain_hint = """
 Look for ALL quantitative parameters: temperatures, pressures, durations, concentrations,

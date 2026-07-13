@@ -38,6 +38,7 @@ from services.odl_parser import (
     OdlRuntimeError,
     ensure_text_artifacts_async,
     explain_odl_failure,
+    resolve_paper_journal,
     resolve_paper_title,
     schedule_paper_artifacts_refresh,
 )
@@ -222,17 +223,8 @@ def extract_pdf_metadata(pdf_path: str) -> dict:
     if doi_match:
         doi = doi_match.group(0).rstrip(".,;)")
 
-    # Journal - heuristic: check common patterns
-    journal = None
-    journal_patterns = [
-        r"(?:Published in|Journal of|Proceedings of)\s+(.+?)[\.\n]",
-        r"(?:Nature|Science|ACS|IEEE|Optics|Applied|Physical Review)\s*\w*",
-    ]
-    for pat in journal_patterns:
-        jm = re.search(pat, first_pages_text[:2000], re.IGNORECASE)
-        if jm:
-            journal = jm.group(0).strip()[:100]
-            break
+    # Journal - 저널/컨퍼런스 러닝 헤더 구조에 기반한 추출 (services.document_manifest 공유 로직)
+    journal = resolve_paper_journal(first_pages_text[:2000])
 
     # Domain classification
     domain, agent = classify_domain(_clean_domain_classification_text(first_pages_text))

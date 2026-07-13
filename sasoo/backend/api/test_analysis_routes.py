@@ -322,7 +322,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("recipe_applicable", prompt)
 
     async def test_status_results_and_report_use_latest_phase_rows(self):
-        paper = {"id": 7, "title": "Latest Paper", "status": "completed", "authors": "Kim", "year": 2026, "journal": "Nature", "doi": None, "domain": "materials", "agent_used": "crystal", "analyzed_at": "2026-03-26T12:00:00"}
+        paper = {"id": 7, "title": "Latest Paper", "status": "completed", "authors": "Kim", "year": 2026, "journal": "Nature", "doi": None, "domain": "ai_ml", "agent_used": "neural", "analyzed_at": "2026-03-26T12:00:00"}
         latest_rows = {
             "screening": _row("screening", '{"summary":"latest screening"}', parsed_result={"summary": "latest screening"}, cost_usd=0.1),
             "recipe": _row("recipe", '{"title":"latest recipe"}', parsed_result={"title": "latest recipe"}, cost_usd=0.2),
@@ -375,11 +375,11 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                 7,
                 "Recipe context body",
                 status,
-                screening_result_text='{"domain":"materials"}',
+                screening_result_text='{"domain":"ai_ml"}',
             )
 
         # 폴백 경로(pdf_uri 없음): 도메인 힌트 + 논문 텍스트가 프롬프트에 들어가고 store=False
-        self.assertIn("DOMAIN-SPECIFIC PARAMETERS (Materials Science)", captured["prompt"])
+        self.assertIn("DOMAIN-SPECIFIC PARAMETERS (AI/ML)", captured["prompt"])
         self.assertIs(captured["store"], False)
 
     async def test_recipe_prompt_removes_count_floor_and_adds_source_tag(self):
@@ -679,7 +679,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.mermaid_code, "flowchart TD\nA-->B")
 
     async def test_experiment_plan_uses_recipe_phase_input_and_latest_rows(self):
-        paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "materials"}
+        paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "ai_ml"}
         captured = {}
 
         async def _fake_call(prompt, **kwargs):
@@ -705,7 +705,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response["id"], 1)
 
     async def test_chat_uses_chat_phase_input(self):
-        paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "materials"}
+        paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "ai_ml"}
         latest_rows = {
             "screening": _row("screening", '{"summary":"screening"}'),
             "recipe": _row("recipe", '{"title":"recipe"}'),
@@ -757,7 +757,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
     async def test_chat_stream_error_emits_sse_error_event(self):
         """stream_interaction이 예외를 던지면 event_generator의 except 절이
         실제 SSE `{"type":"error","message":...}` 이벤트를 내보내는지 검증한다."""
-        paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "materials"}
+        paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "ai_ml"}
         latest_rows = {
             "screening": _row("screening", '{"summary":"screening"}'),
             "recipe": _row("recipe", '{"title":"recipe"}'),
@@ -795,7 +795,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         (스레드 격리 테스트는 Interactions 전환으로 무효화되어 제거했다 —
         executor 파라미터화와 함께 interactions_client 수준에서 재도입한다.)
         """
-        paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "materials"}
+        paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "ai_ml"}
         captured = {}
 
         def fake_stream(chat_input, **kwargs):
@@ -928,7 +928,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
 
 class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):
     async def test_figure_prompt_uses_figure_detail_context_and_latest_phase_snippets(self):
-        paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "materials", "agent_used": "crystal"}
+        paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "ai_ml", "agent_used": "neural"}
         figure = {"id": 9, "paper_id": 7, "figure_num": "Figure 1", "caption": "Caption", "file_path": None}
         captured = {}
 
@@ -1269,7 +1269,7 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
                 7,
                 "Recipe body",
                 status,
-                screening_result_text='{"domain":"materials"}',
+                screening_result_text='{"domain":"ai_ml"}',
                 system_instruction="SI-CHAIN",
                 previous_interaction_id="int_visual",
                 pdf_uri="files/uri-123",
@@ -1289,7 +1289,7 @@ class _OrchStubProfile:
 
 
 class _OrchStubAgent:
-    name = "crystal"
+    name = "neural"
     profile = _OrchStubProfile()
     description = "정밀한 페르소나"
 
@@ -1302,7 +1302,7 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
     """
 
     _SCREENING_TEXT = (
-        '{"domain":"materials","relevance_score":0.9,"summary":"요약",'
+        '{"domain":"ai_ml","relevance_score":0.9,"summary":"요약",'
         '"is_experimental":true,"key_topics":["박막","증착"]}'
     )
     _CITATION_TEXT = '{"citation_summary":"인용 분석 결과 텍스트"}'
@@ -1336,7 +1336,7 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
             "id": 7,
             "folder_name": "folder",
             "authors": "Kim",
-            "domain": "materials",
+            "domain": "ai_ml",
             "analysis_focus": None,
             "explanation_level": "masters",
             "title": "Paper",

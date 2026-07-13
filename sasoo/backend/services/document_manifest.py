@@ -34,10 +34,6 @@ AFFILIATION_PATTERN = re.compile(
     r"\b(?:university|institute|department|school|laboratory|college|centre|center|faculty)\b",
     re.IGNORECASE,
 )
-JOURNAL_PATTERNS = [
-    r"(?:Published in|Journal of|Proceedings of)\s+(.+?)[\.\n]",
-    r"(?:Nature|Science|ACS|IEEE|Optics|Applied|Physical Review)\s*\w*",
-]
 IMAGE_ELEMENT_TYPES = {"image", "picture"}
 TEXTUAL_TYPES = {"caption", "paragraph", "list item", "text block", "heading"}
 PAGE_RASTER_DIRNAME = ".page_rasters"
@@ -296,6 +292,61 @@ def _choose_title_block(root_title: str, blocks: list[dict[str, Any]], page_size
     return ranked[0]
 
 
+_JOURNAL_NATURE_HEADER_PATTERN = re.compile(r"et al\.\s+(.+?)\s+\(\d{4}\)\s+\d+")
+_JOURNAL_ALLCAPS_HEADER_PATTERN = re.compile(r"(?:^|\n)\s*([A-Z][A-Z ]{6,80}?),?\s*VOL\.\s*\d+")
+_JOURNAL_NAMED_PATTERN = re.compile(
+    r"(?:Published in|Journal of|Proceedings of)\s+(.+?)(?:,\s*(?:Vol|No)\.|[.\n])",
+    re.IGNORECASE,
+)
+
+
+def resolve_paper_journal(text: str) -> str | None:
+    """첫 페이지 텍스트에서 저널/컨퍼런스 러닝 헤더를 찾아 저널명을 추출한다.
+
+    표지·소속기관 문구 안에서 "Nature", "Optics", "IEEE" 같은 단어 하나만 보고
+    맞장구치던 옛 키워드-매칭 방식은 소속기관 문구("Institute for Quantum
+    Optics...")나 URL("www.nature.com/scientificreports"), 논문 제목 자체를
+    저널명으로 오인했다. 이 함수는 실제 학술지 러닝 헤더 구조(Nature 계열
+    "et al. <저널명> (연도) 권:쪽", IEEE/JLT 계열 "<저널명>, VOL. n", OSA/Optica
+    계열 "Vol. n, No. n / 날짜 / 저널명")에만 매칭해 오탐을 없앤다. 어떤 구조에도
+    맞지 않으면 단정하지 않고 None을 반환한다(불확실하면 비워두는 게 틀린 값을
+    보여주는 것보다 낫다).
+    """
+    candidates: list[str] = []
+
+    m = _JOURNAL_NATURE_HEADER_PATTERN.search(text)
+    if m:
+        candidates.append(m.group(1))
+
+    m = _JOURNAL_ALLCAPS_HEADER_PATTERN.search(text)
+    if m:
+        candidates.append(m.group(1))
+
+    for line in text.splitlines():
+        if "Vol." in line and "No." in line and "/" in line:
+            segments = [s.strip() for s in line.split("/")]
+            if len(segments) >= 2:
+                tail = segments[-1]
+                if re.search(r"[^\W\d_]", tail) and len(tail) < 60:
+                    candidates.append(tail)
+            break
+
+    m = _JOURNAL_NAMED_PATTERN.search(text)
+    if m:
+        candidates.append(m.group(1))
+
+    for candidate in candidates:
+        cleaned = re.sub(r"\s{2,}", " ", candidate).strip(" ,.;")
+        if len(cleaned) < 3:
+            continue
+        if not re.search(r"[^\W\d_]", cleaned):
+            continue
+        if AFFILIATION_PATTERN.search(cleaned):
+            continue
+        return cleaned[:100]
+    return None
+
+
 def _clean_author_text(text: str) -> str:
     cleaned = EMAIL_PATTERN.sub("", text)
     cleaned = re.sub(r"[\*\d†‡§¶]+", " ", cleaned)
@@ -437,12 +488,7 @@ def _extract_metadata(
 
     doi = _extract_front_matter_doi(blocks, title_block)
 
-    journal = None
-    for pattern in JOURNAL_PATTERNS:
-        match = re.search(pattern, full_text[:2000], re.IGNORECASE)
-        if match:
-            journal = match.group(0).strip()[:100]
-            break
+    journal = resolve_paper_journal(full_text[:2000])
 
     return {
         "title": title[:200],
