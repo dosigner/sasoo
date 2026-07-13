@@ -423,6 +423,66 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["model"], "gemini-cache")
         insert_mock.assert_awaited_once()
 
+    async def test_citation_calls_llm_with_schema_and_grounding(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        captured = {}
+
+        async def _fake_call(prompt, **kwargs):
+            captured["prompt"] = prompt
+            captured.update(kwargs)
+            return {
+                "text": '{"ref_analyses":[{"ref_id":"[1]","citation_role":"foundational",'
+                        '"why_cited":"기반 이론이라 자주 인용됨.","evidence_context":"이 방법은 [1]을 따른다"}],'
+                        '"summary":"요약","citation_balance":"balanced",'
+                        '"key_influences":["[1]"],"limitations":"상위 10개 기반 평가"}',
+                "model": "gemini-3.5-flash",
+                "tokens_in": 10, "tokens_out": 10, "interaction_id": None,
+            }
+
+        local_result = {
+            "total_references": 12,
+            "citation_style": "numbered",
+            "self_citation_count": 1,
+            "self_citation_ratio": 0.08,
+            "top_cited": [{
+                "ref_id": "[1]", "authors": "Kim", "year": 2024, "title": "T",
+                "journal": "J", "cite_count": 3,
+                "cite_contexts": [{"sentence": "이 방법은 [1]을 따른다"}],
+            }],
+        }
+        fake_analysis = types.SimpleNamespace(to_dict=lambda: local_result)
+
+        with (
+            patch("services.citation_analyzer.analyze_citations", return_value=fake_analysis),
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            result = await analysis_routes._run_citation(
+                7,
+                sections={},
+                citation_body="본문 텍스트",
+                citation_references="[1] Kim 2024",
+                paper_authors="Kim",
+                status=status,
+            )
+
+        # 구조화 출력: 스키마 사용 + 구식 텍스트 지시 제거
+        self.assertIn("ref_analyses", captured["response_schema"]["properties"])
+        self.assertIn(
+            "unclear",
+            captured["response_schema"]["properties"]["ref_analyses"]["items"]
+            ["properties"]["citation_role"]["enum"],
+        )
+        self.assertEqual(captured["thinking_level"], "low")
+        self.assertNotIn("Return ONLY valid JSON", captured["prompt"])
+        # grounding 규칙
+        self.assertIn("목록에 없는 연구를 추가하지 마", captured["prompt"])
+        # 병합: evidence_context가 top_cited에 반영
+        merged = json.loads(result["text"])
+        self.assertEqual(merged["top_cited"][0]["evidence_context"], "이 방법은 [1]을 따른다")
+        self.assertEqual(merged["citation_limitations"], "상위 10개 기반 평가")
+
     async def test_store_visualization_progress_updates_existing_row(self):
         items = [
             {"id": 1, "title": "A", "status": "completed", "cost_usd": 0.02},

@@ -351,6 +351,37 @@ _SCREENING_SCHEMA = {
     ],
 }
 
+_CITATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "ref_analyses": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "ref_id": {"type": "string"},
+                    "citation_role": {
+                        "type": "string",
+                        "enum": ["foundational", "methodological", "comparative",
+                                 "supporting", "contrasting", "unclear"],
+                    },
+                    "evidence_context": {"type": "string"},
+                    "why_cited": {"type": "string"},
+                },
+                "required": ["ref_id", "citation_role", "why_cited"],
+            },
+        },
+        "summary": {"type": "string"},
+        "citation_balance": {
+            "type": "string",
+            "enum": ["balanced", "heavily_reliant", "self_citation_heavy", "diverse"],
+        },
+        "key_influences": {"type": "array", "items": {"type": "string"}},
+        "limitations": {"type": "string"},
+    },
+    "required": ["ref_analyses", "summary", "citation_balance"],
+}
+
 
 async def _run_screening(paper_id: int, screening_input: str, status: AnalysisStatus) -> dict:
     """Phase 1: Screening - classify domain, score relevance, extract topics."""
@@ -492,36 +523,28 @@ async def _run_citation(
                 f"   인용 맥락: {ctx_str}\n\n"
             )
 
-        llm_prompt = f"""너는 Sasoo(사수)라는 AI Co-Scientist야. 이 논문의 인용/참고문헌 분석을 해줘.
+        llm_prompt = f"""아래는 로컬 파서가 이 논문에서 추출한 참고문헌 통계와 상위 인용 맥락이야.
 
-모든 텍스트 내용은 반드시 한국어로 작성해. JSON key 이름만 영어로 유지해.
-
-이 논문의 총 참고문헌 수: {local_result.get('total_references', 0)}
+[인용 데이터]
+총 참고문헌 수: {local_result.get('total_references', 0)}
 인용 스타일: {local_result.get('citation_style', 'numbered')}
 셀프 인용: {local_result.get('self_citation_count', 0)}건 (비율: {local_result.get('self_citation_ratio', 0):.1%})
 
 가장 많이 인용된 상위 10개 참고문헌과 인용 맥락:
 {top_refs_text}
 
-위 데이터를 분석하여 각 참고문헌의 인용 역할을 분류하고,
-이 논문이 선행연구를 어떻게 활용하고 있는지 평가해줘.
-
-Return ONLY valid JSON (마크다운 펜스 없이):
-{{
-  "ref_analyses": [
-    {{
-      "ref_id": "[1]",
-      "citation_role": "foundational|methodological|comparative|supporting|contrasting",
-      "why_cited": "이 참고문헌이 왜 자주 인용되었는지 2-3문장 설명 (한국어)"
-    }}
-  ],
-  "summary": "전체 인용 패턴에 대한 종합 평가 2-3문장 (한국어). 어떤 선행연구에 가장 많이 의존하는지, 인용이 공정한지 등.",
-  "citation_balance": "balanced|heavily_reliant|self_citation_heavy|diverse",
-  "key_influences": ["가장 영향을 많이 준 연구 그룹/논문 1-3개 (한국어)"]
-}}
-
-논문 본문 텍스트 (맥락용):
+[논문 본문 발췌 (맥락용)]
 {citation_body[:3000]}
+
+위 데이터에 근거해서만 이 논문 내부의 인용 사용 패턴을 분석해줘.
+
+규칙:
+- citation_role은 제공된 인용 맥락에서 확인되는 기능만으로 분류해. 근거가 부족하면 "unclear"를 써.
+- evidence_context에는 분류의 근거가 된 인용 맥락 문장을 위 자료에서 한 구절 그대로 옮겨 적어.
+- why_cited는 왜 자주 인용됐는지 2-3문장(한국어)으로 써.
+- 참고문헌의 실제 내용·존재 여부·학계 전체 영향력은 검증된 것처럼 말하지 마.
+- key_influences는 위에 제시된 참고문헌 안에서만 골라 — 목록에 없는 연구를 추가하지 마.
+- summary는 전체 인용 패턴 평가 2-3문장(한국어). limitations에는 상위 10개와 본문 발췌만 본 평가라는 한계를 한 문장으로 남겨.
 """
 
         cached = await _get_cached_phase_result(paper_id, "citation", llm_prompt)
@@ -539,7 +562,14 @@ Return ONLY valid JSON (마크다운 펜스 없이):
             return cached
 
         try:
-            result = await call_interaction(llm_prompt, lane="pipeline", model="gemini-3.5-flash", store=False)
+            result = await call_interaction(
+                llm_prompt,
+                lane="pipeline",
+                model="gemini-3.5-flash",
+                thinking_level="low",
+                response_schema=_CITATION_SCHEMA,
+                store=False,
+            )
             cleaned_text = _clean_llm_json(result["text"])
 
             try:
@@ -555,11 +585,13 @@ Return ONLY valid JSON (마크다운 펜스 없이):
                     if tc.get("ref_id") == ref_id:
                         tc["citation_role"] = ra.get("citation_role", "")
                         tc["why_cited"] = ra.get("why_cited", "")
+                        tc["evidence_context"] = ra.get("evidence_context", "")
                         break
 
             local_result["summary"] = llm_data.get("summary", "")
             local_result["citation_balance"] = llm_data.get("citation_balance", "")
             local_result["key_influences"] = llm_data.get("key_influences", [])
+            local_result["citation_limitations"] = llm_data.get("limitations", "")
 
             cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
