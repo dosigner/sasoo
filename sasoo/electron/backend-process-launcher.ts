@@ -75,6 +75,9 @@ export function launchBackendProcess(
     ], {
       cwd: path.dirname(bundledBackend),
       stdio: ['pipe', 'pipe', 'pipe'],
+      // The PyInstaller backend is a console executable; without this a black
+      // console window pops up alongside the app on Windows.
+      windowsHide: true,
       env: {
         ...process.env,
         PYTHONUTF8: '1',
@@ -102,6 +105,8 @@ export function launchBackendProcess(
   return spawn(pythonPath, args, {
     cwd: config.backendPath,
     stdio: ['pipe', 'pipe', 'pipe'],
+    // Suppress the console window uvicorn/python would otherwise open on Windows.
+    windowsHide: true,
     env: {
       ...process.env,
       PYTHONUTF8: '1',
