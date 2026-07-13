@@ -297,7 +297,6 @@ export const S = {
     pdfParserJava: 'Java-only OpenDataLoader',
     extractionPipeline: 'Figure/Table 추출 경로',
     extractionPipelineHelp: '기본값은 resolver_v1이에요.',
-    extractionPipelineLegacy: 'legacy (이전 경로)',
     extractionPipelineResolverV1: 'resolver_v1 (candidate-resolver)',
     profileFast: '빠름',
     profileBalanced: '균형',
