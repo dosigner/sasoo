@@ -743,6 +743,54 @@ _DEEP_DIVE_SCHEMA = {
     "required": ["detailed_analysis", "strengths", "weaknesses"],
 }
 
+_DEEP_DIVE_INSTRUCTION = """이 논문에 대한 심층 분석을 해줘. 전문적이면서도 이해하기 쉽게,
+선배 연구자가 후배에게 설명하듯이 써줘.
+
+규칙:
+- 논문 PDF(또는 논문 텍스트)가 최우선 근거야. 앞선 단계(시각·레시피·스크리닝·인용) 결과는
+  탐색용 힌트일 뿐이니, 논문에서 직접 확인한 내용만 사실로 서술해.
+- 강점·약점에는 근거가 된 논문 위치(섹션/그림/표)를 함께 적어.
+- novelty_assessment와 comparison_to_prior_work는 논문이 스스로 제시한 비교 범위 안의
+  평가임을 명시해 — 외부 문헌 검증은 하지 않았어.
+- 논문에 없는 반례·실험·선행연구를 만들어내지 마.
+
+출력 필드: detailed_analysis(기여도·방법론·결과 상세 분석, 여러 문단), strengths(강점 리스트),
+weaknesses(약점 리스트), novelty_assessment(새로움 평가), comparison_to_prior_work(기존 연구 대비 비교),
+suggested_improvements(개선 제안 리스트), follow_up_questions(후속 질문 리스트), practical_applications(실용적 응용 리스트)."""
+
+
+def _stateless_digest(screening_result_text: str, citation_result_text: str) -> str:
+    """스크리닝·인용 결과에서 심층 분석에 필요한 핵심 필드만 뽑아 digest 텍스트를 만든다.
+
+    raw JSON 절단 주입(중간 절단으로 필드 유실 + 오류 전파) 대신 구조화 digest를 쓴다.
+    파싱 실패 시 해당 결과는 기존 관례대로 앞부분 절단 텍스트로 폴백한다."""
+    parts = []
+    if screening_result_text:
+        try:
+            s = json.loads(_clean_llm_json(screening_result_text))
+            parts.append(
+                "[스크리닝] "
+                f"도메인={s.get('domain', '?')}, 관련성={s.get('relevance_score', '?')}, "
+                f"방법론={s.get('methodology_type', '?')}, 실험여부={s.get('is_experimental', '?')}, "
+                f"핵심주제={', '.join(map(str, s.get('key_topics') or [])) or '?'}\n"
+                f"요약: {str(s.get('summary') or '')[:500]}"
+            )
+        except (json.JSONDecodeError, TypeError):
+            parts.append(f"[스크리닝 결과]\n{screening_result_text[:1500]}")
+    if citation_result_text:
+        try:
+            c = json.loads(_clean_llm_json(citation_result_text))
+            parts.append(
+                "[인용 분석] "
+                f"총 참고문헌={c.get('total_references', '?')}, 균형={c.get('citation_balance', '?')}, "
+                f"핵심영향={', '.join(map(str, c.get('key_influences') or [])) or '?'}\n"
+                f"종합: {str(c.get('summary') or '')[:500]}"
+            )
+        except (json.JSONDecodeError, TypeError):
+            parts.append(f"[인용 분석 결과]\n{citation_result_text[:1500]}")
+    return "\n\n".join(parts)
+
+
 _VIZ_PLAN_SCHEMA = {
     "type": "object",
     "properties": {
@@ -1272,33 +1320,23 @@ async def _run_deep_dive(
 
     prev_context = "\n\n".join(previous_results[:4]) if previous_results else ""
 
-    instruction = """너는 Sasoo(사수)라는 AI Co-Scientist야. 이 연구 논문에 대한 심층 분석을 해줘.
-
-모든 텍스트 내용은 반드시 한국어로 작성해. JSON key 이름만 영어로 유지해.
-전문적이면서도 이해하기 쉽게, 마치 선배 연구자가 후배에게 설명하듯이 써줘.
-
-출력 필드: detailed_analysis(논문의 기여도·방법론·결과 상세 분석, 여러 문단), strengths(강점 리스트),
-weaknesses(약점 리스트), novelty_assessment(새로움 평가), comparison_to_prior_work(기존 연구 대비 비교),
-suggested_improvements(개선 제안 리스트), follow_up_questions(후속 질문 리스트), practical_applications(실용적 응용 리스트)."""
+    instruction = _DEEP_DIVE_INSTRUCTION
 
     # 스크리닝(r1)·인용(r_cit)은 stateless라 서버측 체인 상태에 없다. 체인 모드에서도
-    # 프롬프트가 약속하는 "스크리닝·인용" 컨텍스트를 실제로 제공하도록 텍스트를 직접 삽입한다.
-    stateless_parts = []
-    if screening_result_text:
-        stateless_parts.append(f"[스크리닝 결과]\n{screening_result_text[:4000]}")
-    if citation_result_text:
-        stateless_parts.append(f"[인용 분석 결과]\n{citation_result_text[:4000]}")
-    stateless_context = "\n\n".join(stateless_parts)
+    # 프롬프트가 약속하는 "스크리닝·인용" 컨텍스트를 제공하되, raw JSON 절단 대신
+    # 핵심 필드 digest로 주입한다.
+    stateless_context = _stateless_digest(screening_result_text or "", citation_result_text or "")
 
     prompt_chain = (
         f"{instruction}\n\n위 논문 PDF와 앞선 체인 단계(시각·레시피) 결과, 그리고 아래 "
-        "스크리닝·인용 분석 결과를 바탕으로 포괄적인 심층 분석을 제공해줘."
+        "스크리닝·인용 분석 digest를 바탕으로 포괄적인 심층 분석을 제공해줘."
     )
     if stateless_context:
-        prompt_chain += f"\n\n--- 스크리닝·인용 분석 결과 ---\n{stateless_context}"
+        prompt_chain += f"\n\n--- 스크리닝·인용 분석 digest ---\n{stateless_context}"
     prompt_fallback = (
-        f"{instruction}\n\n이전 분석 단계의 결과:\n{prev_context[:4000]}\n\n"
-        f"위 정보를 바탕으로 포괄적인 심층 분석을 제공해줘.\n\n논문 텍스트:\n{deep_dive_input}"
+        f"논문 텍스트:\n{deep_dive_input}\n\n"
+        f"이전 분석 단계의 결과:\n{prev_context[:4000]}\n\n"
+        f"{instruction}\n\n위 정보를 바탕으로 포괄적인 심층 분석을 제공해줘."
     )
     cache_key = prompt_fallback
 

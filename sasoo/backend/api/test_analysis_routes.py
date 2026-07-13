@@ -833,6 +833,34 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("사수: 예전 답변", chat_input)
         self.assertTrue(chat_input.rstrip().endswith("사용자: 이번 질문"))
 
+    def test_stateless_digest_extracts_key_fields(self):
+        screening = (
+            '{"domain":"optics","relevance_score":0.9,"methodology_type":"experimental",'
+            '"is_experimental":true,"key_topics":["적응광학"],"summary":"스크리닝 요약."}'
+        )
+        citation = (
+            '{"total_references":30,"citation_balance":"balanced",'
+            '"key_influences":["[1]"],"summary":"인용 요약."}'
+        )
+        digest = analysis_routes._stateless_digest(screening, citation)
+        self.assertIn("도메인=optics", digest)
+        self.assertIn("균형=balanced", digest)
+        self.assertIn("스크리닝 요약.", digest)
+        # raw JSON 통짜 주입이 아님
+        self.assertNotIn('"relevance_score"', digest)
+
+    def test_stateless_digest_falls_back_on_parse_error(self):
+        digest = analysis_routes._stateless_digest("json 아님", "")
+        self.assertIn("[스크리닝 결과]", digest)
+        self.assertIn("json 아님", digest)
+
+    def test_deep_dive_instruction_enforces_evidence_priority(self):
+        instruction = analysis_routes._DEEP_DIVE_INSTRUCTION
+        self.assertIn("탐색용 힌트", instruction)      # 이전 단계 = 힌트
+        self.assertIn("만들어내지 마", instruction)     # 날조 금지
+        self.assertIn("비교 범위", instruction)         # novelty 검증 범위 명시
+        self.assertNotIn("너는 Sasoo", instruction)
+
     def test_build_persona_prompt_uses_stage_overlay(self):
         class _OverlayAgent:
             profile = types.SimpleNamespace(personality="반말 말투")
