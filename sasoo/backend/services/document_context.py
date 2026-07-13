@@ -81,9 +81,13 @@ async def find_cached_phase_result(
     if not row or not row.get("result"):
         return None
 
+    result_data = parse_result_json(row["result"])
+    if isinstance(result_data, dict) and ("_parse_error" in result_data or "error" in result_data):
+        return None  # 실패 결과는 캐시로 재사용하지 않는다 — 새 LLM 호출로 대체
+
     return CachedPhaseResult(
         result_text=row["result"],
-        result_data=parse_result_json(row["result"]),
+        result_data=result_data,
         model_used=row.get("model_used") or "",
         tokens_in=row.get("tokens_in") or 0,
         tokens_out=row.get("tokens_out") or 0,
