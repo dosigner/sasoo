@@ -10,8 +10,8 @@ Model choice rationale (2026-07, Gemini-only stack):
   FLASH_HQ    - Gemini 3.5 Flash. MRCR@128k 77.3% (vs 67.2% on FLASH) and
                 MMMU-Pro 83.6% / CharXiv 84.2%, which beats PRO on vision.
                 Used wherever we search a full paper or read a figure.
-  PRO         - deepest reasoning (GPQA 94.3%); 현재 파이프라인 미사용
-                (A/B 후 승격 후보).
+  PRO         - deepest reasoning (GPQA 94.3%); 5단계 텍스트 분석에는 미사용
+                (A/B 후 승격 후보). 이미지 설명 플래너(viz/figure_gen.py)는 사용 중.
   IMAGE       - Nano Banana 2 as the Gemini-side renderer; gpt-image-2
                 (Arena text-to-image #1) is the default. Provider choice and
                 fallback live in services/viz/figure_gen.py.
