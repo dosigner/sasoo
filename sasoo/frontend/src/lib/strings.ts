@@ -296,7 +296,7 @@ export const S = {
     profileBalanced: '균형',
     profileQuality: '고품질',
     // Appearance
-    appearance: '표시 모드',
+    appearance: '테마',
     dark: '다크',
     light: '라이트',
     // API Key status
@@ -319,7 +319,6 @@ export const S = {
     heroBody: '지금 상태를 확인하고 필요한 설정부터 바로 조정해요.',
     statusConfigured: '정상 연결',
     statusMissing: '추가 설정 필요',
-    sectionCurrent: '현재 상태',
     sectionEdit: '변경 입력',
   },
 

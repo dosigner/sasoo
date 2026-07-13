@@ -366,7 +366,7 @@ export default function Settings() {
                 {S.settings.librarySection} {libraryPath ? S.settings.statusConfigured : S.settings.statusMissing}
               </span>
               <span className="archive-inline-status archive-inline-status-muted">
-                테마 {theme === 'light' ? S.settings.light : S.settings.dark}
+                {S.settings.appearance} {theme === 'light' ? S.settings.light : S.settings.dark}
               </span>
             </div>
           </div>
@@ -635,7 +635,7 @@ export default function Settings() {
           </SettingRow>
 
           <SettingRow label={S.settings.autoAnalyze} description={S.settings.autoAnalyzeHelp}>
-            <Toggle checked={autoAnalyze} onChange={setAutoAnalyze} />
+            <Toggle checked={autoAnalyze} onChange={setAutoAnalyze} ariaLabel={S.settings.autoAnalyze} />
           </SettingRow>
 
           <SettingRow label={S.settings.pdfParser} description={S.settings.pdfParserHelp}>
@@ -664,7 +664,7 @@ export default function Settings() {
           </SettingRow>
         </SettingSection>
 
-        <SettingSection title="테마" description="현재 작업 환경에 맞게 화면 톤을 조정해요.">
+        <SettingSection title={S.settings.appearance} description="현재 작업 환경에 맞게 화면 톤을 조정해요.">
           <div className="flex items-center gap-3 py-3">
             <button
               onClick={() => setTheme('dark')}
