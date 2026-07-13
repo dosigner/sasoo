@@ -16,7 +16,7 @@ export const S = {
     upload: '아카이브 시작',
     library: '연구 보관함',
     profile: '연구자 프로필',
-    settings: '시스템 제어',
+    settings: '설정',
     workbench: '워크벤치',
     collapse: '접기',
     expandSidebar: '사이드바 펼치기',
@@ -39,8 +39,7 @@ export const S = {
     actionAgentsDesc: '분석 에이전트를 관리해요',
     actionLibrary: '연구 보관함',
     actionLibraryDesc: '보관한 논문을 둘러봐요',
-    recentAnalyses: '최근 분석',
-    recentLibrary: '최근 추가',
+    recentPapers: '최근 논문',
     recentEmpty: '위에서 첫 논문을 올리면 여기에 쌓여요.',
     costTitle: '이번 달 비용',
     costOpenSettings: '자세히 보기',
@@ -236,7 +235,7 @@ export const S = {
 
   // ── Settings ──
   settings: {
-    title: '시스템 제어',
+    title: '설정',
     description: '보관함 위치, 분석 기본값, 모델 키를 한 곳에서 조정해요.',
     save: '변경 저장',
     saving: '저장 중...',
@@ -266,6 +265,18 @@ export const S = {
     researchContextHelper: '한 줄이면 충분해요. 분석 결과가 내 분야 관점으로 이어져요.',
     defaultLevel: '기본 설명 수준',
     openProfileLink: '연구자 프로필 설정 열기',
+    // Structured profile fields
+    researchAreas: '주요 연구 분야',
+    researchAreasHelper: '최대 3개까지 고를 수 있어요.',
+    researchAreasPlaceholder: '분야를 선택하세요',
+    researchAreasSearchPlaceholder: '분야 검색...',
+    researchAreasNoMatch: '일치하는 분야가 없어요',
+    researchAreasMaxReached: '최대 3개까지 선택할 수 있어요',
+    removeAreaLabel: (label: string) => `${label} 삭제`,
+    fieldExpertise: '분야 숙련도',
+    readingExperience: '논문 읽기 경험',
+    researchRole: '연구 역할',
+    researchRolePlaceholder: '역할을 선택하세요',
     // Library
     librarySection: '보관함 경로',
     libraryPath: '논문 저장 경로',
@@ -288,10 +299,6 @@ export const S = {
     appearance: '표시 모드',
     dark: '다크',
     light: '라이트',
-    // Density
-    density: '밀도',
-    densityComfortable: 'Comfortable',
-    densityCompact: 'Compact',
     // API Key status
     keyConfigured: '설정됨',
     keyNotConfigured: '미설정',
@@ -308,7 +315,7 @@ export const S = {
     // Cost
     usageCosts: '사용량과 비용',
     costLoadFailed: '비용 데이터를 불러오지 못했어요',
-    heroKicker: 'Control room',
+    heroKicker: 'Settings',
     heroBody: '지금 상태를 확인하고 필요한 설정부터 바로 조정해요.',
     statusConfigured: '정상 연결',
     statusMissing: '추가 설정 필요',
@@ -675,7 +682,7 @@ export const S = {
     goHome: '홈으로 돌아가기',
     devInfo: '개발자 정보 (Development Only)',
     networkError: '네트워크 연결을 확인해 주세요.',
-    apiKeyMissing: '시스템 제어에서 API 키를 입력하면 분석을 시작할 수 있어요.',
+    apiKeyMissing: '설정에서 API 키를 입력하면 분석을 시작할 수 있어요.',
     loadPapersFailed: '논문 목록을 불러오지 못했어요',
     deletePaperFailed: '논문을 삭제하지 못했어요',
     updatePaperFailed: '논문을 업데이트하지 못했어요',

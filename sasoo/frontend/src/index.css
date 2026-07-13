@@ -53,17 +53,6 @@
   --radius-control: 6px;
   --radius-surface: 12px;
   --radius-pill: 9999px;
-
-  /* Density (Comfortable = default) */
-  --density-control-py: 0.5rem;
-  --density-card-p: 1.25rem;
-  --density-row-py: 0.75rem;
-}
-
-.density-compact {
-  --density-control-py: 0.375rem;
-  --density-card-p: 1rem;
-  --density-row-py: 0.5rem;
 }
 
 .dark {
@@ -139,8 +128,8 @@
   /* Reusable card component */
   .card {
     @apply border border-border bg-surface px-4;
-    padding-top: var(--density-card-p);
-    padding-bottom: var(--density-card-p);
+    padding-top: 1.25rem;
+    padding-bottom: 1.25rem;
     border-radius: var(--radius-surface);
   }
 
@@ -222,6 +211,11 @@
   .page-container-compact {
     @apply mx-auto min-h-full w-full px-4 py-4 md:px-6 md:py-5 xl:px-8;
     max-width: 96rem;
+  }
+
+  .page-container-settings {
+    @apply mx-auto min-h-full w-full px-4 py-4 md:px-6 md:py-5 xl:px-8;
+    max-width: 44rem;
   }
 
   .page-scaffold {
@@ -319,8 +313,8 @@
   /* Button variants */
   .btn {
     @apply inline-flex items-center justify-center gap-2 px-4 text-sm font-medium transition-[color,background-color,border-color,opacity,transform] duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50 disabled:pointer-events-none;
-    padding-top: var(--density-control-py);
-    padding-bottom: var(--density-control-py);
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
     border-radius: var(--radius-control);
   }
 
@@ -356,8 +350,8 @@
   /* Input styles */
   .input {
     @apply w-full border border-border bg-surface px-3 text-sm text-fg placeholder-fg-muted transition-colors duration-150 ease-out focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent;
-    padding-top: var(--density-control-py);
-    padding-bottom: var(--density-control-py);
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
     border-radius: var(--radius-control);
   }
 
@@ -555,6 +549,56 @@
 
   .library-archive-card:hover {
     @apply bg-surface/60;
+  }
+
+  /* 데이터 테이블 (연구 보관함 리스트 뷰) */
+  .library-table {
+    @apply w-full border-collapse text-left;
+  }
+
+  .library-table thead th {
+    @apply whitespace-nowrap border-b border-border/70 px-4 py-2.5 text-2xs font-medium uppercase tracking-[0.12em] text-fg-muted;
+  }
+
+  .library-th-sortable {
+    @apply cursor-pointer select-none transition-colors hover:text-fg-secondary;
+  }
+
+  .library-table tbody td {
+    @apply border-b border-border/40 px-4 py-3 align-middle text-sm text-fg-secondary;
+  }
+
+  .library-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  .library-table tbody tr {
+    @apply cursor-pointer transition-colors hover:bg-surface-hover/25 focus:outline-none focus-visible:bg-surface-hover/25;
+  }
+
+  .library-cell-num {
+    @apply whitespace-nowrap tabular-nums text-fg-muted;
+  }
+
+  .library-row-action {
+    @apply flex h-8 w-8 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-danger/10 hover:text-danger focus-visible:bg-danger/10 focus-visible:text-danger;
+  }
+
+  /* Refined Soft UI 카드 (연구 보관함 그리드 뷰) */
+  .library-soft-card {
+    @apply flex h-full min-h-[8.5rem] cursor-pointer flex-col rounded-surface border border-border/55 bg-surface/70 p-4 shadow-sm transition-all duration-200 ease-out;
+  }
+
+  .library-soft-card:hover {
+    @apply -translate-y-0.5 border-border bg-surface shadow-lg;
+  }
+
+  .library-soft-card:focus-visible {
+    @apply -translate-y-0.5 outline-none ring-2 ring-accent/40 ring-offset-2 ring-offset-bg;
+  }
+
+  .library-soft-pill {
+    @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border/60 bg-bg/40 px-2 py-1 text-2xs text-fg-secondary;
   }
 
   .library-archive-card--completed {
