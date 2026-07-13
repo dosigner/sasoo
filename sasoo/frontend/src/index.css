@@ -702,6 +702,17 @@
     animation: fadeInUp 0.2s var(--ease-out-strong) forwards;
   }
 
+  /* Home sections enter top-to-bottom with a short stagger (hero → lists → tiles). */
+  .home-stagger > * {
+    animation: fadeInUp 0.25s var(--ease-out-strong) both;
+  }
+  .home-stagger > *:nth-child(2) {
+    animation-delay: 0.06s;
+  }
+  .home-stagger > *:nth-child(3) {
+    animation-delay: 0.12s;
+  }
+
   @keyframes fadeInUp {
     from {
       opacity: 0;
@@ -1313,8 +1324,10 @@
   .animate-slide-in-right,
   .animate-slide-in-left,
   .animate-pop-in,
-  .fade-in-up {
+  .fade-in-up,
+  .home-stagger > * {
     animation: fadeIn 0.15s ease-out both !important;
+    animation-delay: 0s !important;
   }
 
   /* Modal must stay centered — fade in place, no vertical travel. */

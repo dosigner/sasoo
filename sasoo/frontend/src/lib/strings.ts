@@ -41,8 +41,15 @@ export const S = {
     actionLibraryDesc: '보관한 논문을 둘러봐요',
     recentPapers: '최근 논문',
     recentEmpty: '위에서 첫 논문을 올리면 여기에 쌓여요.',
+    viewAll: '전체 보기',
     costTitle: '이번 달 비용',
     costOpenSettings: '자세히 보기',
+    costMeta: (papers: number) => `논문 ${papers}편 분석`,
+    costDelta: (delta: string) => `지난달 대비 ${delta}`,
+    costEmptyMeta: '논문을 분석하면 비용이 여기에 표시돼요.',
+    libraryTitle: '연구 보관함',
+    libraryUnit: '편',
+    libraryOpen: '보관함 열기',
   },
 
   // ── Upload Page ──
@@ -208,7 +215,7 @@ export const S = {
     noPapers: '보관함이 아직 비어 있어요',
     noMatchDesc: '조건을 조금 넓히거나 검색어를 다르게 바꾸면 다른 기록을 찾을 수 있어요.',
     noPapersDesc:
-      '첫 논문을 추가하면 최근 분석, 담당 에이전트, 주요 상태가 이 선반에 쌓이기 시작해요.',
+      '첫 논문을 추가하면 최근 분석, 설명 수준, 주요 상태가 이 선반에 쌓이기 시작해요.',
     clearFilters: '필터 초기화',
     // Delete modal
     deleteTitle: '논문을 삭제할까요?',
@@ -289,7 +296,7 @@ export const S = {
     pdfParserHelp: 'Slim 배포에는 Java 기반 OpenDataLoader를 넣었어요. Hybrid OCR 백엔드는 배포 크기가 커서 빼두었어요.',
     pdfParserJava: 'Java-only OpenDataLoader',
     extractionPipeline: 'Figure/Table 추출 경로',
-    extractionPipelineHelp: '기본값은 resolver_v1이에요. 이전 추출 경로를 그대로 써야 할 때만 legacy를 고르세요.',
+    extractionPipelineHelp: '기본값은 resolver_v1이에요.',
     extractionPipelineLegacy: 'legacy (이전 경로)',
     extractionPipelineResolverV1: 'resolver_v1 (candidate-resolver)',
     profileFast: '빠름',
