@@ -9,6 +9,7 @@ frontend/dist/
 backend/dist/
 backend/build/
 backend/.build-cache/
+backend/.jre-cache/
 
 # Environment variables (NEVER commit API keys!)
 .env

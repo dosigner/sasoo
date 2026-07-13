@@ -11,7 +11,7 @@
  *   - Virtual environment at backend/.venv (recommended)
  */
 
-const { execSync, spawnSync } = require('child_process');
+const { spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -203,6 +203,49 @@ function hasPlatformJavaExecutable(javaHomePath) {
   return candidates.some((candidate) => fs.existsSync(candidate));
 }
 
+/**
+ * Ensure a platform Java runtime is available for bundling before PyInstaller
+ * runs. Injects SASOO_BUNDLED_JAVA_HOME so the spec collects it into the build.
+ *
+ * Resolution order:
+ *   1. Committed backend/java-runtime that matches this platform -> no download
+ *      (the macOS arm64 case; download count stays 0).
+ *   2. SASOO_SKIP_JAVA_BUNDLE=1 -> skip (production ODL Java mode needs system Java).
+ *   3. Otherwise download+cache via scripts/ensure-java-runtime.js.
+ */
+async function ensureJavaForBundle() {
+  info('Ensuring bundled Java runtime for OpenDataLoader...');
+
+  const committedRuntime = path.join(BACKEND_DIR, 'java-runtime');
+  if (fs.existsSync(committedRuntime) && hasPlatformJavaExecutable(committedRuntime)) {
+    success(
+      `Committed JRE matches ${process.platform}/${process.arch} -> download skip (${committedRuntime}).`
+    );
+    return;
+  }
+
+  if (process.env.SASOO_SKIP_JAVA_BUNDLE === '1') {
+    warn(
+      'SASOO_SKIP_JAVA_BUNDLE=1 -> skipping JRE provisioning. ' +
+      'Production ODL Java mode will require system Java on this platform.'
+    );
+    return;
+  }
+
+  const { ensureJavaRuntime, JRE_RELEASE_NAME } = require('./ensure-java-runtime');
+  const result = await ensureJavaRuntime({
+    platform: process.platform,
+    arch: process.arch,
+    cacheDir: path.join(BACKEND_DIR, '.jre-cache'),
+    releaseName: JRE_RELEASE_NAME,
+  });
+  process.env.SASOO_BUNDLED_JAVA_HOME = result.javaHome;
+  success(
+    `Provisioned JRE for bundle: ${result.javaHome} (semver ${result.semver}, source ${result.source}).`
+  );
+  info('SASOO_BUNDLED_JAVA_HOME injected for the PyInstaller spec.');
+}
+
 function resolveBundledJavaRuntimeSource() {
   const candidates = [
     { label: 'backend/java-runtime', dir: path.join(BACKEND_DIR, 'java-runtime') },
@@ -263,23 +306,30 @@ function runPyInstaller(pythonPath) {
 
   info(`Command: ${pythonPath} ${args.join(' ')}`);
 
-  try {
-    execSync(`"${pythonPath}" ${args.join(' ')}`, {
-      cwd: BACKEND_DIR,
-      stdio: 'inherit',
-      env: {
-        ...process.env,
-        PYTHONUNBUFFERED: '1',
-        PYINSTALLER_CONFIG_DIR: PYINSTALLER_CACHE_DIR,
-        MPLCONFIGDIR,
-      },
-    });
+  // spawnSync(배열 인자, 셸 미경유): 한글 리포지터리 경로(예: "논문_사수_개발중")나
+  // 공백이 든 경로에서 셸 인용/코드페이지 문제 없이 SPEC_FILE·pythonPath를 그대로 전달한다.
+  // PYTHONUTF8=1: 비(非)한국어 로케일 Windows에서도 한글 경로 처리를 UTF-8로 고정한다.
+  const result = spawnSync(pythonPath, args, {
+    cwd: BACKEND_DIR,
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      PYTHONUNBUFFERED: '1',
+      PYTHONUTF8: '1',
+      PYINSTALLER_CONFIG_DIR: PYINSTALLER_CACHE_DIR,
+      MPLCONFIGDIR,
+    },
+  });
 
-    return true;
-  } catch (e) {
-    error(`PyInstaller failed: ${e.message}`);
+  if (result.error) {
+    error(`PyInstaller failed: ${result.error.message}`);
     return false;
   }
+  if (result.status !== 0) {
+    error(`PyInstaller exited with code ${result.status}`);
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -313,16 +363,40 @@ function verifyBuild() {
   info(`Size: ${sizeMB} MB`);
   info(`OpenDataLoader JAR found: ${odlJarPath}`);
 
+  // Informational: which source the spec drew the runtime from (if any).
   const bundledJavaRuntime = resolveBundledJavaRuntimeSource();
   if (bundledJavaRuntime.dir) {
     info(`Bundled Java runtime source: ${bundledJavaRuntime.label} (${bundledJavaRuntime.dir})`);
   } else if (bundledJavaRuntime.mismatched.length > 0) {
-    warn(
-      `Java runtime candidates exist but do not match ${process.platform}: ${bundledJavaRuntime.mismatched.join(', ')}. ` +
-      'Production ODL Java mode will require a compatible system/runtime on this platform.'
+    info(
+      `Java runtime source candidates present but platform-mismatched: ${bundledJavaRuntime.mismatched.join(', ')}.`
     );
   } else {
-    warn('No bundled Java runtime source was found. Production ODL Java mode will require system Java.');
+    info('No committed/env Java runtime source matched; relying on provisioned cache if any.');
+  }
+
+  // Hard gate: the packaged bundle must actually contain a platform Java
+  // executable, otherwise the ODL default engine breaks at runtime.
+  const javaExe = process.platform === 'win32' ? 'java.exe' : 'java';
+  const bundledJavaCandidates = [
+    path.join(OUTPUT_DIR, '_internal', 'java-runtime', 'bin', javaExe),
+    path.join(OUTPUT_DIR, '_internal', 'java-runtime', 'Contents', 'Home', 'bin', javaExe),
+  ];
+  const bundledJavaFound = bundledJavaCandidates.find((candidate) => fs.existsSync(candidate));
+  if (bundledJavaFound) {
+    success(`Bundled Java runtime present in build output: ${bundledJavaFound}`);
+  } else if (process.env.SASOO_SKIP_JAVA_BUNDLE === '1') {
+    warn(
+      'No bundled Java runtime in build output, but SASOO_SKIP_JAVA_BUNDLE=1 is set. ' +
+      'Production ODL Java mode will require system Java.'
+    );
+  } else {
+    error(
+      'Bundled Java runtime missing from build output (_internal/java-runtime/bin). ' +
+      'The ODL default PDF engine would fail at runtime.'
+    );
+    error('Set SASOO_SKIP_JAVA_BUNDLE=1 to bypass intentionally, or ensure JRE provisioning succeeds.');
+    return false;
   }
 
   const foreignArtifacts = findForeignArtifacts(OUTPUT_DIR);
@@ -409,6 +483,15 @@ async function main() {
 
   // Clean previous build
   cleanBuild();
+
+  // Ensure a platform Java runtime is available/injected before packaging.
+  console.log('');
+  try {
+    await ensureJavaForBundle();
+  } catch (e) {
+    error(`Java runtime provisioning failed: ${e.message}`);
+    process.exit(1);
+  }
 
   // Run PyInstaller
   console.log('');
