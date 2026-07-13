@@ -101,6 +101,7 @@ export default function Settings() {
     max_concurrent_analyses: 3,
     pdf_parser_mode: 'java',
     extraction_pipeline_version: 'resolver_v1',
+    pdf_visual_engine: 'gemini',
     paperbanana_profile: 'fast',
     research_context: '',
     default_explanation_level: 'masters',
@@ -128,7 +129,8 @@ export default function Settings() {
   );
   const [autoAnalyze, setAutoAnalyze] = useState(false);
   const [pdfParserMode, setPdfParserMode] = useState<'java'>('java');
-  const [extractionPipelineVersion, setExtractionPipelineVersion] = useState<'legacy' | 'resolver_v1'>('resolver_v1');
+  const [extractionPipelineVersion, setExtractionPipelineVersion] = useState<'resolver_v1'>('resolver_v1');
+  const [pdfVisualEngine, setPdfVisualEngine] = useState<'gemini' | 'odl'>('gemini');
   const [imageProvider, setImageProvider] = useState<'openai' | 'gemini'>('openai');
   const [imageQuality, setImageQuality] = useState<'low' | 'medium' | 'high'>('high');
 
@@ -164,8 +166,9 @@ export default function Settings() {
     setAutoAnalyze(data.auto_analyze ?? false);
     setPdfParserMode((data.pdf_parser_mode || 'java') as 'java');
     setExtractionPipelineVersion(
-      (data.extraction_pipeline_version || 'resolver_v1') as 'legacy' | 'resolver_v1'
+      (data.extraction_pipeline_version || 'resolver_v1') as 'resolver_v1'
     );
+    setPdfVisualEngine((data.pdf_visual_engine || 'gemini') as 'gemini' | 'odl');
     setImageProvider((data.image_provider || 'openai') as 'openai' | 'gemini');
     setImageQuality((data.image_quality || 'high') as 'low' | 'medium' | 'high');
   }, []);
@@ -245,6 +248,7 @@ export default function Settings() {
         auto_analyze: autoAnalyze,
         pdf_parser_mode: pdfParserMode,
         extraction_pipeline_version: extractionPipelineVersion,
+        pdf_visual_engine: pdfVisualEngine,
         image_provider: imageProvider,
         image_quality: imageQuality,
       };
@@ -272,7 +276,7 @@ export default function Settings() {
     } finally {
       setSaving(false);
     }
-  }, [geminiKey, openaiKey, libraryPath, theme, autoAnalyze, pdfParserMode, extractionPipelineVersion, imageProvider, imageQuality, toast, applySettingsToForm, clearApiKeyInputs]);
+  }, [geminiKey, openaiKey, libraryPath, theme, autoAnalyze, pdfParserMode, extractionPipelineVersion, pdfVisualEngine, imageProvider, imageQuality, toast, applySettingsToForm, clearApiKeyInputs]);
 
   const handleBrowseDirectory = useCallback(async () => {
     if (!window.electronAPI?.openDirectory) {
@@ -315,7 +319,8 @@ export default function Settings() {
     setTheme((baselineSettings.theme || 'light') as 'dark' | 'light');
     setAutoAnalyze(baselineSettings.auto_analyze ?? false);
     setPdfParserMode((baselineSettings.pdf_parser_mode || 'java') as 'java');
-    setExtractionPipelineVersion((baselineSettings.extraction_pipeline_version || 'resolver_v1') as 'legacy' | 'resolver_v1');
+    setExtractionPipelineVersion((baselineSettings.extraction_pipeline_version || 'resolver_v1') as 'resolver_v1');
+    setPdfVisualEngine((baselineSettings.pdf_visual_engine || 'gemini') as 'gemini' | 'odl');
     setImageProvider((baselineSettings.image_provider || 'openai') as 'openai' | 'gemini');
     setImageQuality((baselineSettings.image_quality || 'high') as 'low' | 'medium' | 'high');
     setSaved(false);
@@ -332,6 +337,7 @@ export default function Settings() {
     autoAnalyze !== (baselineSettings.auto_analyze ?? false) ||
     pdfParserMode !== (baselineSettings.pdf_parser_mode || 'java') ||
     extractionPipelineVersion !== (baselineSettings.extraction_pipeline_version || 'resolver_v1') ||
+    pdfVisualEngine !== (baselineSettings.pdf_visual_engine || 'gemini') ||
     imageProvider !== (baselineSettings.image_provider || 'openai') ||
     imageQuality !== (baselineSettings.image_quality || 'high');
 
@@ -653,9 +659,23 @@ export default function Settings() {
             <div className="w-56">
               <Select
                 value={extractionPipelineVersion}
-                onValueChange={(value) => setExtractionPipelineVersion(value as 'legacy' | 'resolver_v1')}
+                onValueChange={(value) => setExtractionPipelineVersion(value as 'resolver_v1')}
                 aria-label={S.settings.extractionPipeline}
                 options={[{ value: 'resolver_v1', label: S.settings.extractionPipelineResolverV1 }]}
+              />
+            </div>
+          </SettingRow>
+
+          <SettingRow label={S.settings.pdfVisualEngine} description={S.settings.pdfVisualEngineHelp}>
+            <div className="w-56">
+              <Select
+                value={pdfVisualEngine}
+                onValueChange={(value) => setPdfVisualEngine(value as 'gemini' | 'odl')}
+                aria-label={S.settings.pdfVisualEngine}
+                options={[
+                  { value: 'gemini', label: S.settings.pdfVisualEngineGemini },
+                  { value: 'odl', label: S.settings.pdfVisualEngineOdl },
+                ]}
               />
             </div>
           </SettingRow>

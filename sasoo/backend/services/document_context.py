@@ -110,18 +110,6 @@ def build_visual_partial_cache_input(
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
 
-def build_visualization_cache_input(
-    *,
-    visualization_input: str,
-    previous_results: list[str],
-) -> str:
-    payload = {
-        "visualization_input": visualization_input,
-        "previous_results": previous_results,
-    }
-    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
-
-
 def load_or_build_document_context(
     paper_dir: Path,
     *,

@@ -15,6 +15,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { chatWithAgent, type ChatDoneMeta, type ChatMessage } from '@/lib/api';
+import { createTokenBuffer } from '@/lib/tokenBuffer';
 import { getAgentMeta } from '@/lib/agents';
 import { detectCitations, type CitationType } from '@/lib/citations';
 
@@ -198,19 +199,25 @@ export default function ChatPanel({
       { id: agentId, role: 'agent' as const, content: '', status: 'streaming' as const },
     ]);
 
+    // Tokens are batched so each SSE token doesn't re-render the whole
+    // message list; the buffer is drained before any status transition so a
+    // bubble never turns 'done' or 'error' with text still in flight.
+    const tokenBuffer = createTokenBuffer((chunk) => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === agentId ? { ...msg, content: msg.content + chunk } : msg,
+        ),
+      );
+    });
+
     try {
       await chatWithAgent(
         paperId,
         pending.content,
         history,
-        (token) => {
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === agentId ? { ...msg, content: msg.content + token } : msg,
-            ),
-          );
-        },
+        (token) => tokenBuffer.push(token),
         (meta: ChatDoneMeta) => {
+          tokenBuffer.end();
           setTotalCost((prev) => prev + meta.cost_usd);
           setMessages((prev) =>
             prev.map((msg) => (msg.id === agentId ? { ...msg, status: 'done' as const } : msg)),
@@ -219,6 +226,7 @@ export default function ChatPanel({
         controller.signal,
       );
     } catch (err) {
+      tokenBuffer.end();
       const stopped = controller.signal.aborted;
       const detail = err instanceof Error ? err.message : '답변을 받지 못했어요.';
       setMessages((prev) =>
@@ -229,6 +237,7 @@ export default function ChatPanel({
         }),
       );
     } finally {
+      tokenBuffer.end();
       // A stream that ends without a `done` frame would otherwise stay
       // 'streaming' forever and wedge the queue.
       setMessages((prev) =>

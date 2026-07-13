@@ -138,48 +138,6 @@ async function resolveBackendPort(): Promise<number> {
 }
 
 function registerIpcHandlers(): void {
-  // File dialog: Open PDF files
-  ipcMain.handle('dialog:openFile', async (_event, options?: {
-    title?: string;
-    filters?: Electron.FileFilter[];
-    multiSelections?: boolean;
-  }) => {
-    if (!mainWindow) return { canceled: true, filePaths: [] };
-
-    const defaultFilters: Electron.FileFilter[] = [
-      { name: 'PDF Documents', extensions: ['pdf'] },
-      { name: 'All Files', extensions: ['*'] },
-    ];
-
-    const result = await dialog.showOpenDialog(mainWindow, {
-      title: options?.title ?? 'Select PDF File',
-      filters: options?.filters ?? defaultFilters,
-      properties: [
-        'openFile',
-        ...(options?.multiSelections ? ['multiSelections' as const] : []),
-      ],
-    });
-
-    if (result.canceled) {
-      return { canceled: true, filePaths: [] };
-    }
-
-    // Read file metadata for each selected file
-    const files = await Promise.all(
-      result.filePaths.map(async (filePath) => {
-        const stat = await fs.promises.stat(filePath);
-        return {
-          path: filePath,
-          name: path.basename(filePath),
-          size: stat.size,
-          lastModified: stat.mtime.toISOString(),
-        };
-      })
-    );
-
-    return { canceled: false, filePaths: result.filePaths, files };
-  });
-
   // File dialog: Open directory (for library path selection)
   ipcMain.handle('dialog:openDirectory', async (_event, options?: {
     title?: string;
@@ -198,79 +156,6 @@ function registerIpcHandlers(): void {
     }
 
     return { canceled: false, directoryPath: result.filePaths[0] };
-  });
-
-  // File dialog: Save file
-  ipcMain.handle('dialog:saveFile', async (_event, options?: {
-    title?: string;
-    defaultPath?: string;
-    filters?: Electron.FileFilter[];
-  }) => {
-    if (!mainWindow) return { canceled: true, filePath: undefined };
-
-    const result = await dialog.showSaveDialog(mainWindow, {
-      title: options?.title ?? 'Save File',
-      defaultPath: options?.defaultPath,
-      filters: options?.filters ?? [
-        { name: 'All Files', extensions: ['*'] },
-      ],
-    });
-
-    return result;
-  });
-
-  // Read file as buffer (for PDF upload to backend)
-  ipcMain.handle('file:read', async (_event, filePath: string) => {
-    try {
-      const buffer = await fs.promises.readFile(filePath);
-      return { success: true, data: buffer.toString('base64'), size: buffer.length };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
-    }
-  });
-
-  // Read file as text
-  ipcMain.handle('file:readText', async (_event, filePath: string) => {
-    try {
-      const content = await fs.promises.readFile(filePath, 'utf-8');
-      return { success: true, data: content };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
-    }
-  });
-
-  // Write file
-  ipcMain.handle('file:write', async (_event, filePath: string, data: string) => {
-    try {
-      await fs.promises.writeFile(filePath, data, 'utf-8');
-      return { success: true };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      return { success: false, error: message };
-    }
-  });
-
-  // Backend health check
-  ipcMain.handle('backend:health', async () => {
-    if (!pythonManager) return { healthy: false, error: 'Python manager not initialized' };
-    const healthy = await pythonManager.checkHealth();
-    return { healthy };
-  });
-
-  // App info
-  ipcMain.handle('app:getInfo', () => {
-    return {
-      version: app.getVersion(),
-      name: app.getName(),
-      isDev,
-      platform: process.platform,
-      arch: process.arch,
-      electronVersion: process.versions.electron,
-      nodeVersion: process.versions.node,
-      backendPort: currentBackendPort,
-    };
   });
 
   // Get user data path

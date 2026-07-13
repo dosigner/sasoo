@@ -16,6 +16,7 @@ import os
 import re
 import sqlite3
 import sys
+import time
 import aiosqlite
 from pathlib import Path
 from typing import Optional
@@ -149,6 +150,35 @@ def _read_configured_library_root() -> Optional[Path]:
     return None
 
 
+# get_library_root() runs inside async request handlers on nearly every
+# endpoint, and an uncached read opens a synchronous SQLite connection on the
+# event loop. The setting changes only through api/settings.py, which
+# invalidates explicitly; the TTL covers writes we cannot see (another process
+# editing the DB). Keyed on (db path, platform key) so a changed app-data root
+# or platform never serves a stale entry.
+_LIBRARY_ROOT_TTL_SECONDS = 3.0
+_library_root_cache: Optional[tuple[tuple[str, str], float, Optional[Path]]] = None
+
+
+def invalidate_library_root_cache() -> None:
+    """Force the next get_library_root() to re-read the settings DB."""
+    global _library_root_cache
+    _library_root_cache = None
+
+
+def _cached_configured_library_root() -> Optional[Path]:
+    global _library_root_cache
+    key = (str(_get_app_data_root() / "sasoo.db"), library_path_setting_key())
+    cached = _library_root_cache
+    now = time.monotonic()
+    if cached is not None and cached[0] == key and now < cached[1]:
+        return cached[2]
+
+    configured = _read_configured_library_root()
+    _library_root_cache = (key, now + _LIBRARY_ROOT_TTL_SECONDS, configured)
+    return configured
+
+
 def get_library_root() -> Path:
     """
     Determine the active paper library root directory.
@@ -156,7 +186,7 @@ def get_library_root() -> Path:
     Reads the current setting from SQLite when available so runtime changes
     apply without requiring a backend restart.
     """
-    configured = _read_configured_library_root()
+    configured = _cached_configured_library_root()
     return configured if configured is not None else _get_default_library_root()
 
 
@@ -530,22 +560,8 @@ def get_paper_dir(folder_name: str) -> Path:
     return get_library_root() / folder_name
 
 
-def get_figures_dir(folder_name: str) -> Path:
-    """Return the absolute path to a paper's figures directory."""
-    d = get_paper_dir(folder_name) / "figures"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
 def get_paperbanana_dir(folder_name: str) -> Path:
     """Return the absolute path for PaperBanana output."""
     d = get_paper_dir(folder_name) / "paperbanana"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
-def get_tables_dir(folder_name: str) -> Path:
-    """Return the absolute path to a paper's tables directory."""
-    d = get_paper_dir(folder_name) / "tables"
     d.mkdir(parents=True, exist_ok=True)
     return d

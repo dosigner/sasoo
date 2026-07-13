@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 
@@ -34,9 +34,7 @@ from models.database import (
 )
 from models.schemas import (
     AnalysisPhase,
-    AnalysisResult,
     AnalysisStatus,
-    DomainResult,
     FigureExplanationResponse,
     FigureInfo,
     FigureListResponse,
@@ -2119,6 +2117,11 @@ async def _run_full_analysis(paper_id: int):
             )
 
         # Phase 2: Citation Analysis (after screening, before visual)
+        # TODO(parser-hybrid): visual 단계가 gemini로 승격되면 sections/references는 gemini 텍스트라
+        # 저자명·grant번호가 산발 변조될 수 있다. 축자 검증용 ODL 원문은
+        # services.odl_parser.get_odl_reference_text(paper_dir)로 얻어(승격 시 존재) 참조 파싱
+        # 교차검증에 쓸 수 있다. 현재는 analyze_citations 로컬 파서 의미가 바뀌고 오프라인 검증이
+        # 불가해 배선하지 않는다 — 인용 정확도 개선 작업 시 여기서 물린다.
         paper_authors = paper.get("authors", "") or ""
         r_cit = await _run_citation(
             paper_id,

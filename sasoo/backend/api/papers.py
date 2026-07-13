@@ -8,12 +8,10 @@ import logging
 import re
 import shutil
 import uuid
-from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
 
-import fitz  # PyMuPDF
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
@@ -23,7 +21,6 @@ from models.database import (
     fetch_all,
     fetch_one,
     get_db,
-    get_figures_dir,
     get_paper_dir,
 )
 from models.schemas import (
@@ -38,7 +35,6 @@ from services.odl_parser import (
     OdlRuntimeError,
     ensure_text_artifacts_async,
     explain_odl_failure,
-    resolve_paper_journal,
     resolve_paper_title,
     schedule_paper_artifacts_refresh,
 )
@@ -169,294 +165,6 @@ def _clean_domain_classification_text(text: str) -> str:
             continue
         cleaned_lines.append(line)
     return "\n".join(cleaned_lines)
-
-
-# ---------------------------------------------------------------------------
-# PDF Metadata Extraction
-# ---------------------------------------------------------------------------
-
-def extract_pdf_metadata(pdf_path: str) -> dict:
-    """
-    Extract metadata and first-page text from a PDF using PyMuPDF.
-    Returns dict with title, authors, year, etc.
-    """
-    doc = fitz.open(pdf_path)
-    meta = doc.metadata or {}
-
-    # Extract text from first 3 pages for classification
-    full_text_parts: list[str] = []
-    for page_num in range(min(3, len(doc))):
-        page = doc[page_num]
-        full_text_parts.append(page.get_text())
-
-    first_pages_text = "\n".join(full_text_parts)
-
-    # Try to get title from metadata or first line of text
-    title = resolve_paper_title(meta.get("title", ""), first_pages_text, Path(pdf_path).stem)
-
-    # Authors — PDF 메타데이터에 "[]" 같은 문자 없는 플레이스홀더가 들어오는 경우가 있어,
-    # 유니코드 문자가 하나도 없으면 저자명으로 취급하지 않는다.
-    author_text = meta.get("author", "").strip()
-    authors = author_text if re.search(r"[^\W\d_]", author_text) else None
-
-    # Year - try metadata, then regex from text
-    year = None
-    creation_date = meta.get("creationDate", "")
-    if creation_date:
-        year_match = re.search(r"(\d{4})", creation_date)
-        if year_match:
-            y = int(year_match.group(1))
-            if 1900 <= y <= 2100:
-                year = y
-    if year is None:
-        # Find all 4-digit years in the first 3000 characters
-        year_matches = re.findall(r"\b((?:19|20)\d{2})\b", first_pages_text[:3000])
-        if year_matches:
-            from collections import Counter
-            year_counts = Counter(int(y) for y in year_matches if 1990 <= int(y) <= 2100)
-            if year_counts:
-                year = year_counts.most_common(1)[0][0]
-
-    # DOI
-    doi = None
-    doi_match = re.search(r"10\.\d{4,}/[^\s]+", first_pages_text)
-    if doi_match:
-        doi = doi_match.group(0).rstrip(".,;)")
-
-    # Journal - 저널/컨퍼런스 러닝 헤더 구조에 기반한 추출 (services.document_manifest 공유 로직)
-    journal = resolve_paper_journal(first_pages_text[:2000])
-
-    # Domain classification
-    domain, agent = classify_domain(_clean_domain_classification_text(first_pages_text))
-
-    # Total pages
-    total_pages = len(doc)
-    doc.close()
-
-    return {
-        "title": title,
-        "authors": authors,
-        "year": year,
-        "journal": journal,
-        "doi": doi,
-        "domain": domain,
-        "agent_used": agent,
-        "total_pages": total_pages,
-        "first_pages_text": first_pages_text,
-    }
-
-
-def extract_figure_captions(pdf_path: str) -> list[tuple[int, int, str]]:
-    """
-    Extract figure captions from a PDF using regex.
-
-    Returns list of (page_0indexed, fig_number, caption_text).
-    Only returns caption DEFINITIONS, not inline references.
-    """
-    doc = fitz.open(pdf_path)
-    results: list[tuple[int, int, str]] = []
-    seen_figs: set[int] = set()
-
-    for page_idx in range(len(doc)):
-        page_text = doc[page_idx].get_text()
-
-        # Find "Fig. N." or "Figure N." or "Fig. N:" caption definitions
-        for m in re.finditer(
-            r'(?:Fig\.|Figure)\s*(\d+)\s*[.:][ \t]*(.*)',
-            page_text,
-        ):
-            fig_num = int(m.group(1))
-            if fig_num in seen_figs:
-                continue  # Skip inline refs, keep first = caption definition
-
-            rest = m.group(2).strip()
-
-            # If rest is very short or empty, caption is on next line
-            if len(rest) < 5:
-                after = page_text[m.end():]
-                lines = after.split('\n')
-                for line in lines:
-                    line = line.strip()
-                    if line:
-                        rest = (rest + " " + line).strip()
-                        break
-
-            # Truncate at ~200 chars at sentence boundary
-            if len(rest) > 200:
-                rest = rest[:200]
-                last_period = rest.rfind('.')
-                if last_period > 50:
-                    rest = rest[:last_period + 1]
-
-            if rest:
-                seen_figs.add(fig_num)
-                results.append((page_idx, fig_num, rest))
-
-    doc.close()
-    return results
-
-
-def match_captions_to_figures(
-    figures: list[dict],
-    captions: list[tuple[int, int, str]],
-) -> dict[str, str]:
-    """
-    Match extracted images to figure captions by page proximity.
-
-    figures: list with 'figure_num' keys like 'p2_fig1' or 'p2_img1'
-    captions: from extract_figure_captions
-
-    Returns {figure_num: "Fig. N. caption text"}
-    """
-    if not captions:
-        return {}
-
-    # Group captions by page (0-indexed)
-    page_caps: dict[int, list[tuple[int, str]]] = {}
-    for page_idx, fig_num, text in captions:
-        page_caps.setdefault(page_idx, []).append((fig_num, text))
-
-    result: dict[str, str] = {}
-    assigned_caps: set[int] = set()
-
-    for fig in figures:
-        fn = fig["figure_num"]  # e.g., "p2_fig1" or legacy "p2_img1"
-        m = re.match(r'p(\d+)_(?:fig|img)(\d+)', fn)
-        if not m:
-            continue
-        page_0indexed = int(m.group(1)) - 1  # page number is 1-indexed
-
-        # Look on same page, then ±1 page
-        for offset in [0, 1, -1]:
-            check_page = page_0indexed + offset
-            if check_page in page_caps:
-                for cap_fig_num, cap_text in page_caps[check_page]:
-                    if cap_fig_num not in assigned_caps:
-                        result[fn] = f"Fig. {cap_fig_num}. {cap_text}"
-                        assigned_caps.add(cap_fig_num)
-                        break
-            if fn in result:
-                break
-
-    return result
-
-
-def _group_image_rects(rects: list[fitz.Rect], margin: float = 20) -> list[list[fitz.Rect]]:
-    """
-    Group image rectangles that overlap or are close together (same figure).
-    Uses union-find to cluster spatially adjacent images.
-    """
-    n = len(rects)
-    if n == 0:
-        return []
-    if n == 1:
-        return [rects]
-
-    parent = list(range(n))
-
-    def find(x: int) -> int:
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    def union(a: int, b: int) -> None:
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[ra] = rb
-
-    # Expand each rect by margin and check overlaps
-    for i in range(n):
-        expanded = fitz.Rect(
-            rects[i].x0 - margin, rects[i].y0 - margin,
-            rects[i].x1 + margin, rects[i].y1 + margin,
-        )
-        for j in range(i + 1, n):
-            if expanded.intersects(rects[j]):
-                union(i, j)
-
-    # Group by root
-    groups: dict[int, list[fitz.Rect]] = {}
-    for i in range(n):
-        root = find(i)
-        groups.setdefault(root, []).append(rects[i])
-
-    return list(groups.values())
-
-
-def extract_figures_from_pdf(pdf_path: str, output_dir: str) -> list[dict]:
-    """
-    Extract whole figures from a PDF by detecting image regions on each page
-    and rendering them as page clips.  Nearby images (e.g. sub-panels a, b, c)
-    are grouped together so each logical figure is saved as one image.
-    """
-    doc = fitz.open(pdf_path)
-    figures: list[dict] = []
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    RENDER_DPI = 200
-    MIN_IMAGE_DIM = 50   # Skip tiny images (icons, bullets)
-    GROUP_MARGIN = 20     # Points: distance to merge sub-panels
-    CLIP_PADDING = 8      # Points: padding around the rendered region
-
-    for page_num in range(len(doc)):
-        page = doc[page_num]
-        page_rect = page.rect
-
-        # Collect bounding boxes of all images on this page
-        image_rects: list[fitz.Rect] = []
-        for img_info in page.get_image_info():
-            bbox = fitz.Rect(img_info["bbox"])
-            if bbox.width < MIN_IMAGE_DIM or bbox.height < MIN_IMAGE_DIM:
-                continue
-            image_rects.append(bbox)
-
-        if not image_rects:
-            continue
-
-        # Group nearby images into logical figures
-        groups = _group_image_rects(image_rects, margin=GROUP_MARGIN)
-
-        for group_idx, group_rects in enumerate(groups):
-            # Compute bounding rect of the group (union of all sub-rects)
-            union_rect = group_rects[0]
-            for r in group_rects[1:]:
-                union_rect = union_rect | r
-
-            # Add padding, clamped to page bounds
-            clip_rect = fitz.Rect(
-                max(union_rect.x0 - CLIP_PADDING, page_rect.x0),
-                max(union_rect.y0 - CLIP_PADDING, page_rect.y0),
-                min(union_rect.x1 + CLIP_PADDING, page_rect.x1),
-                min(union_rect.y1 + CLIP_PADDING, page_rect.y1),
-            )
-
-            # Render this region as a high-resolution PNG
-            mat = fitz.Matrix(RENDER_DPI / 72, RENDER_DPI / 72)
-            pix = page.get_pixmap(matrix=mat, clip=clip_rect, alpha=False)
-
-            fig_num = f"p{page_num + 1}_fig{group_idx + 1}"
-            fig_filename = f"{fig_num}.png"
-            fig_path = output_path / fig_filename
-            pix.save(str(fig_path))
-
-            width, height = pix.width, pix.height
-            quality = "high"
-            if width < 200 or height < 200:
-                quality = "low"
-            elif width < 400 or height < 400:
-                quality = "medium"
-
-            figures.append({
-                "figure_num": fig_num,
-                "caption": None,
-                "file_path": str(fig_path),
-                "quality": quality,
-            })
-
-    doc.close()
-    return figures
 
 
 # ---------------------------------------------------------------------------
@@ -625,46 +333,6 @@ async def list_papers(
     return PaperListResponse(papers=papers, total=total, page=page, page_size=page_size)
 
 
-@router.post("/backfill-all-captions")
-async def backfill_all_captions():
-    """Backfill figure captions for ALL papers."""
-    papers = await fetch_all("SELECT * FROM papers", ())
-    total_updated = 0
-
-    for paper in papers:
-        folder_name = paper["folder_name"]
-        paper_dir = get_paper_dir(folder_name)
-        pdf_files = list(paper_dir.glob("*.pdf"))
-        if not pdf_files:
-            continue
-
-        try:
-            captions_list = extract_figure_captions(str(pdf_files[0]))
-        except Exception:
-            continue
-
-        figures = await fetch_all(
-            "SELECT * FROM figures WHERE paper_id = ? ORDER BY figure_num",
-            (paper["id"],),
-        )
-
-        fig_dicts = [{"figure_num": f["figure_num"]} for f in figures]
-        caption_map = match_captions_to_figures(fig_dicts, captions_list)
-
-        db = await get_db()
-        for fig in figures:
-            fn = fig["figure_num"]
-            if fn in caption_map:
-                await db.execute(
-                    "UPDATE figures SET caption = ? WHERE id = ?",
-                    (caption_map[fn], fig["id"]),
-                )
-                total_updated += 1
-        await db.commit()
-
-    return {"total_updated": total_updated, "papers_processed": len(papers)}
-
-
 @router.get("/{paper_id}", response_model=PaperResponse)
 async def get_paper(paper_id: int):
     """Get a single paper by ID."""
@@ -798,47 +466,6 @@ async def delete_paper(paper_id: int):
         shutil.rmtree(paper_dir, ignore_errors=True)
 
     return None
-
-
-@router.post("/{paper_id}/backfill-captions")
-async def backfill_captions(paper_id: int):
-    """Backfill figure captions for an existing paper."""
-    paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
-    if paper is None:
-        raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
-
-    folder_name = paper["folder_name"]
-    paper_dir = get_paper_dir(folder_name)
-    pdf_files = list(paper_dir.glob("*.pdf"))
-    if not pdf_files:
-        raise HTTPException(status_code=404, detail="PDF file not found.")
-
-    # Extract captions
-    captions_list = extract_figure_captions(str(pdf_files[0]))
-
-    # Get existing figures
-    figures = await fetch_all(
-        "SELECT * FROM figures WHERE paper_id = ? ORDER BY figure_num",
-        (paper_id,),
-    )
-
-    fig_dicts = [{"figure_num": f["figure_num"]} for f in figures]
-    caption_map = match_captions_to_figures(fig_dicts, captions_list)
-
-    # Update captions in DB
-    updated = 0
-    db = await get_db()
-    for fig in figures:
-        fn = fig["figure_num"]
-        if fn in caption_map:
-            await db.execute(
-                "UPDATE figures SET caption = ? WHERE id = ?",
-                (caption_map[fn], fig["id"]),
-            )
-            updated += 1
-    await db.commit()
-
-    return {"updated": updated, "total": len(figures), "captions": caption_map}
 
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,6 @@ export { default as Modal } from './Modal';
 export { default as ContentState } from './ContentState';
 export { default as Select } from './Select';
 export type { SelectOption, SelectProps } from './Select';
-export { default as DropdownMenu } from './DropdownMenu';
 export { default as Popover } from './Popover';
 export { default as Tooltip, TooltipProvider } from './Tooltip';
 export type { TooltipProps } from './Tooltip';

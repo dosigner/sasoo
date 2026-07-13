@@ -17,16 +17,14 @@ import sys
 import time
 import threading
 from urllib.parse import quote
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import fitz  # PyMuPDF
-from PIL import Image
 
-from models.database import DB_PATH, fetch_all, get_db, get_library_root
-from services.document_audit import find_suspect_pages
+from models.database import DB_PATH, execute_insert, fetch_all, get_db, get_library_root
+from services.document_audit import _page_text_map, find_suspect_pages
 from services.document_manifest import build_document_manifest, resolve_paper_journal
 from services.figure_candidates import build_figure_candidates
 from services.figure_resolver import resolve_figure_candidates
@@ -37,21 +35,21 @@ from services.concurrency import run_pipeline_blocking
 
 logger = logging.getLogger(__name__)
 
-LEGACY_PARSER_VERSION = "odl-v2"
 RESOLVER_PARSER_VERSION = "odl-v3"
-PARSER_VERSION = LEGACY_PARSER_VERSION
-LEGACY_PIPELINE_VERSION = "legacy"
 RESOLVER_PIPELINE_VERSION = "resolver_v1"
 DEFAULT_EXTRACTION_PIPELINE_VERSION = RESOLVER_PIPELINE_VERSION
-LEGACY_RESOLVER_VERSION = "legacy"
 RESOLVER_VERSION = "resolver-v1"
 PYMUPDF_TEXT_ENGINE = "pymupdf-text"
 TEXT_CACHE_FILENAME = ".text_cache.txt"
 TEXT_CACHE_META_FILENAME = ".text_cache.meta.json"
 MANIFEST_FILENAME = ".odl_manifest.json"
+GEMINI_ENGINE_NAME = "gemini"
+# visual 단계 Gemini 파서의 토큰/비용 집계를 _run_convert(mock 경계)를 건드리지 않고
+# _run_convert_gemini → ensure_visual_artifacts로 끌어올리기 위한 out-of-band 채널.
+# 전 호출 경로가 동기·단일 스레드(executor 스레드)라 thread-local이면 논문 병렬 파싱에도 안전하다.
+_visual_parse_usage_channel = threading.local()
 SUPPORTED_MODES = {"java"}
 RAW_IMAGE_DIRNAME = ".odl_raw_images"
-FIGURE_LABEL_PATTERN = re.compile(r"^\s*(?:Figure|Fig\.?)\s*(\d+[A-Za-z]?)\b", re.IGNORECASE)
 DOI_PATTERN = re.compile(r"10\.\d{4,}/[^\s]+")
 YEAR_PATTERN = re.compile(r"\b((?:19|20)\d{2})\b")
 TITLE_NOISE_PATTERNS = [
@@ -77,26 +75,6 @@ class OdlParserError(RuntimeError):
 
 class OdlRuntimeError(OdlParserError):
     """Raised when the runtime is not ready for OpenDataLoader."""
-
-
-@dataclass(slots=True)
-class FlatElement:
-    order: int
-    element: dict[str, Any]
-
-
-@dataclass(slots=True)
-class FigureCaptionCandidate:
-    flat: FlatElement
-    text: str
-
-
-@dataclass(slots=True)
-class FigureVisualTarget:
-    page_number: int
-    bbox: list[float] | None
-    source: str | None
-    image_id: int | None = None
 
 
 def _normalize_title_text(value: str | None) -> str:
@@ -221,30 +199,12 @@ def get_configured_parser_mode() -> str:
 
 
 def get_extraction_pipeline_version() -> str:
-    """Read the extraction pipeline version from settings."""
-    try:
-        with sqlite3.connect(str(DB_PATH)) as conn:
-            row = conn.execute(
-                "SELECT value FROM settings WHERE key = 'extraction_pipeline_version' LIMIT 1"
-            ).fetchone()
-            fallback_row = conn.execute(
-                "SELECT value FROM settings WHERE key = 'extraction_pipeline_force_fallback' LIMIT 1"
-            ).fetchone()
-    except Exception:
-        row = None
-        fallback_row = None
+    """Extraction pipeline version.
 
-    value = (row[0] if row and row[0] else DEFAULT_EXTRACTION_PIPELINE_VERSION).strip().lower() if row else DEFAULT_EXTRACTION_PIPELINE_VERSION
-    fallback_forced = bool(fallback_row and str(fallback_row[0] or "").strip().lower() == "true")
-    if value == LEGACY_PIPELINE_VERSION and not fallback_forced:
-        return RESOLVER_PIPELINE_VERSION
-    return value if value in {LEGACY_PIPELINE_VERSION, RESOLVER_PIPELINE_VERSION} else DEFAULT_EXTRACTION_PIPELINE_VERSION
-
-
-def _runtime_versions(extraction_pipeline_version: str) -> tuple[str, str]:
-    if extraction_pipeline_version == RESOLVER_PIPELINE_VERSION:
-        return (RESOLVER_PARSER_VERSION, RESOLVER_VERSION)
-    return (LEGACY_PARSER_VERSION, LEGACY_RESOLVER_VERSION)
+    Only resolver_v1 is supported; any other stored value (e.g. a legacy row
+    left over from an older database) heals to it unconditionally.
+    """
+    return DEFAULT_EXTRACTION_PIPELINE_VERSION
 
 
 def _pdf_hash(pdf_path: Path) -> str:
@@ -289,11 +249,9 @@ def _resolve_pipeline_request(
     requested_mode = (mode or get_configured_parser_mode()).strip().lower()
     if requested_mode not in SUPPORTED_MODES:
         requested_mode = "java"
-    pipeline_version = (extraction_pipeline_version or get_extraction_pipeline_version()).strip().lower()
-    if pipeline_version not in {LEGACY_PIPELINE_VERSION, RESOLVER_PIPELINE_VERSION}:
-        pipeline_version = DEFAULT_EXTRACTION_PIPELINE_VERSION
-    parser_version, resolver_version = _runtime_versions(pipeline_version)
-    return requested_mode, pipeline_version, parser_version, resolver_version
+    # Only resolver_v1 is supported; any requested/stored value heals to it.
+    pipeline_version = get_extraction_pipeline_version()
+    return requested_mode, pipeline_version, RESOLVER_PARSER_VERSION, RESOLVER_VERSION
 
 
 def _artifact_path_exists(paper_dir: Path, rel_or_abs: str | None) -> bool:
@@ -363,7 +321,7 @@ def _text_manifest_is_current(
         return False
     if manifest.get("parser_version") != parser_version:
         return False
-    if manifest.get("resolver_version", LEGACY_RESOLVER_VERSION) != resolver_version:
+    if manifest.get("resolver_version", "legacy") != resolver_version:
         return False
     return True
 
@@ -389,7 +347,7 @@ def _visual_manifest_is_current(
         return False
     if manifest.get("extraction_pipeline_version", DEFAULT_EXTRACTION_PIPELINE_VERSION) != extraction_pipeline_version:
         return False
-    if manifest.get("resolver_version", LEGACY_RESOLVER_VERSION) != resolver_version:
+    if manifest.get("resolver_version", "legacy") != resolver_version:
         return False
     return bool(manifest.get("visual_artifacts_ready", True))
 
@@ -547,216 +505,6 @@ def _maybe_int(value: Any) -> int | None:
         return None
 
 
-def _flatten_elements(elements: Iterable[dict[str, Any]], counter: list[int], out: list[FlatElement]) -> None:
-    for element in elements:
-        if not isinstance(element, dict):
-            continue
-        out.append(FlatElement(order=counter[0], element=element))
-        counter[0] += 1
-
-        kids = element.get("kids")
-        if isinstance(kids, list):
-            _flatten_elements(kids, counter, out)
-
-        list_items = element.get("list items")
-        if isinstance(list_items, list):
-            _flatten_elements(list_items, counter, out)
-
-        rows = element.get("rows")
-        if isinstance(rows, list):
-            for row in rows:
-                if not isinstance(row, dict):
-                    continue
-                cells = row.get("cells", [])
-                if isinstance(cells, list):
-                    _flatten_elements(cells, counter, out)
-
-
-def _extract_table_text(table: dict[str, Any]) -> str:
-    rows = table.get("rows", [])
-    rendered_rows: list[str] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        rendered_cells: list[str] = []
-        for cell in row.get("cells", []):
-            if not isinstance(cell, dict):
-                continue
-            rendered_cells.append(_extract_plain_text_from_element(cell))
-        if rendered_cells:
-            rendered_rows.append("\t".join(cell for cell in rendered_cells if cell))
-    return "\n".join(rendered_rows).strip()
-
-
-def _extract_plain_text_from_element(element: dict[str, Any]) -> str:
-    parts: list[str] = []
-    content = _maybe_text(element.get("content"))
-    if content:
-        parts.append(content)
-
-    if element.get("type") == "table":
-        table_text = _extract_table_text(element)
-        if table_text:
-            parts.append(table_text)
-
-    kids = element.get("kids", [])
-    if isinstance(kids, list):
-        for kid in kids:
-            if isinstance(kid, dict):
-                kid_text = _extract_plain_text_from_element(kid)
-                if kid_text:
-                    parts.append(kid_text)
-
-    list_items = element.get("list items", [])
-    if isinstance(list_items, list):
-        for item in list_items:
-            if isinstance(item, dict):
-                item_text = _extract_plain_text_from_element(item)
-                if item_text:
-                    parts.append(item_text)
-
-    return "\n".join(part for part in parts if part).strip()
-
-
-def _build_plain_text(flat_elements: list[FlatElement]) -> str:
-    pages: dict[int, list[str]] = {}
-    last_page = 1
-    for flat in flat_elements:
-        page = _element_page(flat.element, last_page)
-        last_page = page
-        text = _extract_plain_text_from_element(flat.element)
-        if not text:
-            continue
-        pages.setdefault(page, []).append(text)
-
-    parts: list[str] = []
-    for page in sorted(pages):
-        parts.append(f"--- Page {page} ---")
-        parts.append("\n".join(pages[page]))
-    return "\n\n".join(parts).strip()
-
-
-def _element_bbox(element: dict[str, Any]) -> list[float] | None:
-    bbox = element.get("bbox")
-    if bbox is None:
-        bbox = element.get("bounding box")
-    if not isinstance(bbox, list) or len(bbox) != 4:
-        return None
-    try:
-        return [float(v) for v in bbox]
-    except (TypeError, ValueError):
-        return None
-
-
-def _element_page(element: dict[str, Any], default: int = 1) -> int:
-    return _maybe_int(element.get("page")) or _maybe_int(element.get("page number")) or default
-
-
-def _element_id(element: dict[str, Any]) -> int | None:
-    return _maybe_int(element.get("id"))
-
-
-def _linked_content_id(element: dict[str, Any]) -> int | None:
-    return _maybe_int(element.get("linked_content_id")) or _maybe_int(element.get("linked content id"))
-
-
-def _bbox_mid_y(bbox: list[float] | None) -> float:
-    if not bbox:
-        return float("inf")
-    return (bbox[1] + bbox[3]) / 2
-
-
-def _normalize_figure_num(caption: str, page_number: int, fallback_index: int, seen: set[str]) -> str:
-    match = FIGURE_LABEL_PATTERN.match(caption or "")
-    if match:
-        base = f"Fig. {match.group(1).upper()}"
-    else:
-        base = f"p{page_number}_fig{fallback_index}"
-
-    if base not in seen:
-        seen.add(base)
-        return base
-
-    counter = 2
-    while f"{base} [{counter}]" in seen:
-        counter += 1
-    deduped = f"{base} [{counter}]"
-    seen.add(deduped)
-    return deduped
-
-
-def _resolve_image_source(output_dir: Path, figures_dir: Path, source: str | None) -> Path | None:
-    if not source:
-        return None
-
-    source_path = Path(source)
-    if source_path.is_absolute() and source_path.exists():
-        return source_path
-
-    candidates = [
-        figures_dir / source_path.name,
-        output_dir / source_path,
-        output_dir / source_path.name,
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return None
-
-
-def _odl_bbox_to_fitz_rect(page_height: float, bbox: list[float]) -> fitz.Rect:
-    left, bottom, right, top = bbox
-    return fitz.Rect(left, page_height - top, right, page_height - bottom)
-
-
-def _render_bbox_crop(pdf_path: Path, page_number: int, bbox: list[float], out_path: Path) -> tuple[str, int, int]:
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    doc = fitz.open(str(pdf_path))
-    try:
-        page = doc[page_number - 1]
-        clip = _odl_bbox_to_fitz_rect(page.rect.height, bbox)
-        mat = fitz.Matrix(200 / 72, 200 / 72)
-        pix = page.get_pixmap(matrix=mat, clip=clip, alpha=False)
-        pix.save(str(out_path))
-        return str(out_path), pix.width, pix.height
-    finally:
-        doc.close()
-
-
-def _copy_or_render_figure(
-    pdf_path: Path,
-    output_dir: Path,
-    figures_dir: Path,
-    figure_num: str,
-    page_number: int,
-    bbox: list[float] | None,
-    source: str | None,
-) -> tuple[str, int, int]:
-    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", figure_num).strip("_") or f"p{page_number}_figure"
-    target_path = figures_dir / f"{safe_name}.png"
-
-    source_path = _resolve_image_source(output_dir, figures_dir, source)
-    if source_path and source_path.exists():
-        if source_path.resolve() != target_path.resolve():
-            shutil.copy2(source_path, target_path)
-        with Image.open(target_path) as image:
-            width, height = image.size
-        return str(target_path), width, height
-
-    if bbox is None:
-        raise OdlParserError(f"No image source or bbox available for {figure_num}")
-
-    return _render_bbox_crop(pdf_path, page_number, bbox, target_path)
-
-
-def _quality_from_dims(width: int, height: int) -> str:
-    if width < 200 or height < 200:
-        return "low"
-    if width < 400 or height < 400:
-        return "medium"
-    return "high"
-
-
 def _extract_metadata(root: dict[str, Any], full_text: str, pdf_path: Path) -> dict[str, Any]:
     title = resolve_paper_title(_maybe_text(root.get("title")), full_text, pdf_path.stem)
     # "[]" 같은 문자 없는 플레이스홀더 메타데이터는 저자명으로 취급하지 않는다.
@@ -790,325 +538,36 @@ def _extract_metadata(root: dict[str, Any], full_text: str, pdf_path: Path) -> d
     }
 
 
-def _extract_page_sizes(pdf_path: Path) -> dict[int, tuple[float, float]]:
-    doc = fitz.open(str(pdf_path))
-    try:
-        return {
-            page_number + 1: (doc[page_number].rect.width, doc[page_number].rect.height)
-            for page_number in range(len(doc))
-        }
-    finally:
-        doc.close()
-
-
-def _bbox_dimensions(bbox: list[float] | None) -> tuple[float, float]:
-    if not bbox:
-        return 0.0, 0.0
-    return max(0.0, bbox[2] - bbox[0]), max(0.0, bbox[3] - bbox[1])
-
-
-def _bbox_area(bbox: list[float] | None) -> float:
-    width, height = _bbox_dimensions(bbox)
-    return width * height
-
-
-def _page_ratio_metrics(
-    bbox: list[float] | None,
-    page_size: tuple[float, float] | None,
-) -> tuple[float, float, float]:
-    if not bbox or not page_size:
-        return 0.0, 0.0, 0.0
-    width, height = _bbox_dimensions(bbox)
-    page_width, page_height = page_size
-    width_ratio = width / page_width if page_width else 0.0
-    height_ratio = height / page_height if page_height else 0.0
-    area_ratio = _bbox_area(bbox) / (page_width * page_height) if page_width and page_height else 0.0
-    return width_ratio, height_ratio, area_ratio
-
-
-def _is_page_composite_image(
-    bbox: list[float] | None,
-    page_size: tuple[float, float] | None,
-) -> bool:
-    width_ratio, height_ratio, area_ratio = _page_ratio_metrics(bbox, page_size)
-    return width_ratio >= 0.75 and height_ratio >= 0.7 and area_ratio >= 0.5
-
-
-def _is_strip_like_image(
-    bbox: list[float] | None,
-    page_size: tuple[float, float] | None,
-) -> bool:
-    width_ratio, height_ratio, _ = _page_ratio_metrics(bbox, page_size)
-    return (width_ratio >= 0.55 and height_ratio <= 0.12) or (height_ratio >= 0.55 and width_ratio <= 0.12)
-
-
-def _collect_figure_caption_candidates(flat_elements: list[FlatElement]) -> list[FigureCaptionCandidate]:
-    candidates: list[FigureCaptionCandidate] = []
-    seen_keys: set[tuple[int, str, int | None, tuple[float, float, float, float] | None]] = set()
-    for flat in flat_elements:
-        element_type = flat.element.get("type")
-        if element_type not in TEXTUAL_FIGURE_TYPES:
-            continue
-        text = _extract_plain_text_from_element(flat.element)
-        if not text or not FIGURE_LABEL_PATTERN.match(text):
-            continue
-        bbox = _element_bbox(flat.element)
-        bbox_key = tuple(bbox) if bbox is not None else None
-        key = (
-            _element_page(flat.element, 1),
-            text.strip(),
-            _linked_content_id(flat.element),
-            bbox_key,
-        )
-        if key in seen_keys:
-            continue
-        seen_keys.add(key)
-        candidates.append(FigureCaptionCandidate(flat=flat, text=text))
-    return candidates
-
-
-def _select_page_image_candidate(
-    images: list[FlatElement],
-    page_size: tuple[float, float] | None,
-    caption_order: int | None = None,
-) -> FlatElement | None:
-    usable = [image for image in images if _element_bbox(image.element) is not None]
-    if not usable:
-        return None
-
-    def _selection_key(image: FlatElement) -> tuple[float, float, int]:
-        distance = abs(image.order - caption_order) if caption_order is not None else 0
-        return (_bbox_area(_element_bbox(image.element)), -float(distance), -image.order)
-
-    composites = [image for image in usable if _is_page_composite_image(_element_bbox(image.element), page_size)]
-    if composites:
-        return max(composites, key=_selection_key)
-
-    non_strip = [image for image in usable if not _is_strip_like_image(_element_bbox(image.element), page_size)]
-    if non_strip:
-        return max(non_strip, key=_selection_key)
-
-    return max(usable, key=_selection_key)
-
-
-def _select_visual_target(
-    caption: FigureCaptionCandidate,
-    flat_by_id: dict[int, FlatElement],
-    images_by_page: dict[int, list[FlatElement]],
-    page_sizes: dict[int, tuple[float, float]],
-) -> FigureVisualTarget | None:
-    caption_page = _element_page(caption.flat.element, 1)
-    linked_id = _linked_content_id(caption.flat.element)
-    if linked_id is not None:
-        linked_element = flat_by_id.get(linked_id)
-        if linked_element is not None:
-            linked_page = _element_page(linked_element.element, caption_page)
-            linked_bbox = _element_bbox(linked_element.element) or _element_bbox(caption.flat.element)
-            if linked_element.element.get("type") in IMAGE_ELEMENT_TYPES:
-                return FigureVisualTarget(
-                    page_number=linked_page,
-                    bbox=linked_bbox,
-                    source=_maybe_text(linked_element.element.get("source")) or None,
-                    image_id=_element_id(linked_element.element),
-                )
-            if linked_bbox is not None:
-                return FigureVisualTarget(
-                    page_number=linked_page,
-                    bbox=linked_bbox,
-                    source=None,
-                    image_id=None,
-                )
-
-    candidate_pages = [caption_page]
-    if not images_by_page.get(caption_page):
-        for alt_page in (caption_page + 1, caption_page - 1):
-            if images_by_page.get(alt_page):
-                candidate_pages.append(alt_page)
-
-    for page_number in candidate_pages:
-        image = _select_page_image_candidate(
-            images_by_page.get(page_number, []),
-            page_sizes.get(page_number),
-            caption_order=caption.flat.order,
-        )
-        if image is None:
-            continue
-        return FigureVisualTarget(
-            page_number=page_number,
-            bbox=_element_bbox(image.element),
-            source=_maybe_text(image.element.get("source")) or None,
-            image_id=_element_id(image.element),
-        )
-
-    return None
-
-
-def _fallback_images_for_page(
-    images: list[FlatElement],
-    page_size: tuple[float, float] | None,
-) -> list[FlatElement]:
-    usable = [image for image in images if _element_bbox(image.element) is not None]
-    if not usable:
-        return []
-
-    composites = [image for image in usable if _is_page_composite_image(_element_bbox(image.element), page_size)]
-    if composites:
-        return [max(composites, key=lambda image: (_bbox_area(_element_bbox(image.element)), -image.order))]
-
-    non_strip = [image for image in usable if not _is_strip_like_image(_element_bbox(image.element), page_size)]
-    return non_strip or usable
-
-
-def _build_manifest(
-    pdf_path: Path,
-    paper_dir: Path,
-    output_dir: Path,
-    root: dict[str, Any],
-    markdown_text: str,
-    actual_engine: str,
-    requested_mode: str,
-) -> dict[str, Any]:
-    flat_elements: list[FlatElement] = []
-    _flatten_elements(root.get("kids", []), [0], flat_elements)
-
-    full_text = _build_plain_text(flat_elements) or markdown_text
-    metadata = _extract_metadata(root, full_text, pdf_path)
-    figure_captions = _collect_figure_caption_candidates(flat_elements)
-    images = [item for item in flat_elements if item.element.get("type") in IMAGE_ELEMENT_TYPES]
-    flat_by_id = {
-        element_id: item
-        for item in flat_elements
-        if (element_id := _element_id(item.element)) is not None
-    }
-    images_by_page: dict[int, list[FlatElement]] = {}
-    for image in images:
-        images_by_page.setdefault(_element_page(image.element, 1), []).append(image)
-    page_sizes = _extract_page_sizes(pdf_path)
-
-    figures_dir = paper_dir / "figures"
-    figures_dir.mkdir(parents=True, exist_ok=True)
-    caption_figure_pages: set[int] = set()
-    used_image_ids: set[int] = set()
-    seen_figure_nums: set[str] = set()
-    figures: list[dict[str, Any]] = []
-    fallback_index = 1
-
-    for caption in figure_captions:
-        target = _select_visual_target(caption, flat_by_id, images_by_page, page_sizes)
-        if target is None:
-            continue
-
-        figure_num = _normalize_figure_num(caption.text, target.page_number, fallback_index, seen_figure_nums)
-        file_path, width, height = _copy_or_render_figure(
-            pdf_path=pdf_path,
-            output_dir=output_dir,
-            figures_dir=figures_dir,
-            figure_num=figure_num,
-            page_number=target.page_number,
-            bbox=target.bbox,
-            source=target.source,
-        )
-        relative_path = str(Path(file_path).resolve().relative_to(paper_dir.resolve()))
-        figures.append(
-            {
-                "figure_num": figure_num,
-                "caption": caption.text,
-                "file_path": relative_path,
-                "page_number": target.page_number,
-                "bbox": target.bbox,
-                "quality": _quality_from_dims(width, height),
-                "extraction_engine": actual_engine,
-            }
-        )
-        caption_figure_pages.add(target.page_number)
-        if target.image_id is not None:
-            used_image_ids.add(target.image_id)
-        fallback_index += 1
-
-    for page_number in sorted(images_by_page):
-        if page_number in caption_figure_pages:
-            continue
-        page_size = page_sizes.get(page_number)
-        for image in _fallback_images_for_page(images_by_page[page_number], page_size):
-            image_id = _element_id(image.element)
-            if image_id is not None and image_id in used_image_ids:
-                continue
-            bbox = _element_bbox(image.element)
-            figure_num = _normalize_figure_num("", page_number, fallback_index, seen_figure_nums)
-            file_path, width, height = _copy_or_render_figure(
-                pdf_path=pdf_path,
-                output_dir=output_dir,
-                figures_dir=figures_dir,
-                figure_num=figure_num,
-                page_number=page_number,
-                bbox=bbox,
-                source=_maybe_text(image.element.get("source")) or None,
-            )
-            relative_path = str(Path(file_path).resolve().relative_to(paper_dir.resolve()))
-            figures.append(
-                {
-                    "figure_num": figure_num,
-                    "caption": None,
-                    "file_path": relative_path,
-                    "page_number": page_number,
-                    "bbox": bbox,
-                    "quality": _quality_from_dims(width, height),
-                    "extraction_engine": actual_engine,
-                }
-            )
-            fallback_index += 1
-            if image_id is not None:
-                used_image_ids.add(image_id)
-
-    tables: list[dict[str, Any]] = []
-    table_index = 1
-    for element in flat_elements:
-        if element.element.get("type") != "table":
-            continue
-        tables.append(
-            {
-                "table_num": f"Table {table_index}",
-                "page_number": _element_page(element.element, 1),
-                "bbox": _element_bbox(element.element),
-                "text": _extract_table_text(element.element),
-            }
-        )
-        table_index += 1
-
-    pdf_hash = _pdf_hash(pdf_path)
-    pdf_signature = get_pdf_signature(pdf_path)
-    return {
-        "parser_version": LEGACY_PARSER_VERSION,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "requested_mode": requested_mode,
-        "extraction_pipeline_version": LEGACY_PIPELINE_VERSION,
-        "resolver_version": LEGACY_RESOLVER_VERSION,
-        "engine": actual_engine,
-        "pdf_hash": pdf_hash,
-        "pdf_mtime_ns": pdf_signature["pdf_mtime_ns"],
-        "pdf_size": pdf_signature["pdf_size"],
-        "pdf_file": pdf_path.name,
-        "markdown_file": f"{pdf_path.stem}.md",
-        "json_file": f"{pdf_path.stem}.json",
-        "metadata": metadata,
-        "full_text": full_text,
-        "pages": [],
-        "captions": [],
-        "figure_candidates": [],
-        "table_candidates": [],
-        "figures": figures,
-        "tables": tables,
-        "visual_artifacts_ready": True,
-        "audit": {
-            "triggered": False,
-            "reason": None,
-            "suspect_pages": [],
-        },
-    }
-
-
 def _manifest_to_text_root(manifest: dict[str, Any]) -> dict[str, Any]:
     metadata = dict(manifest.get("metadata", {}))
+    page_count = metadata.get("page_count") or len(manifest.get("pages", []))
+
+    # F4: gemini slim 스키마에선 트리에 본문 paragraph가 없어(heading/caption만) pages[*].text_blocks
+    # 가 본문을 담지 못한다 → 아래 text_blocks 경로로 {stem}.json을 만들면 본문이 공동화되어
+    # 자매 파일 {stem}.md(=full_text)와 본문이 어긋난다. gemini는 full_text가 완전한 본문
+    # (페이지 마커 포함 markdown)이므로, 이를 페이지별로 쪼개 paragraph 노드로 복원해 텍스트 계약이
+    # 본문을 갖게 한다(.md와 .json의 본문 일치). ODL/pymupdf 경로는 기존 text_blocks 로직 불변.
+    engine = str(manifest.get("engine") or "").strip().lower()
+    full_text = str(manifest.get("full_text") or "")
+    if engine == GEMINI_ENGINE_NAME and full_text.strip():
+        page_map = _page_text_map(full_text)  # document_audit과 동일한 "--- Page N ---" 분할
+        if page_map:
+            gemini_kids: list[dict[str, Any]] = []
+            for page_number in sorted(page_map):
+                text = _maybe_text(page_map[page_number])
+                if not text:
+                    continue
+                gemini_kids.append(
+                    {"type": "paragraph", "page number": page_number, "content": text}
+                )
+            if gemini_kids:
+                return {
+                    "title": metadata.get("title"),
+                    "author": metadata.get("authors"),
+                    "number of pages": page_count,
+                    "kids": gemini_kids,
+                }
+
     kids: list[dict[str, Any]] = []
     for page in manifest.get("pages", []):
         page_number = _maybe_int(page.get("page_number")) or 1
@@ -1127,7 +586,7 @@ def _manifest_to_text_root(manifest: dict[str, Any]) -> dict[str, Any]:
     return {
         "title": metadata.get("title"),
         "author": metadata.get("authors"),
-        "number of pages": metadata.get("page_count") or len(manifest.get("pages", [])),
+        "number of pages": page_count,
         "kids": kids,
     }
 
@@ -1270,10 +729,10 @@ def _write_cache_files(paper_dir: Path, manifest: dict[str, Any]) -> None:
     engine = manifest.get("engine", "odl-java")
     pdf_mtime_ns = manifest.get("pdf_mtime_ns")
     pdf_size = manifest.get("pdf_size")
-    parser_version = manifest.get("parser_version", LEGACY_PARSER_VERSION)
+    parser_version = manifest.get("parser_version", "odl-v2")
     requested_mode = manifest.get("requested_mode", "java")
     extraction_pipeline_version = manifest.get("extraction_pipeline_version", DEFAULT_EXTRACTION_PIPELINE_VERSION)
-    resolver_version = manifest.get("resolver_version", LEGACY_RESOLVER_VERSION)
+    resolver_version = manifest.get("resolver_version", "legacy")
     (paper_dir / TEXT_CACHE_FILENAME).write_text(full_text, encoding="utf-8")
     (paper_dir / TEXT_CACHE_META_FILENAME).write_text(
         json.dumps(
@@ -1301,7 +760,68 @@ def _write_manifest(paper_dir: Path, manifest: dict[str, Any]) -> None:
     )
 
 
-def _run_convert(pdf_path: Path, output_dir: Path, figures_dir: Path, mode: str) -> tuple[dict[str, Any], str, str]:
+_VALID_ENGINES = {"odl", GEMINI_ENGINE_NAME}
+DEFAULT_TEXT_ENGINE = "odl"
+DEFAULT_VISUAL_ENGINE = GEMINI_ENGINE_NAME
+
+
+def _normalize_engine(value: str | None, default: str) -> str:
+    selected = (value or "").strip().lower()
+    return selected if selected in _VALID_ENGINES else default
+
+
+def _resolve_stage_engine(stage: str, engine_override: str | None = None) -> str:
+    """스테이지(text/visual)별 파서 엔진을 한 곳에서 결정한다.
+
+    우선순위:
+      1. engine_override — 함수 인자(파일럿/폴백 강제)
+      2. 전역 SASOO_PDF_ENGINE — 하위호환. 있으면 두 스테이지 모두를 덮어쓴다.
+      3. 스테이지 env — SASOO_PDF_TEXT_ENGINE / SASOO_PDF_VISUAL_ENGINE
+      4. 스테이지 기본 — text=odl(즉시성/축자), visual=gemini(수식·표·읽기순서)
+    부수효과 없음 — 키 존재 검사·다운그레이드는 _run_convert 디스패치 지점에서만 한다.
+    """
+    if engine_override:
+        return _normalize_engine(engine_override, default=DEFAULT_TEXT_ENGINE)
+    global_override = os.environ.get("SASOO_PDF_ENGINE")
+    if global_override and global_override.strip():
+        return _normalize_engine(global_override, default=DEFAULT_TEXT_ENGINE)
+    if stage == "visual":
+        return _normalize_engine(os.environ.get("SASOO_PDF_VISUAL_ENGINE"), default=DEFAULT_VISUAL_ENGINE)
+    return _normalize_engine(os.environ.get("SASOO_PDF_TEXT_ENGINE"), default=DEFAULT_TEXT_ENGINE)
+
+
+def _resolve_pdf_engine(engine: str | None) -> str:
+    """하위호환 별칭: 명시 인자 > 전역 SASOO_PDF_ENGINE > "odl" (스테이지 무관)."""
+    return _resolve_stage_engine("text", engine)
+
+
+def _run_convert(
+    pdf_path: Path,
+    output_dir: Path,
+    figures_dir: Path,
+    mode: str,
+    engine: str | None = None,
+    stage: str = "text",
+) -> tuple[dict[str, Any], str, str]:
+    """엔진 디스패처. 반환 계약 (root_json, markdown_text, actual_engine)은 엔진 불문 동일.
+
+    스테이지(text/visual)별로 _resolve_stage_engine이 엔진을 고른다. gemini로 결정됐지만
+    GEMINI_API_KEY가 없으면 조용히 ODL로 내려간다(경고 1줄) — 페이지별 재시도 폭주를 피한다.
+    gemini 실행 실패는 _run_convert_gemini가 OdlParserError로 변환한다(상위 폴백 체인이 처리).
+    이 저수준 디스패처는 자동 폴백을 하지 않는다 — 폴백은 프로덕션 경로(ensure_visual_artifacts)가 담당.
+    """
+    selected = _resolve_stage_engine(stage, engine)
+    if selected == GEMINI_ENGINE_NAME and not (os.environ.get("GEMINI_API_KEY") or "").strip():
+        logger.warning(
+            "GEMINI_API_KEY not set; %s stage falling back to ODL parser engine.", stage
+        )
+        selected = "odl"
+    if selected == GEMINI_ENGINE_NAME:
+        return _run_convert_gemini(pdf_path, output_dir, figures_dir)
+    return _run_convert_odl(pdf_path, output_dir, figures_dir, mode)
+
+
+def _run_convert_odl(pdf_path: Path, output_dir: Path, figures_dir: Path, mode: str) -> tuple[dict[str, Any], str, str]:
     ensure_java_runtime()
     odl = _import_odl_module()
 
@@ -1327,6 +847,32 @@ def _run_convert(pdf_path: Path, output_dir: Path, figures_dir: Path, mode: str)
     root = json.loads(json_path.read_text(encoding="utf-8"))
     markdown_text = md_path.read_text(encoding="utf-8")
     return root, markdown_text, actual_engine
+
+
+def _run_convert_gemini(pdf_path: Path, output_dir: Path, figures_dir: Path) -> tuple[dict[str, Any], str, str]:
+    """Gemini 비전 엔진 어댑터. 비동기 run_convert_gemini를 기존 동기 브리지로 감싸고,
+    실패는 OdlParserError로 변환해 폴백이 ODL 실패와 동일하게 동작하도록 한다.
+
+    상위 ensure_visual_artifacts가 채널에 빈 usage dict를 심어두면, 그 dict를 그대로
+    run_convert_gemini(usage_out=...)로 넘겨 토큰/비용 집계를 채운다. dict은 참조로
+    전달되므로 _run_coroutine_sync의 자식 스레드에서 채워도 join 후 상위에서 보인다.
+    채널이 비어 있으면(text 단계 등) None을 넘겨 아무것도 집계하지 않는다."""
+    from services.gemini_parser import GeminiParserError, run_convert_gemini
+
+    usage_out = getattr(_visual_parse_usage_channel, "usage", None)
+    try:
+        return _run_coroutine_sync(
+            run_convert_gemini(pdf_path, output_dir, figures_dir, usage_out=usage_out)
+        )
+    except GeminiParserError as exc:
+        raise OdlParserError(f"Gemini parser engine failed: {exc}") from exc
+    except Exception as exc:  # noqa: BLE001 - F1: 비-GeminiParserError도 폴백 대상으로 변환
+        # gemini 경로가 GeminiParserError가 아닌 예외(예: fitz.open의 raw RuntimeError,
+        # _run_coroutine_sync 스레드에서 새어나온 임의 예외)를 던지면, ensure_visual_artifacts의
+        # 폴백(except OdlParserError)이 이를 못 잡아 아티팩트 태스크가 통째로 실패하고
+        # explain_odl_failure가 엔진을 오귀속("OpenDataLoader failed: ...")한다. 이 초크포인트에서
+        # 모든 gemini-경로 예외를 OdlParserError로 감싸(원인 체이닝) 폴백이 ODL 실패와 동일하게 동작.
+        raise OdlParserError(f"Gemini parser engine failed: {exc}") from exc
 
 
 def _convert_error_message(exc: Exception) -> str:
@@ -1561,6 +1107,75 @@ def _build_text_manifest_from_odl(
     return manifest
 
 
+def _promote_text_from_visual(
+    paper_dir: Path,
+    manifest: dict[str, Any],
+    *,
+    odl_reference_snapshot: str | None,
+    visual_engine: str,
+) -> bool:
+    """visual 단계가 gemini로 성공하면, 그 변환 markdown(=manifest['full_text'])을 text
+    아티팩트로 승격한다. Gemini를 재호출하지 않는다 — 1회 변환으로 두 용도(figure/caption + 본문).
+
+    - odl_reference_snapshot(삭제되기 전에 캡처한 text 스테이지 .md 원문)이 있으면
+      {stem}.odl-reference.md로 보존한다. 멱등의 핵심은 스냅샷 유무다: 재실행(force, PDF 불변)
+      에선 text 스테이지가 이미 gemini current라 스냅샷이 None → 레퍼런스 불변(gemini 텍스트로
+      덮어쓰는 사고 없음). PDF가 바뀌면 text가 ODL을 재생성 → 스냅샷 갱신 → 레퍼런스도 새
+      PDF 기준으로 갱신된다.
+    - .document_context.json 사이드카를 무효화(삭제)한다. 이 사이드카는 pdf서명+parser_version
+      으로만 current 판정하므로, full_text가 ODL→gemini로 바뀌어도 자동 갱신되지 않는다.
+    - manifest에 provenance(text_engine/visual_engine)를 기록한다.
+
+    반환: 승격 시 True — 호출부가 .md/.json 계약 파일을 overwrite로 다시 쓰게 한다. 승격 아님
+    (ODL visual 또는 폴백)이면 False + 필드/파일 불변으로 기존 ODL-only 경로 바이트를 유지한다.
+
+    설계 노트(코드리뷰 F3, 미수정=의도된 설계): 승격은 본문 텍스트 계약(full_text/{stem}.md/.json)을
+    Gemini 전사본으로 교체하므로, 하류 인용·정량 분석은 ODL 축자 텍스트가 아니라 Gemini 전사
+    기준으로 수행된다(Gemini는 저자명·grant번호·수치를 산발 변조할 수 있다). 이는 수식·표·읽기순서
+    품질을 위해 받아들인 트레이드오프이며, 축자 원문은 {stem}.odl-reference.md로 보존된다
+    (get_odl_reference_text). 인용 검증을 레퍼런스에 배선하는 작업은 별도 보류 과제다.
+    """
+    if visual_engine != GEMINI_ENGINE_NAME:
+        return False
+
+    stem = Path(str(manifest.get("pdf_file") or _paper_pdf(paper_dir).name)).stem
+    ref_path = paper_dir / f"{stem}.odl-reference.md"
+    # ODL 원문 보존: 스냅샷이 있을 때만(=이번 사이클에 text 스테이지가 ODL 원문을 새로 만든 경우)
+    # 기록/갱신. 재실행(force, PDF 불변)에선 스냅샷=None → 레퍼런스 불변(멱등).
+    if odl_reference_snapshot:
+        ref_path.write_text(odl_reference_snapshot, encoding="utf-8")
+
+    # stale 파생 캐시 무효화(지연 import로 순환참조 회피).
+    from services.document_context import DOCUMENT_CONTEXT_FILENAME
+
+    (paper_dir / DOCUMENT_CONTEXT_FILENAME).unlink(missing_ok=True)
+
+    manifest["text_engine"] = GEMINI_ENGINE_NAME
+    manifest["visual_engine"] = visual_engine
+    return True
+
+
+def get_odl_reference_text(paper_dir: Path) -> str | None:
+    """승격된 논문의 ODL 축자 레퍼런스({stem}.odl-reference.md) 텍스트를 반환.
+
+    visual 단계가 gemini로 승격되면 원래 ODL .md가 이 파일로 보존된다(환각 0·축자 충실).
+    gemini는 축자 어휘/저자명/grant번호를 산발 변조하므로, 인용·정량 축자 검증 시 이 레퍼런스를
+    교차 확인용으로 쓴다. 승격되지 않았거나 파일이 없으면 None.
+    """
+    paper_dir = Path(paper_dir)
+    try:
+        pdf_stem = _paper_pdf(paper_dir).stem
+    except FileNotFoundError:
+        return None
+    ref_path = paper_dir / f"{pdf_stem}.odl-reference.md"
+    if not ref_path.exists():
+        return None
+    try:
+        return ref_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
 def ensure_text_artifacts(
     paper_dir: Path,
     mode: str | None = None,
@@ -1606,7 +1221,9 @@ def ensure_text_artifacts(
             output_file.unlink()
 
     try:
-        root, markdown_text, actual_engine = _run_convert(pdf_path, output_dir, raw_image_dir, requested_mode)
+        root, markdown_text, actual_engine = _run_convert(
+            pdf_path, output_dir, raw_image_dir, requested_mode, stage="text"
+        )
         manifest = _build_text_manifest_from_odl(
             pdf_path=pdf_path,
             paper_dir=paper_dir,
@@ -1673,6 +1290,20 @@ def ensure_visual_artifacts(
         force=False,
     )
 
+    # 승격 대비: text 스테이지가 어떤 엔진으로 현재 .md를 만들었는지(디스크 manifest 기준).
+    # 아래 clear 단계가 text 스테이지 .md를 지우므로, ODL 원문을 메모리로 먼저 스냅샷한다.
+    # text 스테이지가 이미 gemini(전역 오버라이드/재실행 current)면 보존할 ODL 원문이 없으므로
+    # 스냅샷을 남기지 않는다 → 승격 시 gemini 텍스트가 레퍼런스를 오염시키지 않는다(멱등).
+    text_stage_manifest = _load_manifest(paper_dir)
+    text_stage_engine = str((text_stage_manifest or {}).get("engine", "")).strip().lower()
+    md_path = paper_dir / f"{pdf_path.stem}.md"
+    odl_reference_snapshot: str | None = None
+    if text_stage_engine != GEMINI_ENGINE_NAME and md_path.exists():
+        try:
+            odl_reference_snapshot = md_path.read_text(encoding="utf-8")
+        except OSError:
+            odl_reference_snapshot = None
+
     output_dir = paper_dir
     raw_image_dir = paper_dir / RAW_IMAGE_DIRNAME
     shutil.rmtree(raw_image_dir, ignore_errors=True)
@@ -1681,31 +1312,54 @@ def ensure_visual_artifacts(
         if output_file.exists():
             output_file.unlink()
 
-    root, markdown_text, actual_engine = _run_convert(pdf_path, output_dir, raw_image_dir, requested_mode)
-    if pipeline_version == RESOLVER_PIPELINE_VERSION:
-        manifest = _run_coroutine_sync(
-            _build_resolver_v1_manifest(
-                paper_dir=paper_dir,
-                pdf_path=pdf_path,
-                root=root,
-                markdown_text=markdown_text,
-                actual_engine=actual_engine,
-                requested_mode=requested_mode,
+    # visual 단계 Gemini 파서의 usage를 담을 빈 dict를 채널에 심는다. 실제 gemini 변환이
+    # 일어날 때만 채워지고, ODL 폴백/키 부재/캐시 히트에선 빈 채로 남는다(→ 미기록).
+    _visual_parse_usage_channel.usage = {}
+    try:
+        try:
+            root, markdown_text, actual_engine = _run_convert(
+                pdf_path, output_dir, raw_image_dir, requested_mode, stage="visual"
             )
-        )
-    else:
-        manifest = _build_manifest(
-            pdf_path=pdf_path,
+        except (OdlParserError, OdlRuntimeError) as exc:
+            # 프로덕션 폴백: visual 엔진(gemini) 실패 → ODL로 자동 재시도(사용자 눈엔 visual이 그냥 됨).
+            # 폴백 시엔 승격 없음. _run_convert 저수준은 불변 — 여기서만 engine="odl"로 강제한다.
+            logger.warning(
+                "Visual parser engine failed for %s; retrying with ODL: %s", paper_dir.name, exc
+            )
+            shutil.rmtree(raw_image_dir, ignore_errors=True)
+            raw_image_dir.mkdir(parents=True, exist_ok=True)
+            root, markdown_text, actual_engine = _run_convert(
+                pdf_path, output_dir, raw_image_dir, requested_mode, stage="visual", engine="odl"
+            )
+    finally:
+        visual_parse_usage = getattr(_visual_parse_usage_channel, "usage", None)
+        _visual_parse_usage_channel.usage = None
+    manifest = _run_coroutine_sync(
+        _build_resolver_v1_manifest(
             paper_dir=paper_dir,
-            output_dir=output_dir,
+            pdf_path=pdf_path,
             root=root,
             markdown_text=markdown_text,
             actual_engine=actual_engine,
             requested_mode=requested_mode,
         )
-    _ensure_text_contract_files(paper_dir, manifest)
+    )
+    # visual이 gemini로 성공했으면 그 변환 markdown을 text 아티팩트로 승격(+ ODL 원문 보존
+    # + document_context 사이드카 무효화 + provenance 기록). ODL visual/폴백이면 no-op(False).
+    promoted = _promote_text_from_visual(
+        paper_dir,
+        manifest,
+        odl_reference_snapshot=odl_reference_snapshot,
+        visual_engine=actual_engine,
+    )
+    _ensure_text_contract_files(paper_dir, manifest, overwrite=promoted)
     _write_cache_files(paper_dir, manifest)
     _write_manifest(paper_dir, manifest)
+    # gemini visual 파서가 실제로 돌아 usage가 채워졌을 때만, 디스크 영속(_write_manifest)
+    # 이후에 인메모리 전용 키로 얹는다. 디스크에 남기지 않으므로 캐시 히트 경로(상단 조기 반환)의
+    # manifest엔 이 키가 없고, 상위(_refresh_paper_artifacts)가 이 키 유무로 1회 기록을 판정한다.
+    if visual_parse_usage and visual_parse_usage.get("engine") == GEMINI_ENGINE_NAME:
+        manifest["_visual_parse_usage"] = visual_parse_usage
     return manifest
 
 
@@ -1729,21 +1383,6 @@ def ensure_parsed_artifacts(
         mode=mode,
         extraction_pipeline_version=extraction_pipeline_version,
         force=force,
-    )
-
-
-async def ensure_parsed_artifacts_async(
-    paper_dir: Path,
-    mode: str | None = None,
-    extraction_pipeline_version: str | None = None,
-    force: bool = False,
-) -> dict[str, Any]:
-    return await run_pipeline_blocking(
-        ensure_parsed_artifacts,
-        paper_dir,
-        mode,
-        extraction_pipeline_version,
-        force,
     )
 
 
@@ -2053,6 +1692,55 @@ async def sync_tables_for_paper(
     return tables
 
 
+async def _record_visual_parse_usage(paper_id: int, usage: dict[str, Any]) -> None:
+    """visual 단계 Gemini 파서의 토큰/비용을 기존 analysis_results 원장에 1회 집계 기록.
+
+    phase는 분석 파이프라인의 "visual"(도표 텍스트 분석)과 충돌하지 않도록 "visual_parse".
+    분석 단계들과 동일하게 (model, tokens_in, tokens_out)로 calc_cost를 재계산해 원장 관례를
+    맞춘다. 기록은 best-effort — DB 미가용/오류로 파이프라인을 깨지 않는다(경고만 남기고 스킵)."""
+    try:
+        model = str(usage.get("model") or "")
+        tokens_in = int(usage.get("tokens_in", 0) or 0)
+        tokens_out = int(usage.get("tokens_out", 0) or 0)
+        if tokens_in <= 0 and tokens_out <= 0:
+            return
+
+        from services.pricing import calc_cost
+        from services.document_context import compute_input_hash
+
+        cost = calc_cost(model, tokens_in, tokens_out)
+        result_payload = json.dumps(
+            {
+                "engine": usage.get("engine"),
+                "model": model,
+                "pages": usage.get("pages"),
+                "tokens_in": tokens_in,
+                "tokens_out": tokens_out,
+                "tokens_thought": usage.get("tokens_thought"),
+            },
+            ensure_ascii=False,
+        )
+        await execute_insert(
+            """
+            INSERT INTO analysis_results
+                (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd, input_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                paper_id,
+                "visual_parse",
+                result_payload,
+                model,
+                tokens_in,
+                tokens_out,
+                cost,
+                compute_input_hash(f"visual_parse:{paper_id}:{usage.get('pages')}"),
+            ),
+        )
+    except Exception:  # noqa: BLE001 - 원장 기록은 best-effort, 파이프라인을 막지 않는다
+        logger.warning("visual_parse usage 기록 실패 (paper %s)", paper_id, exc_info=True)
+
+
 async def _refresh_paper_artifacts(
     paper_id: int,
     paper_dir: Path,
@@ -2066,8 +1754,13 @@ async def _refresh_paper_artifacts(
         extraction_pipeline_version=extraction_pipeline_version,
         force=force,
     )
+    # 인메모리 전용 usage 키를 걷어낸다(디스크엔 애초에 없다). 실제 gemini visual 파싱이
+    # 일어난 이번 refresh에서만 존재하며, 아래에서 원장에 1회 집계 기록한다.
+    visual_parse_usage = manifest.pop("_visual_parse_usage", None)
     await sync_figures_for_paper(paper_id, paper_dir, manifest=manifest)
     await sync_tables_for_paper(paper_id, paper_dir, manifest=manifest)
+    if visual_parse_usage:
+        await _record_visual_parse_usage(paper_id, visual_parse_usage)
     return manifest
 
 

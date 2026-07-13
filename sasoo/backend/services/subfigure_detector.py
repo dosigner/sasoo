@@ -11,10 +11,9 @@ from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
 from PIL import Image
-import io
 
 from services.llm.interactions_client import call_interaction
-from models.paper import Figure, StructuredCaption, SubCaption
+from models.paper import Figure
 
 _SUBFIGURE_RESPONSE_SCHEMA = {
     "type": "object",

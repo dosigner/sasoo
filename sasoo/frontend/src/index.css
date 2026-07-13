@@ -984,22 +984,6 @@
     @apply mb-4 shadow-none;
   }
 
-  .pdf-viewer-shell .pdfjs-thumbnail-panel .thumbnail {
-    @apply mb-3 rounded-2xl border border-transparent bg-transparent p-2 transition-all duration-200;
-  }
-
-  .pdf-viewer-shell .pdfjs-thumbnail-panel .thumbnail:hover {
-    @apply border-border/60 bg-surface-hover/75;
-  }
-
-  .pdf-viewer-shell .pdfjs-thumbnail-panel .thumbnail.selected {
-    @apply border-accent/20 bg-accent/10;
-  }
-
-  .pdf-viewer-shell .pdfjs-thumbnail-panel .thumbnailImage {
-    @apply rounded-xl border border-border/50 bg-surface/70;
-  }
-
   .chat-starter-chip {
     @apply border border-border/50 bg-surface/70 px-3 py-1.5 text-xs text-fg-secondary transition-colors duration-200 hover:border-accent/20 hover:bg-surface-hover hover:text-fg;
     border-radius: var(--radius-pill);
@@ -1038,11 +1022,6 @@
 
   .chat-follow-chip {
     @apply rounded-full border border-border/50 bg-surface/50 px-3 py-1 text-2xs text-fg-muted transition-colors duration-200 hover:border-accent/20 hover:text-fg;
-  }
-
-  .app-icon {
-    stroke-width: var(--icon-stroke);
-    vector-effect: non-scaling-stroke;
   }
 
   .chat-composer {
@@ -1107,10 +1086,6 @@
   }
 
   @media (max-width: 960px) {
-    .pdf-thumb-panel {
-      width: 6.25rem;
-    }
-
     .chat-floating-card {
       width: min(28rem, calc(100vw - 1rem));
       max-height: min(38rem, calc(100vh - 1rem));
@@ -1347,12 +1322,6 @@
   .pdf-toolbar-btn:active,
   .chat-send-button:active {
     transform: none !important;
-  }
-}
-
-@media (max-width: 1024px) {
-  .figure-stage-grid {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 

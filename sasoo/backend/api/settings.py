@@ -12,11 +12,11 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from models.database import (
-    LEGACY_LIBRARY_PATH_KEY,
     fetch_all,
     fetch_one,
     get_db,
     get_library_root,
+    invalidate_library_root_cache,
     library_path_setting_key,
     usable_library_path,
 )
@@ -44,7 +44,7 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "max_concurrent_analyses": "3",
     "pdf_parser_mode": "java",
     "extraction_pipeline_version": "resolver_v1",
-    "extraction_pipeline_force_fallback": "false",
+    "pdf_visual_engine": "gemini",
     "research_context": "",
     "default_explanation_level": "masters",
     "research_areas": "[]",
@@ -67,6 +67,9 @@ async def _ensure_library_path(db) -> None:
     default. So a Windows path found on a Mac -- or a stale value glued onto
     the working directory by an older build -- is replaced rather than used.
     """
+    # Resolve from a fresh read: comparing against a stale cache entry would
+    # "repair" a legitimate value someone just wrote to the DB out-of-band.
+    invalidate_library_root_cache()
     key = library_path_setting_key()
     row = await fetch_one("SELECT value FROM settings WHERE key = ?", (key,))
     stored = str((row or {}).get("value") or "").strip()
@@ -98,12 +101,8 @@ async def _ensure_defaults() -> None:
                 (key, value),
             )
         elif key == "extraction_pipeline_version":
-            fallback_row = await fetch_one(
-                "SELECT value FROM settings WHERE key = 'extraction_pipeline_force_fallback' LIMIT 1"
-            )
             existing_value = str(existing.get("value") or "").strip().lower()
-            fallback_forced = str((fallback_row or {}).get("value") or "false").strip().lower() == "true"
-            if existing_value == "legacy" and not fallback_forced:
+            if existing_value == "legacy":
                 await db.execute(
                     "UPDATE settings SET value = ?, updated_at = ? WHERE key = ?",
                     ("resolver_v1", datetime.utcnow().isoformat(), key),
@@ -150,7 +149,7 @@ async def _get_all_settings() -> dict[str, str]:
     if result.get("pdf_parser_mode") != "java":
         await _set_setting("pdf_parser_mode", "java")
         result["pdf_parser_mode"] = "java"
-    if result.get("extraction_pipeline_version") == "legacy" and result.get("extraction_pipeline_force_fallback", "false").lower() != "true":
+    if result.get("extraction_pipeline_version") == "legacy":
         await _set_setting("extraction_pipeline_version", "resolver_v1")
         result["extraction_pipeline_version"] = "resolver_v1"
     # The API always speaks of "library_path" -- the path for THIS machine --
@@ -233,6 +232,7 @@ async def get_settings():
         max_concurrent_analyses=int(raw.get("max_concurrent_analyses", "3")),
         pdf_parser_mode=raw.get("pdf_parser_mode", "java"),
         extraction_pipeline_version=raw.get("extraction_pipeline_version", "resolver_v1"),
+        pdf_visual_engine=raw.get("pdf_visual_engine", "gemini"),
         research_context=raw.get("research_context", ""),
         default_explanation_level=raw.get("default_explanation_level", "masters"),
         research_areas=_parse_research_areas(raw.get("research_areas", "[]")),
@@ -266,6 +266,7 @@ async def update_settings(update: SettingsUpdate):
         # Stored per platform, so a Mac and a Windows machine sharing this
         # settings database each keep their own.
         await _set_setting(library_path_setting_key(), str(new_path))
+        invalidate_library_root_cache()
 
     for key, value in update_data.items():
         # Convert booleans, enums, and list-valued settings to string for storage
@@ -286,14 +287,11 @@ async def update_settings(update: SettingsUpdate):
             str_value = encrypt_value(str_value)
         if key == "pdf_parser_mode" and str_value != "java":
             raise HTTPException(status_code=400, detail="Slim build supports only 'java' for pdf_parser_mode.")
-        if key == "extraction_pipeline_version" and str_value not in {"legacy", "resolver_v1"}:
-            raise HTTPException(status_code=400, detail="extraction_pipeline_version must be 'legacy' or 'resolver_v1'.")
+        if key == "extraction_pipeline_version" and str_value != "resolver_v1":
+            raise HTTPException(status_code=400, detail="extraction_pipeline_version must be 'resolver_v1'.")
+        if key == "pdf_visual_engine" and str_value not in {"gemini", "odl"}:
+            raise HTTPException(status_code=400, detail="pdf_visual_engine must be 'gemini' or 'odl'.")
         await _set_setting(key, str_value)
-        if key == "extraction_pipeline_version":
-            await _set_setting(
-                "extraction_pipeline_force_fallback",
-                "true" if str_value == "legacy" else "false",
-            )
 
     # If API keys changed, update environment variables for current session
     # (use original plaintext value, not encrypted)
@@ -301,6 +299,12 @@ async def update_settings(update: SettingsUpdate):
         os.environ["GEMINI_API_KEY"] = update_data["gemini_api_key"]
     if "openai_api_key" in update_data and update_data["openai_api_key"]:
         os.environ["OPENAI_API_KEY"] = update_data["openai_api_key"]
+
+    # odl_parser._resolve_stage_engine reads SASOO_PDF_VISUAL_ENGINE from
+    # os.environ at call time, so updating it here takes effect on the next
+    # parse without a restart.
+    if "pdf_visual_engine" in update_data and update_data["pdf_visual_engine"]:
+        os.environ["SASOO_PDF_VISUAL_ENGINE"] = update_data["pdf_visual_engine"]
 
     return await get_settings()
 
@@ -509,31 +513,5 @@ async def get_cost_summary(
             "estimated_cached_cost_usd_saved": estimated_cached_cost_usd_saved,
             "uncertain_table_repair_calls": uncertain_table_repair_calls,
             "review_required_tables": review_required_tables,
-        },
-    }
-
-
-@router.get("/keys/status")
-async def check_api_keys():
-    """
-    Check which API keys are configured (without revealing them).
-    Useful for the frontend to show setup status.
-    """
-    raw = await _get_all_settings()
-    unreadable = await _unreadable_api_keys()
-
-    gemini_key = raw.get("gemini_api_key", "")
-
-    return {
-        "gemini": {
-            "configured": bool(gemini_key),
-            "masked": _mask_api_key(gemini_key),
-            # Stored, but the key it was encrypted with is gone.
-            "unreadable": "gemini_api_key" in unreadable,
-        },
-        "openai": {
-            "configured": bool(raw.get("openai_api_key", "")),
-            "masked": _mask_api_key(raw.get("openai_api_key", "")),
-            "unreadable": "openai_api_key" in unreadable,
         },
     }
