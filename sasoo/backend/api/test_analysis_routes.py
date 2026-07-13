@@ -833,6 +833,41 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("사수: 예전 답변", chat_input)
         self.assertTrue(chat_input.rstrip().endswith("사용자: 이번 질문"))
 
+    def test_build_persona_prompt_uses_stage_overlay(self):
+        class _OverlayAgent:
+            profile = types.SimpleNamespace(personality="반말 말투")
+
+            def get_visual_prompt(self):
+                return "VISUAL CHECKLIST"
+
+            def get_recipe_prompt(self):
+                return "RECIPE CHECKLIST"
+
+            def get_deepdive_prompt(self):
+                return "DEEPDIVE CHECKLIST"
+
+        agent = _OverlayAgent()
+        visual = analysis_routes._build_persona_prompt(agent, "visual")
+        self.assertIn("VISUAL CHECKLIST", visual)
+        self.assertIn("반말 말투", visual)
+        self.assertNotIn("DEEPDIVE CHECKLIST", visual)
+
+        recipe = analysis_routes._build_persona_prompt(agent, "recipe")
+        self.assertIn("RECIPE CHECKLIST", recipe)
+
+        deep = analysis_routes._build_persona_prompt(agent, "deep_dive")
+        self.assertIn("DEEPDIVE CHECKLIST", deep)
+
+        # 오버레이 없는 스테이지(visualization 등): 말투만
+        self.assertEqual(analysis_routes._build_persona_prompt(agent, None), "반말 말투")
+
+    def test_build_persona_prompt_tolerates_agent_without_getters(self):
+        class _BareAgent:
+            profile = types.SimpleNamespace(personality="말투")
+
+        self.assertEqual(analysis_routes._build_persona_prompt(_BareAgent(), "visual"), "말투")
+
+
 class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):
     async def test_figure_prompt_uses_figure_detail_context_and_latest_phase_snippets(self):
         paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "materials", "agent_used": "crystal"}

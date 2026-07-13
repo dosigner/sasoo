@@ -771,11 +771,23 @@ def _find_paper_pdf(paper_dir: Path) -> Optional[Path]:
     return pdfs[0] if pdfs else None
 
 
-def _build_persona_prompt(agent) -> str:
-    """파이프라인 전체 페르소나: 에이전트 frontmatter 설명(personality) + DeepDive 오버레이."""
+_STAGE_OVERLAY_GETTERS = {
+    "visual": "get_visual_prompt",
+    "recipe": "get_recipe_prompt",
+    "deep_dive": "get_deepdive_prompt",
+}
+
+
+def _build_persona_prompt(agent, stage: str | None = None) -> str:
+    """스테이지별 페르소나: 말투(personality) + 해당 단계의 도메인 오버레이.
+
+    agents/*.md의 # Visual/# Recipe/# Deep Dive 섹션을 스테이지에 맞춰 주입한다.
+    stage가 None이거나 오버레이가 없는 스테이지(visualization 등)는 말투만 쓴다."""
     profile = getattr(agent, "profile", None)
     desc = (getattr(profile, "personality", "") if profile else getattr(agent, "description", "")) or ""
-    overlay = agent.get_deepdive_prompt() if hasattr(agent, "get_deepdive_prompt") else ""
+    getter_name = _STAGE_OVERLAY_GETTERS.get(stage or "")
+    getter = getattr(agent, getter_name, None) if getter_name else None
+    overlay = getter() if callable(getter) else ""
     return "\n\n".join(p.strip() for p in (desc, overlay) if p and p.strip())
 
 
@@ -2042,12 +2054,18 @@ async def _run_full_analysis(paper_id: int):
                 "UPDATE papers SET explanation_level = ? WHERE id = ?",
                 (level_key, paper_id),
             )
-        chain_system_instruction = build_chain_system_instruction(
-            persona_prompt=_build_persona_prompt(agent),
-            research_context=settings_raw.get("research_context", ""),
-            focus=focus,
-            level_key=level_key,
-        )
+        def _stage_system_instruction(stage: Optional[str]) -> str:
+            return build_chain_system_instruction(
+                persona_prompt=_build_persona_prompt(agent, stage),
+                research_context=settings_raw.get("research_context", ""),
+                focus=focus,
+                level_key=level_key,
+            )
+
+        visual_system_instruction = _stage_system_instruction("visual")
+        recipe_system_instruction = _stage_system_instruction("recipe")
+        deep_dive_system_instruction = _stage_system_instruction("deep_dive")
+        viz_system_instruction = _stage_system_instruction(None)
 
         # PDF 직접 입력용 업로드. 실패/부재 시 pdf_uri=None → 각 스테이지는 텍스트 폴백 경로.
         chain_prev_id: Optional[str] = None
@@ -2088,7 +2106,7 @@ async def _run_full_analysis(paper_id: int):
             str(phase_inputs.get("visual", "")),
             folder_name,
             status,
-            system_instruction=chain_system_instruction,
+            system_instruction=visual_system_instruction,
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
         )
@@ -2117,7 +2135,7 @@ async def _run_full_analysis(paper_id: int):
             status,
             screening_result_text=r1.get("text", ""),
             previous_results=previous,
-            system_instruction=chain_system_instruction,
+            system_instruction=recipe_system_instruction,
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
         )
@@ -2141,7 +2159,7 @@ async def _run_full_analysis(paper_id: int):
             status,
             screening_result_text=r1.get("text", ""),
             citation_result_text=r_cit.get("text", ""),
-            system_instruction=chain_system_instruction,
+            system_instruction=deep_dive_system_instruction,
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
         )
@@ -2181,7 +2199,7 @@ async def _run_full_analysis(paper_id: int):
                     r3.get("text", ""),
                     r4.get("text", ""),
                     status,
-                    system_instruction=chain_system_instruction,
+                    system_instruction=viz_system_instruction,
                     previous_interaction_id=chain_prev_id,
                     pdf_uri=pdf_uri,
                 )
