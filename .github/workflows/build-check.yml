@@ -1,0 +1,97 @@
+name: Build Check
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "sasoo/**"
+      - ".github/workflows/build-check.yml"
+      - ".github/workflows/release.yml"
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: sasoo
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: |
+            sasoo/pnpm-lock.yaml
+            sasoo/frontend/pnpm-lock.yaml
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: sasoo/backend/requirements.txt
+
+      - name: Prepare backend virtualenv
+        shell: pwsh
+        run: |
+          python -m venv backend/.venv
+          .\backend\.venv\Scripts\python -m pip install --upgrade pip setuptools wheel
+          .\backend\.venv\Scripts\python -m pip install pyinstaller
+          .\backend\.venv\Scripts\python -m pip install -r backend/requirements.txt
+
+      - name: Install Node dependencies
+        shell: pwsh
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify version synchronization
+        shell: bash
+        run: |
+          node scripts/sync-version.js
+          git diff --exit-code
+
+      - name: Run tests and audits
+        shell: pwsh
+        run: |
+          pnpm test:unit
+          pnpm --dir frontend test
+          pnpm --dir frontend build
+          pnpm --dir frontend lint
+          .\backend\.venv\Scripts\python -m py_compile backend/main.py
+          Push-Location backend
+          .\.venv\Scripts\python -m unittest discover -s services -t . -p 'test*.py'
+          .\.venv\Scripts\python -m unittest discover -s api -t . -p 'test*.py'
+          Pop-Location
+          pnpm audit --audit-level=moderate
+          pnpm --dir frontend audit --prod --audit-level=moderate
+
+      - name: Build unsigned Windows artifact
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm build:win
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sasoo-windows-build-check
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            sasoo/dist/*.exe
+            sasoo/dist/*.exe.blockmap
+            sasoo/dist/latest.yml

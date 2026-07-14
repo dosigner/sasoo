@@ -47,7 +47,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
           cache-dependency-path: sasoo/pnpm-lock.yaml
 
@@ -78,17 +78,50 @@ jobs:
           fi
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
-        env:
-          npm_config_frozen_lockfile: "false"
+        run: pnpm install --frozen-lockfile
 
-      - name: Reinstall electron-builder binaries (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
+      - name: Verify version synchronization
+        shell: bash
         run: |
-          if (Test-Path node_modules) { Remove-Item -Recurse -Force node_modules }
-          if (Test-Path "$env:LOCALAPPDATA\electron-builder\Cache") { Remove-Item -Recurse -Force "$env:LOCALAPPDATA\electron-builder\Cache" }
-          pnpm install --no-frozen-lockfile
+          node scripts/sync-version.js
+          git diff --exit-code
+
+      - name: Run common quality gates
+        shell: bash
+        run: |
+          pnpm test:unit
+          pnpm --dir frontend test
+          pnpm --dir frontend build
+          pnpm --dir frontend lint
+          pnpm audit --audit-level=moderate
+          pnpm --dir frontend audit --prod --audit-level=moderate
+
+      - name: Run backend tests
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            PYTHON="python"
+          else
+            PYTHON="backend/.venv/bin/python"
+          fi
+          "$PYTHON" -m py_compile backend/main.py
+          cd backend
+          "${PYTHON#backend/}" -m unittest discover -s services -t . -p 'test*.py'
+          "${PYTHON#backend/}" -m unittest discover -s api -t . -p 'test*.py'
+
+      - name: Configure and require Windows signing
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          if [[ -z "$WIN_CSC_LINK" || -z "$WIN_CSC_KEY_PASSWORD" ]]; then
+            echo "Missing required Windows code-signing secrets." >&2
+            exit 1
+          fi
+          echo "CSC_LINK=$WIN_CSC_LINK" >> "$GITHUB_ENV"
+          echo "CSC_KEY_PASSWORD=$WIN_CSC_KEY_PASSWORD" >> "$GITHUB_ENV"
 
       - name: Build (${{ runner.os }})
         shell: bash
@@ -136,7 +169,7 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## macOS install note
 
-          The macOS build is currently distributed as an unsigned ZIP.
+          The macOS build is distributed as an unsigned, unnotarized ZIP. Only use an artifact downloaded directly from this official GitHub release.
 
           1. Extract the ZIP and move `Sasoo.app` to `/Applications`.
           2. If macOS says "`Sasoo` is damaged and can't be opened", run:
@@ -146,15 +179,13 @@ jobs:
              ```
 
           3. If launch is still blocked, right-click `Sasoo.app` and choose `Open`.
-          EOF
 
-          CREATED_DRAFT_RELEASE="false"
-          EXISTING_RELEASE_WAS_DRAFT="false"
+          This command removes quarantine protection. It does not verify the publisher or make the app pass Apple's signing and notarization checks. Do not use it on a copy obtained from a third party.
+          EOF
 
           if RELEASE_JSON="$(gh api "repos/$GH_REPO/releases/tags/$TAG_NAME" 2>/dev/null)"; then
             echo "Found existing release for $TAG_NAME"
             RELEASE_ID="$(jq -r '.id' <<<"$RELEASE_JSON")"
-            EXISTING_RELEASE_WAS_DRAFT="$(jq -r '.draft // false' <<<"$RELEASE_JSON")"
             RELEASE_PAYLOAD="$(jq -n \
               --arg body "$(cat release-notes.md)" \
               '{
@@ -177,7 +208,6 @@ jobs:
             if [[ -n "$RELEASE_JSON" ]]; then
               echo "Found existing draft release for $TAG_NAME"
               RELEASE_ID="$(jq -r '.id' <<<"$RELEASE_JSON")"
-              EXISTING_RELEASE_WAS_DRAFT="true"
               RELEASE_PAYLOAD="$(jq -n \
                 --arg tag "$TAG_NAME" \
                 --arg name "$TAG_NAME" \
@@ -213,7 +243,6 @@ jobs:
                   --input - <<<"$RELEASE_PAYLOAD"
               )"
               RELEASE_ID="$(jq -r '.id' <<<"$RELEASE_JSON")"
-              CREATED_DRAFT_RELEASE="true"
             fi
           fi
 
@@ -224,18 +253,4 @@ jobs:
               >/dev/null
           done
 
-          if [[ "$CREATED_DRAFT_RELEASE" == "true" || "$EXISTING_RELEASE_WAS_DRAFT" == "true" ]]; then
-            RELEASE_PAYLOAD="$(jq -n \
-              --arg tag "$TAG_NAME" \
-              --arg name "$TAG_NAME" \
-              '{
-                tag_name: $tag,
-                name: $name,
-                draft: false
-              }'
-            )"
-            gh api \
-              --method PATCH \
-              "repos/$GH_REPO/releases/$RELEASE_ID" \
-              --input - <<<"$RELEASE_PAYLOAD"
-          fi
+          echo "Artifacts uploaded. Draft releases remain unpublished for manual review."
