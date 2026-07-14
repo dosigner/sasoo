@@ -166,6 +166,29 @@ class CryptoTests(unittest.TestCase):
         self.assertNotEqual(self.keyring_key, b"not-a-fernet-key")
         self.assertEqual(crypto.decrypt_value(migrated), "old")
 
+    def test_transient_keyring_read_failure_never_overwrites_existing_key(self):
+        existing_key = Fernet.generate_key()
+        self.keyring_key = existing_key
+        keyring_module = sys.modules["keyring"]
+        keyring_module.get_password = lambda *_args: (_ for _ in ()).throw(
+            KeyringError("keychain locked")
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "could not be read"):
+            crypto.encrypt_value("secret")
+
+        self.assertEqual(self.keyring_key, existing_key)
+
+    def test_legacy_file_key_remains_readable_when_keyring_read_fails(self):
+        legacy_key = crypto._create_file_key()
+        legacy = crypto.ENCRYPTED_PREFIX + Fernet(legacy_key).encrypt(b"old").decode()
+        keyring_module = sys.modules["keyring"]
+        keyring_module.get_password = lambda *_args: (_ for _ in ()).throw(
+            KeyringError("keychain locked")
+        )
+
+        self.assertEqual(crypto.decrypt_value(legacy), "old")
+
     def test_keyring_failure_does_not_fall_back_next_to_database(self):
         keyring_module = sys.modules["keyring"]
         keyring_module.set_password = lambda *_args: (_ for _ in ()).throw(

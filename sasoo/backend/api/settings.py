@@ -296,7 +296,7 @@ async def update_settings(update: SettingsUpdate):
         if key in _API_KEY_FIELDS:
             if not str_value or "..." in str_value:
                 continue
-            str_value = encrypt_value(str_value)
+            str_value = encrypt_value(str_value, replace_invalid_key=True)
         if key == "pdf_parser_mode" and str_value != "java":
             raise HTTPException(status_code=400, detail="Slim build supports only 'java' for pdf_parser_mode.")
         if key == "extraction_pipeline_version" and str_value != "resolver_v1":

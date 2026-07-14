@@ -36,6 +36,10 @@ class CryptoKeyStoreError(RuntimeError):
     """The encryption key could not be safely read or persisted."""
 
 
+class InvalidCryptoKeyError(CryptoKeyStoreError):
+    """The credential store contains a malformed encryption key."""
+
+
 class CryptoMigrationError(RuntimeError):
     """A legacy ciphertext could not be migrated without data loss."""
 
@@ -129,20 +133,25 @@ def _create_file_key() -> bytes:
 def _read_keyring_key() -> Optional[bytes]:
     """Read the OS keychain key. Never creates one.
 
-    Kept for values encrypted by builds that defaulted to the keychain.
-    Keyring backends can block or fail inside bundled Python subprocesses on
-    macOS, so a failure here is downgraded to "no key" rather than raised.
+    A backend error is different from a confirmed missing entry. Treating both
+    as None can overwrite a valid key after a transient keychain failure.
     """
     try:
         import keyring as kr
 
         stored = kr.get_password(_KEYRING_SERVICE, _KEYRING_ACCOUNT)
     except (ImportError, KeyringError, OSError) as exc:
-        logger.debug("Keyring unavailable: %s", exc)
-        return None
+        raise CryptoKeyStoreError(
+            "The OS credential store could not be read; API keys were not changed."
+        ) from exc
     if not stored:
         return None
-    return _valid_fernet_key(stored.encode("utf-8"), "the OS credential store")
+    key = _valid_fernet_key(stored.encode("utf-8"), "the OS credential store")
+    if key is None:
+        raise InvalidCryptoKeyError(
+            "The OS credential store contains an invalid encryption key."
+        )
+    return key
 
 
 def _prefer_file_key() -> bool:
@@ -162,23 +171,40 @@ def _create_keyring_key() -> bytes:
             "The OS credential store is unavailable; API keys were not saved."
         ) from exc
 
+    persisted_key = _read_keyring_key()
+    if persisted_key != new_key:
+        raise CryptoKeyStoreError(
+            "The OS credential store did not preserve the new encryption key."
+        )
     logger.info("Generated new Fernet key in the OS credential store")
-    return new_key
+    return persisted_key
 
 
-def _encryption_key() -> bytes:
+def _encryption_key(*, replace_invalid: bool = False) -> bytes:
     """The key NEW values are encrypted with. Creates one if none exists."""
     if _prefer_file_key():
         logger.warning("SASOO_USE_FILE_KEY is enabled; using the legacy file key store")
         return _read_file_key() or _create_file_key()
 
-    return _read_keyring_key() or _create_keyring_key()
+    try:
+        existing_key = _read_keyring_key()
+    except InvalidCryptoKeyError:
+        if not replace_invalid:
+            raise
+        logger.warning("Replacing an invalid key after an explicit recovery or migration")
+        existing_key = None
+    return existing_key or _create_keyring_key()
 
 
 def _decryption_keys() -> list[bytes]:
     """Every key a stored value might have been encrypted with. No side effects."""
     keys: list[bytes] = []
-    for candidate in (_read_keyring_key(), _read_file_key()):
+    try:
+        keyring_key = _read_keyring_key()
+    except CryptoKeyStoreError as exc:
+        logger.warning("OS credential store key is unavailable for decryption: %s", exc)
+        keyring_key = None
+    for candidate in (keyring_key, _read_file_key()):
         if candidate and candidate not in keys:
             keys.append(candidate)
     return keys
@@ -188,11 +214,13 @@ def _decryption_keys() -> list[bytes]:
 # Public API
 # ---------------------------------------------------------------------------
 
-def encrypt_value(plaintext: str) -> str:
+def encrypt_value(plaintext: str, *, replace_invalid_key: bool = False) -> str:
     """Encrypt a plaintext value. Returns prefixed encrypted string."""
     if not plaintext:
         return plaintext
-    token = Fernet(_encryption_key()).encrypt(plaintext.encode("utf-8"))
+    token = Fernet(
+        _encryption_key(replace_invalid=replace_invalid_key)
+    ).encrypt(plaintext.encode("utf-8"))
     return ENCRYPTED_PREFIX + token.decode("utf-8")
 
 
@@ -201,7 +229,7 @@ def migrate_value_to_primary(stored: str) -> str:
     if not stored:
         return stored
 
-    primary_key = _encryption_key()
+    primary_key = _encryption_key(replace_invalid=True)
     if is_encrypted(stored):
         token = stored[len(ENCRYPTED_PREFIX):].encode("utf-8")
         try:
