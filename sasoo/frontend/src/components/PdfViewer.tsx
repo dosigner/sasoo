@@ -337,7 +337,7 @@ export default function PdfViewer({
     eventBus.on('updatefindcontrolstate', handleFindControlState);
     eventBus.on('updatefindmatchescount', handleFindMatchesCount);
 
-    loadingTask = getDocument({ url: pdfUrl, isEvalSupported: false });
+    loadingTask = getDocument({ url: pdfUrl });
 
     loadingTask.promise
       .then((pdfDocument) => {

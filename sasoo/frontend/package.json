@@ -21,11 +21,11 @@
     "katex": "^0.16.38",
     "lucide-react": "^0.312.0",
     "mermaid": "^11.16.0",
-    "pdfjs-dist": "^4.2.67",
+    "pdfjs-dist": "^5.7.284",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-markdown": "^9.0.1",
-    "react-router-dom": "^6.22.0",
+    "react-router-dom": "^6.30.4",
     "rehype-highlight": "^7.0.0",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.0",
@@ -48,5 +48,10 @@
     "typescript": "^5.3.3",
     "vite": "^5.0.12",
     "vitest": "^3.2.7"
+  },
+  "pnpm": {
+    "overrides": {
+      "lodash-es": "4.18.1"
+    }
   }
 }
