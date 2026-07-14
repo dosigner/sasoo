@@ -13,6 +13,7 @@ import sqlite3
 import aiosqlite
 
 from models import analysis_runs as ar
+from models.database import close_db
 
 logger = logging.getLogger(__name__)
 
@@ -109,5 +110,13 @@ async def run_analysis_worker(paper_id: int, generation: int) -> int:
                 await ar.finalize_run(side_conn, paper_id, generation, terminal, ar.utcnow_iso())
             except Exception as exc:  # noqa: BLE001
                 logger.warning("worker finalize failed (paper=%s): %s", paper_id, exc)
-        await side_conn.close()
+        # aiosqlite Connection은 백그라운드 non-daemon 스레드로 동작한다. 열어둔 채 asyncio.run()이
+        # 끝나면 인터프리터가 그 스레드를 join하느라 sys.exit()가 걸려 워커 프로세스가 죽지 못한다
+        # (분석 1회당 좀비 1개 누적). 서버의 lifespan shutdown close_db()에 대응하는 워커 쪽 대칭.
+        # self-abort(EXIT_SELF_ABORT) 경로도 이 finally를 통과하므로 두 경로 모두 닫힌다.
+        for label, closer in (("side", side_conn.close), ("main", close_db)):
+            try:
+                await closer()
+            except Exception as exc:  # noqa: BLE001 — 종료를 막지 않는다
+                logger.warning("worker %s DB 연결 종료 실패 (paper=%s): %s", label, paper_id, exc)
     return exit_code
