@@ -2486,10 +2486,12 @@ async def run_analysis(paper_id: int, background_tasks: BackgroundTasks):
             del _running_analyses[paper_id]
 
     if _subprocess_mode():
-        # I3: 분석이 디태치 워커로 옮겨간 뒤엔 위 인메모리 _running_analyses 가드가 항상
-        # 비어 있어 무조건 통과한다 — DB(analysis_runs) 기준으로 다시 막는다. 안 막으면
-        # upsert_queued가 running 행을 queued/attempts=0으로 리셋해 즉시 재claim되며
-        # 두 번째 워커가 스폰된다(구 워커 self-abort까지의 창에서 중복 LLM 호출·과금).
+        # I3/결함2 빠른 경로: 분석이 디태치 워커로 옮겨간 뒤엔 위 인메모리 _running_analyses
+        # 가드가 항상 비어 있어 무조건 통과한다 — DB(analysis_runs) 스냅샷으로 빠르게
+        # 막는다. 단, 이 체크와 아래 upsert_queued 사이에 budget 조회 등 DB I/O await가
+        # 여럿 끼어 있어 동시 이중 /run이 둘 다 이 스냅샷을 통과할 수 있다(TOCTOU) — 진짜
+        # 방어선은 upsert_queued의 DB 레벨 원자 가드(아래)이고, 이 블록은 그 전에 빠르게
+        # 실패시키는 최적화일 뿐 중복 코드가 아니다.
         from models.database import get_db
         from models.analysis_runs import get_run
         existing_run = await get_run(await get_db(), paper_id)
@@ -2538,7 +2540,15 @@ async def run_analysis(paper_id: int, background_tasks: BackgroundTasks):
         # 죽어도 papers는 여전히 completed로 남아 reconcile_stale ①이 조용히 완료로 확정한다.
         # upsert_queued 직전에 세워 그 창을 없앤다.
         await execute_update("UPDATE papers SET status = ? WHERE id = ?", ("analyzing", paper_id))
-        await upsert_queued(conn, paper_id, utcnow_iso())
+        # 결함2: 위 빠른 경로 가드를 동시 요청이 함께 통과했더라도, upsert_queued의 DO UPDATE는
+        # WHERE status NOT IN ('queued','running') 원자 가드를 걸고 있어 이미 진행 중인 run
+        # 위에 리셋이 덮어써지지 않는다 — False면 진짜로 이미 진행 중이란 뜻이므로 409.
+        queued_ok = await upsert_queued(conn, paper_id, utcnow_iso())
+        if not queued_ok:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Analysis for paper {paper_id} is already running.",
+            )
         # 즉시 드레인 시도(cap 내면 이번 요청이 스폰, 초과면 queued로 남아 리컨실러가 픽업)
         await reconcile_once(conn, cap=await read_max_concurrent())
     else:

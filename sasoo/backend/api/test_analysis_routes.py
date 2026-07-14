@@ -58,6 +58,16 @@ class _StubBackgroundTasks:
         return None
 
 
+def _settings_stub_returning(settings: dict):
+    """/run의 budget 체크가 참조하는 api.settings._get_all_settings를 스텁 모듈로 대체."""
+    async def _fake_settings(*args, **kwargs):
+        return settings
+
+    stub = types.ModuleType("api.settings")
+    stub._get_all_settings = _fake_settings
+    return stub
+
+
 def _stub_query(default=None, **kwargs):
     return default
 
@@ -446,6 +456,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
 
         async def _fake_upsert_queued(conn, pid, now):
             calls.append(("upsert_queued", pid))
+            return True  # 결함2: 원자 가드 도입 후 upsert_queued는 bool을 반환한다
 
         async def _fake_settings(*args, **kwargs):
             return {"monthly_budget_limit": "50.0"}
@@ -475,6 +486,57 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         exec_call = next(c for c in calls if c[0] == "execute_update")
         self.assertIn("analyzing", exec_call[1])
         self.assertIn(paper_id, exec_call[1])
+
+    async def test_run_subprocess_mode_returns_409_when_upsert_queued_blocked_by_race(self):
+        # 결함2: get_run 스냅샷(빠른 경로) 가드와 upsert_queued 사이에 DB I/O await가 여럿
+        # 끼어 있어 동시 이중 /run이 둘 다 빠른 경로를 통과할 수 있다. 진짜 방어선은
+        # upsert_queued의 원자 가드 — rowcount 0/False면 이미 queued/running이란 뜻이므로
+        # /run이 claim+spawn(reconcile_once)로 진행하지 않고 409를 반환해야 한다.
+        paper_id = 6163
+        paper_row = {"id": paper_id, "folder_name": "f"}
+        reconcile_mock = AsyncMock()
+        with (
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
+            patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.fetch_all", new=AsyncMock(return_value=[])),
+            patch("api.analysis_routes.execute_update", new=AsyncMock()),
+            patch("models.database.get_db", new=AsyncMock(return_value=object())),
+            patch("models.analysis_runs.get_run", new=AsyncMock(return_value=None)),  # 빠른 경로는 통과
+            patch("models.analysis_runs.upsert_queued", new=AsyncMock(return_value=False)),  # 원자 가드가 차단
+            patch("services.analysis_supervisor.reconcile_once", new=reconcile_mock),
+            patch("services.analysis_supervisor.read_max_concurrent", new=AsyncMock(return_value=3)),
+            patch.dict(sys.modules, {"api.settings": _settings_stub_returning({"monthly_budget_limit": "50.0"})}),
+        ):
+            with self.assertRaises(Exception) as ctx:
+                await analysis_routes.run_analysis(paper_id, background_tasks=_StubBackgroundTasks())
+        self.assertEqual(getattr(ctx.exception, "status_code", None), 409)
+        reconcile_mock.assert_not_awaited()   # claim+spawn까지 진행하면 안 됨(중복 워커 방지)
+
+    async def test_run_subprocess_mode_succeeds_when_reanalyzing_completed_paper(self):
+        # 결함2 테스트(b) + 소소한 항목 테스트 공백(b): 완료 논문 재분석은 막히면 안 된다.
+        # get_run이 completed를 돌려줘 빠른 경로를 통과하고, upsert_queued(terminal→queued
+        # 원자 갱신)가 True를 돌려주면 claim+spawn(reconcile_once)까지 정상 진행해야 한다.
+        paper_id = 6164
+        paper_row = {"id": paper_id, "folder_name": "f"}
+        reconcile_mock = AsyncMock()
+        with (
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
+            patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.fetch_all", new=AsyncMock(return_value=[])),
+            patch("api.analysis_routes.execute_update", new=AsyncMock()),
+            patch("models.database.get_db", new=AsyncMock(return_value=object())),
+            patch("models.analysis_runs.get_run", new=AsyncMock(return_value={"status": "completed"})),
+            patch("models.analysis_runs.upsert_queued", new=AsyncMock(return_value=True)),
+            patch("services.analysis_supervisor.reconcile_once", new=reconcile_mock),
+            patch("services.analysis_supervisor.read_max_concurrent", new=AsyncMock(return_value=3)),
+            patch.dict(sys.modules, {"api.settings": _settings_stub_returning({"monthly_budget_limit": "50.0"})}),
+        ):
+            result = await analysis_routes.run_analysis(paper_id, background_tasks=_StubBackgroundTasks())
+        self.assertEqual(result["paper_id"], paper_id)
+        self.assertEqual(result["status"], "started")
+        reconcile_mock.assert_awaited_once()
 
     async def test_screening_prompt_puts_document_first(self):
         status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
