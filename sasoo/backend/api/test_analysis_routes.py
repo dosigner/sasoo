@@ -1016,6 +1016,48 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             "visualization": m.MODEL_VIZ_PLANNING,
         })
 
+    def test_norm_ref_id_normalizes_bracket_and_space(self):
+        self.assertEqual(analysis_routes._norm_ref_id("[1]"), analysis_routes._norm_ref_id(" 1 "))
+        self.assertEqual(analysis_routes._norm_ref_id("[12]"), analysis_routes._norm_ref_id("12"))
+        self.assertNotEqual(analysis_routes._norm_ref_id("1"), analysis_routes._norm_ref_id("2"))
+
+    async def test_citation_merge_tolerates_ref_id_format_drift(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+
+        async def _fake_call(prompt, **kwargs):
+            # LLM이 대괄호 없는 "1"로 돌려줘도 top_cited("[1]")에 병합돼야 한다
+            return {
+                "text": '{"ref_analyses":[{"ref_id":"1","citation_role":"foundational",'
+                        '"why_cited":"기반 이론.","evidence_context":"이 방법은 [1]을 따른다"}],'
+                        '"summary":"요약","citation_balance":"balanced","key_influences":["[1]"],'
+                        '"limitations":"상위 10개 기반"}',
+                "model": "gemini-3.5-flash", "tokens_in": 10, "tokens_out": 10, "interaction_id": None,
+            }
+
+        local_result = {
+            "total_references": 5, "citation_style": "numbered",
+            "self_citation_count": 0, "self_citation_ratio": 0.0,
+            "top_cited": [{"ref_id": "[1]", "authors": "Kim", "year": 2024, "title": "T",
+                           "journal": "J", "cite_count": 3,
+                           "cite_contexts": [{"sentence": "이 방법은 [1]을 따른다", "section": "Methods"}]}],
+        }
+        fake_analysis = types.SimpleNamespace(to_dict=lambda: local_result)
+
+        with (
+            patch("services.citation_analyzer.analyze_citations", return_value=fake_analysis),
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            result = await analysis_routes._run_citation(
+                7, sections={}, citation_body="본문", citation_references="[1] Kim 2024",
+                paper_authors="Kim", status=status,
+            )
+
+        merged = json.loads(result["text"])
+        self.assertEqual(merged["top_cited"][0]["citation_role"], "foundational")
+        self.assertEqual(merged["top_cited"][0]["evidence_context"], "이 방법은 [1]을 따른다")
+
 
 class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):
     async def test_figure_prompt_uses_figure_detail_context_and_latest_phase_snippets(self):

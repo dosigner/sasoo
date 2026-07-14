@@ -500,6 +500,16 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
     return result
 
 
+def _norm_ref_id(raw: object) -> str:
+    """ref_id를 병합 비교용으로 정규화한다(대괄호·공백·'ref'/'#' 선행 표기 제거, 소문자)."""
+    s = str(raw or "").strip().lower()
+    for ch in ("[", "]", "(", ")", "#"):
+        s = s.replace(ch, "")
+    if s.startswith("ref"):
+        s = s[3:]
+    return s.strip()
+
+
 async def _run_citation(
     paper_id: int,
     sections: dict[str, str],
@@ -598,16 +608,22 @@ async def _run_citation(
             except json.JSONDecodeError:
                 llm_data = {}
 
-            # Merge LLM analysis into local_result
+            # Merge LLM analysis into local_result (ref_id 포맷 드리프트 허용)
             ref_analyses = llm_data.get("ref_analyses", [])
+            top_cited = local_result.get("top_cited", [])
+            top_by_norm = {_norm_ref_id(tc.get("ref_id")): tc for tc in top_cited}
             for ra in ref_analyses:
-                ref_id = ra.get("ref_id", "")
-                for tc in local_result.get("top_cited", []):
-                    if tc.get("ref_id") == ref_id:
-                        tc["citation_role"] = ra.get("citation_role", "")
-                        tc["why_cited"] = ra.get("why_cited", "")
-                        tc["evidence_context"] = ra.get("evidence_context", "")
-                        break
+                norm = _norm_ref_id(ra.get("ref_id", ""))
+                tc = top_by_norm.get(norm)
+                if tc is None:
+                    logger.warning(
+                        "citation merge drop: ref_id=%r (norm=%r) not in top_cited for paper %s",
+                        ra.get("ref_id"), norm, paper_id,
+                    )
+                    continue
+                tc["citation_role"] = ra.get("citation_role", "")
+                tc["why_cited"] = ra.get("why_cited", "")
+                tc["evidence_context"] = ra.get("evidence_context", "")
 
             local_result["summary"] = llm_data.get("summary", "")
             local_result["citation_balance"] = llm_data.get("citation_balance", "")
