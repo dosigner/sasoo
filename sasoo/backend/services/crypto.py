@@ -15,9 +15,14 @@ it, permanently masking the fact that the original key was gone.
 
 import logging
 import os
+import threading
+from _thread import RLock as RLockType
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
+from filelock import FileLock
 from keyring.errors import KeyringError
 
 logger = logging.getLogger(__name__)
@@ -30,6 +35,9 @@ _KEYRING_ACCOUNT = "fernet-key"
 ENCRYPTED_PREFIX = "enc:v1:"
 
 _KEY_FILENAME = ".sasoo_key"
+_CREDENTIAL_LOCK_FILENAME = ".sasoo_credentials.lock"
+_CREDENTIAL_LOCKS: dict[str, tuple[RLockType, FileLock]] = {}
+_CREDENTIAL_LOCKS_GUARD = threading.Lock()
 
 
 class CryptoKeyStoreError(RuntimeError):
@@ -52,6 +60,23 @@ def _key_path():
     from models.database import APP_DATA_ROOT
 
     return APP_DATA_ROOT / _KEY_FILENAME
+
+
+@contextmanager
+def credential_store_lock() -> Iterator[None]:
+    """Serialize credential migrations across both threads and processes."""
+    lock_path = _key_path().with_name(_CREDENTIAL_LOCK_FILENAME)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_key = str(lock_path.resolve(strict=False))
+    with _CREDENTIAL_LOCKS_GUARD:
+        locks = _CREDENTIAL_LOCKS.get(lock_key)
+        if locks is None:
+            locks = (threading.RLock(), FileLock(lock_key, timeout=10))
+            _CREDENTIAL_LOCKS[lock_key] = locks
+    thread_lock, file_lock = locks
+    with thread_lock:
+        with file_lock:
+            yield
 
 
 def _valid_fernet_key(key: bytes, source: str) -> Optional[bytes]:
@@ -182,18 +207,19 @@ def _create_keyring_key() -> bytes:
 
 def _encryption_key(*, replace_invalid: bool = False) -> bytes:
     """The key NEW values are encrypted with. Creates one if none exists."""
-    if _prefer_file_key():
-        logger.warning("SASOO_USE_FILE_KEY is enabled; using the legacy file key store")
-        return _read_file_key() or _create_file_key()
+    with credential_store_lock():
+        if _prefer_file_key():
+            logger.warning("SASOO_USE_FILE_KEY is enabled; using the legacy file key store")
+            return _read_file_key() or _create_file_key()
 
-    try:
-        existing_key = _read_keyring_key()
-    except InvalidCryptoKeyError:
-        if not replace_invalid:
-            raise
-        logger.warning("Replacing an invalid key after an explicit recovery or migration")
-        existing_key = None
-    return existing_key or _create_keyring_key()
+        try:
+            existing_key = _read_keyring_key()
+        except InvalidCryptoKeyError:
+            if not replace_invalid:
+                raise
+            logger.warning("Replacing an invalid key after an explicit recovery or migration")
+            existing_key = None
+        return existing_key or _create_keyring_key()
 
 
 def _decryption_keys() -> list[bytes]:

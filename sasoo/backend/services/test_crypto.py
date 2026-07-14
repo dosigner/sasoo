@@ -7,8 +7,10 @@ long enough to migrate existing ciphertext.
 """
 
 import sys
+import threading
 import types
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -199,6 +201,54 @@ class CryptoTests(unittest.TestCase):
             crypto.encrypt_value("secret")
 
         self.assertFalse((self.root / ".sasoo_key").exists())
+
+    def test_concurrent_key_creation_uses_one_persisted_key(self):
+        keyring_module = sys.modules["keyring"]
+        read_count = 0
+        read_count_lock = threading.Lock()
+        second_initial_read = threading.Event()
+        second_write = threading.Event()
+        write_count = 0
+
+        def coordinated_get(*_args):
+            nonlocal read_count
+            if self.keyring_key:
+                return self.keyring_key.decode("utf-8")
+            with read_count_lock:
+                read_count += 1
+                current_read = read_count
+            if current_read <= 2:
+                if current_read == 2:
+                    second_initial_read.set()
+                else:
+                    second_initial_read.wait(timeout=0.2)
+                return None
+            return None
+
+        def coordinated_set(_service, _account, value):
+            nonlocal write_count
+            self.keyring_key = value.encode("utf-8")
+            with read_count_lock:
+                write_count += 1
+                current_write = write_count
+            if current_write == 2:
+                second_write.set()
+            else:
+                second_write.wait(timeout=0.2)
+
+        keyring_module.get_password = coordinated_get
+        keyring_module.set_password = coordinated_set
+        start = threading.Barrier(2)
+
+        def encrypt(plaintext):
+            start.wait()
+            return crypto.encrypt_value(plaintext)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(encrypt, value) for value in ("first", "second")]
+            encrypted = [future.result() for future in futures]
+
+        self.assertEqual([crypto.decrypt_value(value) for value in encrypted], ["first", "second"])
 
 
 if __name__ == "__main__":

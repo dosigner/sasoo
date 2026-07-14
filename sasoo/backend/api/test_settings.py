@@ -177,6 +177,32 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.image_provider, "openai")
         self.assertEqual(response.image_quality, "high")
 
+    async def test_masked_api_key_does_not_replace_the_runtime_key(self) -> None:
+        with (
+            patch.dict(os.environ, {"GEMINI_API_KEY": "live-key"}, clear=False),
+            patch("api.settings._set_setting", new=AsyncMock()) as set_setting,
+            patch("api.settings.get_settings", new=AsyncMock(return_value=None)),
+        ):
+            await settings.update_settings(
+                SettingsUpdate(gemini_api_key="AIza...masked")
+            )
+
+            self.assertEqual(os.environ.get("GEMINI_API_KEY"), "live-key")
+
+        set_setting.assert_not_awaited()
+
+    async def test_empty_api_key_clears_storage_and_runtime(self) -> None:
+        with (
+            patch.dict(os.environ, {"GEMINI_API_KEY": "live-key"}, clear=False),
+            patch("api.settings._set_setting", new=AsyncMock()) as set_setting,
+            patch("api.settings.get_settings", new=AsyncMock(return_value=None)),
+        ):
+            await settings.update_settings(SettingsUpdate(gemini_api_key=""))
+
+            self.assertNotIn("GEMINI_API_KEY", os.environ)
+
+        set_setting.assert_awaited_once_with("gemini_api_key", "")
+
     def test_image_settings_reject_invalid_values(self) -> None:
         """SettingsUpdate should reject invalid image_provider and image_quality values."""
         import pydantic

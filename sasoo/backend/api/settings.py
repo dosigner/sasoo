@@ -280,6 +280,7 @@ async def update_settings(update: SettingsUpdate):
         await _set_setting(library_path_setting_key(), str(new_path))
         invalidate_library_root_cache()
 
+    api_key_updates: dict[str, str | None] = {}
     for key, value in update_data.items():
         # Convert booleans, enums, and list-valued settings to string for storage
         if key == "research_areas":
@@ -292,11 +293,13 @@ async def update_settings(update: SettingsUpdate):
             str_value = value.value
         else:
             str_value = str(value)
-        # Skip empty or masked API key values (empty = no change, masked = stale)
+        # A masked value is display-only. An empty value explicitly clears a key.
         if key in _API_KEY_FIELDS:
-            if not str_value or "..." in str_value:
+            if "..." in str_value:
                 continue
-            str_value = encrypt_value(str_value, replace_invalid_key=True)
+            api_key_updates[key] = str_value or None
+            if str_value:
+                str_value = encrypt_value(str_value, replace_invalid_key=True)
         if key == "pdf_parser_mode" and str_value != "java":
             raise HTTPException(status_code=400, detail="Slim build supports only 'java' for pdf_parser_mode.")
         if key == "extraction_pipeline_version" and str_value != "resolver_v1":
@@ -305,12 +308,18 @@ async def update_settings(update: SettingsUpdate):
             raise HTTPException(status_code=400, detail="pdf_visual_engine must be 'gemini' or 'odl'.")
         await _set_setting(key, str_value)
 
-    # If API keys changed, update environment variables for current session
-    # (use original plaintext value, not encrypted)
-    if "gemini_api_key" in update_data and update_data["gemini_api_key"]:
-        os.environ["GEMINI_API_KEY"] = update_data["gemini_api_key"]
-    if "openai_api_key" in update_data and update_data["openai_api_key"]:
-        os.environ["OPENAI_API_KEY"] = update_data["openai_api_key"]
+    # Apply only values that passed persistence checks above.
+    for key, env_name in {
+        "gemini_api_key": "GEMINI_API_KEY",
+        "openai_api_key": "OPENAI_API_KEY",
+    }.items():
+        if key not in api_key_updates:
+            continue
+        value = api_key_updates[key]
+        if value is None:
+            os.environ.pop(env_name, None)
+        else:
+            os.environ[env_name] = value
 
     # odl_parser._resolve_stage_engine reads SASOO_PDF_VISUAL_ENGINE from
     # os.environ at call time, so updating it here takes effect on the next
