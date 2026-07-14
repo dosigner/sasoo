@@ -10,6 +10,11 @@ on:
         description: Existing tag to package and attach to a draft release
         required: true
         type: string
+      ref:
+        description: Git ref to build from. Leave empty to build the tag itself.
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: write
@@ -38,7 +43,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TAG_NAME }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || env.TAG_NAME }}
           fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
