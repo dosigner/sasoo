@@ -220,7 +220,7 @@ jobs:
       - name: List artifacts
         run: ls -lhR artifacts/
 
-      - name: Create or update GitHub release
+      - name: Create draft GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -245,82 +245,48 @@ jobs:
           This command removes quarantine protection. It does not verify the publisher or make the app pass Apple's signing and notarization checks. Do not use it on a copy obtained from a third party.
           EOF
 
-          if RELEASE_JSON="$(gh api "repos/$GH_REPO/releases/tags/$TAG_NAME" 2>/dev/null)"; then
-            echo "Found existing release for $TAG_NAME"
-            if [[ "$(jq -r '.draft' <<<"$RELEASE_JSON")" != "true" ]]; then
-              echo "Published release assets are immutable; refusing to replace $TAG_NAME." >&2
-              exit 1
-            fi
-            RELEASE_ID="$(jq -r '.id' <<<"$RELEASE_JSON")"
-            RELEASE_PAYLOAD="$(jq -n \
-              --arg body "$(cat release-notes.md)" \
-              --arg target "$BUILD_SHA" \
-              '{
-                body: $body,
-                target_commitish: $target
-              }'
-            )"
-            gh api \
-              --method PATCH \
-              "repos/$GH_REPO/releases/$RELEASE_ID" \
-              --input - <<<"$RELEASE_PAYLOAD" \
-              >/dev/null
-          else
-            echo "No published release for $TAG_NAME; checking for an existing draft release"
-            RELEASE_JSON="$(
-              gh api "repos/$GH_REPO/releases?per_page=100" \
-                --jq '.[] | select(.draft and (.tag_name == env.TAG_NAME or .name == env.TAG_NAME)) | @json' \
-                | head -n 1
-            )"
-
-            if [[ -n "$RELEASE_JSON" ]]; then
-              echo "Found existing draft release for $TAG_NAME"
-              RELEASE_ID="$(jq -r '.id' <<<"$RELEASE_JSON")"
-              RELEASE_PAYLOAD="$(jq -n \
-                --arg tag "$TAG_NAME" \
-                --arg name "$TAG_NAME" \
-                --arg body "$(cat release-notes.md)" \
-                --arg target "$BUILD_SHA" \
-                '{
-                  tag_name: $tag,
-                  name: $name,
-                  body: $body,
-                  target_commitish: $target
-                }'
-              )"
-              gh api \
-                --method PATCH \
-                "repos/$GH_REPO/releases/$RELEASE_ID" \
-                --input - <<<"$RELEASE_PAYLOAD" \
-                >/dev/null
-            else
-              echo "No release exists for $TAG_NAME; creating a new draft release"
-              RELEASE_PAYLOAD="$(jq -n \
-                --arg tag "$TAG_NAME" \
-                --arg name "$TAG_NAME" \
-                --arg body "$(cat release-notes.md)" \
-                --arg target "$BUILD_SHA" \
-                '{
-                  tag_name: $tag,
-                  name: $name,
-                  body: $body,
-                  target_commitish: $target,
-                  draft: true
-                }'
-              )"
-              RELEASE_JSON="$(
-                gh api \
-                  --method POST \
-                  "repos/$GH_REPO/releases" \
-                  --input - <<<"$RELEASE_PAYLOAD"
-              )"
-              RELEASE_ID="$(jq -r '.id' <<<"$RELEASE_JSON")"
-            fi
+          if gh api "repos/$GH_REPO/releases/tags/$TAG_NAME" >/dev/null 2>&1; then
+            echo "A release already exists for $TAG_NAME; refusing to modify it." >&2
+            exit 1
           fi
 
+          EXISTING_DRAFT="$(
+            gh api "repos/$GH_REPO/releases?per_page=100" \
+              --jq 'map(select(.draft and (.tag_name == env.TAG_NAME or .name == env.TAG_NAME)))[0].id // empty'
+          )"
+          if [[ -n "$EXISTING_DRAFT" ]]; then
+            echo "A draft release already exists for $TAG_NAME; refusing to modify it." >&2
+            exit 1
+          fi
+
+          RELEASE_PAYLOAD="$(jq -n \
+            --arg tag "$TAG_NAME" \
+            --arg name "$TAG_NAME" \
+            --arg body "$(cat release-notes.md)" \
+            --arg target "$BUILD_SHA" \
+            '{
+              tag_name: $tag,
+              name: $name,
+              body: $body,
+              target_commitish: $target,
+              draft: true
+            }'
+          )"
+          RELEASE_JSON="$(
+            gh api \
+              --method POST \
+              "repos/$GH_REPO/releases" \
+              --input - <<<"$RELEASE_PAYLOAD"
+          )"
+          RELEASE_ID="$(jq -r '.id' <<<"$RELEASE_JSON")"
+
           for asset_path in artifacts/*; do
+            CURRENT_RELEASE="$(gh api "repos/$GH_REPO/releases/$RELEASE_ID")"
+            if [[ "$(jq -r '.draft' <<<"$CURRENT_RELEASE")" != "true" ]]; then
+              echo "Release $TAG_NAME is no longer a draft; refusing to upload assets." >&2
+              exit 1
+            fi
             gh release upload "$TAG_NAME" "$asset_path" \
-              --clobber \
               -R "$GH_REPO" \
               >/dev/null
           done

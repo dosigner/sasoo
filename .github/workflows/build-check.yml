@@ -51,14 +51,21 @@ jobs:
             sasoo/backend/requirements.txt
             sasoo/backend/requirements-test.txt
 
-      - name: Prepare backend virtualenv
+      - name: Create backend virtualenv
         shell: pwsh
-        run: |
-          python -m venv backend/.venv
-          .\backend\.venv\Scripts\python -m pip install --upgrade pip setuptools wheel
-          .\backend\.venv\Scripts\python -m pip install pyinstaller
-          .\backend\.venv\Scripts\python -m pip install -r backend/requirements.txt
-          .\backend\.venv\Scripts\python -m pip install -r backend/requirements-test.txt
+        run: python -m venv backend/.venv
+
+      - name: Install backend packaging tools
+        shell: pwsh
+        run: .\backend\.venv\Scripts\python -m pip install --upgrade pip setuptools wheel pyinstaller
+
+      - name: Install backend runtime dependencies
+        shell: pwsh
+        run: .\backend\.venv\Scripts\python -m pip install -r backend/requirements.txt
+
+      - name: Install backend test dependencies
+        shell: pwsh
+        run: .\backend\.venv\Scripts\python -m pip install -r backend/requirements-test.txt
 
       - name: Install Node dependencies
         shell: pwsh
@@ -70,19 +77,46 @@ jobs:
           node scripts/sync-version.js
           git diff --exit-code
 
-      - name: Run tests and audits
+      - name: Run Electron unit tests
         shell: pwsh
-        run: |
-          pnpm test:unit
-          pnpm --dir frontend test
-          pnpm --dir frontend build
-          pnpm --dir frontend lint
-          .\backend\.venv\Scripts\python -m py_compile backend/main.py
-          Push-Location backend
-          .\.venv\Scripts\python -m pytest services api models
-          Pop-Location
-          pnpm audit --audit-level=moderate
-          pnpm --dir frontend audit --audit-level=moderate
+        run: pnpm test:unit
+
+      - name: Compile Electron
+        shell: pwsh
+        run: pnpm build:electron
+
+      - name: Type-check frontend
+        shell: pwsh
+        run: pnpm --dir frontend tsc --noEmit
+
+      - name: Run frontend unit tests
+        shell: pwsh
+        run: pnpm --dir frontend test
+
+      - name: Build frontend
+        shell: pwsh
+        run: pnpm --dir frontend build
+
+      - name: Lint frontend
+        shell: pwsh
+        run: pnpm --dir frontend lint
+
+      - name: Compile backend entrypoint
+        shell: pwsh
+        run: .\backend\.venv\Scripts\python -m py_compile backend/main.py
+
+      - name: Run complete backend test suite
+        shell: pwsh
+        working-directory: sasoo/backend
+        run: .\.venv\Scripts\python -m pytest services api models
+
+      - name: Audit root dependencies
+        shell: pwsh
+        run: pnpm audit --audit-level=moderate
+
+      - name: Audit frontend dependencies
+        shell: pwsh
+        run: pnpm --dir frontend audit --audit-level=moderate
 
       - name: Build unsigned Windows artifact
         shell: pwsh
