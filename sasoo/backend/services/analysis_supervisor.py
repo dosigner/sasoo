@@ -96,6 +96,11 @@ async def reconcile_once(conn, cap: int, spawn=spawn_worker) -> None:
     backoff_cut = _iso_shift(now_dt, BACKOFF_S)
 
     await ar.reconcile_stale(conn, stale_cut=stale_cut, max_attempts=MAX_ATTEMPTS, now=now)
+    # 결함1: reconcile_stale ②(cancel-wins)는 analysis_runs만 쓰고 papers를 안 건드린다 —
+    # run=terminal인데 papers='analyzing'로 영구 고착되는 좀비(취소 중 워커 사망, /cancel
+    # papers UPDATE 직전 사망, /run upsert_queued 실패로 이전 terminal 행 잔존)를 역방향
+    # 스윕으로 회수한다. running인 run은 건드리지 않아 정상 진행 중인 분석을 보호한다.
+    await ar.sweep_orphan_analyzing_papers(conn)
     # C1: cap 초과로 queued에 머문 채 cancel_requested=1만 세워진 행은 claim_next(cancel_requested=0
     # 필터)·reconcile_stale(status='running'만 봄)·mark_over_attempts_error(attempts만 봄) 어디서도
     # 소비되지 않아 영구 좀비가 된다. attempts 정리보다 먼저 cancel-wins으로 확정한다.

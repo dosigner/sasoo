@@ -103,6 +103,19 @@ class ReconcileTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(to_thread_calls[0][0], spawn)
         self.assertEqual(to_thread_calls[0][1], (1, 1))
 
+    async def test_reconcile_once_syncs_orphan_analyzing_papers_from_terminal_run(self):
+        # 결함1: run이 이미 cancelled인데(예: reconcile_stale ②가 papers 갱신 없이 확정한
+        # 직후, 또는 /cancel이 papers UPDATE 직전 죽은 경우) papers가 'analyzing'에 고착되면
+        # /status가 영원히 "분석 중"을 반환한다. reconcile_once가 매 주기 papers를 동기화해야 한다.
+        from services import analysis_supervisor as sup
+        await self.conn.execute("INSERT INTO papers VALUES (1, 'analyzing')")
+        await ar.upsert_queued(self.conn, 1, ar.utcnow_iso())
+        await self.conn.execute("UPDATE analysis_runs SET status='cancelled' WHERE paper_id=1")
+        await self.conn.commit()
+        await sup.reconcile_once(self.conn, cap=2, spawn=lambda p, g: 1)
+        row = await (await self.conn.execute("SELECT status FROM papers WHERE id=1")).fetchone()
+        self.assertEqual(row["status"], "cancelled")
+
     async def test_spawn_failure_requeues(self):
         # spawn 자체가 실패하면 기존대로 queued 복귀(다음 사이클 재시도 가능)
         from services import analysis_supervisor as sup
