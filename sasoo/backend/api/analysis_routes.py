@@ -165,6 +165,14 @@ async def _get_cached_phase_result(paper_id: int, phase: str, input_text: str) -
     }
 
 
+# 게이트가 applicable=False로 스킵하기 전 요구하는 최소 확신도(잠정값 0.6 — e2e 분포로 재조정).
+_GATE_CONFIDENCE_FLOOR = 0.6
+
+# 프롬프트 문구가 아닌 "안정 콘텐츠 + 이 버전"으로 캐시 키를 구성한다.
+# 문구를 바꿔도 재과금이 없고, 계약이 실제로 바뀔 때만 이 값을 올려 1회 무효화한다.
+PROMPT_VERSION = "2026-07-14"
+
+
 def _screening_gate_decision(
     screening_result_text: Optional[str], phase: str = "recipe"
 ) -> tuple[bool, str]:
@@ -193,6 +201,13 @@ def _screening_gate_decision(
 
     applicable = payload.get(f"{phase}_applicable")
     if applicable is False:
+        # 확신이 낮은 오판정으로 phase를 차단하지 않는다: confidence가 floor 미만이면 실행.
+        try:
+            confidence = float(payload.get("confidence"))
+        except (TypeError, ValueError):
+            confidence = 1.0  # confidence 미제공(레거시)은 플래그를 신뢰
+        if confidence < _GATE_CONFIDENCE_FLOOR:
+            return (False, "")
         return (True, f"not_applicable_{phase}")
     if applicable is True:
         return (False, "")
@@ -518,6 +533,33 @@ def _build_top_by_norm(top_cited: list) -> dict:
     return mapping
 
 
+def _citation_cache_key(local_result: dict, citation_body: str) -> str:
+    """인용 phase 캐시 키: 프롬프트 문구가 아닌 안정 콘텐츠 + PROMPT_VERSION.
+
+    문구를 고쳐도 재과금이 없고, 계약이 실제로 바뀔 때 PROMPT_VERSION을 올려 1회 무효화한다."""
+    top = [
+        {
+            "ref_id": r.get("ref_id"),
+            "cite_count": r.get("cite_count"),
+            "contexts": [
+                {"s": (c.get("sentence") or "")[:300], "sec": c.get("section") or ""}
+                for c in (r.get("cite_contexts") or [])[:5]
+            ],
+        }
+        for r in local_result.get("top_cited", [])[:10]
+    ]
+    payload = {
+        "v": PROMPT_VERSION,
+        "phase": "citation",
+        "total_references": local_result.get("total_references", 0),
+        "citation_style": local_result.get("citation_style", ""),
+        "self_citation_count": local_result.get("self_citation_count", 0),
+        "top": top,
+        "body": citation_body[:3000],
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+
 async def _run_citation(
     paper_id: int,
     sections: dict[str, str],
@@ -591,7 +633,8 @@ async def _run_citation(
 - summary는 전체 인용 패턴 평가 2-3문장(한국어). limitations에는 상위 10개와 본문 발췌만 본 평가라는 한계를 한 문장으로 남겨.
 """
 
-        cached = await _get_cached_phase_result(paper_id, "citation", llm_prompt)
+        cache_key = _citation_cache_key(local_result, citation_body)
+        cached = await _get_cached_phase_result(paper_id, "citation", cache_key)
         if cached is not None:
             phase_status.status = "completed"
             phase_status.completed_at = _utcnow_iso()
@@ -663,10 +706,12 @@ async def _run_citation(
         cost = 0.0
 
     input_hash_source = (
-        llm_prompt
+        _citation_cache_key(local_result, citation_body)
         if top_refs
         else json.dumps(
             {
+                "v": PROMPT_VERSION,
+                "phase": "citation",
                 "citation_body": citation_body,
                 "citation_references": citation_references,
                 "paper_authors": paper_authors,

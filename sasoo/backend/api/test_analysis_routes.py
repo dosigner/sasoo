@@ -277,6 +277,32 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         skip_deep, _ = analysis_routes._screening_gate_decision(payload, phase="deep_dive")
         self.assertFalse(skip_deep)
 
+    def test_gate_low_confidence_overrides_applicable_false(self):
+        # deep_dive_applicable=false 이지만 confidence가 floor 미만이면 스킵하지 않는다
+        payload = ('{"relevance_score":0.8,"domain":"optics","key_topics":["광학"],'
+                   '"is_experimental":true,"recipe_applicable":true,"deep_dive_applicable":false,'
+                   '"confidence":0.4}')
+        skip_deep, reason = analysis_routes._screening_gate_decision(payload, phase="deep_dive")
+        self.assertFalse(skip_deep)
+
+    def test_gate_high_confidence_applicable_false_still_skips(self):
+        payload = ('{"relevance_score":0.8,"domain":"optics","key_topics":["광학"],'
+                   '"is_experimental":true,"recipe_applicable":false,"deep_dive_applicable":true,'
+                   '"confidence":0.9}')
+        skip_recipe, reason = analysis_routes._screening_gate_decision(payload, phase="recipe")
+        self.assertTrue(skip_recipe)
+        self.assertEqual(reason, "not_applicable_recipe")
+
+    def test_citation_cache_key_ignores_prompt_wording_but_tracks_version(self):
+        local_result = {"total_references": 12, "citation_style": "numbered",
+                        "self_citation_count": 1, "self_citation_ratio": 0.08,
+                        "top_cited": [{"ref_id": "[1]", "cite_count": 3,
+                                       "cite_contexts": [{"sentence": "s", "section": "Methods"}]}]}
+        key = analysis_routes._citation_cache_key(local_result, "본문 발췌")
+        self.assertIn(analysis_routes.PROMPT_VERSION, key)
+        # 본문/통계가 같으면 동일 키(프롬프트 문구는 키에 안 들어감)
+        self.assertEqual(key, analysis_routes._citation_cache_key(local_result, "본문 발췌"))
+
     def test_screening_schema_gate_contract(self):
         schema = analysis_routes._SCREENING_SCHEMA
         self.assertEqual(
