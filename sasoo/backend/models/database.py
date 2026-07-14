@@ -372,6 +372,8 @@ async def init_db() -> None:
 
     # Enable WAL mode for better concurrent read performance
     await _db_connection.execute("PRAGMA journal_mode=WAL")
+    # 다중 프로세스(서버 + 디태치 워커) 쓰기 경합을 즉시 실패 대신 대기로 흡수
+    await _db_connection.execute("PRAGMA busy_timeout=5000")
     # Enable foreign key enforcement
     await _db_connection.execute("PRAGMA foreign_keys=ON")
 
@@ -494,6 +496,14 @@ async def init_db() -> None:
         except Exception:
             pass  # column already exists
 
+    # analysis_runs: 디태치 워커 조율 테이블(프로세스 분리 + 자동 재개)
+    from models.analysis_runs import ANALYSIS_RUNS_DDL
+    try:
+        await _db_connection.executescript(ANALYSIS_RUNS_DDL)
+        await _db_connection.commit()
+    except Exception:
+        pass
+
 
 async def get_db() -> aiosqlite.Connection:
     """
@@ -511,6 +521,26 @@ async def close_db() -> None:
     if _db_connection is not None:
         await _db_connection.close()
         _db_connection = None
+
+
+async def connect_worker_db() -> aiosqlite.Connection:
+    """워커 프로세스의 전역 연결을 연다(마이그레이션 미실행 — 서버 startup이 스키마 선행 보장)."""
+    global _db_connection
+    conn = await aiosqlite.connect(str(DB_PATH))
+    conn.row_factory = aiosqlite.Row
+    await conn.execute("PRAGMA journal_mode=WAL")
+    await conn.execute("PRAGMA busy_timeout=5000")
+    await conn.execute("PRAGMA foreign_keys=ON")
+    _db_connection = conn
+    return conn
+
+
+async def open_side_connection() -> aiosqlite.Connection:
+    """워커 사이드카(리포터/취소-브리지) 전용 독립 연결. 전역 연결의 트랜잭션과 격리."""
+    conn = await aiosqlite.connect(str(DB_PATH))
+    conn.row_factory = aiosqlite.Row
+    await conn.execute("PRAGMA busy_timeout=5000")
+    return conn
 
 
 # ---------------------------------------------------------------------------
