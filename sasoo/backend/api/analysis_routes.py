@@ -12,6 +12,7 @@ Phases:
 import asyncio
 import json
 import logging
+import os
 import re
 import traceback
 from datetime import datetime, timezone
@@ -2419,6 +2420,28 @@ async def _run_full_analysis(paper_id: int):
 # Endpoints
 # ---------------------------------------------------------------------------
 
+def _subprocess_mode() -> bool:
+    """실런타임(Electron/서버)에서만 켜지는 디태치 워커 모드 플래그. 테스트/직접 실행 기본 off."""
+    return os.environ.get("SASOO_ANALYSIS_SUBPROCESS", "") == "1"
+
+
+def _overlay_run_status(base: dict, run: Optional[dict]) -> dict:
+    """analysis_runs 라이브 값을 기존 status builder 결과에 overlay. queued→running 매핑."""
+    if not run:
+        return base
+    st = run.get("status")
+    if st in ("queued", "running"):
+        merged = dict(base)
+        merged["overall_status"] = "running"          # 프론트 isRunning union + 폴링 지속
+        if run.get("current_phase"):
+            merged["current_phase"] = run["current_phase"]
+        pct = run.get("progress_pct")
+        if pct is not None and pct > merged.get("progress_pct", 0.0):
+            merged["progress_pct"] = pct
+        return merged
+    return base
+
+
 @router.post("/{paper_id}/run", status_code=202)
 async def run_analysis(paper_id: int, background_tasks: BackgroundTasks):
     """
@@ -2482,8 +2505,17 @@ async def run_analysis(paper_id: int, background_tasks: BackgroundTasks):
                    f"Increase your budget in Settings to continue.",
         )
 
-    # Launch background analysis
-    background_tasks.add_task(_run_full_analysis, paper_id)
+    # Launch analysis: subprocess mode(실런타임)면 디태치 워커, 아니면 기존 in-process 경로 유지
+    if _subprocess_mode():
+        from models.database import get_db
+        from models.analysis_runs import upsert_queued, utcnow_iso
+        from services.analysis_supervisor import reconcile_once, read_max_concurrent
+        conn = await get_db()
+        await upsert_queued(conn, paper_id, utcnow_iso())
+        # 즉시 드레인 시도(cap 내면 이번 요청이 스폰, 초과면 queued로 남아 리컨실러가 픽업)
+        await reconcile_once(conn, cap=await read_max_concurrent())
+    else:
+        background_tasks.add_task(_run_full_analysis, paper_id)
 
     return {
         "paper_id": paper_id,
@@ -2497,12 +2529,20 @@ async def cancel_analysis(paper_id: int):
     """
     Cancel a running analysis for a paper.
     """
-    # Check if there's a cancel event for this paper
+    # subprocess mode: DB flag를 세우면 워커 사이드카가 phase 경계에서 취소를 존중한다
+    if _subprocess_mode():
+        from models.database import get_db
+        from models.analysis_runs import request_cancel, get_run
+        conn = await get_db()
+        run = await get_run(conn, paper_id)
+        if run and run.get("status") in ("queued", "running"):
+            await request_cancel(conn, paper_id)
+            return {"paper_id": paper_id, "status": "cancelling"}
+
+    # in-process(레거시/테스트) 경로 — 기존 동작 보존
     if paper_id in _cancel_events:
         _cancel_events[paper_id].set()
         return {"paper_id": paper_id, "status": "cancelling"}
-
-    # Check if the paper is running and update its status
     if paper_id in _running_analyses:
         running = _running_analyses[paper_id]
         if running.overall_status == "running":
@@ -2568,11 +2608,22 @@ async def get_analysis_status(paper_id: int):
         progress = (completed_main / 5) * 80  # Max 80% without viz
     progress = min(progress, 100.0)
 
+    base = {"overall_status": paper["status"], "progress_pct": progress, "current_phase": None}
+    if _subprocess_mode():
+        try:
+            from models.database import get_db
+            from models.analysis_runs import get_run
+            run = await get_run(await get_db(), paper_id)
+            base = _overlay_run_status(base, run)
+        except Exception:
+            pass
+
     return AnalysisStatus(
         paper_id=paper_id,
-        overall_status=paper["status"],
+        overall_status=base["overall_status"],
         phases=phases,
-        progress_pct=progress,
+        progress_pct=base["progress_pct"],
+        current_phase=base["current_phase"],
         total_cost_usd=total_cost,
         total_tokens_in=total_in,
         total_tokens_out=total_out,

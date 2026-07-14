@@ -1,5 +1,6 @@
 import contextlib
 import json
+import os
 import sys
 import threading
 import types
@@ -314,6 +315,30 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         for field in ("key_topics", "is_experimental", "methodology_type",
                       "recipe_applicable", "deep_dive_applicable"):
             self.assertIn(field, schema["required"])
+
+    def test_subprocess_mode_flag(self):
+        with patch.dict("os.environ", {"SASOO_ANALYSIS_SUBPROCESS": "1"}):
+            self.assertTrue(analysis_routes._subprocess_mode())
+        with patch.dict("os.environ", {}, clear=False):
+            os.environ.pop("SASOO_ANALYSIS_SUBPROCESS", None)
+            self.assertFalse(analysis_routes._subprocess_mode())
+
+    def test_status_overlay_maps_queued_to_running(self):
+        # analysis_runs가 queued면 overall_status를 running으로 매핑(프론트 active 인식)
+        merged = analysis_routes._overlay_run_status(
+            base={"overall_status": "analyzing", "progress_pct": 0.0, "current_phase": None},
+            run={"status": "queued", "current_phase": None, "progress_pct": 0.0},
+        )
+        self.assertEqual(merged["overall_status"], "running")
+
+    def test_status_overlay_uses_run_progress_and_phase(self):
+        merged = analysis_routes._overlay_run_status(
+            base={"overall_status": "analyzing", "progress_pct": 0.0, "current_phase": None},
+            run={"status": "running", "current_phase": "recipe", "progress_pct": 55.0},
+        )
+        self.assertEqual(merged["overall_status"], "running")
+        self.assertEqual(merged["current_phase"], "recipe")
+        self.assertEqual(merged["progress_pct"], 55.0)
 
     async def test_screening_prompt_puts_document_first(self):
         status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
