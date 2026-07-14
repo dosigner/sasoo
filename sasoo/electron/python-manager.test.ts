@@ -147,6 +147,35 @@ describe('PythonManager shutdown', () => {
     expect(replacementKill).not.toHaveBeenCalled();
   });
 
+  it('stops the crashed backend health timer before starting its replacement', async () => {
+    vi.useFakeTimers();
+    const crashedChild = new ChildProcess();
+    const replacement = new ChildProcess();
+    const replacementKill = vi.spyOn(replacement, 'kill').mockReturnValue(true);
+    vi.mocked(launchBackendProcess)
+      .mockReturnValueOnce(crashedChild)
+      .mockReturnValueOnce(replacement);
+    const manager = new PythonManager({
+      backendPath: '/tmp/sasoo-backend',
+      port: 8000,
+      isDev: false,
+      healthCheckIntervalMs: 1_500,
+    });
+    vi.spyOn(manager, 'checkHealth')
+      .mockResolvedValueOnce(true)
+      .mockResolvedValue(false);
+
+    const firstStart = manager.start();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await firstStart;
+    crashedChild.emit('exit', 1, null);
+
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    expect(manager['process']).toBe(replacement);
+    expect(replacementKill).not.toHaveBeenCalled();
+  });
+
   it('rejects startup when the launched child is no longer tracked', async () => {
     vi.useFakeTimers();
     const child = new ChildProcess();

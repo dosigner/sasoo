@@ -99,6 +99,7 @@ export class PythonManager {
       if (this.process !== child) {
         return;
       }
+      this.stopHealthChecks();
       this.process = null;
       this.handleUnexpectedExit(code);
     });
@@ -108,6 +109,7 @@ export class PythonManager {
       if (this.process !== child) {
         return;
       }
+      this.stopHealthChecks();
       this.process = null;
 
       if (!this.isShuttingDown) {
