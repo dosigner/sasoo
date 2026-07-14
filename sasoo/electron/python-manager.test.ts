@@ -1,13 +1,19 @@
 import { ChildProcess } from 'child_process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { launchBackendProcess } from './backend-process-launcher';
 import { PythonManager } from './python-manager';
+
+vi.mock('./backend-process-launcher', () => ({
+  launchBackendProcess: vi.fn(),
+}));
 
 describe('PythonManager shutdown', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.mocked(launchBackendProcess).mockReset();
   });
 
   it.runIf(process.platform !== 'win32')(
@@ -58,6 +64,9 @@ describe('PythonManager shutdown', () => {
       const signals: Array<NodeJS.Signals | number | undefined> = [];
       vi.spyOn(child, 'kill').mockImplementation((signal) => {
         signals.push(signal);
+        if (signal === 'SIGKILL') {
+          queueMicrotask(() => child.emit('exit', null, signal));
+        }
         return true;
       });
       vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('connection refused')));
@@ -84,4 +93,26 @@ describe('PythonManager shutdown', () => {
       expect(signals).toEqual(['SIGTERM', 'SIGKILL']);
     },
   );
+
+  it('ignores a stale child exit after a replacement process is installed', async () => {
+    vi.useFakeTimers();
+    const oldChild = new ChildProcess();
+    const replacement = new ChildProcess();
+    vi.mocked(launchBackendProcess).mockReturnValue(oldChild);
+    const manager = new PythonManager({
+      backendPath: '/tmp/sasoo-backend',
+      port: 8000,
+      isDev: false,
+    });
+    vi.spyOn(manager, 'checkHealth').mockResolvedValue(true);
+
+    const starting = manager.start();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await starting;
+    manager['process'] = replacement;
+
+    oldChild.emit('exit', 1, null);
+
+    expect(manager['process']).toBe(replacement);
+  });
 });

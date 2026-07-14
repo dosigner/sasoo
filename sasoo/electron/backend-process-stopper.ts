@@ -9,6 +9,10 @@ type BackendShutdownConfig = {
   readonly shutdownToken: string;
 };
 
+function hasExited(child: ChildProcess): boolean {
+  return child.exitCode !== null || child.signalCode !== null;
+}
+
 async function waitForExit(
   exitPromise: Promise<void>,
   timeoutMs: number,
@@ -52,6 +56,9 @@ async function requestBackendShutdown(config: BackendShutdownConfig): Promise<vo
 }
 
 async function forceKillWindowsTree(child: ChildProcess): Promise<void> {
+  if (hasExited(child)) {
+    return;
+  }
   const pid = child.pid;
   if (!pid) {
     child.kill('SIGKILL');
@@ -74,6 +81,10 @@ export async function stopBackendProcess(
   config: BackendShutdownConfig,
   platform: NodeJS.Platform = process.platform,
 ): Promise<void> {
+  if (hasExited(child)) {
+    return;
+  }
+
   const exitPromise = new Promise<void>((resolve) => {
     child.once('exit', () => resolve());
   });
@@ -85,8 +96,14 @@ export async function stopBackendProcess(
   }
 
   if (platform === 'win32') {
+    if (hasExited(child)) {
+      return;
+    }
     console.warn('[PythonManager] Graceful shutdown timed out; force killing process tree');
     await forceKillWindowsTree(child);
+    if (!await waitForExit(exitPromise, TERMINATE_EXIT_TIMEOUT_MS)) {
+      console.error('[PythonManager] Backend did not report exit after taskkill');
+    }
     return;
   }
 
@@ -98,4 +115,7 @@ export async function stopBackendProcess(
 
   console.warn('[PythonManager] SIGTERM timed out; sending SIGKILL');
   child.kill('SIGKILL');
+  if (!await waitForExit(exitPromise, TERMINATE_EXIT_TIMEOUT_MS)) {
+    console.error('[PythonManager] Backend did not report exit after SIGKILL');
+  }
 }

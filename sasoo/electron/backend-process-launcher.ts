@@ -94,15 +94,10 @@ export function launchBackendProcess(
   console.log(`[PythonManager] Backend path: ${config.backendPath}`);
 
   const args = [
-    '-m', 'uvicorn',
-    'main:app',
+    'main.py',
     '--host', '127.0.0.1',
     '--port', String(config.port),
-    '--log-level', 'info',
   ];
-  if (config.isDev) {
-    args.push('--reload');
-  }
 
   return spawn(pythonPath, args, {
     cwd: config.backendPath,

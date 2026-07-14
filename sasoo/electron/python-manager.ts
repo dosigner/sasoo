@@ -65,13 +65,14 @@ export class PythonManager {
     this.isShuttingDown = false;
     this.shutdownToken = crypto.randomBytes(32).toString('hex');
 
-    this.process = launchBackendProcess(this.config, {
+    const child = launchBackendProcess(this.config, {
       apiToken: this.apiToken,
       shutdownToken: this.shutdownToken,
     });
+    this.process = child;
 
     // Log stdout — forward to renderer DevTools via IPC (batched)
-    this.process.stdout?.on('data', (data: Buffer) => {
+    child.stdout?.on('data', (data: Buffer) => {
       const message = data.toString().trim();
       if (message) {
         console.log(`[FastAPI] ${message}`);
@@ -80,7 +81,7 @@ export class PythonManager {
     });
 
     // Log stderr — forward to renderer DevTools via IPC (batched)
-    this.process.stderr?.on('data', (data: Buffer) => {
+    child.stderr?.on('data', (data: Buffer) => {
       const message = data.toString().trim();
       if (message) {
         console.error(`[FastAPI:err] ${message}`);
@@ -89,17 +90,23 @@ export class PythonManager {
     });
 
     // Handle process exit
-    this.process.on('exit', (code, signal) => {
+    child.on('exit', (code, signal) => {
       console.log(`[PythonManager] Process exited with code ${code}, signal ${signal}`);
       // The lines just before death (tracebacks) must reach the renderer now,
       // not one batch interval later.
       this.logBatcher.flush();
+      if (this.process !== child) {
+        return;
+      }
       this.process = null;
       this.handleUnexpectedExit(code);
     });
 
-    this.process.on('error', (error) => {
+    child.on('error', (error) => {
       console.error(`[PythonManager] Process error:`, error);
+      if (this.process !== child) {
+        return;
+      }
       this.process = null;
 
       if (!this.isShuttingDown) {
