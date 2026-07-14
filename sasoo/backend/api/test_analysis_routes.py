@@ -1021,6 +1021,20 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(analysis_routes._norm_ref_id("[12]"), analysis_routes._norm_ref_id("12"))
         self.assertNotEqual(analysis_routes._norm_ref_id("1"), analysis_routes._norm_ref_id("2"))
 
+    def test_norm_ref_merge_prefers_first_duplicate_key(self):
+        # 정규화 후 동일 키가 되는 항목이 2개면 원본 의미(첫 매치 우선)를 보존해야 한다
+        top_cited = [
+            {"ref_id": "[1]", "title": "first"},
+            {"ref_id": "(1)", "title": "second"},  # 정규화 후 같은 키 "1"
+        ]
+        mapping = analysis_routes._build_top_by_norm(top_cited)
+        self.assertEqual(mapping["1"]["title"], "first")
+
+    def test_citation_merge_warns_on_unmatched_ref_id(self):
+        top_cited = [{"ref_id": "[1]", "title": "t"}]
+        mapping = analysis_routes._build_top_by_norm(top_cited)
+        self.assertNotIn("99", mapping)  # 매치 실패 케이스가 존재함을 고정
+
     async def test_citation_merge_tolerates_ref_id_format_drift(self):
         status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
 

@@ -510,6 +510,14 @@ def _norm_ref_id(raw: object) -> str:
     return s.strip()
 
 
+def _build_top_by_norm(top_cited: list) -> dict:
+    """정규화 키 → top_cited 항목. 동일 키 중복 시 첫 항목 우선(원본 병합 루프의 break 의미 보존)."""
+    mapping: dict = {}
+    for tc in top_cited:
+        mapping.setdefault(_norm_ref_id(tc.get("ref_id")), tc)
+    return mapping
+
+
 async def _run_citation(
     paper_id: int,
     sections: dict[str, str],
@@ -611,7 +619,7 @@ async def _run_citation(
             # Merge LLM analysis into local_result (ref_id 포맷 드리프트 허용)
             ref_analyses = llm_data.get("ref_analyses", [])
             top_cited = local_result.get("top_cited", [])
-            top_by_norm = {_norm_ref_id(tc.get("ref_id")): tc for tc in top_cited}
+            top_by_norm = _build_top_by_norm(top_cited)
             for ra in ref_analyses:
                 norm = _norm_ref_id(ra.get("ref_id", ""))
                 tc = top_by_norm.get(norm)
