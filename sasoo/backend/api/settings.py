@@ -5,7 +5,8 @@ Endpoints for managing application settings and tracking API costs.
 
 import json
 import os
-from datetime import datetime, timedelta
+import sqlite3
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -183,6 +184,31 @@ async def _set_setting(key: str, value: str) -> None:
     await db.commit()
 
 
+async def _set_settings(values: dict[str, str]) -> None:
+    if not values:
+        return
+
+    timestamp = datetime.now(timezone.utc).isoformat()
+    placeholders = ", ".join("(?, ?, ?)" for _ in values)
+    params: list[str] = []
+    for key, value in values.items():
+        params.extend((key, value, timestamp))
+
+    db = await get_db()
+    try:
+        await db.execute(
+            "INSERT INTO settings (key, value, updated_at) VALUES "
+            f"{placeholders} "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value, "
+            "updated_at = excluded.updated_at",
+            tuple(params),
+        )
+        await db.commit()
+    except sqlite3.Error:
+        await db.rollback()
+        raise
+
+
 def _mask_api_key(key: str) -> str:
     """Mask an API key for safe display: show first 8 and last 4 chars."""
     if not key or len(key) < 16:
@@ -272,15 +298,15 @@ async def update_settings(update: SettingsUpdate):
     if not update_data:
         raise HTTPException(status_code=400, detail="No settings to update.")
 
-    if "library_path" in update_data and update_data["library_path"] is not None:
-        new_path = resolve_library_path_update(update_data.pop("library_path"))
-        new_path.mkdir(parents=True, exist_ok=True)
-        # Stored per platform, so a Mac and a Windows machine sharing this
-        # settings database each keep their own.
-        await _set_setting(library_path_setting_key(), str(new_path))
-        invalidate_library_root_cache()
+    library_path = update_data.pop("library_path", None)
+    new_path = (
+        resolve_library_path_update(library_path)
+        if library_path is not None
+        else None
+    )
 
     api_key_updates: dict[str, str | None] = {}
+    stored_updates: dict[str, str] = {}
     for key, value in update_data.items():
         # Convert booleans, enums, and list-valued settings to string for storage
         if key == "research_areas":
@@ -298,15 +324,27 @@ async def update_settings(update: SettingsUpdate):
             if "..." in str_value:
                 continue
             api_key_updates[key] = str_value or None
-            if str_value:
-                str_value = encrypt_value(str_value, replace_invalid_key=True)
         if key == "pdf_parser_mode" and str_value != "java":
             raise HTTPException(status_code=400, detail="Slim build supports only 'java' for pdf_parser_mode.")
         if key == "extraction_pipeline_version" and str_value != "resolver_v1":
             raise HTTPException(status_code=400, detail="extraction_pipeline_version must be 'resolver_v1'.")
         if key == "pdf_visual_engine" and str_value not in {"gemini", "odl"}:
             raise HTTPException(status_code=400, detail="pdf_visual_engine must be 'gemini' or 'odl'.")
-        await _set_setting(key, str_value)
+        stored_updates[key] = str_value
+
+    for key, value in api_key_updates.items():
+        if value:
+            stored_updates[key] = encrypt_value(value, replace_invalid_key=True)
+
+    if new_path is not None:
+        new_path.mkdir(parents=True, exist_ok=True)
+        stored_updates[library_path_setting_key()] = str(new_path)
+
+    if stored_updates:
+        await _set_settings(stored_updates)
+
+    if new_path is not None:
+        invalidate_library_root_cache()
 
     # Apply only values that passed persistence checks above.
     for key, env_name in {
@@ -324,8 +362,8 @@ async def update_settings(update: SettingsUpdate):
     # odl_parser._resolve_stage_engine reads SASOO_PDF_VISUAL_ENGINE from
     # os.environ at call time, so updating it here takes effect on the next
     # parse without a restart.
-    if "pdf_visual_engine" in update_data and update_data["pdf_visual_engine"]:
-        os.environ["SASOO_PDF_VISUAL_ENGINE"] = update_data["pdf_visual_engine"]
+    if "pdf_visual_engine" in stored_updates:
+        os.environ["SASOO_PDF_VISUAL_ENGINE"] = stored_updates["pdf_visual_engine"]
 
     return await get_settings()
 

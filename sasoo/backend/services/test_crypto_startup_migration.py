@@ -1,3 +1,4 @@
+import asyncio
 import os
 import unittest
 from pathlib import Path
@@ -17,6 +18,31 @@ class CryptoStartupMigrationTests(unittest.IsolatedAsyncioTestCase):
             os.environ.pop("GEMINI_API_KEY", None)
         else:
             os.environ["GEMINI_API_KEY"] = self.original_gemini_key
+
+    async def test_concurrent_startup_migrations_do_not_overlap(self) -> None:
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        in_flight = 0
+        peak_in_flight = 0
+
+        async def fetch_rows(*_args, **_kwargs):
+            nonlocal in_flight, peak_in_flight
+            in_flight += 1
+            peak_in_flight = max(peak_in_flight, in_flight)
+            entered.set()
+            await release.wait()
+            in_flight -= 1
+            return []
+
+        with patch("models.database.fetch_all", new=AsyncMock(side_effect=fetch_rows)):
+            first = asyncio.create_task(load_api_keys_from_settings({}, worker=False))
+            await entered.wait()
+            second = asyncio.create_task(load_api_keys_from_settings({}, worker=False))
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            self.assertEqual(peak_in_flight, 1)
+            release.set()
+            await asyncio.gather(first, second)
 
     async def test_startup_migrates_file_ciphertext_before_removing_file_key(self) -> None:
         rows = [

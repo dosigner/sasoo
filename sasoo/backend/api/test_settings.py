@@ -96,7 +96,7 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
         update = SettingsUpdate(library_path="/tmp/sasoo-moved-library")
 
         with (
-            patch("api.settings._set_setting", new=AsyncMock()),
+            patch("api.settings._set_settings", new=AsyncMock()),
             patch("api.settings.get_settings", new=AsyncMock(return_value=None)),
             patch("api.settings.invalidate_library_root_cache") as invalidate,
             patch("pathlib.Path.mkdir"),
@@ -180,7 +180,7 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
     async def test_masked_api_key_does_not_replace_the_runtime_key(self) -> None:
         with (
             patch.dict(os.environ, {"GEMINI_API_KEY": "live-key"}, clear=False),
-            patch("api.settings._set_setting", new=AsyncMock()) as set_setting,
+            patch("api.settings._set_settings", new=AsyncMock()) as set_setting,
             patch("api.settings.get_settings", new=AsyncMock(return_value=None)),
         ):
             await settings.update_settings(
@@ -194,14 +194,30 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
     async def test_empty_api_key_clears_storage_and_runtime(self) -> None:
         with (
             patch.dict(os.environ, {"GEMINI_API_KEY": "live-key"}, clear=False),
-            patch("api.settings._set_setting", new=AsyncMock()) as set_setting,
+            patch("api.settings._set_settings", new=AsyncMock()) as set_setting,
             patch("api.settings.get_settings", new=AsyncMock(return_value=None)),
         ):
             await settings.update_settings(SettingsUpdate(gemini_api_key=""))
 
             self.assertNotIn("GEMINI_API_KEY", os.environ)
 
-        set_setting.assert_awaited_once_with("gemini_api_key", "")
+        set_setting.assert_awaited_once_with({"gemini_api_key": ""})
+
+    async def test_invalid_combined_update_does_not_persist_the_api_key(self) -> None:
+        with (
+            patch("api.settings._set_settings", new=AsyncMock()) as set_setting,
+            patch("api.settings.encrypt_value", return_value="enc:v1:new-key") as encrypt,
+        ):
+            with self.assertRaises(HTTPException):
+                await settings.update_settings(
+                    SettingsUpdate(
+                        gemini_api_key="AIza-new-key",
+                        pdf_parser_mode="legacy",
+                    )
+                )
+
+        set_setting.assert_not_awaited()
+        encrypt.assert_not_called()
 
     def test_image_settings_reject_invalid_values(self) -> None:
         """SettingsUpdate should reject invalid image_provider and image_quality values."""
@@ -237,15 +253,15 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
             "extraction_pipeline_version": "resolver_v1",
         }
 
-        async def fake_set_setting(key: str, value: str) -> None:
-            store[key] = value
+        async def fake_set_settings(values: dict[str, str]) -> None:
+            store.update(values)
 
         async def fake_fetch_all(*args, **kwargs):
             return [{"key": k, "value": v} for k, v in store.items()]
 
         with patch("api.settings._ensure_defaults", new=AsyncMock()):
             with patch("api.settings.fetch_all", new=AsyncMock(side_effect=fake_fetch_all)):
-                with patch("api.settings._set_setting", new=AsyncMock(side_effect=fake_set_setting)):
+                with patch("api.settings._set_settings", new=AsyncMock(side_effect=fake_set_settings)):
                     update = SettingsUpdate(
                         research_context="페로브스카이트 태양전지 소자 물리",
                         default_explanation_level="phd",
@@ -300,8 +316,8 @@ class PdfVisualEngineSettingTests(unittest.IsolatedAsyncioTestCase):
             "pdf_visual_engine": "gemini",
         }
 
-        async def fake_set_setting(key: str, value: str) -> None:
-            store[key] = value
+        async def fake_set_settings(values: dict[str, str]) -> None:
+            store.update(values)
 
         async def fake_fetch_all(*args, **kwargs):
             return [{"key": k, "value": v} for k, v in store.items()]
@@ -309,7 +325,7 @@ class PdfVisualEngineSettingTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch("api.settings._ensure_defaults", new=AsyncMock()),
             patch("api.settings.fetch_all", new=AsyncMock(side_effect=fake_fetch_all)),
-            patch("api.settings._set_setting", new=AsyncMock(side_effect=fake_set_setting)),
+            patch("api.settings._set_settings", new=AsyncMock(side_effect=fake_set_settings)),
         ):
             response = await settings.update_settings(
                 SettingsUpdate(pdf_visual_engine="odl")
@@ -323,7 +339,7 @@ class PdfVisualEngineSettingTests(unittest.IsolatedAsyncioTestCase):
     async def test_update_visual_engine_rejects_unknown_value(self) -> None:
         with (
             patch("api.settings._ensure_defaults", new=AsyncMock()),
-            patch("api.settings._set_setting", new=AsyncMock()) as set_setting,
+            patch("api.settings._set_settings", new=AsyncMock()) as set_setting,
         ):
             with self.assertRaises(HTTPException) as ctx:
                 await settings.update_settings(

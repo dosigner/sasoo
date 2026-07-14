@@ -13,12 +13,13 @@ cleared keychain would quietly mint a fresh key and then fail to decrypt with
 it, permanently masking the fact that the original key was gone.
 """
 
+import asyncio
 import logging
 import os
 import threading
 from _thread import RLock as RLockType
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -37,6 +38,7 @@ ENCRYPTED_PREFIX = "enc:v1:"
 _KEY_FILENAME = ".sasoo_key"
 _CREDENTIAL_LOCK_FILENAME = ".sasoo_credentials.lock"
 _CREDENTIAL_LOCKS: dict[str, tuple[RLockType, FileLock]] = {}
+_CREDENTIAL_ASYNC_LOCKS: dict[tuple[str, int], asyncio.Lock] = {}
 _CREDENTIAL_LOCKS_GUARD = threading.Lock()
 
 
@@ -76,6 +78,22 @@ def credential_store_lock() -> Iterator[None]:
     thread_lock, file_lock = locks
     with thread_lock:
         with file_lock:
+            yield
+
+
+@asynccontextmanager
+async def async_credential_store_lock() -> AsyncIterator[None]:
+    lock_path = _key_path().with_name(_CREDENTIAL_LOCK_FILENAME)
+    lock_key = str(lock_path.resolve(strict=False))
+    loop_key = (lock_key, id(asyncio.get_running_loop()))
+    with _CREDENTIAL_LOCKS_GUARD:
+        task_lock = _CREDENTIAL_ASYNC_LOCKS.get(loop_key)
+        if task_lock is None:
+            task_lock = asyncio.Lock()
+            _CREDENTIAL_ASYNC_LOCKS[loop_key] = task_lock
+
+    async with task_lock:
+        with credential_store_lock():
             yield
 
 

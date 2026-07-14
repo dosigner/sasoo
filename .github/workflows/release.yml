@@ -19,6 +19,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.repository }}-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -146,11 +150,11 @@ jobs:
         shell: bash
         run: |
           pnpm test:unit
-          pnpm --dir frontend test
-          pnpm --dir frontend build
-          pnpm --dir frontend lint
+          pnpm --dir=frontend test
+          pnpm --dir=frontend build
+          pnpm --dir=frontend lint
           pnpm audit --audit-level=moderate
-          pnpm --dir frontend audit --audit-level=moderate
+          pnpm --dir=frontend audit --audit-level=moderate
 
       - name: Run backend tests
         shell: bash
@@ -220,6 +224,17 @@ jobs:
       - name: List artifacts
         run: ls -lhR artifacts/
 
+      - name: Require immutable releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          if [[ "$(gh api "repos/$GH_REPO/immutable-releases" --jq '.enabled')" != "true" ]]; then
+            echo "Immutable releases must be enabled before publishing artifacts." >&2
+            exit 1
+          fi
+
       - name: Create draft GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -279,6 +294,8 @@ jobs:
               --input - <<<"$RELEASE_PAYLOAD"
           )"
           RELEASE_ID="$(jq -r '.id' <<<"$RELEASE_JSON")"
+          UPLOAD_URL="$(jq -r '.upload_url' <<<"$RELEASE_JSON")"
+          UPLOAD_URL="${UPLOAD_URL%%\{*}"
 
           for asset_path in artifacts/*; do
             CURRENT_RELEASE="$(gh api "repos/$GH_REPO/releases/$RELEASE_ID")"
@@ -286,8 +303,14 @@ jobs:
               echo "Release $TAG_NAME is no longer a draft; refusing to upload assets." >&2
               exit 1
             fi
-            gh release upload "$TAG_NAME" "$asset_path" \
-              -R "$GH_REPO" \
+            ASSET_NAME="$(jq -rn --arg name "$(basename "$asset_path")" '$name | @uri')"
+            curl --fail --silent --show-error \
+              --request POST \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header "Content-Type: application/octet-stream" \
+              --data-binary "@$asset_path" \
+              "$UPLOAD_URL?name=$ASSET_NAME" \
               >/dev/null
           done
 

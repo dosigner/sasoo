@@ -87,19 +87,19 @@ jobs:
 
       - name: Type-check frontend
         shell: pwsh
-        run: pnpm --dir frontend tsc --noEmit
+        run: pnpm --dir=frontend tsc --noEmit
 
       - name: Run frontend unit tests
         shell: pwsh
-        run: pnpm --dir frontend test
+        run: pnpm --dir=frontend test
 
       - name: Build frontend
         shell: pwsh
-        run: pnpm --dir frontend build
+        run: pnpm --dir=frontend build
 
       - name: Lint frontend
         shell: pwsh
-        run: pnpm --dir frontend lint
+        run: pnpm --dir=frontend lint
 
       - name: Compile backend entrypoint
         shell: pwsh
@@ -116,7 +116,7 @@ jobs:
 
       - name: Audit frontend dependencies
         shell: pwsh
-        run: pnpm --dir frontend audit --audit-level=moderate
+        run: pnpm --dir=frontend audit --audit-level=moderate
 
       - name: Build unsigned Windows artifact
         shell: pwsh

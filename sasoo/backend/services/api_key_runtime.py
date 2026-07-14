@@ -13,7 +13,7 @@ async def load_api_keys_from_settings(
     from services.crypto import (
         CryptoKeyStoreError,
         CryptoMigrationError,
-        credential_store_lock,
+        async_credential_store_lock,
         decrypt_value,
         migrate_value_to_primary,
         remove_legacy_file_key,
@@ -40,7 +40,7 @@ async def load_api_keys_from_settings(
         return
 
     try:
-        with credential_store_lock():
+        async with async_credential_store_lock():
             rows = await fetch_all(
                 "SELECT key, value FROM settings WHERE key IN (?, ?)",
                 tuple(environment_names),
