@@ -176,5 +176,54 @@ class UpdatePaperDomainSyncsAgentUsedTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.agent_used, "circuit")
 
 
+class _FakeCursor:
+    def __init__(self, rowcount: int = 1):
+        self.rowcount = rowcount
+
+
+class _FakeDb:
+    """analysis_runs 함수(request_cancel 등)가 기대하는 conn.execute/.commit만 지원하는 더블."""
+
+    def __init__(self):
+        self.executed: list[tuple[str, tuple]] = []
+
+    async def execute(self, sql, params=()):
+        self.executed.append((sql, params))
+        return _FakeCursor()
+
+    async def commit(self):
+        return None
+
+
+class DeletePaperCleansAnalysisRunsTests(unittest.IsolatedAsyncioTestCase):
+    """I4: 논문 삭제가 analysis_runs를 정리하지 않으면 reconcile_stale ①에서 papers 조회가
+    NULL(terminal 아님)로 보여 ④ requeue가 삭제된 논문에 워커를 재스폰한다(FK 위반·파일 오류)."""
+
+    async def test_delete_paper_requests_cancel_and_deletes_run_rows(self) -> None:
+        paper_id = 1
+        existing_row = _base_paper_row(paper_id)
+        fake_db = _FakeDb()
+
+        with (
+            patch("api.papers.fetch_one", new=AsyncMock(return_value=existing_row)),
+            patch("api.papers.get_db", new=AsyncMock(return_value=fake_db)),
+            patch("api.papers.get_paper_dir", return_value=Path("/tmp/sasoo-test-nonexistent-paper-dir")),
+        ):
+            await papers.delete_paper(paper_id)
+
+        sqls = [sql for sql, _ in fake_db.executed]
+        self.assertTrue(
+            any("cancel_requested" in sql for sql in sqls),
+            "delete_paper이 실행 중 워커에 취소를 요청하지 않음(request_cancel 누락)",
+        )
+        self.assertTrue(
+            any("DELETE FROM analysis_runs" in sql for sql in sqls),
+            "delete_paper이 analysis_runs 잔여 행을 정리하지 않음 — 삭제된 논문에 리컨실러가 재spawn할 수 있음",
+        )
+        delete_papers_idx = next(i for i, sql in enumerate(sqls) if "DELETE FROM papers" in sql)
+        delete_runs_idx = next(i for i, sql in enumerate(sqls) if "DELETE FROM analysis_runs" in sql)
+        self.assertLess(delete_runs_idx, delete_papers_idx)
+
+
 if __name__ == "__main__":
     unittest.main()

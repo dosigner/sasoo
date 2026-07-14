@@ -39,6 +39,7 @@ from services.odl_parser import (
     schedule_paper_artifacts_refresh,
 )
 from services.artifact_status import resolve_artifact_status_contract
+from models.analysis_runs import request_cancel
 
 router = APIRouter(prefix="/api/papers", tags=["papers"])
 logger = logging.getLogger(__name__)
@@ -469,9 +470,15 @@ async def delete_paper(paper_id: int):
 
     # Delete from DB (cascading via foreign keys, but be explicit)
     db = await get_db()
+    # I4: 실행 중이던 워커가 삭제를 모른 채 계속 돌면 FK 위반·파일 오류로 이어진다 —
+    # phase 경계에서 스스로 멈추도록 취소를 요청한 뒤 analysis_runs 잔여 행도 지운다.
+    # (남겨두면 reconcile_stale ①에서 papers 조회가 NULL=terminal 아님으로 보여
+    #  ④ requeue가 삭제된 논문에 워커를 재스폰한다.)
+    await request_cancel(db, paper_id)
     await db.execute("DELETE FROM analysis_results WHERE paper_id = ?", (paper_id,))
     await db.execute("DELETE FROM figures WHERE paper_id = ?", (paper_id,))
     await db.execute("DELETE FROM tables WHERE paper_id = ?", (paper_id,))
+    await db.execute("DELETE FROM analysis_runs WHERE paper_id = ?", (paper_id,))
     await db.execute("DELETE FROM papers WHERE id = ?", (paper_id,))
     await db.commit()
 
