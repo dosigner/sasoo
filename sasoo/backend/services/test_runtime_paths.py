@@ -12,6 +12,24 @@ from services import crypto, odl_parser
 
 
 class RuntimeLibraryPathTests(unittest.TestCase):
+    def test_explicit_app_data_root_keeps_packaged_qa_out_of_user_data(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            isolated_root = Path(tmp_dir) / "appdata"
+            with patch.dict(
+                os.environ,
+                {"SASOO_ENV": "production", "SASOO_APP_DATA_ROOT": str(isolated_root)},
+                clear=False,
+            ):
+                self.assertEqual(
+                    database._get_app_data_root(),
+                    isolated_root.resolve(strict=False),
+                )
+
+    def test_explicit_app_data_root_must_be_absolute(self) -> None:
+        with patch.dict(os.environ, {"SASOO_APP_DATA_ROOT": "relative/path"}, clear=False):
+            with self.assertRaisesRegex(ValueError, "must be an absolute path"):
+                database._get_app_data_root()
+
     def test_get_paper_dir_falls_back_to_default_root_for_existing_papers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)

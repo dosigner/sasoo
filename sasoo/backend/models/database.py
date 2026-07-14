@@ -47,6 +47,13 @@ def _get_app_data_root() -> Path:
                    ~/Library/Application Support/Sasoo/ (macOS)
                    ~/.local/share/Sasoo/ (Linux)
     """
+    explicit_root = os.environ.get("SASOO_APP_DATA_ROOT", "").strip()
+    if explicit_root:
+        candidate = Path(explicit_root).expanduser()
+        if not candidate.is_absolute():
+            raise ValueError("SASOO_APP_DATA_ROOT must be an absolute path")
+        return candidate.resolve(strict=False)
+
     if _is_bundled():
         if sys.platform == 'win32':
             base = Path(os.environ.get('APPDATA', Path.home() / 'AppData' / 'Roaming'))
