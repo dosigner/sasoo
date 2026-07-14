@@ -584,6 +584,49 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["model"], "gemini-cache")
         insert_mock.assert_awaited_once()
 
+    async def test_citation_llm_failure_is_not_cached(self):
+        """일시적 LLM 실패(401·DNS 등)가 인용 캐시를 영구 오염시키면 안 된다.
+
+        실측 결함: 실패 시 에러 메시지가 summary 안에만 들어가 최상위 error 키가 없었고,
+        캐시 필터(_parse_error/error 검사)를 통과해 열화 결과가 계속 재사용됐다.
+        """
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+
+        async def _boom(prompt, **kwargs):
+            raise RuntimeError("Interactions API call failed after retries: 401")
+
+        local_result = {
+            "total_references": 3,
+            "citation_style": "numbered",
+            "self_citation_count": 0,
+            "self_citation_ratio": 0.0,
+            "top_cited": [{
+                "ref_id": "[1]", "authors": "Kim", "year": 2024, "title": "T",
+                "journal": "J", "cite_count": 2,
+                "cite_contexts": [{"sentence": "이 방법은 [1]을 따른다", "section": "Methods"}],
+            }],
+        }
+        fake_analysis = types.SimpleNamespace(to_dict=lambda: local_result)
+
+        with (
+            patch("services.citation_analyzer.analyze_citations", return_value=fake_analysis),
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_boom),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            result = await analysis_routes._run_citation(
+                7, sections={}, citation_body="본문", citation_references="[1] Kim 2024",
+                paper_authors="Kim", status=status,
+            )
+
+        payload = json.loads(result["text"])
+        # 최상위 error 키가 있어야 find_cached_phase_result가 캐시 미스로 처리한다
+        self.assertIn("error", payload)
+        from api.analysis_helpers import _is_error_result
+        self.assertTrue(_is_error_result(result["text"]))
+        # 로컬 파싱 결과는 그대로 사용자에게 제공된다(퇴행 아님)
+        self.assertEqual(payload["total_references"], 3)
+
     async def test_citation_calls_llm_with_schema_and_grounding(self):
         status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
         captured = {}

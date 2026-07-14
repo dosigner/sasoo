@@ -702,6 +702,10 @@ async def _run_citation(
         except Exception as exc:
             logger.warning("Citation LLM analysis failed: %s. Using local results only.", exc)
             local_result["summary"] = f"LLM 분석 실패 ({exc}). 로컬 파싱 결과만 제공됩니다."
+            # 최상위 error 키를 남겨 이 열화 결과가 캐시로 재사용되지 않게 한다.
+            # (find_cached_phase_result가 _parse_error/error 키를 가진 행을 캐시 미스로 처리)
+            # 없으면 일시적 네트워크·인증 실패가 인용 분석을 영구히 무력화한다 — 실측된 결함.
+            local_result["error"] = f"citation LLM 분석 실패: {exc}"
             cost = 0.0
 
     else:
