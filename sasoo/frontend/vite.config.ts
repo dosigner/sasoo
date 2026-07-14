@@ -53,6 +53,7 @@ export default defineConfig({
     },
   },
   build: {
+    target: 'es2022',
     outDir: 'dist',
     sourcemap: true,
     chunkSizeWarningLimit: 1600,
@@ -61,7 +62,7 @@ export default defineConfig({
         if (
           warning.code === 'EVAL' &&
           typeof warning.id === 'string' &&
-          /pdfjs-dist\/(?:legacy\/)?build\/pdf\.js$/.test(warning.id)
+          /pdfjs-dist\/(?:legacy\/)?build\/pdf\.mjs$/.test(warning.id)
         ) {
           return;
         }

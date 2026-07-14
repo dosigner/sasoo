@@ -12,6 +12,7 @@ Phases:
 import asyncio
 import json
 import logging
+import os
 import re
 import traceback
 from datetime import datetime, timezone
@@ -165,6 +166,16 @@ async def _get_cached_phase_result(paper_id: int, phase: str, input_text: str) -
     }
 
 
+# 게이트가 applicable=False로 스킵하기 전 요구하는 최소 확신도(잠정값 0.6 — e2e 분포로 재조정).
+_GATE_CONFIDENCE_FLOOR = 0.6
+
+# M6: citation phase 캐시 키 한정 버전 태그(현재 소비처: _citation_cache_key,
+# _run_citation의 non-top_refs 폴백 input_hash — 둘 다 citation phase). 프롬프트
+# 문구가 아닌 "안정 콘텐츠 + 이 버전"으로 캐시 키를 구성한다. 문구를 바꿔도 재과금이
+# 없고, citation phase의 계약이 실제로 바뀔 때만 이 값을 올려 1회 무효화한다.
+_CITATION_PROMPT_VERSION = "2026-07-14"
+
+
 def _screening_gate_decision(
     screening_result_text: Optional[str], phase: str = "recipe"
 ) -> tuple[bool, str]:
@@ -193,6 +204,13 @@ def _screening_gate_decision(
 
     applicable = payload.get(f"{phase}_applicable")
     if applicable is False:
+        # 확신이 낮은 오판정으로 phase를 차단하지 않는다: confidence가 floor 미만이면 실행.
+        try:
+            confidence = float(payload.get("confidence"))
+        except (TypeError, ValueError):
+            confidence = 1.0  # confidence 미제공(레거시)은 플래그를 신뢰
+        if confidence < _GATE_CONFIDENCE_FLOOR:
+            return (False, "")
         return (True, f"not_applicable_{phase}")
     if applicable is True:
         return (False, "")
@@ -435,14 +453,30 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
         status.total_tokens_out += cached["tokens_out"]
         return cached
 
-    result = await call_interaction(
-        prompt,
-        lane="pipeline",
-        model=MODEL_SCREENING,
-        thinking_level="minimal",
-        response_schema=_SCREENING_SCHEMA,
-        store=False,
-    )
+    async def _invoke() -> dict:
+        return await call_interaction(
+            prompt,
+            lane="pipeline",
+            model=MODEL_SCREENING,
+            thinking_level="minimal",
+            response_schema=_SCREENING_SCHEMA,
+            store=False,
+        )
+
+    result = await _invoke()
+    try:
+        json.loads(_clean_llm_json(result.get("text") or ""))
+    except (json.JSONDecodeError, TypeError):
+        logger.warning(
+            "screening JSON parse failed (tokens_out=%s); retrying once",
+            result.get("tokens_out"),
+        )
+        retry = await _invoke()
+        # 재시도 사용량을 합산해 비용 추적이 실사용을 반영하게 한다
+        retry["tokens_in"] = (result.get("tokens_in") or 0) + (retry.get("tokens_in") or 0)
+        retry["tokens_out"] = (result.get("tokens_out") or 0) + (retry.get("tokens_out") or 0)
+        result = retry
+
     # structured output 실패 대비 안전망: 마크다운 펜스 제거 후 JSON 검증
     cleaned_text = _clean_llm_json(result["text"])
 
@@ -484,6 +518,51 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
     return result
 
 
+def _norm_ref_id(raw: object) -> str:
+    """ref_id를 병합 비교용으로 정규화한다(대괄호·공백·'ref'/'#' 선행 표기 제거, 소문자)."""
+    s = str(raw or "").strip().lower()
+    for ch in ("[", "]", "(", ")", "#"):
+        s = s.replace(ch, "")
+    if s.startswith("ref"):
+        s = s[3:]
+    return s.strip()
+
+
+def _build_top_by_norm(top_cited: list) -> dict:
+    """정규화 키 → top_cited 항목. 동일 키 중복 시 첫 항목 우선(원본 병합 루프의 break 의미 보존)."""
+    mapping: dict = {}
+    for tc in top_cited:
+        mapping.setdefault(_norm_ref_id(tc.get("ref_id")), tc)
+    return mapping
+
+
+def _citation_cache_key(local_result: dict, citation_body: str) -> str:
+    """인용 phase 캐시 키: 프롬프트 문구가 아닌 안정 콘텐츠 + _CITATION_PROMPT_VERSION.
+
+    문구를 고쳐도 재과금이 없고, 계약이 실제로 바뀔 때 _CITATION_PROMPT_VERSION을 올려 1회 무효화한다."""
+    top = [
+        {
+            "ref_id": r.get("ref_id"),
+            "cite_count": r.get("cite_count"),
+            "contexts": [
+                {"s": (c.get("sentence") or "")[:300], "sec": c.get("section") or ""}
+                for c in (r.get("cite_contexts") or [])[:5]
+            ],
+        }
+        for r in local_result.get("top_cited", [])[:10]
+    ]
+    payload = {
+        "v": _CITATION_PROMPT_VERSION,
+        "phase": "citation",
+        "total_references": local_result.get("total_references", 0),
+        "citation_style": local_result.get("citation_style", ""),
+        "self_citation_count": local_result.get("self_citation_count", 0),
+        "top": top,
+        "body": citation_body[:3000],
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+
 async def _run_citation(
     paper_id: int,
     sections: dict[str, str],
@@ -519,7 +598,12 @@ async def _run_citation(
         top_refs_text = ""
         for i, ref in enumerate(top_refs, 1):
             contexts = ref.get("cite_contexts", [])
-            ctx_str = "; ".join(c.get("sentence", "")[:100] for c in contexts[:3])
+            ctx_parts = []
+            for c in contexts[:5]:
+                sentence = (c.get("sentence") or "")[:300]
+                sec = (c.get("section") or "").strip()
+                ctx_parts.append(f"[{sec or '위치미상'}] {sentence}" if sentence else "")
+            ctx_str = "; ".join(p for p in ctx_parts if p)
             top_refs_text += (
                 f"{i}. {ref.get('ref_id', '')} {ref.get('authors', '')} "
                 f"({ref.get('year', '?')}): \"{ref.get('title', '')}\" "
@@ -543,15 +627,17 @@ async def _run_citation(
 위 데이터에 근거해서만 이 논문 내부의 인용 사용 패턴을 분석해줘.
 
 규칙:
-- citation_role은 제공된 인용 맥락에서 확인되는 기능만으로 분류해. 근거가 부족하면 "unclear"를 써.
-- evidence_context에는 분류의 근거가 된 인용 맥락 문장을 위 자료에서 한 구절 그대로 옮겨 적어.
+- citation_role은 인용 맥락과 참고문헌의 제목·저널 정보를 근거로 가장 그럴듯한 역할을 골라. 제목·저널도 위에 제공된 데이터니까 이를 근거로 판단하는 건 날조가 아니야.
+- "unclear"는 최후 수단이야 — 인용 맥락과 제목·저널 어느 쪽으로도 판단할 수 없을 때만 써.
+- evidence_context에는 분류 근거가 된 인용 맥락 문장을 위 자료에서 한 구절 그대로 옮겨 적어. 맥락이 아닌 제목·저널로 판단했다면 "(제목 근거)"라고 적어.
 - why_cited는 왜 자주 인용됐는지 2-3문장(한국어)으로 써.
 - 참고문헌의 실제 내용·존재 여부·학계 전체 영향력은 검증된 것처럼 말하지 마.
 - key_influences는 위에 제시된 참고문헌 안에서만 골라 — 목록에 없는 연구를 추가하지 마.
 - summary는 전체 인용 패턴 평가 2-3문장(한국어). limitations에는 상위 10개와 본문 발췌만 본 평가라는 한계를 한 문장으로 남겨.
 """
 
-        cached = await _get_cached_phase_result(paper_id, "citation", llm_prompt)
+        cache_key = _citation_cache_key(local_result, citation_body)
+        cached = await _get_cached_phase_result(paper_id, "citation", cache_key)
         if cached is not None:
             phase_status.status = "completed"
             phase_status.completed_at = _utcnow_iso()
@@ -581,16 +667,22 @@ async def _run_citation(
             except json.JSONDecodeError:
                 llm_data = {}
 
-            # Merge LLM analysis into local_result
+            # Merge LLM analysis into local_result (ref_id 포맷 드리프트 허용)
             ref_analyses = llm_data.get("ref_analyses", [])
+            top_cited = local_result.get("top_cited", [])
+            top_by_norm = _build_top_by_norm(top_cited)
             for ra in ref_analyses:
-                ref_id = ra.get("ref_id", "")
-                for tc in local_result.get("top_cited", []):
-                    if tc.get("ref_id") == ref_id:
-                        tc["citation_role"] = ra.get("citation_role", "")
-                        tc["why_cited"] = ra.get("why_cited", "")
-                        tc["evidence_context"] = ra.get("evidence_context", "")
-                        break
+                norm = _norm_ref_id(ra.get("ref_id", ""))
+                tc = top_by_norm.get(norm)
+                if tc is None:
+                    logger.warning(
+                        "citation merge drop: ref_id=%r (norm=%r) not in top_cited for paper %s",
+                        ra.get("ref_id"), norm, paper_id,
+                    )
+                    continue
+                tc["citation_role"] = ra.get("citation_role", "")
+                tc["why_cited"] = ra.get("why_cited", "")
+                tc["evidence_context"] = ra.get("evidence_context", "")
 
             local_result["summary"] = llm_data.get("summary", "")
             local_result["citation_balance"] = llm_data.get("citation_balance", "")
@@ -617,10 +709,12 @@ async def _run_citation(
         cost = 0.0
 
     input_hash_source = (
-        llm_prompt
+        _citation_cache_key(local_result, citation_body)
         if top_refs
         else json.dumps(
             {
+                "v": _CITATION_PROMPT_VERSION,
+                "phase": "citation",
                 "citation_body": citation_body,
                 "citation_references": citation_references,
                 "paper_authors": paper_authors,
@@ -886,40 +980,60 @@ async def _run_chain_stage(
       케이스에는 restart_context(이전 스테이지 결과 텍스트)를 PDF와 함께 프롬프트에 실어
       서버 상태 단절로 잃은 이전 분석 컨텍스트를 복원한다.
     - pdf_uri 없음(폴백): stateless(store=False). 기존 phase_inputs 텍스트를 프롬프트에 삽입한다.
+
+    확률적 반복 루프 등으로 결과 텍스트가 JSON 파싱 불가면 1회 재시도한다(재시도도
+    실패하면 그대로 반환 — 기존 `_raw`/`_parse_error` 경로가 처리).
     """
-    if pdf_uri:
-        if previous_interaction_id is None:
-            chain_text = prompt_chain
-            if restart_context:
-                chain_text = (
-                    f"{prompt_chain}\n\n"
-                    f"이전 분석 단계 결과(체인 재시작으로 복원):\n{restart_context}"
-                )
-            contents = [
-                {"type": "document", "uri": pdf_uri, "mime_type": "application/pdf"},
-                {"type": "text", "text": chain_text},
-            ]
-        else:
-            contents = prompt_chain
+
+    async def _invoke() -> dict:
+        if pdf_uri:
+            if previous_interaction_id is None:
+                chain_text = prompt_chain
+                if restart_context:
+                    chain_text = (
+                        f"{prompt_chain}\n\n"
+                        f"이전 분석 단계 결과(체인 재시작으로 복원):\n{restart_context}"
+                    )
+                contents = [
+                    {"type": "document", "uri": pdf_uri, "mime_type": "application/pdf"},
+                    {"type": "text", "text": chain_text},
+                ]
+            else:
+                contents = prompt_chain
+            return await call_interaction(
+                contents,
+                lane="pipeline",
+                model=_STAGE_MODELS[phase],
+                system_instruction=system_instruction,
+                thinking_level=_STAGE_THINKING[phase],
+                previous_interaction_id=previous_interaction_id,
+                response_schema=response_schema,
+                store=True,
+            )
         return await call_interaction(
-            contents,
+            prompt_fallback,
             lane="pipeline",
             model=_STAGE_MODELS[phase],
             system_instruction=system_instruction,
             thinking_level=_STAGE_THINKING[phase],
-            previous_interaction_id=previous_interaction_id,
             response_schema=response_schema,
-            store=True,
+            store=False,
         )
-    return await call_interaction(
-        prompt_fallback,
-        lane="pipeline",
-        model=_STAGE_MODELS[phase],
-        system_instruction=system_instruction,
-        thinking_level=_STAGE_THINKING[phase],
-        response_schema=response_schema,
-        store=False,
-    )
+
+    result = await _invoke()
+    try:
+        json.loads(_clean_llm_json(result.get("text") or ""))
+    except (json.JSONDecodeError, TypeError):
+        logger.warning(
+            "chain stage %s JSON parse failed (tokens_out=%s); retrying once",
+            phase, result.get("tokens_out"),
+        )
+        retry = await _invoke()
+        # 재시도 사용량을 합산해 비용 추적이 실사용을 반영하게 한다
+        retry["tokens_in"] = (result.get("tokens_in") or 0) + (retry.get("tokens_in") or 0)
+        retry["tokens_out"] = (result.get("tokens_out") or 0) + (retry.get("tokens_out") or 0)
+        result = retry
+    return result
 
 
 async def _run_visual(
@@ -2308,6 +2422,34 @@ async def _run_full_analysis(paper_id: int):
 # Endpoints
 # ---------------------------------------------------------------------------
 
+def _subprocess_mode() -> bool:
+    """실런타임(Electron/서버)에서만 켜지는 디태치 워커 모드 플래그. 테스트/직접 실행 기본 off."""
+    return os.environ.get("SASOO_ANALYSIS_SUBPROCESS", "") == "1"
+
+
+def _overlay_run_status(base: dict, run: Optional[dict]) -> dict:
+    """analysis_runs 라이브 값을 기존 status builder 결과에 overlay. queued→running 매핑."""
+    if not run:
+        return base
+    st = run.get("status")
+    if st in ("queued", "running"):
+        merged = dict(base)
+        merged["overall_status"] = "running"          # 프론트 isRunning union + 폴링 지속
+        # raw phase 문자열은 AnalysisPhase enum으로 클램프(미지의 값이면 None 유지 — 응답 검증 500 방지)
+        phase_raw = run.get("current_phase")
+        try:
+            phase = AnalysisPhase(phase_raw) if phase_raw else None
+        except ValueError:
+            phase = None
+        if phase is not None:
+            merged["current_phase"] = phase
+        pct = run.get("progress_pct")
+        if pct is not None and pct > merged.get("progress_pct", 0.0):
+            merged["progress_pct"] = pct
+        return merged
+    return base
+
+
 @router.post("/{paper_id}/run", status_code=202)
 async def run_analysis(paper_id: int, background_tasks: BackgroundTasks):
     """
@@ -2343,6 +2485,20 @@ async def run_analysis(paper_id: int, background_tasks: BackgroundTasks):
         if paper_id in _running_analyses:
             del _running_analyses[paper_id]
 
+    if _subprocess_mode():
+        # I3: 분석이 디태치 워커로 옮겨간 뒤엔 위 인메모리 _running_analyses 가드가 항상
+        # 비어 있어 무조건 통과한다 — DB(analysis_runs) 기준으로 다시 막는다. 안 막으면
+        # upsert_queued가 running 행을 queued/attempts=0으로 리셋해 즉시 재claim되며
+        # 두 번째 워커가 스폰된다(구 워커 self-abort까지의 창에서 중복 LLM 호출·과금).
+        from models.database import get_db
+        from models.analysis_runs import get_run
+        existing_run = await get_run(await get_db(), paper_id)
+        if existing_run and existing_run["status"] in ("queued", "running"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Analysis for paper {paper_id} is already running.",
+            )
+
     # Check budget before starting
     from api.settings import _get_all_settings
     settings = await _get_all_settings()
@@ -2371,8 +2527,22 @@ async def run_analysis(paper_id: int, background_tasks: BackgroundTasks):
                    f"Increase your budget in Settings to continue.",
         )
 
-    # Launch background analysis
-    background_tasks.add_task(_run_full_analysis, paper_id)
+    # Launch analysis: subprocess mode(실런타임)면 디태치 워커, 아니면 기존 in-process 경로 유지
+    if _subprocess_mode():
+        from models.database import get_db
+        from models.analysis_runs import upsert_queued, utcnow_iso
+        from services.analysis_supervisor import reconcile_once, read_max_concurrent
+        conn = await get_db()
+        # I1: 이미 completed인 논문을 재분석할 때 papers.status를 안 건드리고 claim+spawn하면,
+        # 워커가 _run_full_analysis의 첫 UPDATE papers SET status='analyzing'에 도달하기 전에
+        # 죽어도 papers는 여전히 completed로 남아 reconcile_stale ①이 조용히 완료로 확정한다.
+        # upsert_queued 직전에 세워 그 창을 없앤다.
+        await execute_update("UPDATE papers SET status = ? WHERE id = ?", ("analyzing", paper_id))
+        await upsert_queued(conn, paper_id, utcnow_iso())
+        # 즉시 드레인 시도(cap 내면 이번 요청이 스폰, 초과면 queued로 남아 리컨실러가 픽업)
+        await reconcile_once(conn, cap=await read_max_concurrent())
+    else:
+        background_tasks.add_task(_run_full_analysis, paper_id)
 
     return {
         "paper_id": paper_id,
@@ -2386,12 +2556,29 @@ async def cancel_analysis(paper_id: int):
     """
     Cancel a running analysis for a paper.
     """
-    # Check if there's a cancel event for this paper
+    # subprocess mode: DB flag를 세우면 워커 사이드카가 phase 경계에서 취소를 존중한다
+    if _subprocess_mode():
+        try:
+            from models.database import get_db
+            from models.analysis_runs import request_cancel, get_run, cancel_queued_now
+            conn = await get_db()
+            # C1: cap 초과로 queued에 머문 run은 request_cancel(플래그만 세움)로는 소비되지 않아
+            # 영구 좀비가 된다 — 아직 워커가 안 떴다면 원자적으로 즉시 cancelled 확정한다.
+            rowcount = await cancel_queued_now(conn, paper_id, _utcnow_iso())
+            if rowcount > 0:
+                await execute_update("UPDATE papers SET status = ? WHERE id = ?", ("cancelled", paper_id))
+                return {"paper_id": paper_id, "status": "cancelled"}
+            run = await get_run(conn, paper_id)
+            if run and run.get("status") in ("queued", "running"):
+                await request_cancel(conn, paper_id)
+                return {"paper_id": paper_id, "status": "cancelling"}
+        except Exception as exc:  # noqa: BLE001 — 마이그레이션 전 DB 등: 레거시 인메모리 경로로 폴스루
+            logger.warning("cancel: analysis_runs 접근 실패 — 레거시 취소 경로로 폴스루: %s", exc)
+
+    # in-process(레거시/테스트) 경로 — 기존 동작 보존
     if paper_id in _cancel_events:
         _cancel_events[paper_id].set()
         return {"paper_id": paper_id, "status": "cancelling"}
-
-    # Check if the paper is running and update its status
     if paper_id in _running_analyses:
         running = _running_analyses[paper_id]
         if running.overall_status == "running":
@@ -2457,11 +2644,22 @@ async def get_analysis_status(paper_id: int):
         progress = (completed_main / 5) * 80  # Max 80% without viz
     progress = min(progress, 100.0)
 
+    base = {"overall_status": paper["status"], "progress_pct": progress, "current_phase": None}
+    if _subprocess_mode():
+        try:
+            from models.database import get_db
+            from models.analysis_runs import get_run
+            run = await get_run(await get_db(), paper_id)
+            base = _overlay_run_status(base, run)
+        except Exception:
+            pass
+
     return AnalysisStatus(
         paper_id=paper_id,
-        overall_status=paper["status"],
+        overall_status=base["overall_status"],
         phases=phases,
-        progress_pct=progress,
+        progress_pct=base["progress_pct"],
+        current_phase=base["current_phase"],
         total_cost_usd=total_cost,
         total_tokens_in=total_in,
         total_tokens_out=total_out,

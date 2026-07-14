@@ -1,4 +1,4 @@
-import { getApiBase } from '@/lib/api';
+import { getApiBase, getBackendAuthorizationHeaders } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Agent metadata
@@ -34,7 +34,7 @@ const _agentCache: Map<string, AgentMeta> = new Map();
 /** Fetch all agents from the backend and populate the cache. */
 export async function fetchAllAgents(): Promise<AgentMeta[]> {
   const url = `${getApiBase()}/agents`;
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: await getBackendAuthorizationHeaders() });
   if (!res.ok) {
     throw new Error(`Failed to fetch agents: ${res.statusText}`);
   }

@@ -26,9 +26,11 @@ export interface ElectronAPI {
 
   // Backend
   getBackendPort: () => number;
+  getBackendAuthToken: () => Promise<string | null>;
+  getBackendAssetToken: (requestPath: string) => string | null;
 
   // App
-  getAppPath: (name: string) => Promise<string | null>;
+  getAppPath: (name: 'documents' | 'home') => Promise<string | null>;
 
   // Window controls
   minimizeWindow: () => Promise<void>;
@@ -50,6 +52,8 @@ const electronAPI: ElectronAPI = {
 
   // Backend
   getBackendPort: () => bundledBackendPort,
+  getBackendAuthToken: () => ipcRenderer.invoke('backend:getAuthToken'),
+  getBackendAssetToken: (requestPath) => ipcRenderer.sendSync('backend:getAssetToken', requestPath),
 
   // App
   getAppPath: (name) => ipcRenderer.invoke('app:getPath', name),

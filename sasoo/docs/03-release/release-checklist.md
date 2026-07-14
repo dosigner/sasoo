@@ -89,7 +89,7 @@ Manual rerun for an existing tag:
 
 ## Signing And Trust
 
-Unsigned builds can be produced without extra secrets, but production release quality should include code signing.
+GitHub Release publishing is blocked unless macOS signing/notarization and Windows Authenticode secrets are configured. Unsigned builds are only for local development and internal checks; never publish them.
 
 Recommended signing/notarization secrets for GitHub Actions:
 
@@ -103,7 +103,7 @@ Recommended signing/notarization secrets for GitHub Actions:
   - `WIN_CSC_LINK`
   - `WIN_CSC_KEY_PASSWORD`
 
-If those secrets are not configured, the workflows still build artifacts, but users may see OS trust warnings.
+The release workflow verifies the extracted macOS app with `codesign` and Gatekeeper assessment, and verifies the Windows installer with `Get-AuthenticodeSignature`.
 
 ## Release Completion
 

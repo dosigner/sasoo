@@ -290,6 +290,71 @@ class CachedPhaseLookupTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cached.input_hash, expected_hash)
         fetch_one_mock.assert_awaited_once()
 
+    async def test_find_cached_phase_result_rejects_parse_error_row(self):
+        input_text = "final prompt string"
+        expected_hash = compute_input_hash(input_text)
+
+        with patch(
+            "services.document_context.fetch_one",
+            new=AsyncMock(
+                return_value={
+                    "result": '{"_raw": "broken output", "_parse_error": "Expecting value"}',
+                    "model_used": "gemini",
+                    "tokens_in": 10,
+                    "tokens_out": 20,
+                    "cost_usd": 0.3,
+                    "input_hash": expected_hash,
+                }
+            ),
+        ):
+            cached = await find_cached_phase_result(7, "recipe", input_text)
+
+        self.assertIsNone(cached)
+
+    async def test_find_cached_phase_result_rejects_error_row(self):
+        input_text = "final prompt string"
+        expected_hash = compute_input_hash(input_text)
+
+        with patch(
+            "services.document_context.fetch_one",
+            new=AsyncMock(
+                return_value={
+                    "result": '{"error": "llm_call_failed"}',
+                    "model_used": "gemini",
+                    "tokens_in": 10,
+                    "tokens_out": 20,
+                    "cost_usd": 0.3,
+                    "input_hash": expected_hash,
+                }
+            ),
+        ):
+            cached = await find_cached_phase_result(7, "recipe", input_text)
+
+        self.assertIsNone(cached)
+
+    async def test_find_cached_phase_result_returns_normal_json_row(self):
+        input_text = "final prompt string"
+        expected_hash = compute_input_hash(input_text)
+
+        with patch(
+            "services.document_context.fetch_one",
+            new=AsyncMock(
+                return_value={
+                    "result": '{"title": "recipe"}',
+                    "model_used": "gemini",
+                    "tokens_in": 10,
+                    "tokens_out": 20,
+                    "cost_usd": 0.3,
+                    "input_hash": expected_hash,
+                }
+            ),
+        ):
+            cached = await find_cached_phase_result(7, "recipe", input_text)
+
+        self.assertIsNotNone(cached)
+        assert cached is not None
+        self.assertEqual(cached.result_data["title"], "recipe")
+
 
 if __name__ == "__main__":
     unittest.main()

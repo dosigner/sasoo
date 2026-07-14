@@ -72,6 +72,12 @@ function verifyPortableExecutable(exePath) {
   }
 }
 
+function verifyAuthenticodeSignature(exePath) {
+  const script = '$signature = Get-AuthenticodeSignature -LiteralPath $args[0]; if ($signature.Status -ne "Valid") { Write-Error "Invalid Authenticode status: $($signature.Status)"; exit 1 }';
+  const { execFileSync } = require('child_process');
+  execFileSync('powershell.exe', ['-NoProfile', '-Command', script, exePath], { stdio: 'inherit' });
+}
+
 function verifyUpdateManifest(installerPaths) {
   if (!fs.existsSync(UPDATE_FILE)) {
     fail(`latest.yml not found at ${UPDATE_FILE}`);
@@ -153,7 +159,8 @@ for (const exePath of exeFiles) {
     fail(`${path.basename(exePath)} is empty.`);
   }
   verifyPortableExecutable(exePath);
+  verifyAuthenticodeSignature(exePath);
   log(`Verified installer ${path.basename(exePath)} (${Math.round(stat.size / 1024 / 1024)} MB).`);
 }
 
-log('Windows artifacts passed installer and update manifest checks.');
+log('Windows artifacts passed installer, Authenticode, and update manifest checks.');

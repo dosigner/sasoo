@@ -362,6 +362,27 @@ function isFileProtocolCheck(): boolean {
   return typeof window !== 'undefined' && window.location.protocol === 'file:';
 }
 
+async function getBackendAuthToken(): Promise<string> {
+  return (await window.electronAPI?.getBackendAuthToken?.()) ?? '';
+}
+
+export async function getBackendAuthorizationHeaders(): Promise<Record<string, string>> {
+  const token = await getBackendAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function appendBackendAssetToken(url: string): string {
+  let requestPath: string;
+  try {
+    requestPath = decodeURIComponent(new URL(url, window.location.origin).pathname);
+  } catch {
+    return url;
+  }
+  const token = window.electronAPI?.getBackendAssetToken?.(requestPath);
+  if (!token) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}sasoo_asset_token=${encodeURIComponent(token)}`;
+}
+
 async function request<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -376,6 +397,7 @@ async function request<T>(
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
   };
+  Object.assign(headers, await getBackendAuthorizationHeaders());
 
   // Don't set Content-Type for FormData (browser sets boundary automatically)
   if (!(options.body instanceof FormData)) {
@@ -475,7 +497,12 @@ export async function uploadPaper(
     });
 
     xhr.open('POST', `${getApiBase()}/papers/upload`);
-    xhr.send(formData);
+    void getBackendAuthToken().then((token) => {
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
+      xhr.send(formData);
+    }).catch(reject);
   });
 }
 
@@ -714,9 +741,13 @@ export async function chatWithAgent(
 ): Promise<void> {
   const url = `${getApiBase()}/analysis/${paperId}/chat`;
 
+  const authHeaders = await getBackendAuthorizationHeaders();
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders,
+    },
     signal,
     body: JSON.stringify({
       message,
@@ -810,7 +841,7 @@ export async function getCostSummary(): Promise<CostSummary> {
 // ---------------------------------------------------------------------------
 
 export function getPdfUrl(paperId: string): string {
-  return `${getApiBase()}/papers/${paperId}/pdf`;
+  return appendBackendAssetToken(`${getApiBase()}/papers/${paperId}/pdf`);
 }
 
 // ---------------------------------------------------------------------------
@@ -826,9 +857,9 @@ export function getStaticUrl(relativeUrl: string | null | undefined): string {
   // In Electron production (file:// protocol), use absolute backend URL
   if (isFileProtocolCheck() && relativeUrl.startsWith('/static/')) {
     const bundledPort = window.electronAPI?.getBackendPort?.() || BACKEND_PORT;
-    return `http://127.0.0.1:${bundledPort}${relativeUrl}`;
+    return appendBackendAssetToken(`http://127.0.0.1:${bundledPort}${relativeUrl}`);
   }
-  return relativeUrl;
+  return relativeUrl.startsWith('/static/') ? appendBackendAssetToken(relativeUrl) : relativeUrl;
 }
 
 export function getLibraryAssetUrl(assetPath: string | null | undefined): string {

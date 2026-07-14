@@ -8,6 +8,7 @@ Runs on http://localhost:8000 by default.
 import os
 import ssl
 from contextlib import asynccontextmanager
+from hmac import compare_digest, digest
 from pathlib import Path
 from typing import Optional
 
@@ -59,11 +60,12 @@ except ImportError:
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from models.database import (
     APP_DATA_ROOT,
     close_db,
+    fetch_one,
     get_library_root,
     get_library_search_roots,
     init_db,
@@ -76,23 +78,35 @@ if _env_path.exists():
 
 
 # ---------------------------------------------------------------------------
-# Lifespan (startup / shutdown)
+# Runtime bootstrap (shared by the server process and detached analysis workers)
 # ---------------------------------------------------------------------------
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan: initialize resources on startup, clean up on shutdown."""
-    # --- Startup ---
-    await init_db()
+async def bootstrap_runtime(worker: bool = False) -> None:
+    """서버/워커 공통 런타임 초기화(DB 연결 + API 키 + PDF 엔진 설정 + 에이전트 로드).
 
-    # Set up centralized logging (file + console)
-    from services.log_setup import setup_logging
+    worker=True(디태치 분석 워커, `--analyze-paper`로 재실행된 프로세스)면:
+      - init_db() 대신 connect_worker_db()로 연결한다(마이그레이션은 서버 기동이 이미 보장).
+      - 공유 RotatingFileHandler를 여는 setup_logging()을 호출하지 않는다 — 다중 프로세스가
+        같은 로그 파일에 rollover하면 충돌한다. stdout만 남기고(spawn_worker가 per-run 로그
+        파일로 리다이렉트한다), 고아 정리(stuck recovery)·리컨실러도 실행하지 않는다(서버 전용).
+    """
     import logging
-    log_level = logging.DEBUG if os.environ.get("SASOO_ENV") != "production" else logging.INFO
-    setup_logging(level=log_level)
+
+    if worker:
+        from models.database import connect_worker_db
+        await connect_worker_db()
+        logging.basicConfig(level=logging.INFO)
+    else:
+        await init_db()
+
+        # Set up centralized logging (file + console)
+        from services.log_setup import setup_logging
+        log_level = logging.DEBUG if os.environ.get("SASOO_ENV") != "production" else logging.INFO
+        setup_logging(level=log_level)
+        print(f"[Sasoo] Database: {APP_DATA_ROOT / 'sasoo.db'}")
+        print(f"[Sasoo] Library root: {get_library_root()}")
+
     print(f"[Sasoo] App data root: {APP_DATA_ROOT}")
-    print(f"[Sasoo] Database: {APP_DATA_ROOT / 'sasoo.db'}")
-    print(f"[Sasoo] Library root: {get_library_root()}")
 
     # Load API keys + PDF visual-engine preference from the settings table.
     # F7: 한 번의 fetch_all(IN 절)로 세 키를 함께 읽어 기동 시 DB 왕복을 1회로 줄인다
@@ -134,26 +148,33 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         print(f"[Sasoo] Warning: Could not load PDF visual engine preference: {exc}")
 
-    # 프로세스가 중간에 죽으면 papers.status가 'analyzing'으로 영구 고착된다.
-    # 기동 시점에 살아있는 분석은 없으므로 전부 error로 정리한다.
-    try:
-        from models.database import execute_update
-        n = await execute_update(
-            "UPDATE papers SET status = 'error' WHERE status = 'analyzing'"
-        )
-        if n:
-            print(f"[Sasoo] Recovered {n} paper(s) stuck in 'analyzing'.")
-    except Exception as exc:
-        print(f"[Sasoo] Warning: stuck-analysis recovery failed: {exc}")
-
     # Load .md agent profiles and initialize domain router
     from services.agents import load_all_agents
     load_all_agents()
     print("[Sasoo] Agent profiles loaded from .md files.")
 
+
+# ---------------------------------------------------------------------------
+# Lifespan (startup / shutdown)
+# ---------------------------------------------------------------------------
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan: initialize resources on startup, clean up on shutdown."""
+    # --- Startup ---
+    await bootstrap_runtime(worker=False)
+
+    # 프로세스 분리: 기동 시 고아('analyzing'인데 runs 행 없음)를 큐로 시드하고 리컨실러를 띄운다.
+    # (예전의 "죽은 'analyzing' → 'error' 일괄 정리"를 대체 — 이제는 정리 대신 재개를 시도한다.)
+    from services.analysis_supervisor import start_reconciler
+    await start_reconciler(app)
+
     yield
 
     # --- Shutdown ---
+    from services.analysis_supervisor import stop_reconciler
+    await stop_reconciler(app)
+
     await close_db()
     print("[Sasoo] Database connection closed.")
 
@@ -165,7 +186,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Sasoo - AI Co-Scientist",
     description=(
-        "Backend API for Sasoo, an AI Co-Scientist desktop application "
+    "Backend API for Sasoo, an AI Co-Scientist desktop application "
         "that analyzes research papers using a 4-phase engineering analysis strategy "
         "(Screening -> Visual Verification -> Recipe Extraction -> Deep Dive) "
         "powered by the Gemini API (Interactions)."
@@ -196,6 +217,61 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def require_runtime_api_token(request, call_next):
+    """Require the per-launch Electron capability token for local API access.
+
+    Browsers and other local processes can both reach a loopback server.  A
+    localhost binding is therefore not an authentication boundary.  Electron
+    supplies ``SASOO_API_TOKEN`` when it launches the backend, while ``/health``
+    remains unauthenticated so startup can check that a newly selected port is
+    listening without disclosing application data.
+    """
+    expected_token = os.environ.get("SASOO_API_TOKEN", "")
+    if request.method == "OPTIONS" or request.url.path == "/health":
+        return await call_next(request)
+    if not expected_token:
+        if os.environ.get("SASOO_ENV") == "production":
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Local API token is not configured"},
+            )
+        return await call_next(request)
+
+    authorization = request.headers.get("Authorization", "")
+    bearer_token = (
+        authorization.removeprefix("Bearer ")
+        if authorization.startswith("Bearer ")
+        else ""
+    )
+    path = request.url.path
+    paper_id = path.removeprefix("/api/papers/").removesuffix("/pdf")
+    is_asset_path = path.startswith("/static/library/") or (
+        path == f"/api/papers/{paper_id}/pdf" and paper_id.isdigit()
+    )
+    supplied_asset_token = request.query_params.get("sasoo_asset_token", "")
+    expected_asset_token = digest(
+        expected_token.encode(),
+        f"sasoo-asset-v1:{path}".encode(),
+        "sha256",
+    ).hex()
+    has_valid_asset_token = (
+        is_asset_path
+        and bool(supplied_asset_token)
+        and compare_digest(supplied_asset_token, expected_asset_token)
+    )
+    if (
+        (not bearer_token or not compare_digest(bearer_token, expected_token))
+        and not has_valid_asset_token
+    ):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Missing or invalid local API token"},
+        )
+
+    return await call_next(request)
 
 # ---------------------------------------------------------------------------
 # Static file mount (unified library directory)
@@ -237,9 +313,14 @@ async def root():
 
 @app.get("/health", tags=["health"])
 async def health_check():
+    runtime_token = os.environ.get("SASOO_API_TOKEN", "")
     return {
         "status": "ok",
-        "library_path": str(get_library_root()),
+        "instance_proof": (
+            digest(runtime_token.encode(), b"sasoo-health-v1", "sha256").hex()
+            if runtime_token
+            else ""
+        ),
     }
 
 
@@ -248,6 +329,18 @@ async def library_asset(requested_path: str):
     relative_path = Path(requested_path)
     if relative_path.is_absolute() or ".." in relative_path.parts:
         raise HTTPException(status_code=400, detail="Invalid library asset path")
+
+    # Files are public only below a paper folder that exists in the database.
+    # This prevents a changed library root from turning this route into a
+    # general-purpose file server for the selected directory.
+    if not relative_path.parts:
+        raise HTTPException(status_code=404, detail="Library asset not found")
+    paper = await fetch_one(
+        "SELECT 1 FROM papers WHERE folder_name = ?",
+        (relative_path.parts[0],),
+    )
+    if paper is None:
+        raise HTTPException(status_code=404, detail="Library asset not found")
 
     for root in get_library_search_roots():
         resolved_root = root.resolve(strict=False)
@@ -290,8 +383,19 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
     parser.add_argument("--reload", action="store_true", help="Enable auto-reload (dev only)")
+    parser.add_argument("--analyze-paper", type=int, default=None,
+                         help="Run detached analysis worker for this paper id (internal — spawned by the supervisor)")
+    parser.add_argument("--run-generation", type=int, default=0,
+                         help="Fence token for the analysis worker (internal)")
 
     args = parser.parse_args()
+
+    # Detached analysis worker mode: re-exec of this same bundle with --analyze-paper.
+    # Runs the analysis in-process and exits — never reaches uvicorn.run() below.
+    if args.analyze_paper is not None:
+        import asyncio
+        from services.analysis_worker import run_analysis_worker
+        sys.exit(asyncio.run(run_analysis_worker(args.analyze_paper, args.run_generation)))
 
     # Determine if we're running as a bundled executable
     is_bundled = getattr(sys, 'frozen', False)

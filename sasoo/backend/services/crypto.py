@@ -43,12 +43,45 @@ def _key_path():
     return APP_DATA_ROOT / _KEY_FILENAME
 
 
+def _restrict_file_permissions(path) -> bool:
+    if os.name == "nt":
+        try:
+            import subprocess
+
+            result = subprocess.run(
+                ["icacls", str(path), "/inheritance:r", "/grant:r",
+                 f"{os.environ.get('USERNAME', 'CURRENT_USER')}:(R,W)"],
+                capture_output=True, check=False,
+            )
+            return result.returncode == 0
+        except OSError:
+            logger.warning("Could not restrict permissions on %s", path)
+            return False
+
+    try:
+        os.chmod(path, 0o600)
+        return (path.stat().st_mode & 0o077) == 0
+    except OSError:
+        logger.warning("Could not chmod 0600 on %s", path)
+        return False
+
+
 def _read_file_key() -> Optional[bytes]:
     """Read the on-disk key. Never creates one."""
     path = _key_path()
     if not path.exists():
         return None
-    key = path.read_bytes().strip()
+    if path.is_symlink() or not path.is_file():
+        logger.error("Refusing to read an unsafe encryption key path: %s", path)
+        return None
+    if not _restrict_file_permissions(path):
+        logger.error("Encryption key permissions could not be secured: %s", path)
+        return None
+    try:
+        key = path.read_bytes().strip()
+    except OSError:
+        logger.error("Could not read encryption key: %s", path)
+        return None
     return key or None
 
 
@@ -57,24 +90,21 @@ def _create_file_key() -> bytes:
     path = _key_path()
     new_key = Fernet.generate_key()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(new_key)
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        existing_key = _read_file_key()
+        if existing_key:
+            return existing_key
+        raise RuntimeError(f"Could not safely read existing encryption key: {path}")
 
-    if os.name == "nt":
-        try:
-            import subprocess
+    with os.fdopen(descriptor, "wb") as key_file:
+        key_file.write(new_key)
+        key_file.flush()
+        os.fsync(key_file.fileno())
 
-            subprocess.run(
-                ["icacls", str(path), "/inheritance:r", "/grant:r",
-                 f"{os.environ.get('USERNAME', 'CURRENT_USER')}:(R,W)"],
-                capture_output=True, check=False,
-            )
-        except Exception:
-            logger.warning("Could not restrict permissions on %s", path)
-    else:
-        try:
-            os.chmod(path, 0o600)
-        except OSError:
-            logger.warning("Could not chmod 0600 on %s", path)
+    if not _restrict_file_permissions(path):
+        raise RuntimeError(f"Could not secure encryption key permissions: {path}")
 
     logger.info("Generated new Fernet key: %s", path)
     return new_key

@@ -1,5 +1,6 @@
 import contextlib
 import json
+import os
 import sys
 import threading
 import types
@@ -277,6 +278,44 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         skip_deep, _ = analysis_routes._screening_gate_decision(payload, phase="deep_dive")
         self.assertFalse(skip_deep)
 
+    def test_gate_low_confidence_overrides_applicable_false(self):
+        # deep_dive_applicable=false 이지만 confidence가 floor 미만이면 스킵하지 않는다
+        payload = ('{"relevance_score":0.8,"domain":"optics","key_topics":["광학"],'
+                   '"is_experimental":true,"recipe_applicable":true,"deep_dive_applicable":false,'
+                   '"confidence":0.4}')
+        skip_deep, reason = analysis_routes._screening_gate_decision(payload, phase="deep_dive")
+        self.assertFalse(skip_deep)
+
+    def test_gate_confidence_exactly_at_floor_trusts_applicable_flag(self):
+        # T3 경계: confidence == _GATE_CONFIDENCE_FLOOR(0.6)는 '<' 비교라 low-confidence
+        # 예외 대상이 아니다 — floor "미만"만 스킵을 막으므로 정확히 floor인 값은 그대로
+        # applicable=False를 신뢰해 스킵해야 한다(부동소수 경계 회귀 고정).
+        self.assertEqual(analysis_routes._GATE_CONFIDENCE_FLOOR, 0.6)
+        payload = ('{"relevance_score":0.8,"domain":"optics","key_topics":["광학"],'
+                   '"is_experimental":true,"recipe_applicable":true,"deep_dive_applicable":false,'
+                   '"confidence":0.6}')
+        skip_deep, reason = analysis_routes._screening_gate_decision(payload, phase="deep_dive")
+        self.assertTrue(skip_deep)
+        self.assertEqual(reason, "not_applicable_deep_dive")
+
+    def test_gate_high_confidence_applicable_false_still_skips(self):
+        payload = ('{"relevance_score":0.8,"domain":"optics","key_topics":["광학"],'
+                   '"is_experimental":true,"recipe_applicable":false,"deep_dive_applicable":true,'
+                   '"confidence":0.9}')
+        skip_recipe, reason = analysis_routes._screening_gate_decision(payload, phase="recipe")
+        self.assertTrue(skip_recipe)
+        self.assertEqual(reason, "not_applicable_recipe")
+
+    def test_citation_cache_key_ignores_prompt_wording_but_tracks_version(self):
+        local_result = {"total_references": 12, "citation_style": "numbered",
+                        "self_citation_count": 1, "self_citation_ratio": 0.08,
+                        "top_cited": [{"ref_id": "[1]", "cite_count": 3,
+                                       "cite_contexts": [{"sentence": "s", "section": "Methods"}]}]}
+        key = analysis_routes._citation_cache_key(local_result, "본문 발췌")
+        self.assertIn(analysis_routes._CITATION_PROMPT_VERSION, key)
+        # 본문/통계가 같으면 동일 키(프롬프트 문구는 키에 안 들어감)
+        self.assertEqual(key, analysis_routes._citation_cache_key(local_result, "본문 발췌"))
+
     def test_screening_schema_gate_contract(self):
         schema = analysis_routes._SCREENING_SCHEMA
         self.assertEqual(
@@ -288,6 +327,154 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         for field in ("key_topics", "is_experimental", "methodology_type",
                       "recipe_applicable", "deep_dive_applicable"):
             self.assertIn(field, schema["required"])
+
+    def test_subprocess_mode_flag(self):
+        with patch.dict("os.environ", {"SASOO_ANALYSIS_SUBPROCESS": "1"}):
+            self.assertTrue(analysis_routes._subprocess_mode())
+        with patch.dict("os.environ", {}, clear=False):
+            os.environ.pop("SASOO_ANALYSIS_SUBPROCESS", None)
+            self.assertFalse(analysis_routes._subprocess_mode())
+
+    def test_status_overlay_maps_queued_to_running(self):
+        # analysis_runs가 queued면 overall_status를 running으로 매핑(프론트 active 인식)
+        merged = analysis_routes._overlay_run_status(
+            base={"overall_status": "analyzing", "progress_pct": 0.0, "current_phase": None},
+            run={"status": "queued", "current_phase": None, "progress_pct": 0.0},
+        )
+        self.assertEqual(merged["overall_status"], "running")
+
+    def test_status_overlay_uses_run_progress_and_phase(self):
+        merged = analysis_routes._overlay_run_status(
+            base={"overall_status": "analyzing", "progress_pct": 0.0, "current_phase": None},
+            run={"status": "running", "current_phase": "recipe", "progress_pct": 55.0},
+        )
+        self.assertEqual(merged["overall_status"], "running")
+        self.assertEqual(merged["current_phase"], "recipe")
+        self.assertEqual(merged["progress_pct"], 55.0)
+
+    def test_status_overlay_clamps_unknown_phase_to_none(self):
+        # 알 수 없는 phase 문자열은 AnalysisPhase enum 검증을 못 넘으므로 overlay에서 None으로 클램프
+        merged = analysis_routes._overlay_run_status(
+            base={"overall_status": "analyzing", "progress_pct": 0.0, "current_phase": None},
+            run={"status": "running", "current_phase": "warmup", "progress_pct": 10.0},
+        )
+        self.assertEqual(merged["overall_status"], "running")
+        self.assertIsNone(merged["current_phase"])
+        self.assertEqual(merged["progress_pct"], 10.0)
+
+    async def test_cancel_subprocess_mode_falls_back_when_db_unavailable(self):
+        # 플래그 on + analysis_runs 접근 실패(마이그레이션 전 DB 등) → 500 없이 레거시 취소 경로로 폴스루
+        paper_id = 9911
+        analysis_routes._cancel_events[paper_id] = threading.Event()
+        try:
+            with (
+                patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+                patch("models.database.get_db", new=AsyncMock(side_effect=RuntimeError("no analysis_runs table"))),
+            ):
+                result = await analysis_routes.cancel_analysis(paper_id)
+        finally:
+            event = analysis_routes._cancel_events.pop(paper_id, None)
+        self.assertEqual(result, {"paper_id": paper_id, "status": "cancelling"})
+        self.assertTrue(event.is_set())
+
+    async def test_cancel_subprocess_mode_cancels_queued_row_immediately(self):
+        # C1: cap 초과로 queued에 머문 run은 request_cancel(플래그만 세움)이 아니라
+        # 원자적 즉시 취소로 응답해야 한다 — 소비되지 않는 플래그로 영구 좀비가 되던 문제.
+        paper_id = 5151
+        with (
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch("models.database.get_db", new=AsyncMock(return_value=object())),
+            patch("models.analysis_runs.cancel_queued_now", new=AsyncMock(return_value=1)),
+            patch("api.analysis_routes.execute_update", new=AsyncMock()) as exec_update,
+        ):
+            result = await analysis_routes.cancel_analysis(paper_id)
+        self.assertEqual(result, {"paper_id": paper_id, "status": "cancelled"})
+        exec_update.assert_awaited_once()
+        sql, params = exec_update.call_args.args
+        self.assertIn("papers", sql)
+        self.assertIn("cancelled", params)
+        self.assertIn(paper_id, params)
+
+    async def test_cancel_subprocess_mode_falls_back_when_already_running(self):
+        # rowcount 0(=이미 running)이면 기존 request_cancel 폴백으로 넘어가야 한다.
+        paper_id = 5152
+        with (
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch("models.database.get_db", new=AsyncMock(return_value=object())),
+            patch("models.analysis_runs.cancel_queued_now", new=AsyncMock(return_value=0)),
+            patch("models.analysis_runs.get_run", new=AsyncMock(return_value={"status": "running"})),
+            patch("models.analysis_runs.request_cancel", new=AsyncMock(return_value=1)) as req_cancel,
+        ):
+            result = await analysis_routes.cancel_analysis(paper_id)
+        self.assertEqual(result, {"paper_id": paper_id, "status": "cancelling"})
+        req_cancel.assert_awaited_once()
+
+    async def test_run_subprocess_mode_returns_409_when_run_already_active_in_db(self):
+        # I3: 분석이 디태치 워커로 옮겨간 뒤엔 인메모리 _running_analyses가 항상 비어 있어
+        # 기존 409 가드가 무조건 통과한다 — DB(analysis_runs) 기준으로 다시 막아야 한다.
+        # 안 막으면 upsert_queued가 running 행을 queued/attempts=0으로 리셋해 즉시
+        # 재claim되면서 두 번째 워커가 스폰된다(중복 LLM 호출·과금).
+        paper_id = 6162
+        paper_row = {"id": paper_id, "folder_name": "f"}
+        upsert_mock = AsyncMock()
+        with (
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
+            patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
+            patch("models.database.get_db", new=AsyncMock(return_value=object())),
+            patch("models.analysis_runs.get_run", new=AsyncMock(return_value={"status": "running"})),
+            patch("models.analysis_runs.upsert_queued", new=upsert_mock),
+        ):
+            with self.assertRaises(Exception) as ctx:
+                await analysis_routes.run_analysis(paper_id, background_tasks=_StubBackgroundTasks())
+        self.assertEqual(getattr(ctx.exception, "status_code", None), 409)
+        upsert_mock.assert_not_awaited()
+
+    async def test_run_subprocess_mode_sets_papers_analyzing_before_queueing(self):
+        # I1: 이미 completed인 논문을 재분석할 때 /run(subprocess)이 papers.status를
+        # 건드리지 않고 claim+spawn하므로, 워커가 _run_full_analysis의 첫
+        # UPDATE papers SET status='analyzing'에 도달하기 전에 죽으면 papers는 여전히
+        # completed로 남는다 → 45초 후 reconcile_stale ①이 조용히 completed로 확정한다.
+        # upsert_queued 직전에 papers.status='analyzing'을 세워 이 창을 없앤다.
+        paper_id = 6161
+        paper_row = {"id": paper_id, "folder_name": "f"}
+        calls: list = []
+
+        async def _fake_execute_update(sql, params):
+            calls.append(("execute_update", params))
+            return 1
+
+        async def _fake_upsert_queued(conn, pid, now):
+            calls.append(("upsert_queued", pid))
+
+        async def _fake_settings(*args, **kwargs):
+            return {"monthly_budget_limit": "50.0"}
+
+        settings_stub = types.ModuleType("api.settings")
+        settings_stub._get_all_settings = _fake_settings
+
+        with (
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
+            patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.fetch_all", new=AsyncMock(return_value=[])),
+            patch("api.analysis_routes.execute_update", new=_fake_execute_update),
+            patch("models.database.get_db", new=AsyncMock(return_value=object())),
+            patch("models.analysis_runs.get_run", new=AsyncMock(return_value=None)),
+            patch("models.analysis_runs.upsert_queued", new=_fake_upsert_queued),
+            patch("services.analysis_supervisor.reconcile_once", new=AsyncMock()),
+            patch("services.analysis_supervisor.read_max_concurrent", new=AsyncMock(return_value=3)),
+            patch.dict(sys.modules, {"api.settings": settings_stub}),
+        ):
+            await analysis_routes.run_analysis(paper_id, background_tasks=_StubBackgroundTasks())
+
+        labels = [c[0] for c in calls]
+        self.assertIn("execute_update", labels)
+        self.assertIn("upsert_queued", labels)
+        self.assertLess(labels.index("execute_update"), labels.index("upsert_queued"))
+        exec_call = next(c for c in calls if c[0] == "execute_update")
+        self.assertIn("analyzing", exec_call[1])
+        self.assertIn(paper_id, exec_call[1])
 
     async def test_screening_prompt_puts_document_first(self):
         status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
@@ -475,6 +662,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                 "tokens_in": 10, "tokens_out": 10, "interaction_id": None,
             }
 
+        long_sentence = "가" * 120 + "MARKER456"
         local_result = {
             "total_references": 12,
             "citation_style": "numbered",
@@ -483,7 +671,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             "top_cited": [{
                 "ref_id": "[1]", "authors": "Kim", "year": 2024, "title": "T",
                 "journal": "J", "cite_count": 3,
-                "cite_contexts": [{"sentence": "이 방법은 [1]을 따른다"}],
+                "cite_contexts": [{"sentence": long_sentence}],
             }],
         }
         fake_analysis = types.SimpleNamespace(to_dict=lambda: local_result)
@@ -514,10 +702,102 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("Return ONLY valid JSON", captured["prompt"])
         # grounding 규칙
         self.assertIn("목록에 없는 연구를 추가하지 마", captured["prompt"])
+        # unclear는 최후 수단
+        self.assertIn("최후 수단", captured["prompt"])
+        # 인용 맥락 스니펫이 100자를 넘어 300자까지 포함됨
+        self.assertIn("MARKER456", captured["prompt"])
         # 병합: evidence_context가 top_cited에 반영
         merged = json.loads(result["text"])
         self.assertEqual(merged["top_cited"][0]["evidence_context"], "이 방법은 [1]을 따른다")
         self.assertEqual(merged["citation_limitations"], "상위 10개 기반 평가")
+
+    async def test_screening_retries_once_on_parse_failure(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        calls = []
+
+        async def _fake_call(prompt, **kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                return {"text": '{"broken": ', "model": "m", "tokens_in": 10, "tokens_out": 100, "interaction_id": "i1"}
+            return {
+                "text": '{"domain":"optics","summary":"요약","relevance_score":0.9,'
+                        '"key_topics":["광학"],"is_experimental":true,'
+                        '"methodology_type":"experimental",'
+                        '"recipe_applicable":true,"deep_dive_applicable":true}',
+                "model": "m", "tokens_in": 10, "tokens_out": 20, "interaction_id": "i2",
+            }
+
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            result = await analysis_routes._run_screening(7, "논문 텍스트", status)
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(json.loads(result["text"])["domain"], "optics")
+        self.assertEqual(result["tokens_out"], 120)  # 실패분 합산
+
+    async def test_screening_returns_last_result_when_retry_also_fails(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        calls = []
+
+        async def _fake_call(prompt, **kwargs):
+            calls.append(kwargs)
+            return {"text": "not json", "model": "m", "tokens_in": 3, "tokens_out": 5, "interaction_id": None}
+
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            result = await analysis_routes._run_screening(7, "본문", status)
+
+        self.assertEqual(len(calls), 2)  # 1회 재시도 후 중단
+        payload = json.loads(result["text"])
+        self.assertIn("_parse_error", payload)
+        self.assertEqual(payload["_raw"], "not json")
+
+    async def test_chain_stage_retries_once_on_parse_failure(self):
+        calls = []
+
+        async def _fake_call(prompt, **kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                return {"text": '{"broken": ', "model": "m", "tokens_in": 10, "tokens_out": 100, "interaction_id": "i1"}
+            return {"text": '{"ok": true}', "model": "m", "tokens_in": 10, "tokens_out": 20, "interaction_id": "i2"}
+
+        with patch("api.analysis_routes.call_interaction", new=_fake_call):
+            result = await analysis_routes._run_chain_stage(
+                phase="recipe",
+                prompt_chain="지시",
+                prompt_fallback="폴백",
+                system_instruction="si",
+                previous_interaction_id=None,
+                pdf_uri=None,
+                response_schema={"type": "object"},
+            )
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(result["text"], '{"ok": true}')
+        self.assertEqual(result["tokens_out"], 120)  # 실패분 합산
+        self.assertEqual(result["interaction_id"], "i2")  # 실패 호출 id가 새지 않음
+
+    async def test_chain_stage_returns_last_result_when_retry_also_fails(self):
+        async def _fake_call(prompt, **kwargs):
+            return {"text": "not json", "model": "m", "tokens_in": 1, "tokens_out": 2, "interaction_id": None}
+
+        with patch("api.analysis_routes.call_interaction", new=_fake_call):
+            result = await analysis_routes._run_chain_stage(
+                phase="recipe",
+                prompt_chain="지시",
+                prompt_fallback="폴백",
+                system_instruction="si",
+                previous_interaction_id=None,
+                pdf_uri=None,
+                response_schema={"type": "object"},
+            )
+        self.assertEqual(result["text"], "not json")  # 기존 _parse_error 경로가 이어받음
 
     async def test_store_visualization_progress_updates_existing_row(self):
         items = [
@@ -922,6 +1202,62 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             "deep_dive": m.MODEL_DEEP_DIVE,
             "visualization": m.MODEL_VIZ_PLANNING,
         })
+
+    def test_norm_ref_id_normalizes_bracket_and_space(self):
+        self.assertEqual(analysis_routes._norm_ref_id("[1]"), analysis_routes._norm_ref_id(" 1 "))
+        self.assertEqual(analysis_routes._norm_ref_id("[12]"), analysis_routes._norm_ref_id("12"))
+        self.assertNotEqual(analysis_routes._norm_ref_id("1"), analysis_routes._norm_ref_id("2"))
+
+    def test_norm_ref_merge_prefers_first_duplicate_key(self):
+        # 정규화 후 동일 키가 되는 항목이 2개면 원본 의미(첫 매치 우선)를 보존해야 한다
+        top_cited = [
+            {"ref_id": "[1]", "title": "first"},
+            {"ref_id": "(1)", "title": "second"},  # 정규화 후 같은 키 "1"
+        ]
+        mapping = analysis_routes._build_top_by_norm(top_cited)
+        self.assertEqual(mapping["1"]["title"], "first")
+
+    def test_citation_merge_warns_on_unmatched_ref_id(self):
+        top_cited = [{"ref_id": "[1]", "title": "t"}]
+        mapping = analysis_routes._build_top_by_norm(top_cited)
+        self.assertNotIn("99", mapping)  # 매치 실패 케이스가 존재함을 고정
+
+    async def test_citation_merge_tolerates_ref_id_format_drift(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+
+        async def _fake_call(prompt, **kwargs):
+            # LLM이 대괄호 없는 "1"로 돌려줘도 top_cited("[1]")에 병합돼야 한다
+            return {
+                "text": '{"ref_analyses":[{"ref_id":"1","citation_role":"foundational",'
+                        '"why_cited":"기반 이론.","evidence_context":"이 방법은 [1]을 따른다"}],'
+                        '"summary":"요약","citation_balance":"balanced","key_influences":["[1]"],'
+                        '"limitations":"상위 10개 기반"}',
+                "model": "gemini-3.5-flash", "tokens_in": 10, "tokens_out": 10, "interaction_id": None,
+            }
+
+        local_result = {
+            "total_references": 5, "citation_style": "numbered",
+            "self_citation_count": 0, "self_citation_ratio": 0.0,
+            "top_cited": [{"ref_id": "[1]", "authors": "Kim", "year": 2024, "title": "T",
+                           "journal": "J", "cite_count": 3,
+                           "cite_contexts": [{"sentence": "이 방법은 [1]을 따른다", "section": "Methods"}]}],
+        }
+        fake_analysis = types.SimpleNamespace(to_dict=lambda: local_result)
+
+        with (
+            patch("services.citation_analyzer.analyze_citations", return_value=fake_analysis),
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            result = await analysis_routes._run_citation(
+                7, sections={}, citation_body="본문", citation_references="[1] Kim 2024",
+                paper_authors="Kim", status=status,
+            )
+
+        merged = json.loads(result["text"])
+        self.assertEqual(merged["top_cited"][0]["citation_role"], "foundational")
+        self.assertEqual(merged["top_cited"][0]["evidence_context"], "이 방법은 [1]을 따른다")
 
 
 class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):
@@ -1563,6 +1899,51 @@ class RewriteSectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(captured["store"], False)
         self.assertNotIn("previous_interaction_id", captured)
         self.assertIn("원문 딥다이브 분석", captured["prompt"])
+
+    async def test_citation_prompt_includes_section_labels_and_five_contexts(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        captured = {}
+
+        async def _fake_call(prompt, **kwargs):
+            captured["prompt"] = prompt
+            return {
+                "text": '{"ref_analyses":[],"summary":"s","citation_balance":"balanced",'
+                        '"key_influences":[],"limitations":"l"}',
+                "model": "gemini-3.5-flash", "tokens_in": 1, "tokens_out": 1, "interaction_id": None,
+            }
+
+        local_result = {
+            "total_references": 5, "citation_style": "numbered",
+            "self_citation_count": 0, "self_citation_ratio": 0.0,
+            "top_cited": [{
+                "ref_id": "[1]", "authors": "Kim", "year": 2024, "title": "T", "journal": "J",
+                "cite_count": 6,
+                "cite_contexts": [
+                    {"sentence": "문장1", "section": "Introduction"},
+                    {"sentence": "문장2", "section": "Methods"},
+                    {"sentence": "문장3", "section": "Results"},
+                    {"sentence": "문장4", "section": "Discussion"},
+                    {"sentence": "문장5", "section": "Conclusion"},
+                ],
+            }],
+        }
+        fake_analysis = types.SimpleNamespace(to_dict=lambda: local_result)
+
+        with (
+            patch("services.citation_analyzer.analyze_citations", return_value=fake_analysis),
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            await analysis_routes._run_citation(
+                7, sections={}, citation_body="본문", citation_references="[1] Kim 2024",
+                paper_authors="Kim", status=status,
+            )
+
+        prompt = captured["prompt"]
+        self.assertIn("Introduction", prompt)   # section 라벨 주입
+        self.assertIn("Conclusion", prompt)      # 5번째 문맥까지 포함
+        self.assertIn("문장5", prompt)
 
 
 class SystemInstructionContractTests(unittest.TestCase):

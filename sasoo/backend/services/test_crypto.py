@@ -66,6 +66,17 @@ class CryptoTests(unittest.TestCase):
         mode = (self.root / ".sasoo_key").stat().st_mode & 0o777
         self.assertEqual(mode, 0o600)
 
+    @unittest.skipIf(sys.platform == "win32", "POSIX permission bits are unavailable")
+    def test_existing_key_file_permissions_are_restricted(self):
+        key_file = self.root / ".sasoo_key"
+        key_file.write_bytes(Fernet.generate_key())
+        key_file.chmod(0o644)
+
+        crypto._read_file_key()
+
+        mode = key_file.stat().st_mode & 0o777
+        self.assertEqual(mode, 0o600)
+
     # -- the cross-mode bug ----------------------------------------------
 
     def test_value_encrypted_with_keychain_key_still_decrypts(self):

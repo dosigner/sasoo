@@ -9,8 +9,8 @@
   "scripts": {
     "dev": "concurrently --kill-others \"pnpm dev:frontend\" \"pnpm dev:electron\"",
     "dev:frontend": "cd frontend && pnpm dev",
-    "dev:electron": "tsc -p electron/tsconfig.json && electron . --no-sandbox --disable-gpu",
-    "dev:electron:watch": "concurrently \"tsc -p electron/tsconfig.json --watch\" \"electron . --no-sandbox\"",
+    "dev:electron": "tsc -p electron/tsconfig.json && electron . --disable-gpu",
+    "dev:electron:watch": "concurrently \"tsc -p electron/tsconfig.json --watch\" \"electron .\"",
     "build:frontend": "cd frontend && pnpm build",
     "build:electron": "tsc -p electron/tsconfig.json",
     "build:backend": "node scripts/build-backend.js",
@@ -25,9 +25,9 @@
     "verify:mac-artifact": "node scripts/verify-mac-artifacts.js",
     "verify:win-artifact": "node scripts/verify-win-artifacts.js",
     "test:unit": "vitest run",
-    "start": "electron . --no-sandbox",
+    "start": "electron .",
     "clean": "rm -rf dist dist-electron frontend/dist backend/dist backend/build",
-    "postinstall": "cd frontend && pnpm install"
+    "postinstall": "cd frontend && pnpm install --frozen-lockfile"
   },
   "dependencies": {
     "electron-updater": "^6.8.3"

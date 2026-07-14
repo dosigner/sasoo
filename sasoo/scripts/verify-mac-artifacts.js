@@ -128,6 +128,9 @@ function verifyZip(zipPath) {
     if (appCandidates.length !== 1) {
       fail(`Expected exactly one .app in ${zipPath}, found ${appCandidates.length}`);
     }
+    const appPath = appCandidates[0];
+    run('codesign', ['--verify', '--deep', '--strict', '--verbose=2', appPath]);
+    run('spctl', ['--assess', '--type', 'execute', '--verbose=4', appPath]);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
@@ -156,4 +159,4 @@ for (const zipPath of zipFiles) {
   verifyZip(zipPath);
 }
 
-log('macOS ZIP artifacts passed archive extraction and update manifest checks.');
+log('macOS ZIP artifacts passed archive, signature, notarization, and update manifest checks.');
