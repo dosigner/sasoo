@@ -9,6 +9,15 @@ type BackendShutdownConfig = {
   readonly shutdownToken: string;
 };
 
+type BackendExitTimeoutPhase = 'taskkill' | 'SIGKILL';
+
+export class BackendProcessExitTimeoutError extends Error {
+  constructor(readonly phase: BackendExitTimeoutPhase) {
+    super(`Backend did not report exit after ${phase}`);
+    this.name = 'BackendProcessExitTimeoutError';
+  }
+}
+
 function hasExited(child: ChildProcess): boolean {
   return child.exitCode !== null || child.signalCode !== null;
 }
@@ -102,20 +111,26 @@ export async function stopBackendProcess(
     console.warn('[PythonManager] Graceful shutdown timed out; force killing process tree');
     await forceKillWindowsTree(child);
     if (!await waitForExit(exitPromise, TERMINATE_EXIT_TIMEOUT_MS)) {
-      console.error('[PythonManager] Backend did not report exit after taskkill');
+      throw new BackendProcessExitTimeoutError('taskkill');
     }
     return;
   }
 
+  if (hasExited(child)) {
+    return;
+  }
   console.warn('[PythonManager] Graceful shutdown timed out; sending SIGTERM');
   child.kill('SIGTERM');
   if (await waitForExit(exitPromise, TERMINATE_EXIT_TIMEOUT_MS)) {
     return;
   }
 
+  if (hasExited(child)) {
+    return;
+  }
   console.warn('[PythonManager] SIGTERM timed out; sending SIGKILL');
   child.kill('SIGKILL');
   if (!await waitForExit(exitPromise, TERMINATE_EXIT_TIMEOUT_MS)) {
-    console.error('[PythonManager] Backend did not report exit after SIGKILL');
+    throw new BackendProcessExitTimeoutError('SIGKILL');
   }
 }

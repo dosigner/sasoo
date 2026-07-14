@@ -23,7 +23,7 @@ export class PythonManager {
   private isShuttingDown: boolean = false;
   private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
   private shutdownToken: string = '';
-  private apiToken: string;
+  private apiToken: string = '';
   private logForwarder: ((level: string, message: string) => void) | null = null;
   // One IPC message per backend log line scales with request volume, so lines
   // are batched before crossing to the renderer.
@@ -45,7 +45,6 @@ export class PythonManager {
       startupTimeoutMs: 30000,
       ...config,
     };
-    this.apiToken = crypto.randomBytes(32).toString('hex');
   }
 
   getApiToken(): string {
@@ -63,10 +62,12 @@ export class PythonManager {
     }
 
     this.isShuttingDown = false;
+    const launchApiToken = crypto.randomBytes(32).toString('hex');
+    this.apiToken = launchApiToken;
     this.shutdownToken = crypto.randomBytes(32).toString('hex');
 
     const child = launchBackendProcess(this.config, {
-      apiToken: this.apiToken,
+      apiToken: launchApiToken,
       shutdownToken: this.shutdownToken,
     });
     this.process = child;
@@ -115,7 +116,7 @@ export class PythonManager {
     });
 
     // Wait for server to become healthy
-    const started = await this.waitForStartup();
+    const started = await this.waitForStartup(child, launchApiToken);
     if (!started) {
       throw new Error(`FastAPI server failed to start within ${this.config.startupTimeoutMs}ms`);
     }
@@ -130,7 +131,7 @@ export class PythonManager {
   /**
    * Wait for the server to respond to health checks.
    */
-  private waitForStartup(): Promise<boolean> {
+  private waitForStartup(child: ChildProcess, launchApiToken: string): Promise<boolean> {
     return new Promise((resolve) => {
       const startTime = Date.now();
 
@@ -141,15 +142,18 @@ export class PythonManager {
           return;
         }
 
-        const healthy = await this.checkHealth();
-        if (healthy) {
-          resolve(true);
+        if (this.process !== child || child.exitCode !== null || child.signalCode !== null) {
+          resolve(false);
           return;
         }
 
-        // Check if process is still alive
-        if (!this.process) {
+        const healthy = await this.checkHealth(launchApiToken);
+        if (this.process !== child || child.exitCode !== null || child.signalCode !== null) {
           resolve(false);
+          return;
+        }
+        if (healthy) {
+          resolve(true);
           return;
         }
 
@@ -164,7 +168,7 @@ export class PythonManager {
   /**
    * Check if the FastAPI server is responding.
    */
-  async checkHealth(): Promise<boolean> {
+  async checkHealth(apiToken: string = this.apiToken): Promise<boolean> {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), this.config.healthCheckTimeoutMs);
@@ -174,13 +178,13 @@ export class PythonManager {
       });
 
       clearTimeout(timeout);
-      if (!response.ok || !this.apiToken) {
+      if (!response.ok || !apiToken) {
         return false;
       }
 
       const body = await response.json() as { instance_proof?: unknown };
       const expectedProof = crypto
-        .createHmac('sha256', this.apiToken)
+        .createHmac('sha256', apiToken)
         .update('sasoo-health-v1')
         .digest('hex');
       const actualProof = typeof body.instance_proof === 'string' ? body.instance_proof : '';

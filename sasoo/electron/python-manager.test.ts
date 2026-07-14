@@ -146,4 +146,64 @@ describe('PythonManager shutdown', () => {
     expect(oldKill).not.toHaveBeenCalled();
     expect(replacementKill).not.toHaveBeenCalled();
   });
+
+  it('rejects startup when the launched child is no longer tracked', async () => {
+    vi.useFakeTimers();
+    const child = new ChildProcess();
+    vi.mocked(launchBackendProcess).mockReturnValue(child);
+    const manager = new PythonManager({
+      backendPath: '/tmp/sasoo-backend',
+      port: 8000,
+      isDev: false,
+    });
+    let resolveHealth: ((healthy: boolean) => void) | undefined;
+    vi.spyOn(manager, 'checkHealth').mockImplementation(
+      () => new Promise((resolve) => {
+        resolveHealth = resolve;
+      }),
+    );
+
+    const starting = manager.start().then(
+      () => ({ kind: 'resolved' as const }),
+      (error: unknown) => ({ kind: 'rejected' as const, error }),
+    );
+    await vi.advanceTimersByTimeAsync(1_000);
+    manager['process'] = null;
+    resolveHealth?.(true);
+    await vi.runAllTicks();
+
+    await expect(starting).resolves.toMatchObject({
+      kind: 'rejected',
+      error: expect.objectContaining({
+        message: expect.stringContaining('failed to start'),
+      }),
+    });
+  });
+
+  it('uses a new API token for each backend launch', async () => {
+    vi.useFakeTimers();
+    const firstChild = new ChildProcess();
+    const secondChild = new ChildProcess();
+    vi.mocked(launchBackendProcess)
+      .mockReturnValueOnce(firstChild)
+      .mockReturnValueOnce(secondChild);
+    const manager = new PythonManager({
+      backendPath: '/tmp/sasoo-backend',
+      port: 8000,
+      isDev: false,
+    });
+    vi.spyOn(manager, 'checkHealth').mockResolvedValue(true);
+
+    const firstStart = manager.start();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await firstStart;
+    const firstToken = manager.getApiToken();
+    firstChild.emit('exit', 0, null);
+
+    const secondStart = manager.start();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await secondStart;
+
+    expect(manager.getApiToken()).not.toBe(firstToken);
+  });
 });
