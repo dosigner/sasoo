@@ -6,24 +6,25 @@ This checklist covers the tagged desktop release flow for Sasoo on macOS ARM and
 
 Current automated workflows:
 
-- [release.yml](/Users/dongj/Documents/논문/.github/workflows/release.yml)
+- [build-check.yml](../../../.github/workflows/build-check.yml)
+- [release.yml](../../../.github/workflows/release.yml)
 
 Current build plan:
 
-- [electron-build-plan.md](/Users/dongj/Documents/논문/sasoo/docs/03-release/electron-build-plan.md)
+- [electron-build-plan.md](electron-build-plan.md)
 
 Current local artifact verifiers:
 
-- [verify-mac-artifacts.js](/Users/dongj/Documents/논문/sasoo/scripts/verify-mac-artifacts.js)
-- [verify-win-artifacts.js](/Users/dongj/Documents/논문/sasoo/scripts/verify-win-artifacts.js)
+- [verify-mac-artifacts.js](../../scripts/verify-mac-artifacts.js)
+- [verify-win-artifacts.js](../../scripts/verify-win-artifacts.js)
 
 ## Before Tagging
 
 1. Confirm the version is aligned in:
-   - [VERSION](/Users/dongj/Documents/논문/sasoo/VERSION)
-   - [package.json](/Users/dongj/Documents/논문/sasoo/package.json)
-   - [frontend/package.json](/Users/dongj/Documents/논문/sasoo/frontend/package.json)
-   - [backend/main.py](/Users/dongj/Documents/논문/sasoo/backend/main.py)
+   - [VERSION](../../VERSION)
+   - [package.json](../../package.json)
+   - [frontend/package.json](../../frontend/package.json)
+   - [backend/main.py](../../backend/main.py)
 2. Confirm the local build machine matches the intended path:
    - macOS local validation is for `Darwin arm64`
    - Windows packaging must run on `windows-latest` CI or a real Windows machine
@@ -35,19 +36,26 @@ Current local artifact verifiers:
 4. Preferred release packaging Python is `3.12`.
    - local Python `3.14.x` is acceptable for development validation, but not the release baseline
 5. Confirm local-only data is ignored by git:
-   - [sasoo/.gitignore](/Users/dongj/Documents/논문/sasoo/.gitignore)
+   - [sasoo/.gitignore](../../.gitignore)
 6. Run the frontend validation:
-   - `cd /Users/dongj/Documents/논문/sasoo/frontend && pnpm build`
+   - `cd sasoo/frontend && pnpm tsc --noEmit`
+   - `cd sasoo/frontend && pnpm test`
+   - `cd sasoo/frontend && pnpm build`
+   - `cd sasoo/frontend && pnpm lint`
 7. Run backend test validation:
-   - `cd /Users/dongj/Documents/논문/sasoo/backend && ./.venv/bin/python -m unittest discover -s services -t . -p 'test*.py'`
-   - `cd /Users/dongj/Documents/논문/sasoo/backend && ./.venv/bin/python -m unittest discover -s api -t . -p 'test*.py'`
+   - `cd sasoo/backend && ./.venv/bin/python -m pytest services api models`
+8. Confirm both previously exposed Google API keys are disabled or deleted at the provider, and review usage, billing, and audit logs.
+9. Confirm the exact release commit passed the Windows `Build Check` workflow.
+10. Before publishing any new release, enable GitHub's **Immutable Releases** setting for the repository.
+11. Confirm `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` are configured.
+12. Re-enable the `Release` workflow only after every gate above passes.
 
 ## Local Smoke Checks
 
 macOS ARM:
 
-1. `cd /Users/dongj/Documents/논문/sasoo && pnpm build:mac:release`
-2. Open the generated ZIP from [dist](/Users/dongj/Documents/논문/sasoo/dist)
+1. `cd sasoo && pnpm build:mac:release`
+2. Open the generated ZIP from `sasoo/dist`
 3. Validate:
    - App launches cleanly
    - Library screen opens
@@ -83,11 +91,13 @@ Tagged release:
    - verify generated artifacts
    - upload assets to the matching GitHub draft release
 
-Manual rerun for an existing tag:
+Manual build for an existing tag that has no GitHub release:
 
 1. Open Actions
 2. Run `Release`
 3. Enter the exact tag, for example `v0.7.0`
+
+The workflow never modifies an existing draft or published release and never replaces an existing asset. If a stale draft exists, inspect and delete it manually before starting a clean rerun.
 
 ## Signing And Trust
 
