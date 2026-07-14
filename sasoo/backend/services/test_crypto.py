@@ -1,11 +1,9 @@
 """
 Tests for services/crypto.py.
 
-The bug these guard against: the encryption key store used to depend on how the
-app was launched (OS keychain in dev, file when packaged), so a key written by
-one mode was unreadable by the other -- and the failure surfaced as a bare
-"no API key configured", with a read silently minting a fresh key that masked
-the loss for good.
+The operating default must keep the Fernet key in the OS credential store, not
+next to the encrypted SQLite database. Legacy file keys remain readable only
+long enough to migrate existing ciphertext.
 """
 
 import sys
@@ -16,12 +14,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from cryptography.fernet import Fernet
-
-# crypto.py imports APP_DATA_ROOT from models.database lazily, inside _key_path().
-# Stub the module so these tests never touch the real library directory.
-_database_stub = types.ModuleType("models.database")
-_database_stub.APP_DATA_ROOT = Path("/nonexistent")
-sys.modules.setdefault("models.database", _database_stub)
+from keyring.errors import KeyringError
 
 from services import crypto  # noqa: E402
 
@@ -30,11 +23,20 @@ class CryptoTests(unittest.TestCase):
     def setUp(self):
         self._tmp = TemporaryDirectory()
         self.root = Path(self._tmp.name)
-        # Point the file-key store at a temp dir, and default to no keychain.
+        self.keyring_key = None
+        keyring_stub = types.ModuleType("keyring")
+        keyring_stub.get_password = lambda _service, _account: (
+            self.keyring_key.decode("utf-8") if self.keyring_key else None
+        )
+
+        def set_password(_service, _account, value):
+            self.keyring_key = value.encode("utf-8")
+
+        keyring_stub.set_password = set_password
         self._patchers = [
             patch.object(crypto, "_key_path", lambda: self.root / ".sasoo_key"),
-            patch.object(crypto, "_read_keyring_key", lambda: None),
-            patch.dict("os.environ", {"SASOO_USE_OS_KEYRING": ""}, clear=False),
+            patch.dict(sys.modules, {"keyring": keyring_stub}),
+            patch.dict("os.environ", {"SASOO_USE_FILE_KEY": ""}, clear=False),
         ]
         for p in self._patchers:
             p.start()
@@ -51,6 +53,8 @@ class CryptoTests(unittest.TestCase):
         self.assertTrue(token.startswith(crypto.ENCRYPTED_PREFIX))
         self.assertNotIn("AIza-secret", token)
         self.assertEqual(crypto.decrypt_value(token), "AIza-secret")
+        self.assertIsNotNone(self.keyring_key)
+        self.assertFalse((self.root / ".sasoo_key").exists())
 
     def test_plaintext_passes_through(self):
         # Values from before encryption was introduced are returned as-is.
@@ -61,8 +65,8 @@ class CryptoTests(unittest.TestCase):
         self.assertEqual(crypto.decrypt_value(""), "")
         self.assertFalse(crypto.is_unreadable(""))
 
-    def test_key_file_is_owner_only(self):
-        crypto.encrypt_value("x")
+    def test_legacy_key_file_is_owner_only(self):
+        crypto._create_file_key()
         mode = (self.root / ".sasoo_key").stat().st_mode & 0o777
         self.assertEqual(mode, 0o600)
 
@@ -87,7 +91,7 @@ class CryptoTests(unittest.TestCase):
         ).decode()
 
         # A file key also exists, but it is NOT the one that sealed the value.
-        crypto.encrypt_value("unrelated")
+        crypto._create_file_key()
 
         with patch.object(crypto, "_read_keyring_key", lambda: keychain_key):
             self.assertEqual(crypto.decrypt_value(token), "from-keychain")
@@ -97,9 +101,9 @@ class CryptoTests(unittest.TestCase):
         """Packaged builds cannot reach the keychain; say so instead of lying."""
         keychain_key = Fernet.generate_key()
         token = crypto.ENCRYPTED_PREFIX + Fernet(keychain_key).encrypt(b"v").decode()
-        crypto.encrypt_value("unrelated")  # creates a file key that will not match
+        crypto._create_file_key()  # creates a file key that will not match
 
-        # _read_keyring_key already patched to None -> keychain unreachable.
+        self.keyring_key = None
         self.assertEqual(crypto.decrypt_value(token), "")
         self.assertTrue(crypto.is_unreadable(token))
 
@@ -107,7 +111,7 @@ class CryptoTests(unittest.TestCase):
 
     def test_lost_key_is_reported_not_hidden(self):
         token = crypto.encrypt_value("secret")
-        (self.root / ".sasoo_key").unlink()  # the key is gone
+        self.keyring_key = None
 
         self.assertEqual(crypto.decrypt_value(token), "")
         self.assertTrue(
@@ -118,30 +122,50 @@ class CryptoTests(unittest.TestCase):
     def test_decrypt_never_creates_a_key(self):
         """A read must not mint a key -- that used to mask the loss for good."""
         token = crypto.encrypt_value("secret")
-        key_file = self.root / ".sasoo_key"
-        original = key_file.read_bytes()
-        key_file.unlink()
+        original = self.keyring_key
+        self.keyring_key = None
 
         crypto.decrypt_value(token)
 
-        self.assertFalse(
-            key_file.exists(),
-            "decrypt_value regenerated the key file, hiding that the real key was lost",
-        )
+        self.assertIsNone(self.keyring_key)
+        self.assertFalse((self.root / ".sasoo_key").exists())
 
         # And once the real key is restored, the value opens again.
-        key_file.write_bytes(original)
+        self.keyring_key = original
         self.assertEqual(crypto.decrypt_value(token), "secret")
 
     def test_reencrypting_recovers_the_setting(self):
         """Re-entering the key in Settings must overwrite the unreadable value."""
         stale = crypto.encrypt_value("old")
-        (self.root / ".sasoo_key").unlink()
+        self.keyring_key = None
         self.assertTrue(crypto.is_unreadable(stale))
 
-        fresh = crypto.encrypt_value("new")  # creates a fresh key
+        fresh = crypto.encrypt_value("new")
         self.assertEqual(crypto.decrypt_value(fresh), "new")
         self.assertFalse(crypto.is_unreadable(fresh))
+
+    def test_legacy_file_ciphertext_migrates_to_keyring(self):
+        legacy_key = crypto._create_file_key()
+        legacy = crypto.ENCRYPTED_PREFIX + Fernet(legacy_key).encrypt(b"old").decode()
+
+        migrated = crypto.migrate_value_to_primary(legacy)
+
+        self.assertNotEqual(migrated, legacy)
+        self.assertIsNotNone(self.keyring_key)
+        self.assertTrue(crypto.remove_legacy_file_key())
+        self.assertFalse((self.root / ".sasoo_key").exists())
+        self.assertEqual(crypto.decrypt_value(migrated), "old")
+
+    def test_keyring_failure_does_not_fall_back_next_to_database(self):
+        keyring_module = sys.modules["keyring"]
+        keyring_module.set_password = lambda *_args: (_ for _ in ()).throw(
+            KeyringError("keychain locked")
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "OS credential store"):
+            crypto.encrypt_value("secret")
+
+        self.assertFalse((self.root / ".sasoo_key").exists())
 
 
 if __name__ == "__main__":

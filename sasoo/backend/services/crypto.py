@@ -2,13 +2,11 @@
 Sasoo - API Key Encryption Utility
 Encrypts/decrypts API keys stored in SQLite using Fernet symmetric encryption.
 
-The key lives in a file next to the database (`<library>/.sasoo_key`, mode 0600).
-It used to depend on how the app was launched -- OS keychain in development,
-file in packaged builds -- which meant a key written by one mode was unreadable
-by the other, and the app reported "no API key" with no way to tell that a key
-was in fact stored. Encryption now always uses the file key, which both modes
-can reach, while decryption still accepts keys from the OS keychain so that
-values written by older builds keep working.
+New encryption keys live in the operating system credential store (macOS
+Keychain, Windows Credential Manager, or the configured Linux keyring). The
+legacy `<app-data>/.sasoo_key` file is read only to migrate existing values; it
+is no longer the operating default because copying the app-data folder would
+otherwise disclose both the database and its decryption key.
 
 Decryption never creates a key. The previous code did, so a read against a
 cleared keychain would quietly mint a fresh key and then fail to decrypt with
@@ -20,6 +18,7 @@ import os
 from typing import Optional
 
 from cryptography.fernet import Fernet, InvalidToken
+from keyring.errors import KeyringError
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +30,14 @@ _KEYRING_ACCOUNT = "fernet-key"
 ENCRYPTED_PREFIX = "enc:v1:"
 
 _KEY_FILENAME = ".sasoo_key"
+
+
+class CryptoKeyStoreError(RuntimeError):
+    """The encryption key could not be safely read or persisted."""
+
+
+class CryptoMigrationError(RuntimeError):
+    """A legacy ciphertext could not be migrated without data loss."""
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +103,7 @@ def _create_file_key() -> bytes:
         existing_key = _read_file_key()
         if existing_key:
             return existing_key
-        raise RuntimeError(f"Could not safely read existing encryption key: {path}")
+        raise CryptoKeyStoreError(f"Could not safely read existing encryption key: {path}")
 
     with os.fdopen(descriptor, "wb") as key_file:
         key_file.write(new_key)
@@ -104,7 +111,7 @@ def _create_file_key() -> bytes:
         os.fsync(key_file.fileno())
 
     if not _restrict_file_permissions(path):
-        raise RuntimeError(f"Could not secure encryption key permissions: {path}")
+        raise CryptoKeyStoreError(f"Could not secure encryption key permissions: {path}")
 
     logger.info("Generated new Fernet key: %s", path)
     return new_key
@@ -121,41 +128,46 @@ def _read_keyring_key() -> Optional[bytes]:
         import keyring as kr
 
         stored = kr.get_password(_KEYRING_SERVICE, _KEYRING_ACCOUNT)
-    except Exception as exc:
+    except (ImportError, KeyringError, OSError) as exc:
         logger.debug("Keyring unavailable: %s", exc)
         return None
     return stored.encode("utf-8") if stored else None
 
 
-def _prefer_os_keyring() -> bool:
-    """Opt in to encrypting with the OS keychain instead of the file key."""
-    explicit = os.environ.get("SASOO_USE_OS_KEYRING", "")
+def _prefer_file_key() -> bool:
+    """Emergency opt-out for systems without an OS credential store."""
+    explicit = os.environ.get("SASOO_USE_FILE_KEY", "")
     return explicit.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _create_keyring_key() -> bytes:
+    new_key = Fernet.generate_key()
+    try:
+        import keyring as kr
+
+        kr.set_password(_KEYRING_SERVICE, _KEYRING_ACCOUNT, new_key.decode("utf-8"))
+    except (ImportError, KeyringError, OSError) as exc:
+        raise CryptoKeyStoreError(
+            "The OS credential store is unavailable; API keys were not saved."
+        ) from exc
+
+    logger.info("Generated new Fernet key in the OS credential store")
+    return new_key
 
 
 def _encryption_key() -> bytes:
     """The key NEW values are encrypted with. Creates one if none exists."""
-    if _prefer_os_keyring():
-        existing = _read_keyring_key()
-        if existing:
-            return existing
-        new_key = Fernet.generate_key()
-        try:
-            import keyring as kr
+    if _prefer_file_key():
+        logger.warning("SASOO_USE_FILE_KEY is enabled; using the legacy file key store")
+        return _read_file_key() or _create_file_key()
 
-            kr.set_password(_KEYRING_SERVICE, _KEYRING_ACCOUNT, new_key.decode("utf-8"))
-            logger.info("Generated new Fernet key in the OS keychain")
-            return new_key
-        except Exception as exc:
-            logger.warning("Could not write to keyring (%s); using file key", exc)
-
-    return _read_file_key() or _create_file_key()
+    return _read_keyring_key() or _create_keyring_key()
 
 
 def _decryption_keys() -> list[bytes]:
     """Every key a stored value might have been encrypted with. No side effects."""
     keys: list[bytes] = []
-    for candidate in (_read_file_key(), _read_keyring_key()):
+    for candidate in (_read_keyring_key(), _read_file_key()):
         if candidate and candidate not in keys:
             keys.append(candidate)
     return keys
@@ -171,6 +183,48 @@ def encrypt_value(plaintext: str) -> str:
         return plaintext
     token = Fernet(_encryption_key()).encrypt(plaintext.encode("utf-8"))
     return ENCRYPTED_PREFIX + token.decode("utf-8")
+
+
+def migrate_value_to_primary(stored: str) -> str:
+    """Re-encrypt a plaintext or legacy-file value with the current primary key."""
+    if not stored:
+        return stored
+
+    primary_key = _encryption_key()
+    if is_encrypted(stored):
+        token = stored[len(ENCRYPTED_PREFIX):].encode("utf-8")
+        try:
+            Fernet(primary_key).decrypt(token)
+            return stored
+        except InvalidToken:
+            plaintext = decrypt_value(stored)
+            if not plaintext:
+                raise CryptoMigrationError("Stored API key could not be decrypted for migration.")
+    else:
+        plaintext = stored
+
+    migrated = Fernet(primary_key).encrypt(plaintext.encode("utf-8"))
+    return ENCRYPTED_PREFIX + migrated.decode("utf-8")
+
+
+def remove_legacy_file_key() -> bool:
+    """Delete the colocated legacy key after every stored secret is migrated."""
+    if _prefer_file_key():
+        return False
+
+    path = _key_path()
+    if not path.exists():
+        return False
+    if path.is_symlink() or not path.is_file():
+        logger.error("Refusing to remove an unsafe encryption key path: %s", path)
+        return False
+    try:
+        path.unlink()
+    except OSError as exc:
+        logger.warning("Could not remove migrated legacy encryption key %s: %s", path, exc)
+        return False
+    logger.info("Removed migrated legacy encryption key: %s", path)
+    return True
 
 
 def decrypt_value(stored: str) -> str:
