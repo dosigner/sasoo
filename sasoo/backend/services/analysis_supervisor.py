@@ -93,6 +93,10 @@ async def reconcile_once(conn, cap: int, spawn=spawn_worker) -> None:
     backoff_cut = _iso_shift(now_dt, BACKOFF_S)
 
     await ar.reconcile_stale(conn, stale_cut=stale_cut, max_attempts=MAX_ATTEMPTS, now=now)
+    # C1: cap 초과로 queued에 머문 채 cancel_requested=1만 세워진 행은 claim_next(cancel_requested=0
+    # 필터)·reconcile_stale(status='running'만 봄)·mark_over_attempts_error(attempts만 봄) 어디서도
+    # 소비되지 않아 영구 좀비가 된다. attempts 정리보다 먼저 cancel-wins으로 확정한다.
+    await ar.sweep_cancelled_queued(conn, now)
     await ar.mark_over_attempts_error(conn, MAX_ATTEMPTS)
 
     while True:
@@ -102,7 +106,9 @@ async def reconcile_once(conn, cap: int, spawn=spawn_worker) -> None:
             break
         paper_id, generation = claimed
         try:
-            pid = spawn(paper_id, generation)
+            # M1: 번들 재실행(exec) 포함 동기 spawn을 이벤트 루프에서 직접 돌리면 /run 핸들러가
+            # 블로킹된다 — 스레드로 위임(spawn 주입 시그니처는 유지).
+            pid = await asyncio.to_thread(spawn, paper_id, generation)
         except Exception:  # noqa: BLE001
             logger.exception("워커 스폰 실패 paper=%s gen=%s — queued 복귀", paper_id, generation)
             await ar.finalize_run(conn, paper_id, generation, "queued", now)

@@ -68,6 +68,7 @@ async def claim_next(
             SELECT paper_id FROM analysis_runs
             WHERE status='queued' AND cancel_requested=0 AND attempts < ?
               AND (last_attempt_at IS NULL OR last_attempt_at < ?)
+              AND EXISTS (SELECT 1 FROM papers p WHERE p.id = analysis_runs.paper_id)
             ORDER BY started_at LIMIT 1
         )
         AND (SELECT COUNT(*) FROM analysis_runs
@@ -123,6 +124,46 @@ async def request_cancel(conn: aiosqlite.Connection, paper_id: int) -> int:
     )
     await conn.commit()
     return cur.rowcount
+
+
+async def cancel_queued_now(conn: aiosqlite.Connection, paper_id: int, now: str) -> int:
+    """queued 상태의 run을 원자적으로 즉시 cancelled로 전이한다.
+
+    rowcount>0이면 아직 워커가 뜨지 않은 상태에서 즉시 취소됐다는 뜻이라 /cancel이
+    바로 응답할 수 있다. rowcount 0이면 이미 running(또는 없음)이라 호출부가
+    request_cancel 폴백으로 넘어가야 한다."""
+    cur = await conn.execute(
+        "UPDATE analysis_runs SET status='cancelled', cancel_requested=1, updated_at=? "
+        "WHERE paper_id=? AND status='queued'",
+        (now, paper_id),
+    )
+    await conn.commit()
+    return cur.rowcount
+
+
+async def sweep_cancelled_queued(conn: aiosqlite.Connection, now: str) -> list[int]:
+    """cap 초과로 queued에 머문 채 cancel_requested=1만 세워진 행을 cancelled로 확정한다.
+
+    claim_next(cancel_requested=0 필터)·reconcile_stale(status='running'만 봄)·
+    mark_over_attempts_error(attempts만 봄) 중 그 플래그를 소비하는 경로가 없어
+    행이 queued로 영구 고착되던 문제(C1)의 리컨실러측 수정. 단일 writer인
+    리컨실러 루프에서 주기 호출한다."""
+    cur = await conn.execute(
+        "SELECT paper_id FROM analysis_runs WHERE status='queued' AND cancel_requested=1"
+    )
+    ids = [r[0] for r in await cur.fetchall()]
+    if ids:
+        await conn.execute(
+            "UPDATE papers SET status='cancelled' WHERE id IN "
+            "(SELECT paper_id FROM analysis_runs WHERE status='queued' AND cancel_requested=1)"
+        )
+        await conn.execute(
+            "UPDATE analysis_runs SET status='cancelled', updated_at=? "
+            "WHERE status='queued' AND cancel_requested=1",
+            (now,),
+        )
+        await conn.commit()
+    return ids
 
 
 async def get_run(conn: aiosqlite.Connection, paper_id: int) -> Optional[dict]:

@@ -365,6 +365,38 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, {"paper_id": paper_id, "status": "cancelling"})
         self.assertTrue(event.is_set())
 
+    async def test_cancel_subprocess_mode_cancels_queued_row_immediately(self):
+        # C1: cap 초과로 queued에 머문 run은 request_cancel(플래그만 세움)이 아니라
+        # 원자적 즉시 취소로 응답해야 한다 — 소비되지 않는 플래그로 영구 좀비가 되던 문제.
+        paper_id = 5151
+        with (
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch("models.database.get_db", new=AsyncMock(return_value=object())),
+            patch("models.analysis_runs.cancel_queued_now", new=AsyncMock(return_value=1)),
+            patch("api.analysis_routes.execute_update", new=AsyncMock()) as exec_update,
+        ):
+            result = await analysis_routes.cancel_analysis(paper_id)
+        self.assertEqual(result, {"paper_id": paper_id, "status": "cancelled"})
+        exec_update.assert_awaited_once()
+        sql, params = exec_update.call_args.args
+        self.assertIn("papers", sql)
+        self.assertIn("cancelled", params)
+        self.assertIn(paper_id, params)
+
+    async def test_cancel_subprocess_mode_falls_back_when_already_running(self):
+        # rowcount 0(=이미 running)이면 기존 request_cancel 폴백으로 넘어가야 한다.
+        paper_id = 5152
+        with (
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch("models.database.get_db", new=AsyncMock(return_value=object())),
+            patch("models.analysis_runs.cancel_queued_now", new=AsyncMock(return_value=0)),
+            patch("models.analysis_runs.get_run", new=AsyncMock(return_value={"status": "running"})),
+            patch("models.analysis_runs.request_cancel", new=AsyncMock(return_value=1)) as req_cancel,
+        ):
+            result = await analysis_routes.cancel_analysis(paper_id)
+        self.assertEqual(result, {"paper_id": paper_id, "status": "cancelling"})
+        req_cancel.assert_awaited_once()
+
     async def test_screening_prompt_puts_document_first(self):
         status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
         calls = {}

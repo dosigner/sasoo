@@ -2539,8 +2539,14 @@ async def cancel_analysis(paper_id: int):
     if _subprocess_mode():
         try:
             from models.database import get_db
-            from models.analysis_runs import request_cancel, get_run
+            from models.analysis_runs import request_cancel, get_run, cancel_queued_now
             conn = await get_db()
+            # C1: cap 초과로 queued에 머문 run은 request_cancel(플래그만 세움)로는 소비되지 않아
+            # 영구 좀비가 된다 — 아직 워커가 안 떴다면 원자적으로 즉시 cancelled 확정한다.
+            rowcount = await cancel_queued_now(conn, paper_id, _utcnow_iso())
+            if rowcount > 0:
+                await execute_update("UPDATE papers SET status = ? WHERE id = ?", ("cancelled", paper_id))
+                return {"paper_id": paper_id, "status": "cancelled"}
             run = await get_run(conn, paper_id)
             if run and run.get("status") in ("queued", "running"):
                 await request_cancel(conn, paper_id)
