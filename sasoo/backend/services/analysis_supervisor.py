@@ -47,6 +47,9 @@ def build_spawn_env(base_env: dict | None = None) -> dict:
     # 워커는 main.py 로드 시 _export_os_certs()로 자기 PEM을 만들어 자기 atexit로 관리한다.
     env.pop("SSL_CERT_FILE", None)
     env.pop("REQUESTS_CA_BUNDLE", None)
+    # M4: 워커는 서버 HTTP API를 호출하지 않는다 — 최소권한 원칙상 상속 금지.
+    env.pop("SASOO_API_TOKEN", None)
+    env.pop("SASOO_SHUTDOWN_TOKEN", None)
     return env
 
 

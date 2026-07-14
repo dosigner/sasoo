@@ -286,6 +286,18 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         skip_deep, reason = analysis_routes._screening_gate_decision(payload, phase="deep_dive")
         self.assertFalse(skip_deep)
 
+    def test_gate_confidence_exactly_at_floor_trusts_applicable_flag(self):
+        # T3 경계: confidence == _GATE_CONFIDENCE_FLOOR(0.6)는 '<' 비교라 low-confidence
+        # 예외 대상이 아니다 — floor "미만"만 스킵을 막으므로 정확히 floor인 값은 그대로
+        # applicable=False를 신뢰해 스킵해야 한다(부동소수 경계 회귀 고정).
+        self.assertEqual(analysis_routes._GATE_CONFIDENCE_FLOOR, 0.6)
+        payload = ('{"relevance_score":0.8,"domain":"optics","key_topics":["광학"],'
+                   '"is_experimental":true,"recipe_applicable":true,"deep_dive_applicable":false,'
+                   '"confidence":0.6}')
+        skip_deep, reason = analysis_routes._screening_gate_decision(payload, phase="deep_dive")
+        self.assertTrue(skip_deep)
+        self.assertEqual(reason, "not_applicable_deep_dive")
+
     def test_gate_high_confidence_applicable_false_still_skips(self):
         payload = ('{"relevance_score":0.8,"domain":"optics","key_topics":["광학"],'
                    '"is_experimental":true,"recipe_applicable":false,"deep_dive_applicable":true,'
@@ -300,7 +312,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                         "top_cited": [{"ref_id": "[1]", "cite_count": 3,
                                        "cite_contexts": [{"sentence": "s", "section": "Methods"}]}]}
         key = analysis_routes._citation_cache_key(local_result, "본문 발췌")
-        self.assertIn(analysis_routes.PROMPT_VERSION, key)
+        self.assertIn(analysis_routes._CITATION_PROMPT_VERSION, key)
         # 본문/통계가 같으면 동일 키(프롬프트 문구는 키에 안 들어감)
         self.assertEqual(key, analysis_routes._citation_cache_key(local_result, "본문 발췌"))
 

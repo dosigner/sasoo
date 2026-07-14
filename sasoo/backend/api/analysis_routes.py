@@ -169,9 +169,11 @@ async def _get_cached_phase_result(paper_id: int, phase: str, input_text: str) -
 # 게이트가 applicable=False로 스킵하기 전 요구하는 최소 확신도(잠정값 0.6 — e2e 분포로 재조정).
 _GATE_CONFIDENCE_FLOOR = 0.6
 
-# 프롬프트 문구가 아닌 "안정 콘텐츠 + 이 버전"으로 캐시 키를 구성한다.
-# 문구를 바꿔도 재과금이 없고, 계약이 실제로 바뀔 때만 이 값을 올려 1회 무효화한다.
-PROMPT_VERSION = "2026-07-14"
+# M6: citation phase 캐시 키 한정 버전 태그(현재 소비처: _citation_cache_key,
+# _run_citation의 non-top_refs 폴백 input_hash — 둘 다 citation phase). 프롬프트
+# 문구가 아닌 "안정 콘텐츠 + 이 버전"으로 캐시 키를 구성한다. 문구를 바꿔도 재과금이
+# 없고, citation phase의 계약이 실제로 바뀔 때만 이 값을 올려 1회 무효화한다.
+_CITATION_PROMPT_VERSION = "2026-07-14"
 
 
 def _screening_gate_decision(
@@ -535,9 +537,9 @@ def _build_top_by_norm(top_cited: list) -> dict:
 
 
 def _citation_cache_key(local_result: dict, citation_body: str) -> str:
-    """인용 phase 캐시 키: 프롬프트 문구가 아닌 안정 콘텐츠 + PROMPT_VERSION.
+    """인용 phase 캐시 키: 프롬프트 문구가 아닌 안정 콘텐츠 + _CITATION_PROMPT_VERSION.
 
-    문구를 고쳐도 재과금이 없고, 계약이 실제로 바뀔 때 PROMPT_VERSION을 올려 1회 무효화한다."""
+    문구를 고쳐도 재과금이 없고, 계약이 실제로 바뀔 때 _CITATION_PROMPT_VERSION을 올려 1회 무효화한다."""
     top = [
         {
             "ref_id": r.get("ref_id"),
@@ -550,7 +552,7 @@ def _citation_cache_key(local_result: dict, citation_body: str) -> str:
         for r in local_result.get("top_cited", [])[:10]
     ]
     payload = {
-        "v": PROMPT_VERSION,
+        "v": _CITATION_PROMPT_VERSION,
         "phase": "citation",
         "total_references": local_result.get("total_references", 0),
         "citation_style": local_result.get("citation_style", ""),
@@ -711,7 +713,7 @@ async def _run_citation(
         if top_refs
         else json.dumps(
             {
-                "v": PROMPT_VERSION,
+                "v": _CITATION_PROMPT_VERSION,
                 "phase": "citation",
                 "citation_body": citation_body,
                 "citation_references": citation_references,

@@ -32,6 +32,18 @@ class SpawnBuilderTests(unittest.TestCase):
         self.assertNotIn("REQUESTS_CA_BUNDLE", env)
         self.assertEqual(env["GEMINI_API_KEY"], "k")     # API 키는 상속
 
+    def test_env_pops_api_and_shutdown_tokens(self):
+        # M4: 워커는 서버 HTTP API를 쓰지 않으니 최소권한 원칙상 API/셧다운 토큰은 상속 금지.
+        from services import analysis_supervisor as sup
+        env = sup.build_spawn_env({
+            "SASOO_API_TOKEN": "secret-api-token",
+            "SASOO_SHUTDOWN_TOKEN": "secret-shutdown-token",
+            "GEMINI_API_KEY": "k",
+        })
+        self.assertNotIn("SASOO_API_TOKEN", env)
+        self.assertNotIn("SASOO_SHUTDOWN_TOKEN", env)
+        self.assertEqual(env["GEMINI_API_KEY"], "k")   # 분석에 필요한 키는 계속 상속
+
     def test_spawn_worker_uses_detach_flags(self):
         from services import analysis_supervisor as sup
         fake_proc = types.SimpleNamespace(pid=4242)
