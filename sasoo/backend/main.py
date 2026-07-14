@@ -12,6 +12,8 @@ from hmac import compare_digest, digest
 from pathlib import Path
 from typing import Optional
 
+import uvicorn
+
 # ---------------------------------------------------------------------------
 # SSL: Use OS certificate store for all outbound HTTPS connections.
 # Fixes SSL errors on corporate/university networks with SSL inspection proxies.
@@ -75,6 +77,8 @@ from models.database import (
 _env_path = Path(__file__).resolve().parent / ".env"
 if _env_path.exists():
     load_dotenv(_env_path)
+
+_shutdown_server: Optional[uvicorn.Server] = None
 
 
 # ---------------------------------------------------------------------------
@@ -360,12 +364,14 @@ async def shutdown(x_shutdown_token: Optional[str] = Header(None)):
     """Graceful shutdown endpoint (called by Electron on app quit).
     Requires X-Shutdown-Token header matching SASOO_SHUTDOWN_TOKEN env var."""
     expected_token = os.environ.get("SASOO_SHUTDOWN_TOKEN", "")
-    if expected_token and x_shutdown_token != expected_token:
+    if not expected_token:
+        raise HTTPException(status_code=503, detail="Shutdown token is not configured")
+    if not x_shutdown_token or not compare_digest(x_shutdown_token, expected_token):
         raise HTTPException(status_code=403, detail="Invalid shutdown token")
 
-    import signal
-
-    os.kill(os.getpid(), signal.SIGINT)
+    if _shutdown_server is None:
+        raise HTTPException(status_code=503, detail="Graceful shutdown is unavailable")
+    _shutdown_server.should_exit = True
     return {"status": "shutting_down"}
 
 
@@ -377,7 +383,6 @@ async def shutdown(x_shutdown_token: Optional[str] = Header(None)):
 if __name__ == "__main__":
     import argparse
     import sys
-    import uvicorn
 
     parser = argparse.ArgumentParser(description="Sasoo Backend Server")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
@@ -400,15 +405,18 @@ if __name__ == "__main__":
     # Determine if we're running as a bundled executable
     is_bundled = getattr(sys, 'frozen', False)
 
-    # In bundled mode, run the app object directly (no reload)
-    # In development, allow reload
-    if is_bundled:
-        uvicorn.run(
+    if is_bundled or not args.reload:
+        config = uvicorn.Config(
             app,
             host=args.host,
             port=args.port,
             log_level="info",
         )
+        _shutdown_server = uvicorn.Server(config)
+        try:
+            _shutdown_server.run()
+        finally:
+            _shutdown_server = None
     else:
         uvicorn.run(
             "main:app",

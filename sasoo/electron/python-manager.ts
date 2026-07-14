@@ -1,8 +1,8 @@
-import { ChildProcess, spawn, exec } from 'child_process';
+import type { ChildProcess } from 'child_process';
 import * as crypto from 'crypto';
-import * as path from 'path';
-import * as fs from 'fs';
 
+import { launchBackendProcess } from './backend-process-launcher';
+import { stopBackendProcess } from './backend-process-stopper';
 import { LogBatcher } from './log-batcher';
 
 export interface PythonManagerConfig {
@@ -22,8 +22,6 @@ export class PythonManager {
   private restartCount: number = 0;
   private isShuttingDown: boolean = false;
   private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
-  private startupResolver: ((value: boolean) => void) | null = null;
-  private usesBundledBackend: boolean = false;
   private shutdownToken: string = '';
   private apiToken: string;
   private logForwarder: ((level: string, message: string) => void) | null = null;
@@ -55,59 +53,6 @@ export class PythonManager {
   }
 
   /**
-   * Check if a bundled backend executable exists.
-   * Returns the path to sasoo-backend.exe if found, null otherwise.
-   */
-  private getBundledBackendPath(): string | null {
-    // In production, the bundled backend is in resources/backend/sasoo-backend/
-    const possiblePaths = [
-      // Windows production path
-      path.join(this.config.backendPath, 'sasoo-backend', 'sasoo-backend.exe'),
-      // macOS/Linux production path
-      path.join(this.config.backendPath, 'sasoo-backend', 'sasoo-backend'),
-    ];
-
-    for (const exePath of possiblePaths) {
-      if (fs.existsSync(exePath)) {
-        console.log(`[PythonManager] Found bundled backend at: ${exePath}`);
-        return exePath;
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Resolve the path to the Python executable.
-   * Checks for virtual environment first, then falls back to system python.
-   */
-  private resolvePythonPath(): string {
-    if (this.config.pythonPath) {
-      return this.config.pythonPath;
-    }
-
-    // Check for virtual environment in the backend directory
-    const venvPaths = [
-      path.join(this.config.backendPath, '.venv', 'bin', 'python'),
-      path.join(this.config.backendPath, '.venv', 'Scripts', 'python.exe'),
-      path.join(this.config.backendPath, 'venv', 'bin', 'python'),
-      path.join(this.config.backendPath, 'venv', 'Scripts', 'python.exe'),
-    ];
-
-    for (const venvPath of venvPaths) {
-      if (fs.existsSync(venvPath)) {
-        console.log(`[PythonManager] Found venv python at: ${venvPath}`);
-        return venvPath;
-      }
-    }
-
-    // Fall back to system python
-    const systemPython = process.platform === 'win32' ? 'python' : 'python3';
-    console.log(`[PythonManager] Using system python: ${systemPython}`);
-    return systemPython;
-  }
-
-  /**
    * Start the FastAPI backend server.
    * Uses bundled sasoo-backend.exe in production, uvicorn in development.
    */
@@ -120,81 +65,10 @@ export class PythonManager {
     this.isShuttingDown = false;
     this.shutdownToken = crypto.randomBytes(32).toString('hex');
 
-    console.log('[PythonManager] Config:', JSON.stringify(this.config, null, 2));
-    console.log('[PythonManager] Backend path:', this.config.backendPath);
-    console.log('[PythonManager] isDev:', this.config.isDev);
-
-    // Check for bundled backend first (production mode)
-    const bundledBackend = this.getBundledBackendPath();
-    console.log('[PythonManager] Bundled backend path:', bundledBackend);
-
-    if (bundledBackend && !this.config.isDev) {
-      // Production: Use bundled executable
-      this.usesBundledBackend = true;
-      console.log(`[PythonManager] Starting bundled backend on port ${this.config.port}`);
-      console.log(`[PythonManager] Executable: ${bundledBackend}`);
-
-      const args = [
-        '--host', '127.0.0.1',
-        '--port', String(this.config.port),
-      ];
-
-      this.process = spawn(bundledBackend, args, {
-        cwd: path.dirname(bundledBackend),
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: {
-          ...process.env,
-          PYTHONUTF8: '1',           // Force UTF-8 encoding (Korean Windows cp949 fix)
-          PYTHONUNBUFFERED: '1',
-          SASOO_PORT: String(this.config.port),
-          SASOO_ENV: 'production',
-          SASOO_API_TOKEN: this.apiToken,
-          SASOO_SHUTDOWN_TOKEN: this.shutdownToken,
-          // 분석은 서버 프로세스 밖 디태치 워커에서 실행한다. 서버가 죽거나(dev reload,
-          // 크래시) 재시작해도 진행 중 분석이 살아남고, 고아는 리컨실러가 이어받는다.
-          SASOO_ANALYSIS_SUBPROCESS: '1',
-        },
-      });
-    } else {
-      // Development: Use Python + uvicorn
-      this.usesBundledBackend = false;
-      const pythonPath = this.resolvePythonPath();
-
-      console.log(`[PythonManager] Starting FastAPI server on port ${this.config.port}`);
-      console.log(`[PythonManager] Python: ${pythonPath}`);
-      console.log(`[PythonManager] Backend path: ${this.config.backendPath}`);
-
-      const args = [
-        '-m', 'uvicorn',
-        'main:app',
-        '--host', '127.0.0.1',
-        '--port', String(this.config.port),
-        // debug logging in dev multiplied per-request output and, with it,
-        // the log-forwarding traffic below; uvicorn stays at info everywhere.
-        '--log-level', 'info',
-      ];
-
-      if (this.config.isDev) {
-        args.push('--reload');
-      }
-
-      this.process = spawn(pythonPath, args, {
-        cwd: this.config.backendPath,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: {
-          ...process.env,
-          PYTHONUTF8: '1',           // Force UTF-8 encoding (Korean Windows cp949 fix)
-          PYTHONUNBUFFERED: '1',
-          SASOO_PORT: String(this.config.port),
-          SASOO_ENV: this.config.isDev ? 'development' : 'production',
-          SASOO_API_TOKEN: this.apiToken,
-          SASOO_SHUTDOWN_TOKEN: this.shutdownToken,
-          // dev에서도 켠다 — --reload가 워커를 재기동해도 분석이 죽지 않게 하는 것이
-          // 이 분리의 주 목적이다(리로드·크래시 중 진행 중 분석 유실 방지).
-          SASOO_ANALYSIS_SUBPROCESS: '1',
-        },
-      });
-    }
+    this.process = launchBackendProcess(this.config, {
+      apiToken: this.apiToken,
+      shutdownToken: this.shutdownToken,
+    });
 
     // Log stdout — forward to renderer DevTools via IPC (batched)
     this.process.stdout?.on('data', (data: Buffer) => {
@@ -379,12 +253,7 @@ export class PythonManager {
     }
   }
 
-  /**
-   * Gracefully stop the FastAPI server.
-   * On Windows, SIGTERM causes immediate hard kill (no graceful shutdown).
-   * Instead, we POST to /shutdown to let uvicorn shut down cleanly,
-   * then fall back to SIGINT/SIGKILL if the process doesn't exit in time.
-   */
+  /** Gracefully stop the FastAPI server, escalating only after bounded waits. */
   async stop(): Promise<void> {
     this.isShuttingDown = true;
     this.stopHealthChecks();
@@ -396,63 +265,16 @@ export class PythonManager {
     }
 
     console.log('[PythonManager] Stopping FastAPI server...');
-
-    // Try graceful HTTP shutdown first
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3000);
-      await fetch(`http://127.0.0.1:${this.config.port}/shutdown`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.apiToken}`,
-          'X-Shutdown-Token': this.shutdownToken,
-        },
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      console.log('[PythonManager] Shutdown request sent via HTTP');
-    } catch {
-      console.warn('[PythonManager] HTTP shutdown request failed, falling back to signal');
-    }
-
-    return new Promise((resolve) => {
-      const pid = this.process!.pid;
-
-      const forceKillTimeout = setTimeout(() => {
-        if (this.process) {
-          console.warn('[PythonManager] Force killing process');
-          if (process.platform === 'win32' && pid) {
-            // Windows: taskkill /T kills entire process tree (prevents zombie children)
-            exec(`taskkill /T /F /PID ${pid}`, (err) => {
-              if (err) {
-                console.warn('[PythonManager] taskkill failed:', err.message);
-                try { this.process?.kill('SIGKILL'); } catch { /* already dead */ }
-              }
-              this.process = null;
-              resolve();
-            });
-          } else {
-            try { this.process.kill('SIGKILL'); } catch { /* already dead */ }
-            this.process = null;
-            resolve();
-          }
-        } else {
-          resolve();
-        }
-      }, 5000);
-
-      this.process!.on('exit', () => {
-        clearTimeout(forceKillTimeout);
-        this.process = null;
-        console.log('[PythonManager] FastAPI server stopped');
-        resolve();
-      });
-
-      // If HTTP shutdown didn't trigger exit, send signal as backup
-      if (process.platform !== 'win32') {
-        this.process!.kill('SIGINT');
-      }
+    const child = this.process;
+    await stopBackendProcess(child, {
+      port: this.config.port,
+      apiToken: this.apiToken,
+      shutdownToken: this.shutdownToken,
     });
+    if (this.process === child) {
+      this.process = null;
+    }
+    console.log('[PythonManager] FastAPI server stopped');
   }
 
   /**
