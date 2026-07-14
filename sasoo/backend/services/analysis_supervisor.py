@@ -137,6 +137,35 @@ async def read_max_concurrent() -> int:
         return 3
 
 
+async def read_budget_state() -> tuple[float, float]:
+    """(현재 지출, 월 한도) — /run(api/analysis_routes.py)의 예산 계산식과 동일한 값을 내야
+    한다(테스트로 고정). 월 시작~다음달 시작 범위, phase != 'error' 제외, 기본 한도 50.0,
+    api.settings._get_all_settings 사용. 리컨실러의 자동 재개 경로에도 /run과 같은 한도를
+    적용하기 위해 분리했다 — 계산식이 갈라지면 한도의 의미가 무너진다."""
+    from api.settings import _get_all_settings
+    from models.database import fetch_all
+
+    settings = await _get_all_settings()
+    monthly_limit = float(settings.get("monthly_budget_limit", "50.0"))
+
+    now = datetime.now(timezone.utc)
+    current_month = now.strftime("%Y-%m")
+    month_start = f"{current_month}-01"
+    month_num = int(current_month.split("-")[1])
+    year = int(current_month.split("-")[0])
+    if month_num == 12:
+        month_end = f"{year + 1}-01-01"
+    else:
+        month_end = f"{year}-{month_num + 1:02d}-01"
+
+    cost_rows = await fetch_all(
+        "SELECT cost_usd FROM analysis_results WHERE created_at >= ? AND created_at < ? AND phase != 'error'",
+        (month_start, month_end),
+    )
+    current_spending = sum(r.get("cost_usd") or 0.0 for r in cost_rows)
+    return current_spending, monthly_limit
+
+
 async def reconcile_once(conn, cap: int, spawn=spawn_worker) -> None:
     """stale 조정 → attempts 정리 → cap까지 claim+spawn."""
     now_dt = datetime.now(timezone.utc)
@@ -159,6 +188,25 @@ async def reconcile_once(conn, cap: int, spawn=spawn_worker) -> None:
     # 소비되지 않아 영구 좀비가 된다. attempts 정리보다 먼저 cancel-wins으로 확정한다.
     await ar.sweep_cancelled_queued(conn, now)
     await ar.mark_over_attempts_error(conn, MAX_ATTEMPTS)
+
+    # 결정②: 큐 드레인(claim+spawn) 직전에 월 예산을 확인한다. /run은 402로 새 분석을
+    # 막지만, 리컨실러의 자동 재개 경로는 검사가 없어 한도를 넘긴 채 서버를 재시작하면
+    # 고아 분석이 그대로 재개돼 계속 과금됐다 — 한도의 의미가 무너지는 결함이었다.
+    # 예산 조회 실패(예외)는 가용성 우선 원칙상 드레인을 막지 않는다(경고 로그만).
+    try:
+        current_spending, monthly_limit = await read_budget_state()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("예산 조회 실패 — 드레인 계속: %s", exc)
+    else:
+        if current_spending >= monthly_limit:
+            # queued로 방치하면 C1과 같은 영구 "분석 중" 좀비가 되므로, 눈에 보이는 종료
+            # 상태(error/budget_exceeded)로 확정하고 이번 틱의 드레인(claim/spawn)을 건너뛴다.
+            await ar.mark_budget_blocked(conn, now)
+            logger.warning(
+                "예산 한도 초과($%.2f/$%.2f) — 자동 재개 보류. 설정에서 한도를 올린 뒤 다시 분석하세요.",
+                current_spending, monthly_limit,
+            )
+            return
 
     while True:
         claimed = await ar.claim_next(conn, cap=cap, now=now, fresh_cut=fresh_cut,

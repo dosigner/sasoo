@@ -255,3 +255,56 @@ class StopReconcilerShutdownTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(sup, "terminate_workers", return_value=0), \
              patch("models.database.get_db", new=AsyncMock(side_effect=RuntimeError("db closed"))):
             await sup.stop_reconciler(app)  # 예외 없이 반환돼야 함
+
+
+class ReadBudgetStateTests(unittest.IsolatedAsyncioTestCase):
+    """결정②: 리컨실러 재개 경로도 /run과 같은 예산 계산식을 써야 한다."""
+
+    @staticmethod
+    def _settings_stub(settings: dict):
+        async def _fake(*args, **kwargs):
+            return settings
+        stub = types.ModuleType("api.settings")
+        stub._get_all_settings = _fake
+        return stub
+
+    async def test_returns_spending_and_limit(self):
+        from unittest.mock import AsyncMock
+        from services import analysis_supervisor as sup
+
+        rows = [{"cost_usd": 3.0}, {"cost_usd": None}, {"cost_usd": 2.25}]
+        with patch.dict(sys.modules, {"api.settings": self._settings_stub({"monthly_budget_limit": "12.5"})}), \
+             patch("models.database.fetch_all", new=AsyncMock(return_value=rows)):
+            spending, limit = await sup.read_budget_state()
+
+        self.assertEqual(limit, 12.5)
+        self.assertEqual(spending, 5.25)   # None은 0.0으로 취급(/run과 동일)
+
+    async def test_defaults_limit_to_50_when_setting_missing(self):
+        from unittest.mock import AsyncMock
+        from services import analysis_supervisor as sup
+
+        with patch.dict(sys.modules, {"api.settings": self._settings_stub({})}), \
+             patch("models.database.fetch_all", new=AsyncMock(return_value=[])):
+            spending, limit = await sup.read_budget_state()
+
+        self.assertEqual(limit, 50.0)
+        self.assertEqual(spending, 0.0)
+
+    async def test_query_excludes_error_phase_and_scopes_to_current_month(self):
+        # /run의 SQL(phase != 'error', created_at >= month_start AND < month_end)과 동일한지
+        # fetch_all에 전달되는 쿼리·파라미터로 확인한다.
+        from unittest.mock import AsyncMock
+        from services import analysis_supervisor as sup
+
+        fetch_mock = AsyncMock(return_value=[])
+        with patch.dict(sys.modules, {"api.settings": self._settings_stub({"monthly_budget_limit": "50.0"})}), \
+             patch("models.database.fetch_all", new=fetch_mock):
+            await sup.read_budget_state()
+
+        query, params = fetch_mock.await_args.args
+        self.assertIn("phase != 'error'", query)
+        self.assertIn("analysis_results", query)
+        self.assertEqual(len(params), 2)  # month_start, month_end
+        self.assertRegex(params[0], r"^\d{4}-\d{2}-01$")
+        self.assertRegex(params[1], r"^\d{4}-\d{2}-01$")

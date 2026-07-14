@@ -3,7 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import aiosqlite
 
@@ -152,6 +152,48 @@ class ReconcileTests(unittest.IsolatedAsyncioTestCase):
         await sup.reconcile_once(self.conn, cap=2, spawn=failing_spawn)
         run = await ar.get_run(self.conn, 1)
         self.assertEqual(run["status"], "queued")
+
+    # --- 결정②: 자동 재개에도 월 예산 한도를 적용한다 --------------------------------
+
+    async def test_reconcile_once_blocks_drain_when_budget_exceeded(self):
+        from services import analysis_supervisor as sup
+        await self.conn.execute("INSERT INTO papers VALUES (1, 'analyzing')")
+        await ar.upsert_queued(self.conn, 1, ar.utcnow_iso())
+        await self.conn.commit()
+        spawned = []
+        with patch.object(sup, "read_budget_state", new=AsyncMock(return_value=(60.0, 50.0))):
+            await sup.reconcile_once(self.conn, cap=2, spawn=lambda p, g: spawned.append(p) or 1)
+        self.assertEqual(spawned, [])   # claim/spawn 없음
+        run = await ar.get_run(self.conn, 1)
+        self.assertEqual(run["status"], "error")
+        self.assertEqual(run["error_message"], "budget_exceeded")
+        row = await (await self.conn.execute("SELECT status FROM papers WHERE id=1")).fetchone()
+        self.assertEqual(row["status"], "error")
+
+    async def test_reconcile_once_drains_normally_when_budget_within_limit(self):
+        from services import analysis_supervisor as sup
+        await self.conn.execute("INSERT INTO papers VALUES (1, 'analyzing')")
+        await ar.upsert_queued(self.conn, 1, ar.utcnow_iso())
+        await self.conn.commit()
+        spawned = []
+        with patch.object(sup, "read_budget_state", new=AsyncMock(return_value=(10.0, 50.0))):
+            await sup.reconcile_once(self.conn, cap=2, spawn=lambda p, g: spawned.append(p) or 1)
+        self.assertEqual(spawned, [1])
+        run = await ar.get_run(self.conn, 1)
+        self.assertEqual(run["status"], "running")
+
+    async def test_reconcile_once_continues_draining_when_budget_check_raises(self):
+        # 가용성 우선: 예산 조회 실패가 분석을 전부 멈추면 안 된다 — 경고 로그만 남기고 드레인.
+        from services import analysis_supervisor as sup
+        await self.conn.execute("INSERT INTO papers VALUES (1, 'analyzing')")
+        await ar.upsert_queued(self.conn, 1, ar.utcnow_iso())
+        await self.conn.commit()
+        spawned = []
+        with patch.object(sup, "read_budget_state", new=AsyncMock(side_effect=RuntimeError("db down"))):
+            await sup.reconcile_once(self.conn, cap=2, spawn=lambda p, g: spawned.append(p) or 1)
+        self.assertEqual(spawned, [1])
+        run = await ar.get_run(self.conn, 1)
+        self.assertEqual(run["status"], "running")
 
 
 if __name__ == "__main__":

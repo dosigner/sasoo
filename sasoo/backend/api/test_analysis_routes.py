@@ -1241,6 +1241,88 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(merged["top_cited"][0]["evidence_context"], "이 방법은 [1]을 따른다")
 
 
+class BudgetParityTests(unittest.IsolatedAsyncioTestCase):
+    """결정②: 리컨실러 재개 경로의 read_budget_state()가 /run(analysis_routes.run_analysis)의
+    예산 계산과 같은 값을 내야 한다 — 계산식이 갈라지면 예산 한도의 의미가 무너진다.
+
+    실제 임시 sqlite DB에 analysis_results를 채우고 두 코드 경로가 각자의 SQL로 같은 데이터를
+    읽게 해, 월 경계·phase 필터·NULL 처리가 실제로 일치하는지 검증한다(캔맥락 없는 통값
+    비교가 아니라 실쿼리 실행)."""
+
+    async def test_read_budget_state_matches_run_route_calculation(self):
+        import re
+        import tempfile
+        from datetime import datetime, timezone
+        import aiosqlite
+        import models.database as db_module
+        from services import analysis_supervisor as sup
+
+        now = datetime.now(timezone.utc)
+        current_month = now.strftime("%Y-%m")
+        month_num = int(current_month.split("-")[1])
+        year = int(current_month.split("-")[0])
+        month_start = f"{current_month}-01"
+        month_end = f"{year + 1}-01-01" if month_num == 12 else f"{year}-{month_num + 1:02d}-01"
+        prev_month_num = 12 if month_num == 1 else month_num - 1
+        prev_year = year - 1 if month_num == 1 else year
+        prev_month_ts = f"{prev_year}-{prev_month_num:02d}-15T00:00:00"
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp.close()
+        conn = await aiosqlite.connect(tmp.name)
+        conn.row_factory = aiosqlite.Row
+        saved_flag = os.environ.pop("SASOO_ANALYSIS_SUBPROCESS", None)
+        try:
+            await conn.execute("CREATE TABLE analysis_results (cost_usd REAL, created_at TEXT, phase TEXT)")
+            await conn.executemany(
+                "INSERT INTO analysis_results (cost_usd, created_at, phase) VALUES (?, ?, ?)",
+                [
+                    (3.5, f"{month_start}T09:00:00", "completed"),   # 포함
+                    (None, f"{month_start}T10:00:00", "completed"),  # 포함(NULL -> 0.0)
+                    (100.0, f"{month_start}T11:00:00", "error"),     # 제외(phase='error')
+                    (50.0, f"{month_end}T00:00:00", "completed"),    # 제외(다음달 경계)
+                    (20.0, prev_month_ts, "completed"),               # 제외(이전달)
+                ],
+            )
+            await conn.commit()
+
+            settings_stub = types.ModuleType("api.settings")
+
+            async def _fake_settings(*a, **kw):
+                return {"monthly_budget_limit": "1.00"}  # 3.5 > 1.00 -> /run이 402를 던짐
+
+            settings_stub._get_all_settings = _fake_settings
+            paper_row = {"id": 9911, "folder_name": "f"}
+
+            with (
+                patch.object(db_module, "_db_connection", conn),
+                patch.dict(sys.modules, {"api.settings": settings_stub}),
+                patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
+                patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
+            ):
+                spending_from_sup, limit_from_sup = await sup.read_budget_state()
+
+                with self.assertRaises(Exception) as ctx:
+                    await analysis_routes.run_analysis(9911, background_tasks=_StubBackgroundTasks())
+                self.assertEqual(getattr(ctx.exception, "status_code", None), 402)
+                detail = ctx.exception.detail
+        finally:
+            await conn.close()
+            os.unlink(tmp.name)
+            if saved_flag is not None:
+                os.environ["SASOO_ANALYSIS_SUBPROCESS"] = saved_flag
+
+        match = re.search(r"\$([\d.]+) / \$([\d.]+)", detail)
+        self.assertIsNotNone(match, f"402 상세 메시지 형식이 바뀜: {detail}")
+        spending_from_run = float(match.group(1))
+        limit_from_run = float(match.group(2))
+
+        self.assertAlmostEqual(spending_from_sup, spending_from_run, places=2)
+        self.assertAlmostEqual(limit_from_sup, limit_from_run, places=2)
+        self.assertAlmostEqual(spending_from_sup, 3.5, places=2)  # NULL은 0으로, error/월경계는 제외
+        self.assertEqual(limit_from_sup, 1.0)
+
+
 class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):
     async def test_figure_prompt_uses_figure_detail_context_and_latest_phase_snippets(self):
         paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "ai_ml", "agent_used": "neural"}
