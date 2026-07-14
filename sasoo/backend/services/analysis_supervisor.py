@@ -150,6 +150,21 @@ async def _reconciler_loop(app) -> None:
 
 
 async def start_reconciler(app) -> None:
+    """서브프로세스 모드에서만 리컨실러를 띄운다.
+
+    플래그가 꺼진 in-process 모드에서 리컨실러가 돌면, 고아 시드 → claim → 워커 스폰으로
+    이어져 "플래그 off = 기존 경로 그대로"라는 계약을 깨고 예상치 못한 과금이 발생한다
+    (터미널로 백엔드만 직접 띄우는 개발 경로 포함). 대신 구 안전망(analyzing 고아를 error로
+    정리)을 복원해, 리컨실러 없이도 프로세스 사망으로 남은 고아가 방치되지 않게 한다.
+    """
+    if os.environ.get("SASOO_ANALYSIS_SUBPROCESS") != "1":
+        from models.database import execute_update
+
+        try:
+            await execute_update("UPDATE papers SET status='error' WHERE status='analyzing'")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("legacy stuck-analysis cleanup failed: %s", exc)
+        return
     app.state.reconciler_task = asyncio.create_task(_reconciler_loop(app))
 
 

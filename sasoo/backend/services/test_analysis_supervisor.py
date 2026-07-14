@@ -61,3 +61,37 @@ class SpawnBuilderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReconcilerFlagGateTests(unittest.IsolatedAsyncioTestCase):
+    """플래그 off에서 리컨실러가 워커를 스폰하면 '기존 경로 그대로' 계약이 깨진다(과금 위험)."""
+
+    async def test_start_reconciler_noop_and_legacy_cleanup_when_flag_off(self):
+        import os
+        from unittest.mock import AsyncMock
+        from services import analysis_supervisor as sup
+
+        app = types.SimpleNamespace(state=types.SimpleNamespace())
+        saved = os.environ.pop("SASOO_ANALYSIS_SUBPROCESS", None)
+        try:
+            with patch("models.database.execute_update", new=AsyncMock()) as cleanup:
+                await sup.start_reconciler(app)
+        finally:
+            if saved is not None:
+                os.environ["SASOO_ANALYSIS_SUBPROCESS"] = saved
+
+        self.assertIsNone(getattr(app.state, "reconciler_task", None))  # 루프 미기동
+        cleanup.assert_awaited_once()  # 구 안전망(analyzing→error) 복원
+        self.assertIn("status='analyzing'", cleanup.await_args.args[0])
+
+    async def test_start_reconciler_starts_loop_when_flag_on(self):
+        import os
+        from unittest.mock import AsyncMock
+        from services import analysis_supervisor as sup
+
+        app = types.SimpleNamespace(state=types.SimpleNamespace())
+        with patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}), \
+             patch.object(sup, "_reconciler_loop", new=AsyncMock()):
+            await sup.start_reconciler(app)
+            self.assertIsNotNone(app.state.reconciler_task)
+            await sup.stop_reconciler(app)
