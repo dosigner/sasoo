@@ -28,7 +28,7 @@ async function waitForExit(
   }
 }
 
-async function requestWindowsShutdown(config: BackendShutdownConfig): Promise<void> {
+async function requestBackendShutdown(config: BackendShutdownConfig): Promise<void> {
   try {
     const response = await fetch(`http://127.0.0.1:${config.port}/shutdown`, {
       method: 'POST',
@@ -78,11 +78,7 @@ export async function stopBackendProcess(
     child.once('exit', () => resolve());
   });
 
-  if (platform === 'win32') {
-    await requestWindowsShutdown(config);
-  } else {
-    child.kill('SIGINT');
-  }
+  await requestBackendShutdown(config);
 
   if (await waitForExit(exitPromise, GRACEFUL_EXIT_TIMEOUT_MS)) {
     return;

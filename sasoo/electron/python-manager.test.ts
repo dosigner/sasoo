@@ -11,7 +11,7 @@ describe('PythonManager shutdown', () => {
   });
 
   it.runIf(process.platform !== 'win32')(
-    'sends one SIGINT without an HTTP shutdown request on POSIX',
+    'waits for authenticated HTTP shutdown on POSIX without sending a signal',
     async () => {
       // Given
       const manager = new PythonManager({
@@ -23,10 +23,12 @@ describe('PythonManager shutdown', () => {
       const signals: Array<NodeJS.Signals | number | undefined> = [];
       vi.spyOn(child, 'kill').mockImplementation((signal) => {
         signals.push(signal);
-        queueMicrotask(() => child.emit('exit', 0, signal ?? null));
         return true;
       });
-      const fetchMock = vi.fn();
+      const fetchMock = vi.fn(async () => {
+        queueMicrotask(() => child.emit('exit', 0, null));
+        return new Response(null, { status: 200 });
+      });
       vi.stubGlobal('fetch', fetchMock);
       manager['process'] = child;
 
@@ -34,8 +36,11 @@ describe('PythonManager shutdown', () => {
       await manager.stop();
 
       // Then
-      expect(fetchMock).not.toHaveBeenCalled();
-      expect(signals).toEqual(['SIGINT']);
+      expect(fetchMock).toHaveBeenCalledWith(
+        'http://127.0.0.1:8000/shutdown',
+        expect.objectContaining({ method: 'POST' }),
+      );
+      expect(signals).toEqual([]);
     },
   );
 
@@ -55,6 +60,7 @@ describe('PythonManager shutdown', () => {
         signals.push(signal);
         return true;
       });
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('connection refused')));
       manager['process'] = child;
 
       // When
@@ -62,20 +68,20 @@ describe('PythonManager shutdown', () => {
       await vi.advanceTimersByTimeAsync(9_999);
 
       // Then
-      expect(signals).toEqual(['SIGINT']);
+      expect(signals).toEqual([]);
 
       // When
       await vi.advanceTimersByTimeAsync(1);
 
       // Then
-      expect(signals).toEqual(['SIGINT', 'SIGTERM']);
+      expect(signals).toEqual(['SIGTERM']);
 
       // When
       await vi.advanceTimersByTimeAsync(5_000);
       await stopping;
 
       // Then
-      expect(signals).toEqual(['SIGINT', 'SIGTERM', 'SIGKILL']);
+      expect(signals).toEqual(['SIGTERM', 'SIGKILL']);
     },
   );
 });
