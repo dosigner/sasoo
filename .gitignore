@@ -1,0 +1,9 @@
+.omx/
+.claude/
+.agents/
+.playwright-cli/
+.pnpm-store/
+.superpowers/
+$CODEX_HOME/
+sasoo/.codex/
+.DS_Store

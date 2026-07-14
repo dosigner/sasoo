@@ -33,21 +33,19 @@ class AnalysisPhase(str, Enum):
 
 
 class DomainType(str, Enum):
+    # 에이전트 .md 레지스트리(backend/agents/*.md)의 domain 값과 1:1로 맞춘다.
     OPTICS = "optics"
-    MATERIALS = "materials"
     BIO = "bio"
-    ENERGY = "energy"
-    QUANTUM = "quantum"
+    AI_ML = "ai_ml"
+    EE = "ee"
     GENERAL = "general"
 
 
 class AgentType(str, Enum):
     PHOTON = "photon"       # optics domain
-    CRYSTAL = "crystal"     # materials domain
-    HELIX = "helix"         # bio domain
-    VOLT = "volt"           # energy domain
-    QUBIT = "qubit"         # quantum domain
-    ATLAS = "atlas"         # general-purpose
+    CELL = "cell"           # bio domain
+    NEURAL = "neural"       # ai_ml domain
+    CIRCUIT = "circuit"     # ee domain
 
 
 class VisualState(str, Enum):
@@ -329,6 +327,10 @@ class SettingsModel(BaseModel):
     pdf_visual_engine: str = "gemini"
     research_context: str = ""
     default_explanation_level: str = "masters"
+    research_areas: list[str] = Field(default_factory=list)
+    field_expertise: str = "major"
+    reading_experience: str = "regular"
+    research_role: str = "grad_student"
 
     @field_validator("library_path", mode="before")
     @classmethod
@@ -356,6 +358,10 @@ class SettingsUpdate(BaseModel):
     pdf_visual_engine: Optional[str] = None
     research_context: Optional[str] = None
     default_explanation_level: Optional[str] = None
+    research_areas: Optional[list[str]] = None
+    field_expertise: Optional[str] = None
+    reading_experience: Optional[str] = None
+    research_role: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

@@ -25,7 +25,7 @@ import fitz  # PyMuPDF
 
 from models.database import DB_PATH, execute_insert, fetch_all, get_db, get_library_root
 from services.document_audit import _page_text_map, find_suspect_pages
-from services.document_manifest import build_document_manifest
+from services.document_manifest import build_document_manifest, resolve_paper_journal
 from services.figure_candidates import build_figure_candidates
 from services.figure_resolver import resolve_figure_candidates
 from services.table_candidates import build_table_candidates
@@ -62,10 +62,8 @@ TITLE_NOISE_PATTERNS = [
     re.compile(r"^\s*(?:[A-Za-z-]+\.){1,}[A-Za-z-]+\s*$"),
     re.compile(r"^\s*(?:\d{1,2}\s+)?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*[\s,.-]+\d{4}\s*$", re.IGNORECASE),
 ]
-JOURNAL_PATTERNS = [
-    r"(?:Published in|Journal of|Proceedings of)\s+(.+?)[\.\n]",
-    r"(?:Nature|Science|ACS|IEEE|Optics|Applied|Physical Review)\s*\w*",
-]
+IMAGE_ELEMENT_TYPES = {"image", "picture"}
+TEXTUAL_FIGURE_TYPES = {"caption", "paragraph", "list item", "text block", "heading"}
 _artifact_tasks: dict[int, asyncio.Task[dict[str, Any]]] = {}
 _artifact_task_errors: dict[int, tuple[int, str]] = {}
 _artifact_tasks_lock = asyncio.Lock()
@@ -509,7 +507,9 @@ def _maybe_int(value: Any) -> int | None:
 
 def _extract_metadata(root: dict[str, Any], full_text: str, pdf_path: Path) -> dict[str, Any]:
     title = resolve_paper_title(_maybe_text(root.get("title")), full_text, pdf_path.stem)
-    author = _maybe_text(root.get("author")) or None
+    # "[]" 같은 문자 없는 플레이스홀더 메타데이터는 저자명으로 취급하지 않는다.
+    author_text = _maybe_text(root.get("author"))
+    author = author_text if re.search(r"[^\W\d_]", author_text) else None
     creation_date = _maybe_text(root.get("creation_date")) or _maybe_text(root.get("creation date"))
 
     year = None
@@ -526,12 +526,7 @@ def _extract_metadata(root: dict[str, Any], full_text: str, pdf_path: Path) -> d
     doi_match = DOI_PATTERN.search(full_text)
     doi = doi_match.group(0).rstrip(".,;)") if doi_match else None
 
-    journal = None
-    for pattern in JOURNAL_PATTERNS:
-        match = re.search(pattern, full_text[:2000], re.IGNORECASE)
-        if match:
-            journal = match.group(0).strip()[:100]
-            break
+    journal = resolve_paper_journal(full_text[:2000])
 
     return {
         "title": title[:200],

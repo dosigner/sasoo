@@ -47,42 +47,9 @@ logger = logging.getLogger(__name__)
 # Domain classification heuristic (fast, pre-LLM)
 # ---------------------------------------------------------------------------
 
-DOMAIN_KEYWORDS: dict[DomainType, list[str]] = {
-    DomainType.OPTICS: [
-        "optical", "photonic", "laser", "waveguide", "lens", "refractive",
-        "diffraction", "spectroscopy", "fluorescence", "photoluminescence",
-        "plasmon", "metamaterial", "holograph", "fiber optic", "polarization",
-    ],
-    DomainType.MATERIALS: [
-        "thin film", "deposition", "sputtering", "annealing", "crystal growth",
-        "nanoparticle", "alloy", "ceramic", "polymer", "composite",
-        "microstructure", "grain boundary", "phase diagram", "SEM", "TEM",
-    ],
-    DomainType.BIO: [
-        "protein", "DNA", "RNA", "cell", "enzyme", "antibody", "biomarker",
-        "tissue", "in vivo", "in vitro", "clinical", "pathogen", "genome",
-        "biosensor", "drug delivery",
-    ],
-    DomainType.ENERGY: [
-        "solar cell", "photovoltaic", "battery", "fuel cell", "supercapacitor",
-        "perovskite", "electrolyte", "cathode", "anode", "energy harvest",
-        "thermoelectric", "hydrogen", "wind turbine",
-    ],
-    DomainType.QUANTUM: [
-        "quantum dot", "qubit", "entanglement", "superposition", "quantum computing",
-        "quantum well", "quantum wire", "coherence", "decoherence",
-        "quantum efficiency", "spin", "topological",
-    ],
-}
-
-DOMAIN_AGENT_MAP: dict[DomainType, AgentType] = {
-    DomainType.OPTICS: AgentType.PHOTON,
-    DomainType.MATERIALS: AgentType.CRYSTAL,
-    DomainType.BIO: AgentType.HELIX,
-    DomainType.ENERGY: AgentType.VOLT,
-    DomainType.QUANTUM: AgentType.QUBIT,
-    DomainType.GENERAL: AgentType.ATLAS,
-}
+# 도메인 키워드와 도메인→에이전트 매핑은 에이전트 .md 레지스트리
+# (backend/agents/*.md 의 frontmatter keywords/domain/name)가 단일 소스다.
+# classify_domain()이 list_all_agents()로 그 키워드를 직접 스코어링한다.
 
 _DOMAIN_NOISE_PATTERNS = [
     re.compile(r"^\s*---\s*Page\s+\d+\s*---\s*$", re.IGNORECASE),
@@ -163,24 +130,29 @@ def _missing_pdf_payload() -> dict[str, object]:
     }
 
 
-def classify_domain(text: str) -> tuple[DomainType, AgentType]:
+def classify_domain(text: str) -> tuple[str, str]:
     """
-    Simple keyword-based domain classification.
-    Returns (domain, agent) tuple. Falls back to GENERAL/ATLAS.
+    키워드 기반 도메인 분류. 에이전트 .md 레지스트리(단일 소스)의
+    keywords/weighted_keywords로 점수를 매겨 (domain, agent_name)을 돌려준다.
+    일치하는 키워드가 없으면 기본값(optics / photon)으로 떨어진다.
     """
+    from services.agents import list_all_agents
+
     text_lower = text.lower()
-    scores: dict[DomainType, int] = {}
+    best_profile = None
+    best_score = 0
+    for profile in list_all_agents():
+        if not profile.enabled:
+            continue
+        score = sum(1 for kw in profile.keywords if kw.lower() in text_lower)
+        score += 2 * sum(1 for kw in profile.weighted_keywords if kw.lower() in text_lower)
+        if score > best_score:
+            best_score = score
+            best_profile = profile
 
-    for domain, keywords in DOMAIN_KEYWORDS.items():
-        score = sum(1 for kw in keywords if kw in text_lower)
-        if score > 0:
-            scores[domain] = score
-
-    if not scores:
-        return DomainType.GENERAL, AgentType.ATLAS
-
-    best_domain = max(scores, key=scores.get)  # type: ignore[arg-type]
-    return best_domain, DOMAIN_AGENT_MAP[best_domain]
+    if best_profile is None:
+        return DomainType.OPTICS.value, AgentType.PHOTON.value
+    return best_profile.domain, best_profile.agent_name
 
 
 def _clean_domain_classification_text(text: str) -> str:
@@ -234,8 +206,8 @@ async def upload_paper(file: UploadFile = File(...)):
     metadata = dict(manifest.get("metadata", {}))
     full_text = str(manifest.get("full_text", ""))
     domain, agent = classify_domain(_clean_domain_classification_text(full_text)[:3000])
-    metadata["domain"] = domain.value
-    metadata["agent_used"] = agent.value
+    metadata["domain"] = domain
+    metadata["agent_used"] = agent
 
     folder_name = fallback_folder
     try:

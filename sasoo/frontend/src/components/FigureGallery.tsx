@@ -202,6 +202,7 @@ function Lightbox({
   const [explanations, setExplanations] = useState<Record<number, CachedExplanation>>({});
   const [loadingId, setLoadingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [scrolled, setScrolled] = useState(false);
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   useFocusTrap(modalRef, true, onClose);
@@ -264,7 +265,15 @@ function Lightbox({
     if (rightPanelRef.current) {
       rightPanelRef.current.scrollTop = 0;
     }
+    setScrolled(false);
   }, [currentIndex]);
+
+  // Scroll edge effect: header border/shadow only appears once explanation
+  // content has actually scrolled behind it, not as a permanent hairline.
+  const handleRightPanelScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const next = e.currentTarget.scrollTop > 0;
+    setScrolled((prev) => (prev === next ? prev : next));
+  }, []);
 
   if (!figure) return null;
 
@@ -295,7 +304,10 @@ function Lightbox({
         }`}
       >
         {/* Header bar */}
-        <div className="figure-modal-header absolute top-0 left-0 right-0 h-12 flex items-center justify-between px-4 bg-surface/95 backdrop-blur border-b border-border/50 z-10">
+        <div
+          className="figure-modal-header absolute top-0 left-0 right-0 h-12 flex items-center justify-between px-4 bg-surface/95 backdrop-blur z-10"
+          data-scrolled={scrolled || undefined}
+        >
           <div className="flex items-center gap-3">
             <h4 className="text-sm font-semibold text-fg flex items-center gap-2">
               <AppIcon name="figures" className="w-4 h-4 text-accent" />
@@ -367,6 +379,7 @@ function Lightbox({
           <div
             ref={rightPanelRef}
             className="flex-1 overflow-y-auto min-w-0 min-h-0 figure-explanation-panel"
+            onScroll={handleRightPanelScroll}
           >
             {isLoading ? (
               <ExplanationSkeleton />
@@ -495,7 +508,7 @@ function FigureCard({
         <img
           src={getFigureImageUrl(figure)}
           alt={figure.caption || `Figure ${figure.figure_num}`}
-          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          className="h-full w-full object-cover transition-transform duration-200 motion-safe:group-hover:scale-105"
           loading="lazy"
         />
         <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/30">

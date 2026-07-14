@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 170">
+  <defs>
+    <clipPath id="heroTile"><rect x="45" y="30" width="110" height="110" rx="24"/></clipPath>
+    <filter id="heroBlur" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9"/></filter>
+    <linearGradient id="heroRim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.15"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="170" fill="#EFEBF8"/>
+  <circle cx="38" cy="42" r="46" fill="#C9BAF5"/>
+  <circle cx="172" cy="122" r="58" fill="#8B67E9" opacity="0.55"/>
+  <circle cx="128" cy="18" r="32" fill="#A1A1AA" opacity="0.35"/>
+  <g clip-path="url(#heroTile)">
+    <g filter="url(#heroBlur)">
+      <rect width="200" height="170" fill="#EFEBF8"/>
+      <circle cx="38" cy="42" r="46" fill="#C9BAF5"/>
+      <circle cx="172" cy="122" r="58" fill="#8B67E9" opacity="0.55"/>
+      <circle cx="128" cy="18" r="32" fill="#A1A1AA" opacity="0.35"/>
+    </g>
+    <rect x="45" y="30" width="110" height="110" fill="#FFFFFF" fill-opacity="0.40"/>
+  </g>
+  <rect x="46" y="31" width="108" height="108" rx="23" fill="none" stroke="url(#heroRim)" stroke-width="2"/>
+  <g transform="translate(54,53) scale(0.37)" fill="none" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M122 146 L166 57 L210 146" stroke="#8F89A3"/>
+    <path d="M38 146 L96 28 L154 146" stroke="#683DCC"/>
+  </g>
+</svg>

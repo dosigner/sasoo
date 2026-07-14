@@ -67,8 +67,8 @@ export default function UpdateBanner() {
             <span className="text-fg">다운로드 중... {progress}%</span>
             <div className="flex-1 max-w-48 h-1.5 bg-surface rounded-full overflow-hidden">
               <div
-                className="h-full bg-accent rounded-full transition-all duration-300"
-                style={{ width: `${progress}%` }}
+                className="h-full w-full bg-accent transition-transform duration-300 ease-out"
+                style={{ transformOrigin: 'left', transform: `scaleX(${progress / 100})` }}
               />
             </div>
           </>

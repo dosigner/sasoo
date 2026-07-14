@@ -277,6 +277,10 @@ export interface Settings {
   pdf_visual_engine: 'gemini' | 'odl';
   research_context: string;
   default_explanation_level: string;
+  research_areas: string[];
+  field_expertise: string;
+  reading_experience: string;
+  research_role: string;
 }
 
 export interface ModelStats {

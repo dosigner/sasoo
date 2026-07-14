@@ -280,8 +280,11 @@ export default function UploadPanel() {
             <div className="rounded-surface border border-border bg-surface/60 p-4">
               <div className="h-2 overflow-hidden rounded-full bg-surface">
                 <div
-                  className="h-full rounded-full bg-accent transition-all duration-300"
-                  style={{ width: stage === 'parsing' ? '100%' : `${uploadProgress}%` }}
+                  className="h-full w-full bg-accent transition-transform duration-300 ease-out"
+                  style={{
+                    transformOrigin: 'left',
+                    transform: `scaleX(${(stage === 'parsing' ? 100 : uploadProgress) / 100})`,
+                  }}
                 />
               </div>
               <div className="mt-3 flex items-center gap-2 text-sm text-fg-muted">

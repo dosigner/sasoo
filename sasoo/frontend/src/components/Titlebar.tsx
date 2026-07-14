@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import logoImg from '@/assets/logo.png';
+import appIconFlat from '@/assets/brand/app-icon-flat.svg';
 import { AppIcon } from '@/components/icons';
 import { S } from '@/lib/strings';
 
@@ -43,8 +43,8 @@ export default function Titlebar() {
       {/* Logo + Title (non-Mac) */}
       {!isMac && (
         <div className="flex items-center gap-2 mr-auto">
-          <img src={logoImg} alt="Sasoo" className="w-4 h-4" />
-          <span className="text-xs font-medium text-fg-muted">
+          <img src={appIconFlat} alt="Sasoo" className="w-4 h-4" />
+          <span className="text-xs font-semibold tracking-apple-body text-fg-muted">
             {S.app.name}
           </span>
         </div>
@@ -53,7 +53,7 @@ export default function Titlebar() {
       {/* Mac: centered title */}
       {isMac && (
         <div className="flex-1 flex items-center justify-center">
-          <span className="text-xs font-medium text-fg-muted">
+          <span className="text-xs font-semibold tracking-apple-body text-fg-muted">
             {S.app.name}
           </span>
         </div>

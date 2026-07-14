@@ -40,7 +40,7 @@ export default function Select({
         <RadixSelect.Content
           position="popper"
           sideOffset={4}
-          className="z-50 max-h-[min(24rem,var(--radix-select-content-available-height))] w-[var(--radix-select-trigger-width)] overflow-hidden border border-border bg-surface shadow-lg rounded-surface animate-fade-in"
+          className="z-50 max-h-[min(24rem,var(--radix-select-content-available-height))] w-[var(--radix-select-trigger-width)] overflow-hidden border border-border bg-surface shadow-lg rounded-surface animate-pop-in [transform-origin:var(--radix-select-content-transform-origin)]"
         >
           <RadixSelect.Viewport className="p-1">
             {options.map((option) => (

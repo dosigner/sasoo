@@ -14,30 +14,70 @@ import { Select, Toggle } from '@/components/ui';
 import { S } from '@/lib/strings';
 import { AppIcon } from '@/components/icons';
 
-function SettingPanel({
-  kicker,
+// ---------------------------------------------------------------------------
+// L1 layout primitives — narrow single column, row-based settings.
+// ---------------------------------------------------------------------------
+
+function SettingSection({
   title,
   description,
   children,
 }: {
-  kicker: string;
   title: string;
-  description: string;
+  description?: string;
   children: React.ReactNode;
 }) {
   return (
     <section className="archive-panel panel-compact">
-      <div className="mb-4">
-        <div className="archive-kicker">{kicker}</div>
-        <h2 className="settings-panel-title mt-2 text-xl font-semibold tracking-[-0.04em]">
-          {title}
-        </h2>
-        <p className="settings-panel-description mt-2 max-w-2xl text-sm leading-6">
-          {description}
-        </p>
-      </div>
-      {children}
+      <h2 className="text-sm font-semibold tracking-[-0.01em] text-fg">{title}</h2>
+      {description && (
+        <p className="mt-1 text-xs text-fg-muted">{description}</p>
+      )}
+      <div className="mt-3 divide-y divide-border">{children}</div>
     </section>
+  );
+}
+
+function SettingRow({
+  label,
+  description,
+  badge,
+  full = false,
+  children,
+}: {
+  label: string;
+  description?: React.ReactNode;
+  badge?: React.ReactNode;
+  full?: boolean;
+  children: React.ReactNode;
+}) {
+  if (full) {
+    return (
+      <div className="py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-fg">{label}</span>
+          {badge}
+        </div>
+        {description && (
+          <p className="mt-0.5 text-xs text-fg-muted">{description}</p>
+        )}
+        <div className="mt-2">{children}</div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center justify-between gap-4 py-3">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-fg">{label}</span>
+          {badge}
+        </div>
+        {description && (
+          <p className="mt-0.5 text-xs text-fg-muted">{description}</p>
+        )}
+      </div>
+      <div className="shrink-0">{children}</div>
+    </div>
   );
 }
 
@@ -65,6 +105,10 @@ export default function Settings() {
     paperbanana_profile: 'fast',
     research_context: '',
     default_explanation_level: 'masters',
+    research_areas: [],
+    field_expertise: 'major',
+    reading_experience: 'regular',
+    research_role: 'grad_student',
   };
 
   const [baselineSettings, setBaselineSettings] = useState<SettingsType>(defaultSettings);
@@ -82,9 +126,6 @@ export default function Settings() {
   const [libraryPath, setLibraryPath] = useState('');
   const [theme, setTheme] = useState<'dark' | 'light'>(
     () => (localStorage.getItem('sasoo-theme') === 'dark' ? 'dark' : 'light')
-  );
-  const [density, setDensity] = useState<'comfortable' | 'compact'>(
-    () => (localStorage.getItem('sasoo-density') === 'compact' ? 'compact' : 'comfortable')
   );
   const [autoAnalyze, setAutoAnalyze] = useState(false);
   const [pdfParserMode, setPdfParserMode] = useState<'java'>('java');
@@ -180,14 +221,6 @@ export default function Settings() {
     }
     localStorage.setItem('sasoo-theme', theme);
   }, [theme]);
-
-  // -----------------------------------------------------------------------
-  // Apply density (localStorage-only UI preference, no backend field)
-  // -----------------------------------------------------------------------
-  useEffect(() => {
-    document.documentElement.classList.toggle('density-compact', density === 'compact');
-    localStorage.setItem('sasoo-density', density);
-  }, [density]);
 
   // -----------------------------------------------------------------------
   // Deep-link into the cost section (Home "자세히 보기" -> /settings#cost)
@@ -320,7 +353,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="page-container-compact">
+    <div className="page-container-settings">
       <section className="archive-panel panel-compact mb-4">
         <div className="page-header-dense gap-4 lg:flex lg:items-start lg:justify-between">
           <div>
@@ -396,276 +429,245 @@ export default function Settings() {
       </Link>
 
       <div className="space-y-4">
-        <SettingPanel
-          kicker={S.settings.sectionCurrent}
+        <SettingSection
           title={S.settings.apiKeys}
           description="현재 연결 상태를 먼저 확인하고, 바꿀 키만 새로 입력해요."
         >
-          <div className="space-y-4">
-            <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <label className="text-xs text-fg-muted">
-                  {S.settings.geminiKey}
-                </label>
-                {geminiKeyStatus ? (
-                  <span className="text-2xs text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded">
-                    {S.settings.keyConfigured} ({geminiKeyStatus})
-                  </span>
-                ) : geminiKeyUnreadable ? (
-                  <span className="text-2xs text-danger bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded">
-                    {S.settings.keyUnreadable}
-                  </span>
-                ) : (
-                  <span className="text-2xs text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded">
-                    {S.settings.keyNotConfigured}
-                  </span>
-                )}
-              </div>
-              {geminiKeyUnreadable && (
-                <p className="text-2xs text-danger mb-1.5">
-                  {S.settings.keyUnreadableHelp}
-                </p>
-              )}
-              <div className="relative">
-                <input
-                  ref={geminiInputRef}
-                  type={showGeminiKey ? 'text' : 'password'}
-                  value={geminiKey}
-                  onChange={(e) => setGeminiKey(e.target.value)}
-                  name="sasoo-gemini-api-key"
-                  autoComplete="off"
-                  data-lpignore="true"
-                  data-1p-ignore="true"
-                  data-bwignore="true"
-                  spellCheck={false}
-                  placeholder={S.settings.enterNewKey}
-                  className="input pr-10"
-                />
-                <button
-                  onClick={() => setShowGeminiKey(!showGeminiKey)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-fg-muted hover:text-fg-secondary transition-colors"
-                  style={{ borderRadius: 'var(--radius-control)' }}
-                  type="button"
-                >
-                  {showGeminiKey ? (
-                    <AppIcon name="eye-off" className="w-4 h-4" />
-                  ) : (
-                    <AppIcon name="eye" className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-              <p className="text-2xs text-fg-muted mt-1">
-                {S.settings.geminiHelp}{' '}
-                <a
-                  href="https://aistudio.google.com/api-keys"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-accent hover:text-accent-hover underline underline-offset-2"
-                >
-                  Google AI Studio
-                </a>
-                {S.settings.getKeyAt('')}
+          <SettingRow
+            full
+            label={S.settings.geminiKey}
+            badge={
+              geminiKeyStatus ? (
+                <span className="text-2xs text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded">
+                  {S.settings.keyConfigured} ({geminiKeyStatus})
+                </span>
+              ) : geminiKeyUnreadable ? (
+                <span className="text-2xs text-danger bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded">
+                  {S.settings.keyUnreadable}
+                </span>
+              ) : (
+                <span className="text-2xs text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded">
+                  {S.settings.keyNotConfigured}
+                </span>
+              )
+            }
+          >
+            {geminiKeyUnreadable && (
+              <p className="text-2xs text-danger mb-1.5">
+                {S.settings.keyUnreadableHelp}
               </p>
+            )}
+            <div className="relative">
+              <input
+                ref={geminiInputRef}
+                type={showGeminiKey ? 'text' : 'password'}
+                value={geminiKey}
+                onChange={(e) => setGeminiKey(e.target.value)}
+                name="sasoo-gemini-api-key"
+                autoComplete="off"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                data-bwignore="true"
+                spellCheck={false}
+                placeholder={S.settings.enterNewKey}
+                className="input pr-10"
+              />
+              <button
+                onClick={() => setShowGeminiKey(!showGeminiKey)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-fg-muted hover:text-fg-secondary transition-colors"
+                style={{ borderRadius: 'var(--radius-control)' }}
+                type="button"
+              >
+                {showGeminiKey ? (
+                  <AppIcon name="eye-off" className="w-4 h-4" />
+                ) : (
+                  <AppIcon name="eye" className="w-4 h-4" />
+                )}
+              </button>
             </div>
-          </div>
-        </SettingPanel>
+            <p className="text-2xs text-fg-muted mt-1">
+              {S.settings.geminiHelp}{' '}
+              <a
+                href="https://aistudio.google.com/api-keys"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent hover:text-accent-hover underline underline-offset-2"
+              >
+                Google AI Studio
+              </a>
+              {S.settings.getKeyAt('')}
+            </p>
+          </SettingRow>
+        </SettingSection>
 
-        <SettingPanel
-          kicker={S.settings.sectionEdit}
+        <SettingSection
           title={S.settings.imageSection}
           description={S.settings.imageSectionDesc}
         >
-          <div className="space-y-4">
-
-            <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <label className="text-xs text-fg-muted">
-                  {S.settings.openaiKey}
-                </label>
-                {openaiKeyStatus ? (
-                  <span className="text-2xs text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded">
-                    {S.settings.keyConfigured} ({openaiKeyStatus})
-                  </span>
-                ) : openaiKeyUnreadable ? (
-                  <span className="text-2xs text-danger bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded">
-                    {S.settings.keyUnreadable}
-                  </span>
-                ) : (
-                  <span className="text-2xs text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded">
-                    {S.settings.keyNotConfigured}
-                  </span>
-                )}
-              </div>
-              {openaiKeyUnreadable && (
-                <p className="text-2xs text-danger mb-1.5">
-                  {S.settings.keyUnreadableHelp}
-                </p>
-              )}
-              <div className="relative">
-                <input
-                  ref={openaiInputRef}
-                  type={showOpenaiKey ? 'text' : 'password'}
-                  value={openaiKey}
-                  onChange={(e) => setOpenaiKey(e.target.value)}
-                  name="sasoo-openai-api-key"
-                  autoComplete="off"
-                  data-lpignore="true"
-                  data-1p-ignore="true"
-                  data-bwignore="true"
-                  spellCheck={false}
-                  placeholder={S.settings.enterNewKey}
-                  className="input pr-10"
-                />
-                <button
-                  onClick={() => setShowOpenaiKey(!showOpenaiKey)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-fg-muted hover:text-fg-secondary transition-colors"
-                  style={{ borderRadius: 'var(--radius-control)' }}
-                  type="button"
-                >
-                  {showOpenaiKey ? (
-                    <AppIcon name="eye-off" className="w-4 h-4" />
-                  ) : (
-                    <AppIcon name="eye" className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-              <p className="text-2xs text-fg-muted mt-1">
-                {S.settings.openaiHelp}{' '}
-                <a
-                  href="https://platform.openai.com/api-keys"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-accent hover:text-accent-hover underline underline-offset-2"
-                >
-                  OpenAI Platform
-                </a>
-                {S.settings.getKeyAt('')}
+          <SettingRow
+            full
+            label={S.settings.openaiKey}
+            badge={
+              openaiKeyStatus ? (
+                <span className="text-2xs text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded">
+                  {S.settings.keyConfigured} ({openaiKeyStatus})
+                </span>
+              ) : openaiKeyUnreadable ? (
+                <span className="text-2xs text-danger bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded">
+                  {S.settings.keyUnreadable}
+                </span>
+              ) : (
+                <span className="text-2xs text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded">
+                  {S.settings.keyNotConfigured}
+                </span>
+              )
+            }
+          >
+            {openaiKeyUnreadable && (
+              <p className="text-2xs text-danger mb-1.5">
+                {S.settings.keyUnreadableHelp}
               </p>
+            )}
+            <div className="relative">
+              <input
+                ref={openaiInputRef}
+                type={showOpenaiKey ? 'text' : 'password'}
+                value={openaiKey}
+                onChange={(e) => setOpenaiKey(e.target.value)}
+                name="sasoo-openai-api-key"
+                autoComplete="off"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                data-bwignore="true"
+                spellCheck={false}
+                placeholder={S.settings.enterNewKey}
+                className="input pr-10"
+              />
+              <button
+                onClick={() => setShowOpenaiKey(!showOpenaiKey)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-fg-muted hover:text-fg-secondary transition-colors"
+                style={{ borderRadius: 'var(--radius-control)' }}
+                type="button"
+              >
+                {showOpenaiKey ? (
+                  <AppIcon name="eye-off" className="w-4 h-4" />
+                ) : (
+                  <AppIcon name="eye" className="w-4 h-4" />
+                )}
+              </button>
             </div>
+            <p className="text-2xs text-fg-muted mt-1">
+              {S.settings.openaiHelp}{' '}
+              <a
+                href="https://platform.openai.com/api-keys"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent hover:text-accent-hover underline underline-offset-2"
+              >
+                OpenAI Platform
+              </a>
+              {S.settings.getKeyAt('')}
+            </p>
+          </SettingRow>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs text-fg-muted mb-1.5 block">
-                  {S.settings.imageProvider}
-                </label>
-                <Select
-                  value={imageProvider}
-                  onValueChange={(value) => setImageProvider(value as 'openai' | 'gemini')}
-                  aria-label={S.settings.imageProvider}
-                  options={[
-                    { value: 'openai', label: S.settings.imageProviderOpenai },
-                    { value: 'gemini', label: S.settings.imageProviderGemini },
-                  ]}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-fg-muted mb-1.5 block">
-                  {S.settings.imageQuality}
-                </label>
-                <Select
-                  value={imageQuality}
-                  onValueChange={(value) => setImageQuality(value as 'low' | 'medium' | 'high')}
-                  aria-label={S.settings.imageQuality}
-                  options={[
-                    { value: 'high', label: 'high ($0.17/장)' },
-                    { value: 'medium', label: 'medium ($0.04/장)' },
-                    { value: 'low', label: 'low ($0.005/장)' },
-                  ]}
-                />
-              </div>
+          <SettingRow label={S.settings.imageProvider}>
+            <div className="w-44">
+              <Select
+                value={imageProvider}
+                onValueChange={(value) => setImageProvider(value as 'openai' | 'gemini')}
+                aria-label={S.settings.imageProvider}
+                options={[
+                  { value: 'openai', label: S.settings.imageProviderOpenai },
+                  { value: 'gemini', label: S.settings.imageProviderGemini },
+                ]}
+              />
             </div>
+          </SettingRow>
 
-          </div>
-        </SettingPanel>
+          <SettingRow label={S.settings.imageQuality}>
+            <div className="w-44">
+              <Select
+                value={imageQuality}
+                onValueChange={(value) => setImageQuality(value as 'low' | 'medium' | 'high')}
+                aria-label={S.settings.imageQuality}
+                options={[
+                  { value: 'high', label: 'high ($0.17/장)' },
+                  { value: 'medium', label: 'medium ($0.04/장)' },
+                  { value: 'low', label: 'low ($0.005/장)' },
+                ]}
+              />
+            </div>
+          </SettingRow>
+        </SettingSection>
 
-        <SettingPanel
-          kicker={S.settings.sectionEdit}
+        <SettingSection
           title={S.settings.librarySection}
           description="논문이 쌓이는 경로와 업로드 직후의 기본 동작을 정리해요."
         >
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs text-fg-muted block mb-1.5">
-                {S.settings.libraryPath}
-              </label>
-              <div className="flex flex-wrap gap-2">
-                <input
-                  type="text"
-                  value={libraryPath}
-                  onChange={(e) => setLibraryPath(e.target.value)}
-                  placeholder="/path/to/papers"
-                  className="input min-w-0 flex-1"
-                />
-                <button
-                  type="button"
-                  onClick={handleBrowseDirectory}
-                  className="btn-ghost px-3 shrink-0"
-                  title={S.settings.browseFolder}
-                >
-                  <AppIcon name="folder" className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={saving || !hasChanges}
-                  className="btn-primary shrink-0 text-sm"
-                >
-                  {saving ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <AppIcon name="save" className="w-4 h-4" />
-                  )}
-                  {saving ? S.settings.saving : S.settings.save}
-                </button>
-              </div>
-              <p className="text-2xs text-fg-muted mt-1">
-                {S.settings.libraryPathHelp}
-              </p>
+          <SettingRow full label={S.settings.libraryPath}>
+            <div className="flex flex-wrap gap-2">
+              <input
+                type="text"
+                value={libraryPath}
+                onChange={(e) => setLibraryPath(e.target.value)}
+                placeholder="/path/to/papers"
+                className="input min-w-0 flex-1"
+              />
+              <button
+                type="button"
+                onClick={handleBrowseDirectory}
+                className="btn-ghost px-3 shrink-0"
+                title={S.settings.browseFolder}
+              >
+                <AppIcon name="folder" className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving || !hasChanges}
+                className="btn-primary shrink-0 text-sm"
+              >
+                {saving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <AppIcon name="save" className="w-4 h-4" />
+                )}
+                {saving ? S.settings.saving : S.settings.save}
+              </button>
             </div>
+            <p className="text-2xs text-fg-muted mt-1">
+              {S.settings.libraryPathHelp}
+            </p>
+          </SettingRow>
 
-            <Toggle
-              checked={autoAnalyze}
-              onChange={setAutoAnalyze}
-              label={S.settings.autoAnalyze}
-              description={S.settings.autoAnalyzeHelp}
-            />
+          <SettingRow label={S.settings.autoAnalyze} description={S.settings.autoAnalyzeHelp}>
+            <Toggle checked={autoAnalyze} onChange={setAutoAnalyze} ariaLabel={S.settings.autoAnalyze} />
+          </SettingRow>
 
-            <div>
-              <label className="text-xs text-fg-muted block mb-1.5">
-                {S.settings.pdfParser}
-              </label>
+          <SettingRow label={S.settings.pdfParser} description={S.settings.pdfParserHelp}>
+            <div className="w-56">
               <Select
                 value={pdfParserMode}
                 onValueChange={(value) => setPdfParserMode(value as 'java')}
                 aria-label={S.settings.pdfParser}
                 options={[{ value: 'java', label: S.settings.pdfParserJava }]}
               />
-              <p className="text-2xs text-fg-muted mt-1">
-                {S.settings.pdfParserHelp}
-              </p>
             </div>
+          </SettingRow>
 
-            <div>
-              <label className="text-xs text-fg-muted block mb-1.5">
-                {S.settings.extractionPipeline}
-              </label>
+          <SettingRow label={S.settings.extractionPipeline} description={S.settings.extractionPipelineHelp}>
+            <div className="w-56">
               <Select
                 value={extractionPipelineVersion}
                 onValueChange={(value) => setExtractionPipelineVersion(value as 'resolver_v1')}
                 aria-label={S.settings.extractionPipeline}
-                options={[
-                  { value: 'resolver_v1', label: S.settings.extractionPipelineResolverV1 },
-                ]}
+                options={[{ value: 'resolver_v1', label: S.settings.extractionPipelineResolverV1 }]}
               />
-              <p className="text-2xs text-fg-muted mt-1">
-                {S.settings.extractionPipelineHelp}
-              </p>
             </div>
+          </SettingRow>
 
-            <div>
-              <label className="text-xs text-fg-muted block mb-1.5">
-                {S.settings.pdfVisualEngine}
-              </label>
+          <SettingRow label={S.settings.pdfVisualEngine} description={S.settings.pdfVisualEngineHelp}>
+            <div className="w-56">
               <Select
                 value={pdfVisualEngine}
                 onValueChange={(value) => setPdfVisualEngine(value as 'gemini' | 'odl')}
@@ -675,19 +677,12 @@ export default function Settings() {
                   { value: 'odl', label: S.settings.pdfVisualEngineOdl },
                 ]}
               />
-              <p className="text-2xs text-fg-muted mt-1">
-                {S.settings.pdfVisualEngineHelp}
-              </p>
             </div>
-          </div>
-        </SettingPanel>
+          </SettingRow>
+        </SettingSection>
 
-        <SettingPanel
-          kicker={S.settings.sectionEdit}
-          title={S.settings.appearance}
-          description="현재 작업 환경에 맞게 화면 톤을 조정해요."
-        >
-          <div className="flex items-center gap-3">
+        <SettingSection title={S.settings.appearance} description="현재 작업 환경에 맞게 화면 톤을 조정해요.">
+          <div className="flex items-center gap-3 py-3">
             <button
               onClick={() => setTheme('dark')}
               className={`settings-appearance-option flex items-center gap-2 px-4 py-3 border transition-colors ${
@@ -713,48 +708,15 @@ export default function Settings() {
               <span className="text-sm">{S.settings.light}</span>
             </button>
           </div>
-
-          <div className="mt-4">
-            <label className="text-xs text-fg-muted block mb-1.5">
-              {S.settings.density}
-            </label>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setDensity('comfortable')}
-                className={`settings-appearance-option flex items-center gap-2 px-4 py-3 border transition-colors ${
-                  density === 'comfortable'
-                    ? 'settings-appearance-option-active border-accent bg-accent/10 text-accent'
-                    : 'settings-appearance-option-inactive'
-                }`}
-                style={{ borderRadius: 'var(--radius-control)' }}
-              >
-                <AppIcon name="grid" className="w-4 h-4" />
-                <span className="text-sm">{S.settings.densityComfortable}</span>
-              </button>
-              <button
-                onClick={() => setDensity('compact')}
-                className={`settings-appearance-option flex items-center gap-2 px-4 py-3 border transition-colors ${
-                  density === 'compact'
-                    ? 'settings-appearance-option-active border-accent bg-accent/10 text-accent'
-                    : 'settings-appearance-option-inactive'
-                }`}
-                style={{ borderRadius: 'var(--radius-control)' }}
-              >
-                <AppIcon name="list" className="w-4 h-4" />
-                <span className="text-sm">{S.settings.densityCompact}</span>
-              </button>
-            </div>
-          </div>
-        </SettingPanel>
+        </SettingSection>
 
         <div id="cost" ref={costSectionRef}>
-          <SettingPanel
-            kicker={S.settings.sectionCurrent}
+          <SettingSection
             title={S.settings.usageCosts}
             description="최근 분석이 얼마나 호출과 비용을 만들었는지 확인해요."
           >
             <CostDashboard />
-          </SettingPanel>
+          </SettingSection>
         </div>
       </div>
     </div>

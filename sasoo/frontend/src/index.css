@@ -34,6 +34,9 @@
 
   /* Motion */
   --transition-speed: 150ms;
+  /* Strong custom curves — built-in easings are too weak for deliberate UI motion */
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
 
   /* Icons */
   --icon-stroke: 1.7;
@@ -50,17 +53,6 @@
   --radius-control: 6px;
   --radius-surface: 12px;
   --radius-pill: 9999px;
-
-  /* Density (Comfortable = default) */
-  --density-control-py: 0.5rem;
-  --density-card-p: 1.25rem;
-  --density-row-py: 0.75rem;
-}
-
-.density-compact {
-  --density-control-py: 0.375rem;
-  --density-card-p: 1rem;
-  --density-row-py: 0.5rem;
 }
 
 .dark {
@@ -136,13 +128,13 @@
   /* Reusable card component */
   .card {
     @apply border border-border bg-surface px-4;
-    padding-top: var(--density-card-p);
-    padding-bottom: var(--density-card-p);
+    padding-top: 1.25rem;
+    padding-bottom: 1.25rem;
     border-radius: var(--radius-surface);
   }
 
   .card-hover {
-    @apply card transition-all duration-200 ease-out hover:border-border hover:bg-surface-hover;
+    @apply card transition-colors duration-200 ease-out hover:border-border hover:bg-surface-hover;
   }
 
   .app-shell {
@@ -151,7 +143,7 @@
 
   .app-sidebar {
     width: var(--sidebar-width);
-    @apply flex shrink-0 flex-col border-r border-border bg-surface px-3 py-4 transition-[width] duration-150;
+    @apply flex shrink-0 flex-col border-r border-border bg-surface px-3 py-4;
   }
 
   .app-sidebar-collapsed {
@@ -219,6 +211,11 @@
   .page-container-compact {
     @apply mx-auto min-h-full w-full px-4 py-4 md:px-6 md:py-5 xl:px-8;
     max-width: 96rem;
+  }
+
+  .page-container-settings {
+    @apply mx-auto min-h-full w-full px-4 py-4 md:px-6 md:py-5 xl:px-8;
+    max-width: 44rem;
   }
 
   .page-scaffold {
@@ -305,12 +302,28 @@
     @apply border-border bg-surface text-fg-muted hover:border-border hover:bg-surface-hover hover:text-fg;
   }
 
+  .settings-savebar {
+    @apply border-t border-border/80 bg-surface/95;
+  }
+
+  .toast-surface {
+    @apply bg-surface/90 backdrop-blur-lg;
+  }
+
   /* Button variants */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 px-4 text-sm font-medium transition-all duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50 disabled:pointer-events-none;
-    padding-top: var(--density-control-py);
-    padding-bottom: var(--density-control-py);
+    @apply inline-flex items-center justify-center gap-2 px-4 text-sm font-medium transition-[color,background-color,border-color,opacity,transform] duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50 disabled:pointer-events-none;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
     border-radius: var(--radius-control);
+  }
+
+  /* Press feedback — the interface confirms it heard the press */
+  .btn:active,
+  .btn-icon-subtle:active,
+  .pdf-toolbar-btn:active,
+  .chat-send-button:active {
+    transform: scale(0.97);
   }
 
   .btn-primary {
@@ -330,15 +343,15 @@
   }
 
   .btn-icon-subtle {
-    @apply inline-flex h-8 w-8 items-center justify-center border border-transparent text-fg-muted transition-all duration-200 ease-out hover:border-border hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent;
+    @apply inline-flex h-8 w-8 items-center justify-center border border-transparent text-fg-muted transition-[color,background-color,border-color,transform] duration-150 ease-out hover:border-border hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent;
     border-radius: var(--radius-control);
   }
 
   /* Input styles */
   .input {
     @apply w-full border border-border bg-surface px-3 text-sm text-fg placeholder-fg-muted transition-colors duration-150 ease-out focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent;
-    padding-top: var(--density-control-py);
-    padding-bottom: var(--density-control-py);
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
     border-radius: var(--radius-control);
   }
 
@@ -354,6 +367,55 @@
 
   .badge-success {
     @apply badge bg-success/10 text-success;
+  }
+
+  .badge-warning {
+    @apply badge bg-warning/10 text-warning;
+  }
+
+  .badge-error {
+    @apply badge bg-danger/10 text-danger;
+  }
+
+  .toolbar-shell {
+    @apply border border-border/50 bg-surface;
+    border-radius: var(--radius-surface);
+  }
+
+  .toolbar-group {
+    @apply inline-flex items-center gap-1 border border-border/50 bg-surface/40 px-1.5 py-1;
+    border-radius: var(--radius-control);
+  }
+
+  .panel-section {
+    @apply border border-border/50 bg-surface/40 transition-colors duration-200;
+    border-radius: var(--radius-surface);
+  }
+
+  /* Skeleton loader */
+  .skeleton {
+    @apply animate-pulse rounded bg-surface-hover;
+  }
+
+  /* Phase status dots */
+  .phase-dot {
+    @apply w-3 h-3 rounded-full border-2;
+  }
+
+  .phase-dot-pending {
+    @apply phase-dot border-border bg-transparent;
+  }
+
+  .phase-dot-running {
+    @apply phase-dot border-accent bg-accent animate-pulse-subtle;
+  }
+
+  .phase-dot-done {
+    @apply phase-dot border-success bg-success;
+  }
+
+  .phase-dot-error {
+    @apply phase-dot border-danger bg-danger;
   }
 
   .icon-surface {
@@ -489,6 +551,56 @@
     @apply bg-surface/60;
   }
 
+  /* 데이터 테이블 (연구 보관함 리스트 뷰) */
+  .library-table {
+    @apply w-full border-collapse text-left;
+  }
+
+  .library-table thead th {
+    @apply whitespace-nowrap border-b border-border/70 px-4 py-2.5 text-2xs font-medium uppercase tracking-[0.12em] text-fg-muted;
+  }
+
+  .library-th-sortable {
+    @apply cursor-pointer select-none transition-colors hover:text-fg-secondary;
+  }
+
+  .library-table tbody td {
+    @apply border-b border-border/40 px-4 py-3 align-middle text-sm text-fg-secondary;
+  }
+
+  .library-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  .library-table tbody tr {
+    @apply cursor-pointer transition-colors hover:bg-surface-hover/25 focus:outline-none focus-visible:bg-surface-hover/25;
+  }
+
+  .library-cell-num {
+    @apply whitespace-nowrap tabular-nums text-fg-muted;
+  }
+
+  .library-row-action {
+    @apply flex h-8 w-8 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-danger/10 hover:text-danger focus-visible:bg-danger/10 focus-visible:text-danger;
+  }
+
+  /* Refined Soft UI 카드 (연구 보관함 그리드 뷰) */
+  .library-soft-card {
+    @apply flex h-full min-h-[8.5rem] cursor-pointer flex-col rounded-surface border border-border/55 bg-surface/70 p-4 shadow-sm transition-all duration-200 ease-out;
+  }
+
+  .library-soft-card:hover {
+    @apply -translate-y-0.5 border-border bg-surface shadow-lg;
+  }
+
+  .library-soft-card:focus-visible {
+    @apply -translate-y-0.5 outline-none ring-2 ring-accent/40 ring-offset-2 ring-offset-bg;
+  }
+
+  .library-soft-pill {
+    @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border/60 bg-bg/40 px-2 py-1 text-2xs text-fg-secondary;
+  }
+
   .library-archive-card--completed {
     background-color: rgb(var(--success) / 0.07);
   }
@@ -530,7 +642,7 @@
   /* Split view resize handle */
   .resize-handle {
     width: 6px;
-    @apply cursor-col-resize bg-border transition-all duration-150 ease-out relative flex-shrink-0;
+    @apply cursor-col-resize bg-border transition-[background-color,box-shadow] duration-150 ease-out relative flex-shrink-0;
   }
 
   /* Expanded hit area for easier grabbing */
@@ -552,7 +664,7 @@
     background-size: 2px 7px;
     background-repeat: repeat-y;
     opacity: 0;
-    transition: opacity 0.3s ease-out;
+    transition: opacity 0.2s ease-out;
   }
 
   .resize-handle:hover::after,
@@ -561,16 +673,14 @@
     opacity: 0.6;
   }
 
-  /* Hover state: widen + color */
+  /* Hover state: color + glow (no width change — avoids adjacent-pane reflow) */
   .resize-handle:hover {
-    width: 8px;
     @apply bg-accent/70;
     box-shadow: -2px 0 8px rgb(var(--accent) / 0.1), 2px 0 8px rgb(var(--accent) / 0.1);
   }
 
   /* Active/dragging state */
   .resize-handle.active {
-    width: 8px;
     @apply bg-accent;
     box-shadow: -3px 0 12px rgb(var(--accent) / 0.2), 3px 0 12px rgb(var(--accent) / 0.2);
   }
@@ -583,14 +693,24 @@
 
   /* Focus visible for keyboard users */
   .resize-handle:focus-visible {
-    width: 8px;
     @apply bg-accent outline-none;
     box-shadow: 0 0 0 2px rgb(var(--accent) / 0.5);
   }
 
   /* Fade in animation for progressive loading */
   .fade-in-up {
-    animation: fadeInUp 0.4s ease-out forwards;
+    animation: fadeInUp 0.2s var(--ease-out-strong) forwards;
+  }
+
+  /* Home sections enter top-to-bottom with a short stagger (hero → lists → tiles). */
+  .home-stagger > * {
+    animation: fadeInUp 0.25s var(--ease-out-strong) both;
+  }
+  .home-stagger > *:nth-child(2) {
+    animation-delay: 0.06s;
+  }
+  .home-stagger > *:nth-child(3) {
+    animation-delay: 0.12s;
   }
 
   @keyframes fadeInUp {
@@ -818,7 +938,33 @@
   }
 
   .pdf-toolbar-btn {
-    @apply inline-flex h-8 min-w-[2rem] items-center justify-center border border-transparent bg-transparent px-2 text-fg-muted transition-all duration-200 hover:border-border/70 hover:bg-surface-hover/70 hover:text-fg disabled:pointer-events-none disabled:opacity-35;
+    @apply inline-flex h-8 min-w-[2rem] items-center justify-center border border-transparent bg-transparent px-2 text-fg-muted transition-[color,background-color,border-color,transform] duration-150 hover:border-border/70 hover:bg-surface-hover/70 hover:text-fg disabled:pointer-events-none disabled:opacity-35;
+    border-radius: var(--radius-control);
+  }
+
+  .pdf-toolbar-btn-active {
+    @apply border-accent/20 bg-accent/10 text-accent;
+  }
+
+  .pdf-thumb-panel {
+    width: 7.25rem;
+  }
+
+  .pdf-thumb-item {
+    @apply mb-3 flex w-full flex-col items-center gap-1 border border-transparent px-2 py-2 transition-colors duration-200 hover:border-border/60 hover:bg-surface-hover/75;
+    border-radius: var(--radius-surface);
+  }
+
+  .pdf-thumb-item-active {
+    @apply border-accent/20 bg-accent/10;
+  }
+
+  .pdf-thumb-label {
+    @apply text-2xs font-medium text-fg-muted tabular-nums;
+  }
+
+  .pdf-thumb-canvas {
+    @apply overflow-hidden border border-border/50 bg-surface/70 p-1;
     border-radius: var(--radius-control);
   }
 
@@ -887,7 +1033,7 @@
   }
 
   .chat-send-button {
-    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-accent/20 bg-accent/10 text-accent transition-colors duration-200 hover:bg-accent/20 disabled:pointer-events-none disabled:opacity-40;
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-accent/20 bg-accent/10 text-accent transition-[color,background-color,border-color,transform] duration-150 hover:bg-accent/20 disabled:pointer-events-none disabled:opacity-40;
   }
 
   .chat-floating-backdrop {
@@ -895,7 +1041,7 @@
   }
 
   .chat-launcher {
-    @apply flex min-h-[4rem] items-center gap-3 rounded-surface border border-border/60 bg-surface/90 px-3.5 py-2.5 shadow-[0_18px_48px_rgba(0,0,0,0.22)] backdrop-blur-xl transition-all duration-200 hover:-translate-y-0.5 hover:border-border/70;
+    @apply flex min-h-[4rem] items-center gap-3 rounded-surface border border-border/60 bg-surface/90 px-3.5 py-2.5 shadow-[0_18px_48px_rgba(0,0,0,0.22)] backdrop-blur-xl transition-[transform,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:border-border/70;
     width: min(20rem, calc(100vw - 1.5rem));
   }
 
@@ -925,7 +1071,18 @@
   }
 
   .chat-floating-header {
-    @apply flex items-start justify-between gap-3 border-b border-border/50 px-4 py-4;
+    @apply flex items-start justify-between gap-3 px-4 py-4;
+    border-bottom: 1px solid transparent;
+    transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+  }
+
+  .chat-floating-header[data-scrolled] {
+    border-bottom-color: rgb(var(--border) / 0.5);
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.06);
+  }
+
+  .dark .chat-floating-header[data-scrolled] {
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.18);
   }
 
   @media (max-width: 960px) {
@@ -952,12 +1109,40 @@
     }
   }
 
+  .figure-stage-grid {
+    grid-template-columns: minmax(0, 1fr) 26rem;
+  }
+
+  .figure-modal-inspector {
+    background-color: rgb(var(--surface) / 0.96);
+  }
+
+  /* Scroll edge effect: border/shadow only appears once the explanation
+     panel content has actually scrolled behind the header. */
+  .figure-modal-header {
+    border-bottom: 1px solid transparent;
+    transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+  }
+
+  .figure-modal-header[data-scrolled] {
+    border-bottom-color: rgb(var(--border) / 0.5);
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.06);
+  }
+
+  .dark .figure-modal-header[data-scrolled] {
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.18);
+  }
+
 /* ── Missing keyframes ── */
 /* Note: slideInRight/slideUp/fadeIn keyframes + .animate-slide-in-right/
    .animate-slide-up/.animate-fade-in utilities are defined once in
    tailwind.config.js (0.15s, per docs/04-design/design-tokens.md §5) —
    do not redefine them here (an unlayered redefinition wins the cascade
    and silently overrides the config's duration cap). */
+
+/* pulseSubtle keyframe + .animate-pulse-subtle utility live solely in
+   tailwind.config.js (opacity-only, single source). `.phase-dot-running`
+   consumes it via @apply animate-pulse-subtle. */
 
 /* ── Custom titlebar ── */
 
@@ -1014,38 +1199,128 @@
   }
 }
 
+/* Modal enter — centering baked into the keyframe so it survives the
+   animation. A bare `translateY` keyframe (e.g. slideUp) would replace the
+   `-translate-x/y-1/2` centering transform and shove the box off-center for
+   the whole run; interpolating between two centered transforms keeps it
+   centered at every frame and after completion (fill-mode both). */
+@keyframes modalSlideUp {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 0.5rem));
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* Reduced-motion fallback: fade in place, keep centering, no vertical travel. */
+@keyframes modalSlideUpReduced {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
+@keyframes sidebarLabelEnter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes filterItemIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .animate-page-enter {
-  animation: pageEnter 0.2s ease-out both;
+  animation: pageEnter 0.2s var(--ease-out-strong) both;
 }
 
 .animate-backdrop-in {
-  animation: backdropFadeIn 0.2s ease-out both;
+  animation: backdropFadeIn 0.2s var(--ease-out-strong) both;
 }
 
 .animate-modal-in {
-  animation: modalScaleIn 0.2s ease-out both;
+  animation: modalScaleIn 0.2s var(--ease-out-strong) both;
 }
 
 .animate-backdrop-out {
-  animation: backdropFadeOut 0.18s ease-in both;
+  animation: backdropFadeOut 0.18s var(--ease-out-strong) both;
 }
 
 .animate-modal-out {
-  animation: modalFadeOut 0.18s ease-in both;
+  animation: modalFadeOut 0.18s var(--ease-out-strong) both;
 }
+
+.animate-modal-slide-up {
+  animation: modalSlideUp 0.15s var(--ease-out-strong) both;
+}
+
+.sidebar-label-enter {
+  animation: sidebarLabelEnter 0.15s var(--ease-out-strong) both;
+}
+
+.filter-stagger > *:nth-child(1) { animation: filterItemIn 0.2s var(--ease-out-strong) both; }
+.filter-stagger > *:nth-child(2) { animation: filterItemIn 0.2s var(--ease-out-strong) 0.05s both; }
+.filter-stagger > *:nth-child(3) { animation: filterItemIn 0.2s var(--ease-out-strong) 0.1s both; }
+.filter-stagger > *:nth-child(4) { animation: filterItemIn 0.2s var(--ease-out-strong) 0.15s both; }
+.filter-stagger > *:nth-child(5) { animation: filterItemIn 0.2s var(--ease-out-strong) 0.2s both; }
 
 /* ── Accessibility: reduced motion ── */
 
 @media (prefers-reduced-motion: reduce) {
+  /* One-shot movement + decorative looping animations → stop entirely.
+     (Pure opacity one-shots like .animate-fade-in/.animate-fade-out stay,
+     and .animate-spin loading spinners are intentionally left running.) */
   .animate-page-enter,
   .animate-backdrop-in,
   .animate-modal-in,
   .animate-backdrop-out,
-  .animate-modal-out {
+  .animate-modal-out,
+  .sidebar-label-enter,
+  .filter-stagger > *,
+  .animate-pulse-subtle {
     animation: none !important;
   }
 
-  .card-hover {
+  /* Movement + fade utilities → keep the opacity fade, drop the travel/scale. */
+  .animate-slide-up,
+  .animate-slide-in-right,
+  .animate-slide-in-left,
+  .animate-pop-in,
+  .fade-in-up,
+  .home-stagger > * {
+    animation: fadeIn 0.15s ease-out both !important;
+    animation-delay: 0s !important;
+  }
+
+  /* Modal must stay centered — fade in place, no vertical travel. */
+  .animate-modal-slide-up {
+    animation: modalSlideUpReduced 0.15s ease-out both !important;
+  }
+
+  /* Remove hover-lift transforms. */
+  .card-hover,
+  .chat-launcher {
+    transform: none !important;
+  }
+
+  /* Press-scale feedback is movement too — disable it. */
+  .btn:active,
+  .btn-icon-subtle:active,
+  .pdf-toolbar-btn:active,
+  .chat-send-button:active {
     transform: none !important;
   }
 }
@@ -1210,5 +1485,31 @@
   .level-label {
     font-size: 0.6875rem;
     min-width: 2.5rem;
+  }
+}
+
+/* ── Accessibility: reduced transparency ── */
+/* Apple HIG: translucent materials must degrade to opaque surfaces when the
+   user asks the system to reduce transparency. Blur is disabled outright and
+   the surfaces that relied on it fall back to a solid background color. */
+@media (prefers-reduced-transparency: reduce) {
+  .backdrop-blur,
+  .backdrop-blur-sm,
+  .backdrop-blur-lg,
+  .backdrop-blur-xl {
+    backdrop-filter: none !important;
+  }
+
+  .chat-launcher,
+  .chat-floating-card,
+  .figure-modal-header,
+  .figure-modal-inspector,
+  .settings-savebar {
+    background-color: rgb(var(--surface));
+  }
+
+  .toast-surface {
+    background-color: rgb(var(--surface));
+    backdrop-filter: none;
   }
 }

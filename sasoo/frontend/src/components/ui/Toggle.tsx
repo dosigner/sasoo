@@ -4,11 +4,13 @@ interface ToggleProps {
   checked: boolean;
   onChange: (checked: boolean) => void;
   label?: string;
+  /** Accessible name only — does not render visually. Falls back to `label` if omitted. */
+  ariaLabel?: string;
   description?: ReactNode;
   disabled?: boolean;
 }
 
-export default function Toggle({ checked, onChange, label, description, disabled }: ToggleProps) {
+export default function Toggle({ checked, onChange, label, ariaLabel, description, disabled }: ToggleProps) {
   return (
     <div className="flex items-center justify-between">
       {(label || description) && (
@@ -29,7 +31,7 @@ export default function Toggle({ checked, onChange, label, description, disabled
         type="button"
         role="switch"
         aria-checked={checked}
-        aria-label={label}
+        aria-label={ariaLabel ?? label}
         disabled={disabled}
       >
         <span

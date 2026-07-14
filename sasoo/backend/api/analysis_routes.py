@@ -83,7 +83,13 @@ from api.analysis_helpers import (
     _SYSTEM_INSTRUCTION_KO,
 )
 from services.models import (
+    MODEL_SCREENING,
+    MODEL_CITATION,
+    MODEL_VISUAL,
+    MODEL_RECIPE,
+    MODEL_DEEP_DIVE,
     MODEL_VIZ_PLANNING,
+    MODEL_MERMAID,
     MODEL_CHAT,
 )
 from api.report_service import (
@@ -159,7 +165,14 @@ async def _get_cached_phase_result(paper_id: int, phase: str, input_text: str) -
     }
 
 
-def _screening_gate_decision(screening_result_text: Optional[str]) -> tuple[bool, str]:
+def _screening_gate_decision(
+    screening_result_text: Optional[str], phase: str = "recipe"
+) -> tuple[bool, str]:
+    """스크리닝 결과로 phase(recipe|deep_dive)의 자동 실행 여부를 정한다.
+
+    신규 스크리닝 결과는 phase별 applicable 플래그를 신뢰하고(리뷰 논문은
+    recipe만 스킵, deep_dive는 실행), 플래그가 없는 과거 캐시 결과는 기존
+    relevance 휴리스틱으로 폴백한다."""
     if not screening_result_text:
         return (False, "")
     try:
@@ -175,12 +188,19 @@ def _screening_gate_decision(screening_result_text: Optional[str]) -> tuple[bool
     except (TypeError, ValueError):
         return (False, "")
 
+    if relevance < 0.35:
+        return (True, "low_relevance_screening")
+
+    applicable = payload.get(f"{phase}_applicable")
+    if applicable is False:
+        return (True, f"not_applicable_{phase}")
+    if applicable is True:
+        return (False, "")
+
+    # 레거시 결과(applicable 플래그 없음): 기존 휴리스틱 유지
     domain = str(payload.get("domain") or "").strip().lower()
     key_topics = payload.get("key_topics") or []
     is_experimental = bool(payload.get("is_experimental", True))
-
-    if relevance < 0.35:
-        return (True, "low_relevance_screening")
     if relevance < 0.5 and domain in {"general", "unknown"} and (not is_experimental or len(key_topics) < 2):
         return (True, "low_confidence_screening")
     return (False, "")
@@ -315,17 +335,55 @@ async def _get_visual_contract(
 _SCREENING_SCHEMA = {
     "type": "object",
     "properties": {
-        "domain": {"type": "string", "enum": ["optics", "materials", "bio", "energy", "quantum", "general"]},
-        "agent_recommended": {"type": "string"},
-        "relevance_score": {"type": "number"},
+        "domain": {"type": "string", "enum": ["optics", "bio", "ai_ml", "ee", "general"]},
+        "agent_recommended": {"type": "string", "enum": ["photon", "cell", "neural", "circuit"]},
+        "relevance_score": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+        "recipe_applicable": {"type": "boolean"},
+        "deep_dive_applicable": {"type": "boolean"},
+        "applicability_reason": {"type": "string"},
         "key_topics": {"type": "array", "items": {"type": "string"}},
         "methodology_type": {"type": "string", "enum": ["experimental", "computational", "theoretical", "review"]},
         "summary": {"type": "string"},
         "is_experimental": {"type": "boolean"},
         "has_figures": {"type": "boolean"},
         "estimated_complexity": {"type": "string", "enum": ["low", "medium", "high"]},
+        "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
     },
-    "required": ["domain", "summary", "relevance_score"],
+    "required": [
+        "domain", "summary", "relevance_score", "key_topics", "is_experimental",
+        "methodology_type", "recipe_applicable", "deep_dive_applicable",
+    ],
+}
+
+_CITATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "ref_analyses": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "ref_id": {"type": "string"},
+                    "citation_role": {
+                        "type": "string",
+                        "enum": ["foundational", "methodological", "comparative",
+                                 "supporting", "contrasting", "unclear"],
+                    },
+                    "evidence_context": {"type": "string"},
+                    "why_cited": {"type": "string"},
+                },
+                "required": ["ref_id", "citation_role", "why_cited"],
+            },
+        },
+        "summary": {"type": "string"},
+        "citation_balance": {
+            "type": "string",
+            "enum": ["balanced", "heavily_reliant", "self_citation_heavy", "diverse"],
+        },
+        "key_influences": {"type": "array", "items": {"type": "string"}},
+        "limitations": {"type": "string"},
+    },
+    "required": ["ref_analyses", "summary", "citation_balance"],
 }
 
 
@@ -338,24 +396,29 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.SCREENING
-    prompt = f"""너는 Sasoo(사수)라는 AI Co-Scientist야. 이 연구 논문을 분석해서 스크리닝 평가를 해줘.
+    prompt = f"""논문 텍스트:
+{screening_input}
 
-모든 텍스트 내용(summary, key_topics 등)은 반드시 한국어로 작성해.
-JSON key 이름만 영어로 유지하고, value는 전부 한국어로 써줘.
+위 논문을 후속 분석 단계에 배정하기 위한 스크리닝 평가를 해줘.
 
-평가 항목:
-- domain: optics|materials|bio|energy|quantum|general 중 하나
-- agent_recommended: photon|crystal|helix|volt|qubit|atlas 중 하나
-- relevance_score: 0.0~1.0
+판정 기준:
+- domain: optics|bio|ai_ml|ee|general 중 하나
+- agent_recommended: photon|cell|neural|circuit 중 하나
+- relevance_score: 연구 논문으로서 분석할 실질이 있는지 (0.0=분석할 내용 없음, 1.0=분석 가치가 충분한 연구 논문)
+- recipe_applicable: 재현 가능한 실험·학습·설계 절차가 논문에 있는지
+- deep_dive_applicable: 기여·방법·근거·한계를 분석할 실질 내용이 있는지
+- applicability_reason: 위 두 판정의 근거 1문장 (한국어)
 - key_topics: 핵심 주제 리스트
 - methodology_type: experimental|computational|theoretical|review 중 하나
 - summary: 2-3문장 요약 (한국어)
-- is_experimental: 실험 논문 여부
-- has_figures: 그림 포함 여부
+- is_experimental: 실험 논문 여부 / has_figures: 그림 포함 여부
 - estimated_complexity: low|medium|high 중 하나
+- confidence: 이 스크리닝 판정 자체의 확신도 (0.0~1.0)
 
-논문 텍스트:
-{screening_input}
+경계 예시:
+- 리뷰 논문: recipe_applicable=false, deep_dive_applicable=true
+- 실험 세부가 없는 사설·초록만 있는 문서: 둘 다 false 가능
+불확실하면 applicable을 성급히 false로 두지 말고 confidence를 낮춰.
 """
 
     cached = await _get_cached_phase_result(paper_id, "screening", prompt)
@@ -375,7 +438,7 @@ JSON key 이름만 영어로 유지하고, value는 전부 한국어로 써줘.
     result = await call_interaction(
         prompt,
         lane="pipeline",
-        model="gemini-3.1-flash-lite",
+        model=MODEL_SCREENING,
         thinking_level="minimal",
         response_schema=_SCREENING_SCHEMA,
         store=False,
@@ -464,36 +527,28 @@ async def _run_citation(
                 f"   인용 맥락: {ctx_str}\n\n"
             )
 
-        llm_prompt = f"""너는 Sasoo(사수)라는 AI Co-Scientist야. 이 논문의 인용/참고문헌 분석을 해줘.
+        llm_prompt = f"""아래는 로컬 파서가 이 논문에서 추출한 참고문헌 통계와 상위 인용 맥락이야.
 
-모든 텍스트 내용은 반드시 한국어로 작성해. JSON key 이름만 영어로 유지해.
-
-이 논문의 총 참고문헌 수: {local_result.get('total_references', 0)}
+[인용 데이터]
+총 참고문헌 수: {local_result.get('total_references', 0)}
 인용 스타일: {local_result.get('citation_style', 'numbered')}
 셀프 인용: {local_result.get('self_citation_count', 0)}건 (비율: {local_result.get('self_citation_ratio', 0):.1%})
 
 가장 많이 인용된 상위 10개 참고문헌과 인용 맥락:
 {top_refs_text}
 
-위 데이터를 분석하여 각 참고문헌의 인용 역할을 분류하고,
-이 논문이 선행연구를 어떻게 활용하고 있는지 평가해줘.
-
-Return ONLY valid JSON (마크다운 펜스 없이):
-{{
-  "ref_analyses": [
-    {{
-      "ref_id": "[1]",
-      "citation_role": "foundational|methodological|comparative|supporting|contrasting",
-      "why_cited": "이 참고문헌이 왜 자주 인용되었는지 2-3문장 설명 (한국어)"
-    }}
-  ],
-  "summary": "전체 인용 패턴에 대한 종합 평가 2-3문장 (한국어). 어떤 선행연구에 가장 많이 의존하는지, 인용이 공정한지 등.",
-  "citation_balance": "balanced|heavily_reliant|self_citation_heavy|diverse",
-  "key_influences": ["가장 영향을 많이 준 연구 그룹/논문 1-3개 (한국어)"]
-}}
-
-논문 본문 텍스트 (맥락용):
+[논문 본문 발췌 (맥락용)]
 {citation_body[:3000]}
+
+위 데이터에 근거해서만 이 논문 내부의 인용 사용 패턴을 분석해줘.
+
+규칙:
+- citation_role은 제공된 인용 맥락에서 확인되는 기능만으로 분류해. 근거가 부족하면 "unclear"를 써.
+- evidence_context에는 분류의 근거가 된 인용 맥락 문장을 위 자료에서 한 구절 그대로 옮겨 적어.
+- why_cited는 왜 자주 인용됐는지 2-3문장(한국어)으로 써.
+- 참고문헌의 실제 내용·존재 여부·학계 전체 영향력은 검증된 것처럼 말하지 마.
+- key_influences는 위에 제시된 참고문헌 안에서만 골라 — 목록에 없는 연구를 추가하지 마.
+- summary는 전체 인용 패턴 평가 2-3문장(한국어). limitations에는 상위 10개와 본문 발췌만 본 평가라는 한계를 한 문장으로 남겨.
 """
 
         cached = await _get_cached_phase_result(paper_id, "citation", llm_prompt)
@@ -511,7 +566,14 @@ Return ONLY valid JSON (마크다운 펜스 없이):
             return cached
 
         try:
-            result = await call_interaction(llm_prompt, lane="pipeline", model="gemini-3.5-flash", store=False)
+            result = await call_interaction(
+                llm_prompt,
+                lane="pipeline",
+                model=MODEL_CITATION,
+                thinking_level="low",
+                response_schema=_CITATION_SCHEMA,
+                store=False,
+            )
             cleaned_text = _clean_llm_json(result["text"])
 
             try:
@@ -527,11 +589,13 @@ Return ONLY valid JSON (마크다운 펜스 없이):
                     if tc.get("ref_id") == ref_id:
                         tc["citation_role"] = ra.get("citation_role", "")
                         tc["why_cited"] = ra.get("why_cited", "")
+                        tc["evidence_context"] = ra.get("evidence_context", "")
                         break
 
             local_result["summary"] = llm_data.get("summary", "")
             local_result["citation_balance"] = llm_data.get("citation_balance", "")
             local_result["key_influences"] = llm_data.get("key_influences", [])
+            local_result["citation_limitations"] = llm_data.get("limitations", "")
 
             cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
@@ -609,6 +673,13 @@ Return ONLY valid JSON (마크다운 펜스 없이):
 # 단계별 thinking_level (visual=low, recipe=medium, deep_dive=high, visualization=medium)
 _STAGE_THINKING = {"visual": "low", "recipe": "medium", "deep_dive": "high", "visualization": "medium"}
 
+_STAGE_MODELS = {
+    "visual": MODEL_VISUAL,
+    "recipe": MODEL_RECIPE,
+    "deep_dive": MODEL_DEEP_DIVE,
+    "visualization": MODEL_VIZ_PLANNING,
+}
+
 _VISUAL_SCHEMA = {
     "type": "object",
     "properties": {
@@ -621,6 +692,19 @@ _VISUAL_SCHEMA = {
     },
     "required": ["quality_summary", "key_findings_from_visuals"],
 }
+
+_VISUAL_INSTRUCTION = """이 논문의 그림·표·수식을 검증해줘.
+
+figure_count(그림 수), tables_found(표 수), equations_found(수식 수),
+diagram_types(다이어그램 종류: SEM/TEM/spectrum/graph/photograph/schematic 등),
+quality_summary(그림 품질 전체 평가, 한국어), key_findings_from_visuals(시각자료에서
+읽어낸 핵심 사항 리스트, 한국어)를 채워줘.
+
+규칙:
+- key_findings_from_visuals의 각 항목은 근거가 된 그림/표 번호로 시작해(예: "Fig. 3: ...", "Table 2: ...").
+- 그림에서 실제로 읽을 수 있는 내용만 관찰로 적어. 수치·글자가 안 읽히면 추측하지 말고 "판독 불가"라고 표시해.
+- 본문 주장과 그림 내용이 어긋나는 지점이 보이면 짚어줘.
+- 함께 제공되는 figure/table 메타데이터(quality/confidence 등)는 추출 파이프라인 상태 정보일 뿐, 그림 내용의 과학적 타당성 근거가 아니야."""
 
 _RECIPE_SCHEMA = {
     "type": "object",
@@ -638,6 +722,7 @@ _RECIPE_SCHEMA = {
                     "value": {"type": "string"},
                     "unit": {"type": "string"},
                     "notes": {"type": "string"},
+                    "source_tag": {"type": "string", "enum": ["explicit", "inferred"]},
                 },
                 "required": ["name", "value"],
             },
@@ -649,6 +734,7 @@ _RECIPE_SCHEMA = {
         "confidence": {"type": "number"},
         "missing_info": {"type": "array", "items": {"type": "string"}},
         "reproducibility_score": {"type": "number"},
+        "score_rationale": {"type": "string"},
     },
     "required": ["title", "objective", "parameters", "steps"],
 }
@@ -667,6 +753,58 @@ _DEEP_DIVE_SCHEMA = {
     },
     "required": ["detailed_analysis", "strengths", "weaknesses"],
 }
+
+_DEEP_DIVE_INSTRUCTION = """이 논문에 대한 심층 분석을 해줘. 전문적이면서도 이해하기 쉽게,
+선배 연구자가 후배에게 설명하듯이 써줘.
+
+규칙:
+- 논문 PDF(또는 논문 텍스트)가 최우선 근거야. 앞선 단계(시각·레시피·스크리닝·인용) 결과는
+  탐색용 힌트일 뿐이니, 논문에서 직접 확인한 내용만 사실로 서술해.
+- 강점·약점에는 근거가 된 논문 위치(섹션/그림/표)를 함께 적어.
+- novelty_assessment와 comparison_to_prior_work는 논문이 스스로 제시한 비교 범위 안의
+  평가임을 명시해 — 외부 문헌 검증은 하지 않았어.
+- 논문에 없는 반례·실험·선행연구를 만들어내지 마.
+
+출력 필드: detailed_analysis(기여도·방법론·결과 상세 분석, 여러 문단), strengths(강점 리스트),
+weaknesses(약점 리스트), novelty_assessment(새로움 평가), comparison_to_prior_work(기존 연구 대비 비교),
+suggested_improvements(개선 제안 리스트), follow_up_questions(후속 질문 리스트), practical_applications(실용적 응용 리스트)."""
+
+
+def _stateless_digest(screening_result_text: str, citation_result_text: str) -> str:
+    """스크리닝·인용 결과에서 심층 분석에 필요한 핵심 필드만 뽑아 digest 텍스트를 만든다.
+
+    raw JSON 절단 주입(중간 절단으로 필드 유실 + 오류 전파) 대신 구조화 digest를 쓴다.
+    파싱 실패 시 해당 결과는 기존 관례대로 앞부분 절단 텍스트로 폴백한다."""
+    parts = []
+    if screening_result_text:
+        try:
+            s = json.loads(_clean_llm_json(screening_result_text))
+            if not isinstance(s, dict):
+                raise TypeError("digest 입력이 dict가 아님")
+            parts.append(
+                "[스크리닝] "
+                f"도메인={s.get('domain', '?')}, 관련성={s.get('relevance_score', '?')}, "
+                f"방법론={s.get('methodology_type', '?')}, 실험여부={s.get('is_experimental', '?')}, "
+                f"핵심주제={', '.join(map(str, s.get('key_topics') or [])) or '?'}\n"
+                f"요약: {str(s.get('summary') or '')[:500]}"
+            )
+        except (json.JSONDecodeError, TypeError):
+            parts.append(f"[스크리닝 결과]\n{screening_result_text[:1500]}")
+    if citation_result_text:
+        try:
+            c = json.loads(_clean_llm_json(citation_result_text))
+            if not isinstance(c, dict):
+                raise TypeError("digest 입력이 dict가 아님")
+            parts.append(
+                "[인용 분석] "
+                f"총 참고문헌={c.get('total_references', '?')}, 균형={c.get('citation_balance', '?')}, "
+                f"핵심영향={', '.join(map(str, c.get('key_influences') or [])) or '?'}\n"
+                f"종합: {str(c.get('summary') or '')[:500]}"
+            )
+        except (json.JSONDecodeError, TypeError):
+            parts.append(f"[인용 분석 결과]\n{citation_result_text[:1500]}")
+    return "\n\n".join(parts)
+
 
 _VIZ_PLAN_SCHEMA = {
     "type": "object",
@@ -709,11 +847,23 @@ def _find_paper_pdf(paper_dir: Path) -> Optional[Path]:
     return pdfs[0] if pdfs else None
 
 
-def _build_persona_prompt(agent) -> str:
-    """파이프라인 전체 페르소나: 에이전트 frontmatter 설명(personality) + DeepDive 오버레이."""
+_STAGE_OVERLAY_GETTERS = {
+    "visual": "get_visual_prompt",
+    "recipe": "get_recipe_prompt",
+    "deep_dive": "get_deepdive_prompt",
+}
+
+
+def _build_persona_prompt(agent, stage: str | None = None) -> str:
+    """스테이지별 페르소나: 말투(personality) + 해당 단계의 도메인 오버레이.
+
+    agents/*.md의 # Visual/# Recipe/# Deep Dive 섹션을 스테이지에 맞춰 주입한다.
+    stage가 None이거나 오버레이가 없는 스테이지(visualization 등)는 말투만 쓴다."""
     profile = getattr(agent, "profile", None)
     desc = (getattr(profile, "personality", "") if profile else getattr(agent, "description", "")) or ""
-    overlay = agent.get_deepdive_prompt() if hasattr(agent, "get_deepdive_prompt") else ""
+    getter_name = _STAGE_OVERLAY_GETTERS.get(stage or "")
+    getter = getattr(agent, getter_name, None) if getter_name else None
+    overlay = getter() if callable(getter) else ""
     return "\n\n".join(p.strip() for p in (desc, overlay) if p and p.strip())
 
 
@@ -754,7 +904,7 @@ async def _run_chain_stage(
         return await call_interaction(
             contents,
             lane="pipeline",
-            model="gemini-3.5-flash",
+            model=_STAGE_MODELS[phase],
             system_instruction=system_instruction,
             thinking_level=_STAGE_THINKING[phase],
             previous_interaction_id=previous_interaction_id,
@@ -764,7 +914,7 @@ async def _run_chain_stage(
     return await call_interaction(
         prompt_fallback,
         lane="pipeline",
-        model="gemini-3.5-flash",
+        model=_STAGE_MODELS[phase],
         system_instruction=system_instruction,
         thinking_level=_STAGE_THINKING[phase],
         response_schema=response_schema,
@@ -887,15 +1037,10 @@ async def _run_visual(
                 f"method={table.get('parse_method')}, resolver={table.get('resolver_version')}"
             )
 
-    instruction = """너는 Sasoo(사수)라는 AI Co-Scientist야. 이 연구 논문의 시각적 요소를 분석해줘.
-
-모든 텍스트 내용(quality_summary, key_findings_from_visuals 등)은 반드시 한국어로 작성해.
-JSON key 이름만 영어로 유지하고, value는 전부 한국어로 써줘.
-
-figure_count(그림 수), tables_found(표 수), equations_found(수식 수), diagram_types(다이어그램 종류 리스트: SEM/TEM/spectrum/graph/photograph/schematic 등), quality_summary(그림 품질 전체 평가, 한국어), key_findings_from_visuals(시각자료에서 발견한 핵심 사항 리스트, 한국어)를 채워줘."""
+    instruction = _VISUAL_INSTRUCTION
 
     prompt_chain = f"{instruction}\n\n위 논문 PDF를 직접 보고 시각 요소를 분석해줘.{figure_desc}"
-    prompt_fallback = f"{instruction}\n\n논문 관련 텍스트:\n{visual_input}\n{figure_desc}"
+    prompt_fallback = f"논문 관련 텍스트:\n{visual_input}\n{figure_desc}\n\n{instruction}"
     cache_key = prompt_fallback
 
     cached = await _get_cached_phase_result(paper_id, "visual", cache_key)
@@ -981,7 +1126,7 @@ async def _run_recipe(
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.RECIPE
 
-    should_skip, skip_reason = _screening_gate_decision(screening_result_text)
+    should_skip, skip_reason = _screening_gate_decision(screening_result_text, phase="recipe")
     if should_skip:
         return await _store_skipped_phase_result(
             paper_id=paper_id,
@@ -1025,34 +1170,15 @@ learning_rate, batch_size, epochs, training_time, regularization,
 dropout_rate, weight_initialization, training_data_size, test_data_split,
 loss_function, evaluation_metric, GPU_type, precision (fp16/fp32),
 augmentation_method, pretrained_model, fine_tuning_strategy"""
-            elif domain in ("materials", "crystal"):
+            elif domain in ("ee", "circuit", "electrical"):
                 domain_hint = """
-DOMAIN-SPECIFIC PARAMETERS (Materials Science) — extract ALL of these if mentioned:
-substrate_type, substrate_temperature (C/K), deposition_rate (nm/s, A/s), chamber_pressure (Pa/Torr),
-film_thickness (nm/um), annealing_temperature (C/K), annealing_duration (min/h), annealing_atmosphere,
-precursor_materials, target_composition, sputtering_power (W), RF_frequency (MHz),
-grain_size (nm/um), crystal_structure, lattice_parameter (A/nm), surface_roughness (nm),
-hardness (GPa), Young_modulus (GPa), thermal_conductivity (W/mK), electrical_resistivity (ohm*cm),
-XRD_peaks (2theta), FWHM, crystallinity (%), porosity (%)"""
-            elif domain in ("energy", "volt"):
-                domain_hint = """
-DOMAIN-SPECIFIC PARAMETERS (Energy) — extract ALL of these if mentioned:
-cell_efficiency (%), open_circuit_voltage (V), short_circuit_current (mA/cm2),
-fill_factor, bandgap (eV), absorber_thickness (nm/um), electrode_material,
-electrolyte_composition, charge_capacity (mAh/g), discharge_rate (C),
-cycle_number, capacity_retention (%), coulombic_efficiency (%),
-power_density (W/kg), energy_density (Wh/kg), internal_resistance (ohm),
-operating_temperature (C), illumination_intensity (mW/cm2, sun),
-active_area (cm2), HTL_material, ETL_material, perovskite_composition"""
-            elif domain in ("quantum", "qubit"):
-                domain_hint = """
-DOMAIN-SPECIFIC PARAMETERS (Quantum) — extract ALL of these if mentioned:
-qubit_type, coherence_time_T1 (us/ms), coherence_time_T2 (us/ms), gate_fidelity (%),
-readout_fidelity (%), operating_temperature (mK/K), coupling_strength (MHz/GHz),
-resonator_frequency (GHz), anharmonicity (MHz), quantum_volume,
-error_rate, circuit_depth, number_of_qubits, connectivity,
-magnetic_field (T/mT), microwave_frequency (GHz), microwave_power (dBm),
-Rabi_frequency (MHz), detuning (MHz), photon_number, squeezing_parameter (dB)"""
+DOMAIN-SPECIFIC PARAMETERS (Electrical/Electronics) — extract ALL of these if mentioned:
+technology_node (nm), supply_voltage (V), threshold_voltage (V), bias_current (uA/mA),
+power_consumption (mW/uW), clock_frequency (Hz/MHz/GHz), gain (dB), bandwidth (Hz),
+transistor_count, channel_length/width (nm/um), load_capacitance (fF/pF),
+input_impedance (ohm), output_impedance (ohm), noise_figure (dB), SNR/SNDR (dB),
+ENOB (bits), sampling_rate (S/s), slew_rate (V/us), phase_margin (deg),
+figure_of_merit (FoM), die_area (mm2), efficiency (%)"""
             else:
                 domain_hint = """
 Look for ALL quantitative parameters: temperatures, pressures, durations, concentrations,
@@ -1060,29 +1186,27 @@ voltages, currents, frequencies, distances, speeds, sizes, ratios, percentages, 
         except (json.JSONDecodeError, TypeError):
             pass
 
-    instruction = f"""너는 Sasoo(사수)라는 AI Co-Scientist야. 이 연구 논문에서 실험 레시피를 완전하고 철저하게 추출해줘.
-
-모든 텍스트 내용은 반드시 한국어로 작성해. JSON key 이름만 영어로 유지해.
+    instruction = f"""이 연구 논문에서 재현 가능한 실험 레시피를 추출해줘.
 
 핵심 지시사항:
-1. 논문에 언급된 모든 정량적 파라미터를 추출해. Results나 Discussion에 있는 것도 포함.
-2. 각 파라미터마다 name, value, unit, notes(출처/컨텍스트)를 반드시 포함.
-3. 값이 불명확해도 notes="추정값" 또는 notes="근사값"으로 포함시켜.
-4. 사소해 보이는 파라미터도 절대 건너뛰지 마 — 재현성을 위해 모든 세부사항 필요.
-5. Methods 섹션뿐 아니라 논문 전체에서 파라미터를 찾아.
+1. 재현에 필요한 정량 파라미터를 논문 전체(Methods뿐 아니라 Results·Discussion·그림 캡션·표·부록)에서 빠짐없이 찾아.
+2. 각 파라미터마다 name, value, unit, notes(출처 섹션/문맥), source_tag를 포함해.
+3. source_tag 규칙:
+   - "explicit": 논문에 값이 직접 명시됨.
+   - "inferred": 논문에 명시된 다른 값에서 계산·추론 가능 — notes에 근거와 계산을 적어.
+4. 개수 목표는 없어. 논문에 실제로 있는 항목만 추출하고, 통상 기본값·상식·장비 기본 설정을 논문 값처럼 보충하지 마.
+5. 재현에 필요한데 논문에 없는 항목은 parameters에 넣지 말고 missing_info에 기록해.
+6. reproducibility_score는 explicit 핵심 파라미터의 충족도와 missing_info를 근거로 매기고, 그 근거를 score_rationale에 한 문장으로 적어.
 {domain_hint}
 
 출력 필드: title(레시피 제목, 한국어), objective(실험 목적), materials(재료 리스트, 규격 포함),
-equipment(장비 리스트, 모델번호 포함), parameters(각 항목 name/value/unit/notes),
+equipment(장비 리스트, 모델번호 포함), parameters(각 항목 name/value/unit/notes/source_tag),
 steps(단계별 상세 설명, 온도·시간·속도 등 포함), critical_notes(재현 중요 참고사항),
 expected_results(예상 결과), safety_notes(안전 주의사항), confidence(0.0~1.0),
-missing_info(논문에서 찾지 못한 세부사항), reproducibility_score(0.0~1.0).
-
-중요: "parameters" 배열에 최소 8-15개 항목이 있어야 해.
-5개 미만이면 텍스트를 다시 꼼꼼히 읽어 — 분명 놓친 게 있을 거야."""
+missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibility_score(0.0~1.0), score_rationale(점수 근거)."""
 
     prompt_chain = f"{instruction}\n\n위 논문 PDF와 이전 분석을 바탕으로 실험 레시피를 추출해줘."
-    prompt_fallback = f"{instruction}\n\n논문 텍스트:\n{recipe_input}"
+    prompt_fallback = f"논문 텍스트:\n{recipe_input}\n\n{instruction}"
     cache_key = prompt_fallback
 
     cached = await _get_cached_phase_result(paper_id, "recipe", cache_key)
@@ -1169,7 +1293,7 @@ async def _run_deep_dive(
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.DEEP_DIVE
 
-    should_skip, skip_reason = _screening_gate_decision(screening_result_text)
+    should_skip, skip_reason = _screening_gate_decision(screening_result_text, phase="deep_dive")
     if should_skip:
         return await _store_skipped_phase_result(
             paper_id=paper_id,
@@ -1183,33 +1307,23 @@ async def _run_deep_dive(
 
     prev_context = "\n\n".join(previous_results[:4]) if previous_results else ""
 
-    instruction = """너는 Sasoo(사수)라는 AI Co-Scientist야. 이 연구 논문에 대한 심층 분석을 해줘.
-
-모든 텍스트 내용은 반드시 한국어로 작성해. JSON key 이름만 영어로 유지해.
-전문적이면서도 이해하기 쉽게, 마치 선배 연구자가 후배에게 설명하듯이 써줘.
-
-출력 필드: detailed_analysis(논문의 기여도·방법론·결과 상세 분석, 여러 문단), strengths(강점 리스트),
-weaknesses(약점 리스트), novelty_assessment(새로움 평가), comparison_to_prior_work(기존 연구 대비 비교),
-suggested_improvements(개선 제안 리스트), follow_up_questions(후속 질문 리스트), practical_applications(실용적 응용 리스트)."""
+    instruction = _DEEP_DIVE_INSTRUCTION
 
     # 스크리닝(r1)·인용(r_cit)은 stateless라 서버측 체인 상태에 없다. 체인 모드에서도
-    # 프롬프트가 약속하는 "스크리닝·인용" 컨텍스트를 실제로 제공하도록 텍스트를 직접 삽입한다.
-    stateless_parts = []
-    if screening_result_text:
-        stateless_parts.append(f"[스크리닝 결과]\n{screening_result_text[:4000]}")
-    if citation_result_text:
-        stateless_parts.append(f"[인용 분석 결과]\n{citation_result_text[:4000]}")
-    stateless_context = "\n\n".join(stateless_parts)
+    # 프롬프트가 약속하는 "스크리닝·인용" 컨텍스트를 제공하되, raw JSON 절단 대신
+    # 핵심 필드 digest로 주입한다.
+    stateless_context = _stateless_digest(screening_result_text or "", citation_result_text or "")
 
     prompt_chain = (
         f"{instruction}\n\n위 논문 PDF와 앞선 체인 단계(시각·레시피) 결과, 그리고 아래 "
-        "스크리닝·인용 분석 결과를 바탕으로 포괄적인 심층 분석을 제공해줘."
+        "스크리닝·인용 분석 digest를 바탕으로 포괄적인 심층 분석을 제공해줘."
     )
     if stateless_context:
-        prompt_chain += f"\n\n--- 스크리닝·인용 분석 결과 ---\n{stateless_context}"
+        prompt_chain += f"\n\n--- 스크리닝·인용 분석 digest ---\n{stateless_context}"
     prompt_fallback = (
-        f"{instruction}\n\n이전 분석 단계의 결과:\n{prev_context[:4000]}\n\n"
-        f"위 정보를 바탕으로 포괄적인 심층 분석을 제공해줘.\n\n논문 텍스트:\n{deep_dive_input}"
+        f"논문 텍스트:\n{deep_dive_input}\n\n"
+        f"이전 분석 단계의 결과:\n{prev_context[:4000]}\n\n"
+        f"{instruction}\n\n위 정보를 바탕으로 포괄적인 심층 분석을 제공해줘."
     )
     cache_key = prompt_fallback
 
@@ -1619,7 +1733,7 @@ async def _generate_single_mermaid(
 다이어그램 타입 키워드로 시작하는 유효한 Mermaid 코드만 반환해.
 """
 
-    result = await call_interaction(prompt, lane="pipeline", model="gemini-3.5-flash", store=False)
+    result = await call_interaction(prompt, lane="pipeline", model=MODEL_MERMAID, store=False)
 
     return _sanitize_mermaid_code(result["text"])
 
@@ -1966,12 +2080,25 @@ async def _run_full_analysis(paper_id: int):
         except (_json.JSONDecodeError, TypeError):
             focus = None
         level_key = paper.get("explanation_level") or settings_raw.get("default_explanation_level", "masters")
-        chain_system_instruction = build_chain_system_instruction(
-            persona_prompt=_build_persona_prompt(agent),
-            research_context=settings_raw.get("research_context", ""),
-            focus=focus,
-            level_key=level_key,
-        )
+        # 오버라이드 없이 프로필 기본값으로 분석한 논문도, 실제 적용된 설명 수준을
+        # 논문에 남겨 라이브러리에서 진실되게 표시되도록 한다.
+        if not paper.get("explanation_level"):
+            await execute_update(
+                "UPDATE papers SET explanation_level = ? WHERE id = ?",
+                (level_key, paper_id),
+            )
+        def _stage_system_instruction(stage: Optional[str]) -> str:
+            return build_chain_system_instruction(
+                persona_prompt=_build_persona_prompt(agent, stage),
+                research_context=settings_raw.get("research_context", ""),
+                focus=focus,
+                level_key=level_key,
+            )
+
+        visual_system_instruction = _stage_system_instruction("visual")
+        recipe_system_instruction = _stage_system_instruction("recipe")
+        deep_dive_system_instruction = _stage_system_instruction("deep_dive")
+        viz_system_instruction = _stage_system_instruction(None)
 
         # PDF 직접 입력용 업로드. 실패/부재 시 pdf_uri=None → 각 스테이지는 텍스트 폴백 경로.
         chain_prev_id: Optional[str] = None
@@ -2017,7 +2144,7 @@ async def _run_full_analysis(paper_id: int):
             str(phase_inputs.get("visual", "")),
             folder_name,
             status,
-            system_instruction=chain_system_instruction,
+            system_instruction=visual_system_instruction,
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
         )
@@ -2046,7 +2173,7 @@ async def _run_full_analysis(paper_id: int):
             status,
             screening_result_text=r1.get("text", ""),
             previous_results=previous,
-            system_instruction=chain_system_instruction,
+            system_instruction=recipe_system_instruction,
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
         )
@@ -2070,7 +2197,7 @@ async def _run_full_analysis(paper_id: int):
             status,
             screening_result_text=r1.get("text", ""),
             citation_result_text=r_cit.get("text", ""),
-            system_instruction=chain_system_instruction,
+            system_instruction=deep_dive_system_instruction,
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
         )
@@ -2110,7 +2237,7 @@ async def _run_full_analysis(paper_id: int):
                     r3.get("text", ""),
                     r4.get("text", ""),
                     status,
-                    system_instruction=chain_system_instruction,
+                    system_instruction=viz_system_instruction,
                     previous_interaction_id=chain_prev_id,
                     pdf_uri=pdf_uri,
                 )
