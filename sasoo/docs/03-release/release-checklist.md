@@ -39,8 +39,8 @@ Current local artifact verifiers:
 6. Run the frontend validation:
    - `cd /Users/dongj/Documents/논문/sasoo/frontend && pnpm build`
 7. Run backend test validation:
-   - `cd /Users/dongj/Documents/논문/sasoo/backend && ./.venv/bin/python -m unittest discover -s services -p 'test*.py'`
-   - `cd /Users/dongj/Documents/논문/sasoo/backend && ./.venv/bin/python -m unittest discover -s api -p 'test*.py'`
+   - `cd /Users/dongj/Documents/논문/sasoo/backend && ./.venv/bin/python -m unittest discover -s services -t . -p 'test*.py'`
+   - `cd /Users/dongj/Documents/논문/sasoo/backend && ./.venv/bin/python -m unittest discover -s api -t . -p 'test*.py'`
 
 ## Local Smoke Checks
 
@@ -55,6 +55,7 @@ macOS ARM:
    - Workbench opens and docked chat behaves correctly
    - Analysis can start
    - App can close and relaunch
+   - A legacy `.sasoo_key` value migrates to macOS Keychain and the file is removed
 
 Windows:
 
@@ -66,6 +67,7 @@ Windows:
    - Installer launches without immediate crash
    - Backend bundle starts
    - PDF open, analysis, and docked chat work
+   - New API-key encryption uses Windows Credential Manager, not `.sasoo_key`
 
 ## GitHub Actions Release Flow
 
@@ -85,25 +87,21 @@ Manual rerun for an existing tag:
 
 1. Open Actions
 2. Run `Release`
-3. Enter the exact tag, for example `v0.6.7`
+3. Enter the exact tag, for example `v0.7.0`
 
 ## Signing And Trust
 
-GitHub Release publishing is blocked unless macOS signing/notarization and Windows Authenticode secrets are configured. Unsigned builds are only for local development and internal checks; never publish them.
+macOS releases are currently distributed as unsigned, unnotarized ZIP files. Every release note and the repository README must disclose this and provide the limited `xattr -dr com.apple.quarantine /Applications/Sasoo.app` installation procedure. Never describe the macOS artifact as signed, notarized, or Gatekeeper-approved.
 
-Recommended signing/notarization secrets for GitHub Actions:
+Only use the `xattr` workaround for an artifact downloaded directly from the official `dosigner/sasoo` GitHub Releases page. It removes quarantine protection; it does not verify the publisher or make the app pass Apple's signing and notarization checks.
 
-- macOS:
-  - `CSC_LINK`
-  - `CSC_KEY_PASSWORD`
-  - `APPLE_ID`
-  - `APPLE_APP_SPECIFIC_PASSWORD`
-  - `APPLE_TEAM_ID`
+Windows Release publishing remains blocked unless Authenticode secrets are configured:
+
 - Windows:
   - `WIN_CSC_LINK`
   - `WIN_CSC_KEY_PASSWORD`
 
-The release workflow verifies the extracted macOS app with `codesign` and Gatekeeper assessment, and verifies the Windows installer with `Get-AuthenticodeSignature`.
+The release workflow verifies macOS ZIP extraction and update-manifest integrity. It verifies the Windows installer with `Get-AuthenticodeSignature`.
 
 ## Release Completion
 

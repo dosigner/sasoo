@@ -50,8 +50,11 @@ for (const filePath of packageJsonFiles) {
 const mainPy = path.join(ROOT, 'backend', 'main.py');
 if (fs.existsSync(mainPy)) {
   let content = fs.readFileSync(mainPy, 'utf-8');
-  const versionPattern = /version="[\d.]+"/g;
-  const newContent = content.replace(versionPattern, `version="${version}"`);
+  const constructorVersionPattern = /version="[\d.]+"/g;
+  const responseVersionPattern = /("version":\s*)"[\d.]+"/g;
+  const newContent = content
+    .replace(constructorVersionPattern, `version="${version}"`)
+    .replace(responseVersionPattern, `$1"${version}"`);
   if (newContent !== content) {
     fs.writeFileSync(mainPy, newContent, 'utf-8');
     console.log(`  backend/main.py: version strings updated to ${version}`);
