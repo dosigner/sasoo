@@ -3,6 +3,9 @@
 서버 프로세스는 이 모듈로 분석 워커를 별도 프로세스로 스폰한다. 워커는 서버와 완전히
 독립적으로 살아남아야 하므로(PyInstaller 재실행 환경 리셋, 서버 임시 CA 파일 수명과
 무관하게 동작, 서버 소켓 fd 미상속) 아래 함수들이 그 경계를 담당한다.
+
+리컨실러도 이 모듈 소관: 주기 루프가 stale run 조정(papers-terminal > cancel > attempts-error
+> requeue) → attempts 상한 정리 → cap까지 큐 드레인(claim+spawn)을 반복한다.
 """
 
 import asyncio
@@ -100,14 +103,20 @@ async def reconcile_once(conn, cap: int, spawn=spawn_worker) -> None:
         paper_id, generation = claimed
         try:
             pid = spawn(paper_id, generation)
-            await ar.set_pid(conn, paper_id, generation, pid)
-        except Exception as exc:  # noqa: BLE001
-            logger.error("spawn failed (paper=%s gen=%s): %s → requeue", paper_id, generation, exc)
+        except Exception:  # noqa: BLE001
+            logger.exception("워커 스폰 실패 paper=%s gen=%s — queued 복귀", paper_id, generation)
             await ar.finalize_run(conn, paper_id, generation, "queued", now)
+            continue
+        try:
+            await ar.set_pid(conn, paper_id, generation, pid)
+        except Exception:  # noqa: BLE001
+            # pid는 정보성 필드 — 워커는 이미 살아 있고 생존 판정은 heartbeat 리스가 담당.
+            # 여기서 requeue하면 다음 사이클이 같은 paper를 재claim해 이중 스폰된다.
+            logger.exception("set_pid 실패 paper=%s pid=%s — 워커 생존, heartbeat가 생존 신호이므로 requeue 안 함", paper_id, pid)
 
 
 async def _reconciler_loop(app) -> None:
-    from models.database import get_db, execute_update
+    from models.database import get_db
     try:
         conn = await get_db()
         # startup: 레거시 고아 시드(구 'analyzing→error' 한 줄 대체)
