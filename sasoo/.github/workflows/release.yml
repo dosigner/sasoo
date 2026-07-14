@@ -57,6 +57,12 @@ jobs:
   mac:
     needs: resolve
     runs-on: macos-14
+    env:
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
     steps:
       - uses: actions/checkout@v4
@@ -91,7 +97,17 @@ jobs:
 
       - name: Install Node dependencies
         shell: bash
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
+
+      - name: Require macOS signing and notarization credentials
+        shell: bash
+        run: |
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing required release secret: $name" >&2
+              exit 1
+            fi
+          done
 
       - name: Build macOS release
         shell: bash
@@ -109,6 +125,9 @@ jobs:
   windows:
     needs: resolve
     runs-on: windows-latest
+    env:
+      CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
     steps:
       - uses: actions/checkout@v4
@@ -143,7 +162,14 @@ jobs:
 
       - name: Install Node dependencies
         shell: pwsh
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
+
+      - name: Require Windows code-signing credentials
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CSC_LINK) -or [string]::IsNullOrWhiteSpace($env:CSC_KEY_PASSWORD)) {
+            throw "Missing required Windows code-signing secrets."
+          }
 
       - name: Build Windows release
         shell: pwsh
@@ -183,30 +209,30 @@ jobs:
         run: |
           PREV_TAG="$(
             python3 - <<'PY'
-import os
-import re
-import subprocess
+          import os
+          import re
+          import subprocess
 
-target = os.environ["TAG"]
-match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", target)
-if not match:
-    raise SystemExit(0)
+          target = os.environ["TAG"]
+          match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", target)
+          if not match:
+              raise SystemExit(0)
 
-current = tuple(int(part) for part in match.groups())
-tags = subprocess.check_output(["git", "tag"], text=True).splitlines()
-older = []
+          current = tuple(int(part) for part in match.groups())
+          tags = subprocess.check_output(["git", "tag"], text=True).splitlines()
+          older = []
 
-for tag in tags:
-    parsed = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", tag)
-    if not parsed:
-        continue
-    version = tuple(int(part) for part in parsed.groups())
-    if version < current:
-        older.append((version, tag))
+          for tag in tags:
+              parsed = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", tag)
+              if not parsed:
+                  continue
+              version = tuple(int(part) for part in parsed.groups())
+              if version < current:
+                  older.append((version, tag))
 
-if older:
-    print(max(older)[1])
-PY
+          if older:
+              print(max(older)[1])
+          PY
           )"
 
           if [[ -n "$PREV_TAG" ]]; then
@@ -232,7 +258,7 @@ PY
             echo
             echo "## Install Notes"
             echo
-            echo "- macOS: extract the ZIP, move \`Sasoo.app\` to \`/Applications\`, and if Gatekeeper blocks launch run \`xattr -dr com.apple.quarantine /Applications/Sasoo.app\`."
+            echo "- macOS: configure signing and notarization before publishing a release; do not bypass Gatekeeper quarantine warnings."
             echo "- Windows: install with the bundled \`.exe\` installer. Auto-update metadata is published in \`latest.yml\`."
             if [[ -n "$COMPARE_LINE" ]]; then
               echo
