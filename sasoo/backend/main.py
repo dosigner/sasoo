@@ -78,23 +78,35 @@ if _env_path.exists():
 
 
 # ---------------------------------------------------------------------------
-# Lifespan (startup / shutdown)
+# Runtime bootstrap (shared by the server process and detached analysis workers)
 # ---------------------------------------------------------------------------
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan: initialize resources on startup, clean up on shutdown."""
-    # --- Startup ---
-    await init_db()
+async def bootstrap_runtime(worker: bool = False) -> None:
+    """서버/워커 공통 런타임 초기화(DB 연결 + API 키 + PDF 엔진 설정 + 에이전트 로드).
 
-    # Set up centralized logging (file + console)
-    from services.log_setup import setup_logging
+    worker=True(디태치 분석 워커, `--analyze-paper`로 재실행된 프로세스)면:
+      - init_db() 대신 connect_worker_db()로 연결한다(마이그레이션은 서버 기동이 이미 보장).
+      - 공유 RotatingFileHandler를 여는 setup_logging()을 호출하지 않는다 — 다중 프로세스가
+        같은 로그 파일에 rollover하면 충돌한다. stdout만 남기고(spawn_worker가 per-run 로그
+        파일로 리다이렉트한다), 고아 정리(stuck recovery)·리컨실러도 실행하지 않는다(서버 전용).
+    """
     import logging
-    log_level = logging.DEBUG if os.environ.get("SASOO_ENV") != "production" else logging.INFO
-    setup_logging(level=log_level)
+
+    if worker:
+        from models.database import connect_worker_db
+        await connect_worker_db()
+        logging.basicConfig(level=logging.INFO)
+    else:
+        await init_db()
+
+        # Set up centralized logging (file + console)
+        from services.log_setup import setup_logging
+        log_level = logging.DEBUG if os.environ.get("SASOO_ENV") != "production" else logging.INFO
+        setup_logging(level=log_level)
+        print(f"[Sasoo] Database: {APP_DATA_ROOT / 'sasoo.db'}")
+        print(f"[Sasoo] Library root: {get_library_root()}")
+
     print(f"[Sasoo] App data root: {APP_DATA_ROOT}")
-    print(f"[Sasoo] Database: {APP_DATA_ROOT / 'sasoo.db'}")
-    print(f"[Sasoo] Library root: {get_library_root()}")
 
     # Load API keys + PDF visual-engine preference from the settings table.
     # F7: 한 번의 fetch_all(IN 절)로 세 키를 함께 읽어 기동 시 DB 왕복을 1회로 줄인다
@@ -136,26 +148,33 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         print(f"[Sasoo] Warning: Could not load PDF visual engine preference: {exc}")
 
-    # 프로세스가 중간에 죽으면 papers.status가 'analyzing'으로 영구 고착된다.
-    # 기동 시점에 살아있는 분석은 없으므로 전부 error로 정리한다.
-    try:
-        from models.database import execute_update
-        n = await execute_update(
-            "UPDATE papers SET status = 'error' WHERE status = 'analyzing'"
-        )
-        if n:
-            print(f"[Sasoo] Recovered {n} paper(s) stuck in 'analyzing'.")
-    except Exception as exc:
-        print(f"[Sasoo] Warning: stuck-analysis recovery failed: {exc}")
-
     # Load .md agent profiles and initialize domain router
     from services.agents import load_all_agents
     load_all_agents()
     print("[Sasoo] Agent profiles loaded from .md files.")
 
+
+# ---------------------------------------------------------------------------
+# Lifespan (startup / shutdown)
+# ---------------------------------------------------------------------------
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan: initialize resources on startup, clean up on shutdown."""
+    # --- Startup ---
+    await bootstrap_runtime(worker=False)
+
+    # 프로세스 분리: 기동 시 고아('analyzing'인데 runs 행 없음)를 큐로 시드하고 리컨실러를 띄운다.
+    # (예전의 "죽은 'analyzing' → 'error' 일괄 정리"를 대체 — 이제는 정리 대신 재개를 시도한다.)
+    from services.analysis_supervisor import start_reconciler
+    await start_reconciler(app)
+
     yield
 
     # --- Shutdown ---
+    from services.analysis_supervisor import stop_reconciler
+    await stop_reconciler(app)
+
     await close_db()
     print("[Sasoo] Database connection closed.")
 
@@ -364,8 +383,19 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
     parser.add_argument("--reload", action="store_true", help="Enable auto-reload (dev only)")
+    parser.add_argument("--analyze-paper", type=int, default=None,
+                         help="Run detached analysis worker for this paper id (internal — spawned by the supervisor)")
+    parser.add_argument("--run-generation", type=int, default=0,
+                         help="Fence token for the analysis worker (internal)")
 
     args = parser.parse_args()
+
+    # Detached analysis worker mode: re-exec of this same bundle with --analyze-paper.
+    # Runs the analysis in-process and exits — never reaches uvicorn.run() below.
+    if args.analyze_paper is not None:
+        import asyncio
+        from services.analysis_worker import run_analysis_worker
+        sys.exit(asyncio.run(run_analysis_worker(args.analyze_paper, args.run_generation)))
 
     # Determine if we're running as a bundled executable
     is_bundled = getattr(sys, 'frozen', False)
