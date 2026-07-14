@@ -273,7 +273,7 @@ async def requeue_for_shutdown(conn: aiosqlite.Connection, now: str) -> int:
     재시도 예산(MAX_ATTEMPTS)을 갉아먹지 않도록 상쇄한다 — graceful shutdown은 "실패"가
     아니라 사용자가 앱을 닫은 것뿐이고, 다음 서버 기동 때 곧바로 재개돼야 한다."""
     cur = await conn.execute(
-        "UPDATE analysis_runs SET status='queued', pid=NULL, "
+        "UPDATE analysis_runs SET status='queued', generation=generation+1, pid=NULL, "
         "attempts=MAX(0, attempts-1), updated_at=? WHERE status='running'",
         (now,),
     )

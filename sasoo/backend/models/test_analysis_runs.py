@@ -85,6 +85,24 @@ class AnalysisRunsTests(unittest.IsolatedAsyncioTestCase):
         # 구 워커(gen-1)는 fence 실패
         self.assertEqual(await ar.fenced_heartbeat(self.conn, 1, gen - 1, "running", "x", 50.0, now), 0)
 
+    async def test_shutdown_requeue_fences_live_worker_writes(self):
+        now = "2026-07-14T00:00:00+00:00"; fresh = "2026-07-13T23:59:00+00:00"
+        await self._paper(1); await ar.upsert_queued(self.conn, 1, now)
+        _pid, generation = await ar.claim_next(self.conn, 3, now, fresh, fresh, 3)
+
+        self.assertEqual(await ar.requeue_for_shutdown(self.conn, now), 1)
+
+        heartbeat_rows = await ar.fenced_heartbeat(
+            self.conn, 1, generation, "running", "screening", 50.0, now,
+        )
+        finalize_rows = await ar.finalize_run(
+            self.conn, 1, generation, "completed", now,
+        )
+        run = await ar.get_run(self.conn, 1)
+        self.assertEqual((heartbeat_rows, finalize_rows), (0, 0))
+        self.assertEqual(run["status"], "queued")
+        self.assertEqual(run["generation"], generation + 1)
+
     async def test_reconcile_prefers_papers_terminal_over_requeue(self):
         now = "2026-07-14T00:10:00+00:00"; stale = "2026-07-14T00:09:00+00:00"
         old = "2026-07-14T00:00:00+00:00"; fresh0 = "2026-07-13T23:59:00+00:00"
