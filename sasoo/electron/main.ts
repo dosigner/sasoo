@@ -14,8 +14,8 @@ import {
 } from './config';
 import { initAutoUpdater } from './updater';
 
-// 종료 시 concurrently가 stdout/stderr 파이프를 먼저 닫는다 — 그 뒤의 쓰기가 EPIPE로
-// 메인을 죽이면 before-quit이 막아둔 app.quit()이 실행되지 않아 백엔드가 고아로 남는다.
+// Concurrently can close stdio before app shutdown finishes. Ignore EPIPE so
+// the guarded quit path can stop the backend instead of leaving an orphan.
 installStdioEpipeGuard();
 
 const isDev = !app.isPackaged;
