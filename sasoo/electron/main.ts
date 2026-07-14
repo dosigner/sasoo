@@ -3,6 +3,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as net from 'net';
 import * as crypto from 'crypto';
+import { registerGracefulBackendQuit } from './app-quit-handler';
+import { installStdioEpipeGuard } from './stdio-epipe-guard';
 import { PythonManager } from './python-manager';
 import {
   BACKEND_FALLBACK_PORT_RANGE,
@@ -11,6 +13,10 @@ import {
   FRONTEND_DEV_URL,
 } from './config';
 import { initAutoUpdater } from './updater';
+
+// 종료 시 concurrently가 stdout/stderr 파이프를 먼저 닫는다 — 그 뒤의 쓰기가 EPIPE로
+// 메인을 죽이면 before-quit이 막아둔 app.quit()이 실행되지 않아 백엔드가 고아로 남는다.
+installStdioEpipeGuard();
 
 const isDev = !app.isPackaged;
 
@@ -264,11 +270,7 @@ app.on('activate', async () => {
   }
 });
 
-app.on('before-quit', async () => {
-  if (pythonManager) {
-    await pythonManager.stop();
-  }
-});
+registerGracefulBackendQuit(app, () => pythonManager);
 
 // Security: Handle external links and prevent unwanted window creation
 app.on('web-contents-created', (_event, contents) => {
