@@ -553,7 +553,12 @@ async def _run_citation(
         top_refs_text = ""
         for i, ref in enumerate(top_refs, 1):
             contexts = ref.get("cite_contexts", [])
-            ctx_str = "; ".join(c.get("sentence", "")[:300] for c in contexts[:3])
+            ctx_parts = []
+            for c in contexts[:5]:
+                sentence = (c.get("sentence") or "")[:300]
+                sec = (c.get("section") or "").strip()
+                ctx_parts.append(f"[{sec or '위치미상'}] {sentence}" if sentence else "")
+            ctx_str = "; ".join(p for p in ctx_parts if p)
             top_refs_text += (
                 f"{i}. {ref.get('ref_id', '')} {ref.get('authors', '')} "
                 f"({ref.get('year', '?')}): \"{ref.get('title', '')}\" "

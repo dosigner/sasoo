@@ -1713,6 +1713,51 @@ class RewriteSectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("previous_interaction_id", captured)
         self.assertIn("원문 딥다이브 분석", captured["prompt"])
 
+    async def test_citation_prompt_includes_section_labels_and_five_contexts(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        captured = {}
+
+        async def _fake_call(prompt, **kwargs):
+            captured["prompt"] = prompt
+            return {
+                "text": '{"ref_analyses":[],"summary":"s","citation_balance":"balanced",'
+                        '"key_influences":[],"limitations":"l"}',
+                "model": "gemini-3.5-flash", "tokens_in": 1, "tokens_out": 1, "interaction_id": None,
+            }
+
+        local_result = {
+            "total_references": 5, "citation_style": "numbered",
+            "self_citation_count": 0, "self_citation_ratio": 0.0,
+            "top_cited": [{
+                "ref_id": "[1]", "authors": "Kim", "year": 2024, "title": "T", "journal": "J",
+                "cite_count": 6,
+                "cite_contexts": [
+                    {"sentence": "문장1", "section": "Introduction"},
+                    {"sentence": "문장2", "section": "Methods"},
+                    {"sentence": "문장3", "section": "Results"},
+                    {"sentence": "문장4", "section": "Discussion"},
+                    {"sentence": "문장5", "section": "Conclusion"},
+                ],
+            }],
+        }
+        fake_analysis = types.SimpleNamespace(to_dict=lambda: local_result)
+
+        with (
+            patch("services.citation_analyzer.analyze_citations", return_value=fake_analysis),
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            await analysis_routes._run_citation(
+                7, sections={}, citation_body="본문", citation_references="[1] Kim 2024",
+                paper_authors="Kim", status=status,
+            )
+
+        prompt = captured["prompt"]
+        self.assertIn("Introduction", prompt)   # section 라벨 주입
+        self.assertIn("Conclusion", prompt)      # 5번째 문맥까지 포함
+        self.assertIn("문장5", prompt)
+
 
 class SystemInstructionContractTests(unittest.TestCase):
     def test_language_contract_preserves_machine_values(self):
