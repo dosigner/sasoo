@@ -35,9 +35,17 @@ def utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-async def upsert_queued(conn: aiosqlite.Connection, paper_id: int, now: str) -> None:
-    """신규 /run: 큐 삽입 또는 기존 행을 새 실행으로 리셋(generation은 유지 — claim이 +1)."""
-    await conn.execute(
+async def upsert_queued(conn: aiosqlite.Connection, paper_id: int, now: str) -> bool:
+    """신규 /run: 큐 삽입 또는 기존 행을 새 실행으로 리셋(generation은 유지 — claim이 +1).
+
+    결함2(I3 TOCTOU): 409 가드(get_run 스냅샷)와 이 호출 사이에 DB I/O await가 여럿 끼어
+    있어 동시 이중 /run이 둘 다 가드를 통과할 수 있다. DO UPDATE에
+    `WHERE status NOT IN ('queued','running')` 원자 가드를 걸어, 이미 진행 중인 run 위에
+    리셋이 덮어써지는 것(→ 즉시 재claim → 두 번째 워커 스폰)을 DB 레벨에서 막는다.
+    이미 queued/running이면 아무 것도 갱신하지 않고 False를 반환 — 호출부(/run)가 이를
+    409로 변환해야 한다. rowcount>0(신규 삽입 또는 terminal→queued 리셋)이면 True.
+    """
+    cur = await conn.execute(
         """
         INSERT INTO analysis_runs (paper_id, status, generation, current_phase, progress_pct,
                                    cancel_requested, attempts, pid, error_message,
@@ -47,10 +55,12 @@ async def upsert_queued(conn: aiosqlite.Connection, paper_id: int, now: str) -> 
             status='queued', current_phase=NULL, progress_pct=0, cancel_requested=0,
             attempts=0, pid=NULL, error_message=NULL, started_at=excluded.started_at,
             last_attempt_at=NULL, heartbeat_at=NULL, updated_at=excluded.updated_at
+        WHERE analysis_runs.status NOT IN ('queued', 'running')
         """,
         (paper_id, now, now),
     )
     await conn.commit()
+    return cur.rowcount > 0
 
 
 async def claim_next(
@@ -166,6 +176,33 @@ async def sweep_cancelled_queued(conn: aiosqlite.Connection, now: str) -> list[i
     return ids
 
 
+async def sweep_orphan_analyzing_papers(conn: aiosqlite.Connection) -> list[int]:
+    """결함1: run이 terminal(cancelled/error/completed)인데 papers가 'analyzing'에 고착된
+    좀비를 역방향으로 동기화한다.
+
+    reconcile_stale ②(cancel-wins)는 analysis_runs만 쓰고 papers를 안 건드린다(③ error는
+    papers도 씀 — ②만 빠짐). 그 외에도 (i) /cancel이 cancel_queued_now 성공 직후 papers
+    UPDATE 전에 죽는 경합, (ii) /run이 papers='analyzing' 기록 후 upsert_queued 실패로
+    이전 terminal run 행이 남는 경합이 같은 증상(run=terminal, papers='analyzing' 영구
+    고착 → seed_legacy는 run 행이 있으면 시딩 안 하므로 재기동으로도 자가 치유 불가)을
+    낳는다. run이 terminal이면 papers를 그 상태로 강제 동기화해 좀비를 회수한다.
+    status='running'인 run은 건드리지 않는다(정상 진행 중 보호)."""
+    cur = await conn.execute(
+        "SELECT paper_id FROM analysis_runs WHERE status IN ('cancelled','error','completed') "
+        "AND paper_id IN (SELECT id FROM papers WHERE status='analyzing')"
+    )
+    ids = [r[0] for r in await cur.fetchall()]
+    if ids:
+        for status in ("cancelled", "error", "completed"):
+            await conn.execute(
+                "UPDATE papers SET status=? WHERE status='analyzing' AND id IN "
+                "(SELECT paper_id FROM analysis_runs WHERE status=?)",
+                (status, status),
+            )
+        await conn.commit()
+    return ids
+
+
 async def get_run(conn: aiosqlite.Connection, paper_id: int) -> Optional[dict]:
     cur = await conn.execute("SELECT * FROM analysis_runs WHERE paper_id=?", (paper_id,))
     row = await cur.fetchone()
@@ -227,6 +264,39 @@ async def mark_over_attempts_error(conn: aiosqlite.Connection, max_attempts: int
         await conn.executemany("UPDATE papers SET status='error' WHERE id=?", [(i,) for i in ids])
         await conn.commit()
     return ids
+
+
+async def requeue_for_shutdown(conn: aiosqlite.Connection, now: str) -> int:
+    """결정①: 정상 종료(graceful shutdown)로 중단된 running을 queued로 되돌린다.
+
+    attempts를 1 줄이는 이유: claim_next이 다음 claim에서 다시 +1 하므로, 정상 종료가
+    재시도 예산(MAX_ATTEMPTS)을 갉아먹지 않도록 상쇄한다 — graceful shutdown은 "실패"가
+    아니라 사용자가 앱을 닫은 것뿐이고, 다음 서버 기동 때 곧바로 재개돼야 한다."""
+    cur = await conn.execute(
+        "UPDATE analysis_runs SET status='queued', pid=NULL, "
+        "attempts=MAX(0, attempts-1), updated_at=? WHERE status='running'",
+        (now,),
+    )
+    await conn.commit()
+    return cur.rowcount
+
+
+async def mark_budget_blocked(conn: aiosqlite.Connection, now: str) -> int:
+    """결정②: 월 예산 초과 상태로 서버가 재기동됐을 때 queued를 눈에 보이는 종료 상태로
+    떨어뜨린다(C1처럼 queued 방치 시 영구 "분석 중"에 갇힌다). attempts는 건드리지 않는다
+    — 재시도 실패가 아니라 정책적 보류이므로 재시도 예산을 소비할 대상이 아니다. 한도를
+    올린 뒤 사용자가 다시 /run을 호출하면 upsert_queued가 attempts를 리셋한다."""
+    cur = await conn.execute("SELECT paper_id FROM analysis_runs WHERE status='queued'")
+    ids = [r[0] for r in await cur.fetchall()]
+    if ids:
+        await conn.execute(
+            "UPDATE analysis_runs SET status='error', error_message='budget_exceeded', updated_at=? "
+            "WHERE status='queued'",
+            (now,),
+        )
+        await conn.executemany("UPDATE papers SET status='error' WHERE id=?", [(i,) for i in ids])
+        await conn.commit()
+    return len(ids)
 
 
 async def seed_legacy(conn: aiosqlite.Connection, now: str) -> int:

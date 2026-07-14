@@ -1,3 +1,21 @@
+"""api.analysis_routes 테스트.
+
+테스트 격리 주의 — 이 파일은 예전에 import 시점에 sys.modules로 fastapi/aiosqlite/
+models.schemas/services.odl_parser/api.report_service 스텁을 setdefault로 심어 두고
+api.analysis_routes를 import한 뒤 복원했다. 그런데 setdefault는 "아직 아무도 그 모듈을
+import하지 않았을 때만" 꽂힌다. 그래서 이 파일이 가장 먼저 import되는 단독 실행에서만
+스텁이 적용되고, 다른 테스트가 실모듈을 먼저 로드하는 전체 스위트(=CI가 도는 구성)에서는
+스텁이 통째로 무력화됐다. 같은 테스트 파일이 두 가지 서로 다른 구성으로 돌았고, 그래서
+한쪽에서만 통과하는 테스트가 조용히 생길 수 있었다(실제로 /run 테스트에서 발생).
+더 나쁜 건 aiosqlite 스텁이었다: 스텁이 꽂힌 상태에서 models.database가 처음 import되면
+그 모듈의 aiosqlite 바인딩이 스텁으로 영구 고정돼(복원 루프는 sys.modules만 되돌린다)
+DB를 쓰는 다른 테스트 파일까지 오염시킬 수 있었다.
+
+지금은 항상 실제 모듈을 import한다(전체 스위트와 단독 실행의 구성이 동일). 외부
+I/O(파일·DB·LLM 호출)는 ambient 스텁이 아니라 각 테스트에서 patch로 명시 차단한다.
+모듈 더블이 필요하면 patch.dict(sys.modules, ...)로 테스트 스코프 안에서만 갈아끼운다.
+"""
+
 import contextlib
 import json
 import os
@@ -5,124 +23,20 @@ import sys
 import threading
 import types
 import unittest
-from dataclasses import dataclass, field
-from enum import Enum
 from unittest.mock import AsyncMock, patch
 
-_TEMP_MODULE_NAMES = (
-    "aiosqlite",
-    "fastapi",
-    "fastapi.responses",
-    "models.schemas",
-    "services.agents",
-    "services.odl_parser",
-    "api.report_service",
-)
-_ORIGINAL_MODULES = {name: sys.modules.get(name) for name in _TEMP_MODULE_NAMES}
-
-aiosqlite_module = types.ModuleType("aiosqlite")
-aiosqlite_module.Connection = object
-aiosqlite_module.Row = dict
-
-async def _unused_connect(*args, **kwargs):
-    raise RuntimeError("aiosqlite.connect should not be called in these tests")
-
-aiosqlite_module.connect = _unused_connect
-sys.modules.setdefault("aiosqlite", aiosqlite_module)
-
-
-class _StubHTTPException(Exception):
-    def __init__(self, status_code: int, detail: str):
-        super().__init__(detail)
-        self.status_code = status_code
-        self.detail = detail
-
-
-class _StubAPIRouter:
-    def __init__(self, *args, **kwargs):
-        pass
-
-    def get(self, *args, **kwargs):
-        def decorator(fn):
-            return fn
-        return decorator
-
-    def post(self, *args, **kwargs):
-        def decorator(fn):
-            return fn
-        return decorator
+from api import analysis_routes, figure_service
+from models.schemas import AnalysisStatus
 
 
 class _StubBackgroundTasks:
-    def add_task(self, *args, **kwargs):
-        return None
+    """off 모드 /run이 실제 분석 파이프라인을 백그라운드로 띄우지 않게 하는 더블."""
 
+    def __init__(self):
+        self.tasks: list = []
 
-def _stub_query(default=None, **kwargs):
-    return default
-
-
-fastapi_module = types.ModuleType("fastapi")
-fastapi_module.APIRouter = _StubAPIRouter
-fastapi_module.BackgroundTasks = _StubBackgroundTasks
-fastapi_module.HTTPException = _StubHTTPException
-fastapi_module.Query = _stub_query
-fastapi_module.Request = object
-sys.modules.setdefault("fastapi", fastapi_module)
-
-
-class _StubStreamingResponse:
-    def __init__(self, body_iterator, media_type=None, headers=None):
-        self.body_iterator = body_iterator
-        self.media_type = media_type
-        self.headers = headers or {}
-
-
-fastapi_responses_module = types.ModuleType("fastapi.responses")
-fastapi_responses_module.StreamingResponse = _StubStreamingResponse
-sys.modules.setdefault("fastapi.responses", fastapi_responses_module)
-
-odl_parser_module = types.ModuleType("services.odl_parser")
-
-class _StubOdlParserError(RuntimeError):
-    pass
-
-
-class _StubOdlRuntimeError(_StubOdlParserError):
-    pass
-
-
-async def _stub_async_noop(*args, **kwargs):
-    return None
-
-
-odl_parser_module.OdlParserError = _StubOdlParserError
-odl_parser_module.OdlRuntimeError = _StubOdlRuntimeError
-odl_parser_module.ensure_text_artifacts = lambda *args, **kwargs: {}
-odl_parser_module.ensure_text_artifacts_async = _stub_async_noop
-odl_parser_module.ensure_paper_artifacts = _stub_async_noop
-odl_parser_module.explain_odl_failure = lambda exc: (500, str(exc))
-odl_parser_module.figure_row_to_api_dict = lambda row: row
-odl_parser_module.table_row_to_api_dict = lambda row: row
-odl_parser_module.get_pdf_signature = lambda pdf_path: {
-    "pdf_mtime_ns": getattr(pdf_path.stat(), "st_mtime_ns", 0),
-    "pdf_size": getattr(pdf_path.stat(), "st_size", 0),
-}
-odl_parser_module.get_artifact_refresh_error = lambda paper_id: None
-odl_parser_module.is_artifact_refresh_running = lambda paper_id: False
-odl_parser_module.paper_text_is_current = lambda paper_dir: True
-odl_parser_module.paper_visuals_are_current = lambda paper_dir: True
-odl_parser_module.schedule_paper_artifacts_refresh = _stub_async_noop
-sys.modules.setdefault("services.odl_parser", odl_parser_module)
-
-report_service_module = types.ModuleType("api.report_service")
-report_service_module._format_phase_data = lambda phase, data: str(data)
-report_service_module._generate_paperbanana_image = _stub_async_noop
-report_service_module._wrap_text = lambda text, font, width: [text]
-sys.modules.setdefault("api.report_service", report_service_module)
-
-
-agents_module = types.ModuleType("services.agents")
+    def add_task(self, fn, *args, **kwargs):
+        self.tasks.append((fn, args, kwargs))
 
 
 class _StubAgentProfile:
@@ -135,78 +49,21 @@ class _StubAgent:
     profile = _StubAgentProfile()
 
 
+# services.agents 모듈 더블 — import 시점 전역 오염이 아니라 각 테스트의
+# patch.dict(sys.modules, {"services.agents": agents_module}) 스코프 안에서만 유효하다.
+agents_module = types.ModuleType("services.agents")
 agents_module.get_agent_for_domain = lambda domain: _StubAgent()
-sys.modules.setdefault("services.agents", agents_module)
 
 
-class _AnalysisPhase(str, Enum):
-    SCREENING = "screening"
-    CITATION = "citation"
-    VISUAL = "visual"
-    RECIPE = "recipe"
-    DEEP_DIVE = "deep_dive"
+def _settings_stub_returning(settings: dict):
+    """/run의 budget 체크가 참조하는 api.settings._get_all_settings를 스텁 모듈로 대체."""
+    async def _fake_settings(*args, **kwargs):
+        return settings
 
+    stub = types.ModuleType("api.settings")
+    stub._get_all_settings = _fake_settings
+    return stub
 
-@dataclass
-class _PhaseStatus:
-    phase: _AnalysisPhase
-    status: str = "pending"
-    started_at: str | None = None
-    completed_at: str | None = None
-    model_used: str | None = None
-    tokens_in: int | None = None
-    tokens_out: int | None = None
-    cost_usd: float | None = None
-    error_message: str | None = None
-
-
-@dataclass
-class _AnalysisStatus:
-    paper_id: int
-    overall_status: str = "pending"
-    phases: list[_PhaseStatus] = field(default_factory=list)
-    progress_pct: float = 0.0
-    current_phase: _AnalysisPhase | None = None
-    total_cost_usd: float = 0.0
-    total_tokens_in: int = 0
-    total_tokens_out: int = 0
-
-
-@dataclass
-class _SimpleModel:
-    def __init__(self, **kwargs):
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-
-
-schemas_module = types.ModuleType("models.schemas")
-schemas_module.AnalysisPhase = _AnalysisPhase
-schemas_module.AnalysisStatus = _AnalysisStatus
-schemas_module.FigureExplanationResponse = _SimpleModel
-schemas_module.FigureInfo = _SimpleModel
-schemas_module.FigureListResponse = _SimpleModel
-schemas_module.FullAnalysisResponse = _SimpleModel
-schemas_module.MermaidRepairRequest = _SimpleModel
-schemas_module.MermaidResult = _SimpleModel
-schemas_module.PaperBananaRequest = _SimpleModel
-schemas_module.PaperBananaResponse = _SimpleModel
-schemas_module.PhaseStatus = _PhaseStatus
-schemas_module.RecipeCard = _SimpleModel
-schemas_module.ReportResponse = _SimpleModel
-schemas_module.TableInfo = _SimpleModel
-schemas_module.TableListResponse = _SimpleModel
-schemas_module.VisualizationItem = _SimpleModel
-schemas_module.VisualizationPlanResponse = _SimpleModel
-sys.modules.setdefault("models.schemas", schemas_module)
-
-from api import analysis_routes, figure_service
-from models.schemas import AnalysisStatus
-
-for _module_name, _original in _ORIGINAL_MODULES.items():
-    if _original is None:
-        sys.modules.pop(_module_name, None)
-    else:
-        sys.modules[_module_name] = _original
 
 
 def _row(phase: str, result: str, **extra):
@@ -362,6 +219,35 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(merged["current_phase"])
         self.assertEqual(merged["progress_pct"], 10.0)
 
+    def test_status_overlay_does_not_report_running_for_cancelled_run(self):
+        # 테스트 공백(a)/C1 사용자 증상 고정: cancel_queued_now가 queued run을 원자적으로
+        # cancelled로 전환한 뒤(cancel_requested=1 동반)에도 overlay가 "running"으로
+        # 되돌리면 안 된다 — queued 좀비가 무한 "분석 중"으로 보이던 증상의 회귀 방지.
+        merged = analysis_routes._overlay_run_status(
+            base={"overall_status": "cancelled", "progress_pct": 0.0, "current_phase": None},
+            run={"status": "cancelled", "cancel_requested": 1, "current_phase": None, "progress_pct": 0.0},
+        )
+        self.assertNotEqual(merged["overall_status"], "running")
+        self.assertEqual(merged["overall_status"], "cancelled")
+
+    async def test_status_endpoint_does_not_report_running_after_queued_run_cancelled(self):
+        # 위 단위 테스트를 /status 엔드포인트 전체 경로로 고정 — get_run이 살아있는 DB에서
+        # 돌려주는 cancelled+cancel_requested=1 행을 그대로 통과시켜도 사용자에게 무한
+        # "분석 중"이 노출되지 않는지 확인한다.
+        paper_id = 7171
+        paper_row = {"id": paper_id, "status": "cancelled"}
+        run_row = {"status": "cancelled", "cancel_requested": 1, "current_phase": None, "progress_pct": 0.0}
+        with (
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
+            patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value={})),
+            patch("models.database.get_db", new=AsyncMock(return_value=object())),
+            patch("models.analysis_runs.get_run", new=AsyncMock(return_value=run_row)),
+        ):
+            result = await analysis_routes.get_analysis_status(paper_id)
+        self.assertNotEqual(result.overall_status, "running")
+        self.assertEqual(result.overall_status, "cancelled")
+
     async def test_cancel_subprocess_mode_falls_back_when_db_unavailable(self):
         # 플래그 on + analysis_runs 접근 실패(마이그레이션 전 DB 등) → 500 없이 레거시 취소 경로로 폴스루
         paper_id = 9911
@@ -446,25 +332,20 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
 
         async def _fake_upsert_queued(conn, pid, now):
             calls.append(("upsert_queued", pid))
-
-        async def _fake_settings(*args, **kwargs):
-            return {"monthly_budget_limit": "50.0"}
-
-        settings_stub = types.ModuleType("api.settings")
-        settings_stub._get_all_settings = _fake_settings
+            return True  # 결함2: 원자 가드 도입 후 upsert_queued는 bool을 반환한다
 
         with (
             patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
             patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
             patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.fetch_all", new=AsyncMock(return_value=[])),
             patch("api.analysis_routes.execute_update", new=_fake_execute_update),
             patch("models.database.get_db", new=AsyncMock(return_value=object())),
             patch("models.analysis_runs.get_run", new=AsyncMock(return_value=None)),
             patch("models.analysis_runs.upsert_queued", new=_fake_upsert_queued),
             patch("services.analysis_supervisor.reconcile_once", new=AsyncMock()),
             patch("services.analysis_supervisor.read_max_concurrent", new=AsyncMock(return_value=3)),
-            patch.dict(sys.modules, {"api.settings": settings_stub}),
+            # 결함2: /run이 read_budget_state()(단일 소스)를 쓰므로 예산 통과 상태만 스텁한다.
+            patch("services.analysis_supervisor.read_budget_state", new=AsyncMock(return_value=(0.0, 50.0))),
         ):
             await analysis_routes.run_analysis(paper_id, background_tasks=_StubBackgroundTasks())
 
@@ -475,6 +356,57 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         exec_call = next(c for c in calls if c[0] == "execute_update")
         self.assertIn("analyzing", exec_call[1])
         self.assertIn(paper_id, exec_call[1])
+
+    async def test_run_subprocess_mode_returns_409_when_upsert_queued_blocked_by_race(self):
+        # 결함2: get_run 스냅샷(빠른 경로) 가드와 upsert_queued 사이에 DB I/O await가 여럿
+        # 끼어 있어 동시 이중 /run이 둘 다 빠른 경로를 통과할 수 있다. 진짜 방어선은
+        # upsert_queued의 원자 가드 — rowcount 0/False면 이미 queued/running이란 뜻이므로
+        # /run이 claim+spawn(reconcile_once)로 진행하지 않고 409를 반환해야 한다.
+        paper_id = 6163
+        paper_row = {"id": paper_id, "folder_name": "f"}
+        reconcile_mock = AsyncMock()
+        with (
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
+            patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.execute_update", new=AsyncMock()),
+            patch("models.database.get_db", new=AsyncMock(return_value=object())),
+            patch("models.analysis_runs.get_run", new=AsyncMock(return_value=None)),  # 빠른 경로는 통과
+            patch("models.analysis_runs.upsert_queued", new=AsyncMock(return_value=False)),  # 원자 가드가 차단
+            patch("services.analysis_supervisor.reconcile_once", new=reconcile_mock),
+            patch("services.analysis_supervisor.read_max_concurrent", new=AsyncMock(return_value=3)),
+            # 결함2: /run이 read_budget_state()(단일 소스)를 쓰므로 예산 통과 상태만 스텁한다.
+            patch("services.analysis_supervisor.read_budget_state", new=AsyncMock(return_value=(0.0, 50.0))),
+        ):
+            with self.assertRaises(Exception) as ctx:
+                await analysis_routes.run_analysis(paper_id, background_tasks=_StubBackgroundTasks())
+        self.assertEqual(getattr(ctx.exception, "status_code", None), 409)
+        reconcile_mock.assert_not_awaited()   # claim+spawn까지 진행하면 안 됨(중복 워커 방지)
+
+    async def test_run_subprocess_mode_succeeds_when_reanalyzing_completed_paper(self):
+        # 결함2 테스트(b) + 소소한 항목 테스트 공백(b): 완료 논문 재분석은 막히면 안 된다.
+        # get_run이 completed를 돌려줘 빠른 경로를 통과하고, upsert_queued(terminal→queued
+        # 원자 갱신)가 True를 돌려주면 claim+spawn(reconcile_once)까지 정상 진행해야 한다.
+        paper_id = 6164
+        paper_row = {"id": paper_id, "folder_name": "f"}
+        reconcile_mock = AsyncMock()
+        with (
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
+            patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.execute_update", new=AsyncMock()),
+            patch("models.database.get_db", new=AsyncMock(return_value=object())),
+            patch("models.analysis_runs.get_run", new=AsyncMock(return_value={"status": "completed"})),
+            patch("models.analysis_runs.upsert_queued", new=AsyncMock(return_value=True)),
+            patch("services.analysis_supervisor.reconcile_once", new=reconcile_mock),
+            patch("services.analysis_supervisor.read_max_concurrent", new=AsyncMock(return_value=3)),
+            # 결함2: /run이 read_budget_state()(단일 소스)를 쓰므로 예산 통과 상태만 스텁한다.
+            patch("services.analysis_supervisor.read_budget_state", new=AsyncMock(return_value=(0.0, 50.0))),
+        ):
+            result = await analysis_routes.run_analysis(paper_id, background_tasks=_StubBackgroundTasks())
+        self.assertEqual(result["paper_id"], paper_id)
+        self.assertEqual(result["status"], "started")
+        reconcile_mock.assert_awaited_once()
 
     async def test_screening_prompt_puts_document_first(self):
         status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
@@ -645,6 +577,49 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["model"], "gemini-cache")
         insert_mock.assert_awaited_once()
+
+    async def test_citation_llm_failure_is_not_cached(self):
+        """일시적 LLM 실패(401·DNS 등)가 인용 캐시를 영구 오염시키면 안 된다.
+
+        실측 결함: 실패 시 에러 메시지가 summary 안에만 들어가 최상위 error 키가 없었고,
+        캐시 필터(_parse_error/error 검사)를 통과해 열화 결과가 계속 재사용됐다.
+        """
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+
+        async def _boom(prompt, **kwargs):
+            raise RuntimeError("Interactions API call failed after retries: 401")
+
+        local_result = {
+            "total_references": 3,
+            "citation_style": "numbered",
+            "self_citation_count": 0,
+            "self_citation_ratio": 0.0,
+            "top_cited": [{
+                "ref_id": "[1]", "authors": "Kim", "year": 2024, "title": "T",
+                "journal": "J", "cite_count": 2,
+                "cite_contexts": [{"sentence": "이 방법은 [1]을 따른다", "section": "Methods"}],
+            }],
+        }
+        fake_analysis = types.SimpleNamespace(to_dict=lambda: local_result)
+
+        with (
+            patch("services.citation_analyzer.analyze_citations", return_value=fake_analysis),
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_boom),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            result = await analysis_routes._run_citation(
+                7, sections={}, citation_body="본문", citation_references="[1] Kim 2024",
+                paper_authors="Kim", status=status,
+            )
+
+        payload = json.loads(result["text"])
+        # 최상위 error 키가 있어야 find_cached_phase_result가 캐시 미스로 처리한다
+        self.assertIn("error", payload)
+        from api.analysis_helpers import _is_error_result
+        self.assertTrue(_is_error_result(result["text"]))
+        # 로컬 파싱 결과는 그대로 사용자에게 제공된다(퇴행 아님)
+        self.assertEqual(payload["total_references"], 3)
 
     async def test_citation_calls_llm_with_schema_and_grounding(self):
         status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
@@ -1258,6 +1233,111 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         merged = json.loads(result["text"])
         self.assertEqual(merged["top_cited"][0]["citation_role"], "foundational")
         self.assertEqual(merged["top_cited"][0]["evidence_context"], "이 방법은 [1]을 따른다")
+
+
+class BudgetParityTests(unittest.IsolatedAsyncioTestCase):
+    """결정②: 리컨실러 재개 경로의 read_budget_state()가 /run(analysis_routes.run_analysis)의
+    예산 계산과 같은 값을 내야 한다 — 계산식이 갈라지면 예산 한도의 의미가 무너진다.
+
+    실제 임시 sqlite DB에 analysis_results를 채우고 두 코드 경로가 각자의 SQL로 같은 데이터를
+    읽게 해, 월 경계·phase 필터·NULL 처리가 실제로 일치하는지 검증한다(캔맥락 없는 통값
+    비교가 아니라 실쿼리 실행)."""
+
+    async def test_read_budget_state_matches_run_route_calculation(self):
+        import re
+        import tempfile
+        from datetime import datetime, timezone
+        import aiosqlite
+        import models.database as db_module
+        from services import analysis_supervisor as sup
+
+        now = datetime.now(timezone.utc)
+        current_month = now.strftime("%Y-%m")
+        month_num = int(current_month.split("-")[1])
+        year = int(current_month.split("-")[0])
+        month_start = f"{current_month}-01"
+        month_end = f"{year + 1}-01-01" if month_num == 12 else f"{year}-{month_num + 1:02d}-01"
+        prev_month_num = 12 if month_num == 1 else month_num - 1
+        prev_year = year - 1 if month_num == 1 else year
+        prev_month_ts = f"{prev_year}-{prev_month_num:02d}-15T00:00:00"
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp.close()
+        conn = await aiosqlite.connect(tmp.name)
+        conn.row_factory = aiosqlite.Row
+        saved_flag = os.environ.pop("SASOO_ANALYSIS_SUBPROCESS", None)
+        try:
+            await conn.execute("CREATE TABLE analysis_results (cost_usd REAL, created_at TEXT, phase TEXT)")
+            await conn.executemany(
+                "INSERT INTO analysis_results (cost_usd, created_at, phase) VALUES (?, ?, ?)",
+                [
+                    (3.5, f"{month_start}T09:00:00", "completed"),   # 포함
+                    (None, f"{month_start}T10:00:00", "completed"),  # 포함(NULL -> 0.0)
+                    (100.0, f"{month_start}T11:00:00", "error"),     # 제외(phase='error')
+                    (50.0, f"{month_end}T00:00:00", "completed"),    # 제외(다음달 경계)
+                    (20.0, prev_month_ts, "completed"),               # 제외(이전달)
+                ],
+            )
+            await conn.commit()
+
+            settings_stub = types.ModuleType("api.settings")
+
+            async def _fake_settings(*a, **kw):
+                return {"monthly_budget_limit": "1.00"}  # 3.5 > 1.00 -> /run이 402를 던짐
+
+            settings_stub._get_all_settings = _fake_settings
+            paper_row = {"id": 9911, "folder_name": "f"}
+
+            with (
+                patch.object(db_module, "_db_connection", conn),
+                patch.dict(sys.modules, {"api.settings": settings_stub}),
+                patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
+                patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
+            ):
+                spending_from_sup, limit_from_sup = await sup.read_budget_state()
+
+                with self.assertRaises(Exception) as ctx:
+                    await analysis_routes.run_analysis(9911, background_tasks=_StubBackgroundTasks())
+                self.assertEqual(getattr(ctx.exception, "status_code", None), 402)
+                detail = ctx.exception.detail
+        finally:
+            await conn.close()
+            os.unlink(tmp.name)
+            if saved_flag is not None:
+                os.environ["SASOO_ANALYSIS_SUBPROCESS"] = saved_flag
+
+        match = re.search(r"\$([\d.]+) / \$([\d.]+)", detail)
+        self.assertIsNotNone(match, f"402 상세 메시지 형식이 바뀜: {detail}")
+        spending_from_run = float(match.group(1))
+        limit_from_run = float(match.group(2))
+
+        self.assertAlmostEqual(spending_from_sup, spending_from_run, places=2)
+        self.assertAlmostEqual(limit_from_sup, limit_from_run, places=2)
+        self.assertAlmostEqual(spending_from_sup, 3.5, places=2)  # NULL은 0으로, error/월경계는 제외
+        self.assertEqual(limit_from_sup, 1.0)
+
+    async def test_run_delegates_budget_check_to_read_budget_state(self):
+        # 결함2: /run은 자체 SQL(월 경계 계산 + cost_rows 쿼리)을 복제하지 않고
+        # services.analysis_supervisor.read_budget_state()를 단일 소스로 호출해야 한다.
+        # fetch_all/settings도 옛 경로와 같은 결과(10.0 >= 5.0)를 내도록 함께 패치해 두어,
+        # 이 테스트가 "402를 던지는지"가 아니라 "누가 그 계산을 했는지"만 가른다.
+        paper_id = 7171
+        paper_row = {"id": paper_id, "folder_name": "f"}
+        read_budget_mock = AsyncMock(return_value=(10.0, 5.0))
+        legacy_settings_stub = _settings_stub_returning({"monthly_budget_limit": "5.0"})
+        with (
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
+            patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.fetch_all", new=AsyncMock(return_value=[{"cost_usd": 10.0}])),
+            patch.dict(sys.modules, {"api.settings": legacy_settings_stub}),
+            patch("services.analysis_supervisor.read_budget_state", new=read_budget_mock),
+        ):
+            with self.assertRaises(Exception) as ctx:
+                await analysis_routes.run_analysis(paper_id, background_tasks=_StubBackgroundTasks())
+
+        self.assertEqual(getattr(ctx.exception, "status_code", None), 402)
+        self.assertIn("$10.00 / $5.00", ctx.exception.detail)
+        read_budget_mock.assert_awaited_once()
 
 
 class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):
@@ -1976,6 +2056,55 @@ class SystemInstructionContractTests(unittest.TestCase):
         self.assertIn("</사용자_연구_분야>", out)
         self.assertIn("<사용자_질문>", out)
         self.assertIn("서비스 규칙을 바꾸지 않아", out)
+
+
+class ModuleIsolationContractTests(unittest.TestCase):
+    """이 파일이 '실제 모듈' 위에서 돈다는 계약을 고정한다(import 순서 의존 재발 방지).
+
+    과거엔 import 시점에 sys.modules.setdefault로 fastapi/aiosqlite/models.schemas/
+    services.odl_parser 스텁을 심었는데, setdefault라 이 파일이 먼저 import되는 단독
+    실행에서만 적용되고 전체 스위트에서는 무력화됐다 — 같은 테스트가 두 구성으로 도는
+    상태였다. 아래 두 테스트가 깨지면 ambient 스텁이 되살아난 것이니, 모듈 더블은
+    patch.dict(sys.modules, ...)로 테스트 스코프 안에서만 쓴다.
+    """
+
+    def test_analysis_routes_binds_real_modules_not_ambient_stubs(self):
+        import fastapi
+        import models.schemas
+        import services.odl_parser
+
+        self.assertIs(
+            analysis_routes.ensure_text_artifacts_async,
+            services.odl_parser.ensure_text_artifacts_async,
+        )
+        self.assertIs(analysis_routes.HTTPException, fastapi.HTTPException)
+        self.assertIs(analysis_routes.AnalysisStatus, models.schemas.AnalysisStatus)
+
+    def test_no_ambient_stub_module_left_in_sys_modules(self):
+        # 실제 모듈은 __file__을 갖는다. types.ModuleType 스텁은 갖지 않는다.
+        for name in (
+            "aiosqlite",
+            "fastapi",
+            "models.schemas",
+            "services.odl_parser",
+            "services.agents",
+            "api.report_service",
+        ):
+            mod = sys.modules.get(name)
+            if mod is not None:
+                self.assertTrue(
+                    getattr(mod, "__file__", None),
+                    f"sys.modules['{name}']이 스텁으로 대체돼 있다 — 다른 테스트 파일까지 오염된다",
+                )
+
+    def test_models_database_keeps_real_aiosqlite_binding(self):
+        # 과거 aiosqlite 스텁의 최악 시나리오: 스텁이 꽂힌 상태로 models.database가 처음
+        # import되면 그 모듈의 aiosqlite 바인딩이 스텁으로 영구 고정돼(sys.modules 복원으로도
+        # 되돌지 않는다) DB를 쓰는 다른 테스트 파일이 통째로 깨진다.
+        import aiosqlite
+        import models.database
+
+        self.assertIs(models.database.aiosqlite, aiosqlite)
 
 
 if __name__ == "__main__":

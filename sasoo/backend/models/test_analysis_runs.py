@@ -163,6 +163,188 @@ class AnalysisRunsTests(unittest.IsolatedAsyncioTestCase):
         claimed = await ar.claim_next(self.conn, 3, now, fresh, fresh, 3)
         self.assertIsNone(claimed)
 
+    # --- 결함1: 취소/에러 run이 papers를 동기화하지 않아 "무한 분석 중" 좀비가 남는다 -------
+
+    async def test_sweep_orphan_analyzing_papers_syncs_cancelled_run(self):
+        now = "2026-07-14T00:00:00+00:00"
+        await self._paper(1, status="analyzing")
+        await ar.upsert_queued(self.conn, 1, now)
+        await self.conn.execute("UPDATE analysis_runs SET status='cancelled' WHERE paper_id=1")
+        await self.conn.commit()
+        ids = await ar.sweep_orphan_analyzing_papers(self.conn)
+        self.assertEqual(ids, [1])
+        row = await (await self.conn.execute("SELECT status FROM papers WHERE id=1")).fetchone()
+        self.assertEqual(row["status"], "cancelled")
+
+    async def test_sweep_orphan_analyzing_papers_syncs_error_run(self):
+        now = "2026-07-14T00:00:00+00:00"
+        await self._paper(1, status="analyzing")
+        await ar.upsert_queued(self.conn, 1, now)
+        await self.conn.execute("UPDATE analysis_runs SET status='error' WHERE paper_id=1")
+        await self.conn.commit()
+        ids = await ar.sweep_orphan_analyzing_papers(self.conn)
+        self.assertEqual(ids, [1])
+        row = await (await self.conn.execute("SELECT status FROM papers WHERE id=1")).fetchone()
+        self.assertEqual(row["status"], "error")
+
+    async def test_sweep_orphan_analyzing_papers_syncs_completed_run(self):
+        now = "2026-07-14T00:00:00+00:00"
+        await self._paper(1, status="analyzing")
+        await ar.upsert_queued(self.conn, 1, now)
+        await self.conn.execute("UPDATE analysis_runs SET status='completed' WHERE paper_id=1")
+        await self.conn.commit()
+        ids = await ar.sweep_orphan_analyzing_papers(self.conn)
+        self.assertEqual(ids, [1])
+        row = await (await self.conn.execute("SELECT status FROM papers WHERE id=1")).fetchone()
+        self.assertEqual(row["status"], "completed")
+
+    async def test_sweep_orphan_analyzing_papers_leaves_running_untouched(self):
+        # run이 아직 running이면(정상 진행 중) papers를 건드리지 않는다 — 성급한 덮어쓰기 방지.
+        now = "2026-07-14T00:00:00+00:00"; fresh = "2026-07-13T23:59:00+00:00"
+        await self._paper(1, status="analyzing")
+        await ar.upsert_queued(self.conn, 1, now)
+        await ar.claim_next(self.conn, 3, now, fresh, fresh, 3)   # status='running'
+        ids = await ar.sweep_orphan_analyzing_papers(self.conn)
+        self.assertEqual(ids, [])
+        row = await (await self.conn.execute("SELECT status FROM papers WHERE id=1")).fetchone()
+        self.assertEqual(row["status"], "analyzing")
+        run = await ar.get_run(self.conn, 1)
+        self.assertEqual(run["status"], "running")
+
+    async def test_sweep_orphan_analyzing_papers_ignores_papers_not_analyzing(self):
+        # papers가 이미 terminal이면(다른 경로가 이미 동기화함) 건드릴 것도, 반환할 것도 없다.
+        now = "2026-07-14T00:00:00+00:00"
+        await self._paper(1, status="cancelled")
+        await ar.upsert_queued(self.conn, 1, now)
+        await self.conn.execute("UPDATE analysis_runs SET status='cancelled' WHERE paper_id=1")
+        await self.conn.commit()
+        ids = await ar.sweep_orphan_analyzing_papers(self.conn)
+        self.assertEqual(ids, [])
+
+    # --- 결함2: upsert_queued TOCTOU — 이미 queued/running이면 원자적으로 거부 --------------
+
+    async def test_upsert_queued_blocks_when_already_running(self):
+        now = "2026-07-14T00:00:00+00:00"; fresh = "2026-07-13T23:59:00+00:00"
+        await self._paper(1)
+        await ar.upsert_queued(self.conn, 1, now)
+        await ar.claim_next(self.conn, 3, now, fresh, fresh, 3)   # running, generation=1
+        ok = await ar.upsert_queued(self.conn, 1, now)
+        self.assertFalse(ok)
+        run = await ar.get_run(self.conn, 1)
+        self.assertEqual(run["status"], "running")
+        self.assertEqual(run["generation"], 1)          # 리셋되지 않음(재claim/중복스폰 방지)
+
+    async def test_upsert_queued_blocks_when_already_queued(self):
+        now = "2026-07-14T00:00:00+00:00"
+        await self._paper(1)
+        await ar.upsert_queued(self.conn, 1, now)
+        ok = await ar.upsert_queued(self.conn, 1, now)
+        self.assertFalse(ok)
+
+    async def test_upsert_queued_allows_when_terminal(self):
+        now = "2026-07-14T00:00:00+00:00"
+        await self._paper(1)
+        await ar.upsert_queued(self.conn, 1, now)
+        await self.conn.execute("UPDATE analysis_runs SET status='completed' WHERE paper_id=1")
+        await self.conn.commit()
+        ok = await ar.upsert_queued(self.conn, 1, now)
+        self.assertTrue(ok)
+        run = await ar.get_run(self.conn, 1)
+        self.assertEqual(run["status"], "queued")
+
+    async def test_upsert_queued_allows_when_absent(self):
+        now = "2026-07-14T00:00:00+00:00"
+        await self._paper(1)
+        ok = await ar.upsert_queued(self.conn, 1, now)
+        self.assertTrue(ok)
+        run = await ar.get_run(self.conn, 1)
+        self.assertEqual(run["status"], "queued")
+
+    async def test_upsert_queued_atomic_under_two_connection_race(self):
+        # 동시 이중 /run(I3 TOCTOU) 재현: 두 연결이 같은 신규 paper_id에 동시에 upsert_queued —
+        # 정확히 하나만 True를 받아야 한다(둘 다 True면 중복 스폰으로 이어짐).
+        now = "2026-07-14T00:00:00+00:00"
+        await self._paper(1)
+
+        conn_a = await aiosqlite.connect(self.tmp.name)
+        conn_b = await aiosqlite.connect(self.tmp.name)
+        try:
+            for c in (conn_a, conn_b):
+                await c.execute("PRAGMA busy_timeout=5000")
+            results = await asyncio.gather(
+                ar.upsert_queued(conn_a, 1, now),
+                ar.upsert_queued(conn_b, 1, now),
+            )
+            self.assertEqual(sorted(results), [False, True])
+        finally:
+            await conn_a.close()
+            await conn_b.close()
+
+    # --- 결정①: 정상 종료 시 running을 requeue(attempts 상쇄) -------------------------
+
+    async def test_requeue_for_shutdown_resets_running_rows_and_decrements_attempts(self):
+        now = "2026-07-14T00:00:00+00:00"; fresh = "2026-07-13T23:59:00+00:00"
+        await self._paper(1)
+        await ar.upsert_queued(self.conn, 1, now)
+        await ar.claim_next(self.conn, 3, now, fresh, fresh, 3)   # running, attempts=1, pid는 아직 NULL
+        await ar.set_pid(self.conn, 1, 1, 4242)
+        n = await ar.requeue_for_shutdown(self.conn, now)
+        self.assertEqual(n, 1)
+        run = await ar.get_run(self.conn, 1)
+        self.assertEqual(run["status"], "queued")
+        self.assertIsNone(run["pid"])
+        self.assertEqual(run["attempts"], 0)   # claim이 +1 했던 것을 종료가 상쇄(다음 claim이 다시 +1)
+
+    async def test_requeue_for_shutdown_does_not_floor_attempts_below_zero(self):
+        now = "2026-07-14T00:00:00+00:00"; fresh = "2026-07-13T23:59:00+00:00"
+        await self._paper(1)
+        await ar.upsert_queued(self.conn, 1, now)
+        await ar.claim_next(self.conn, 3, now, fresh, fresh, 3)
+        await self.conn.execute("UPDATE analysis_runs SET attempts=0 WHERE paper_id=1")
+        await self.conn.commit()
+        await ar.requeue_for_shutdown(self.conn, now)
+        run = await ar.get_run(self.conn, 1)
+        self.assertEqual(run["attempts"], 0)
+
+    async def test_requeue_for_shutdown_ignores_non_running_rows(self):
+        now = "2026-07-14T00:00:00+00:00"
+        await self._paper(1)
+        await ar.upsert_queued(self.conn, 1, now)   # status='queued', 건드리면 안 됨
+        n = await ar.requeue_for_shutdown(self.conn, now)
+        self.assertEqual(n, 0)
+        run = await ar.get_run(self.conn, 1)
+        self.assertEqual(run["status"], "queued")
+        self.assertEqual(run["attempts"], 0)
+
+    # --- 결정②: 예산 초과 시 queued를 보이는 종료 상태로 떨어뜨린다 --------------------
+
+    async def test_mark_budget_blocked_transitions_queued_rows_to_error_and_syncs_papers(self):
+        now = "2026-07-14T00:00:00+00:00"
+        await self._paper(1, status="analyzing")
+        await ar.upsert_queued(self.conn, 1, now)
+        n = await ar.mark_budget_blocked(self.conn, now)
+        self.assertEqual(n, 1)
+        run = await ar.get_run(self.conn, 1)
+        self.assertEqual(run["status"], "error")
+        self.assertEqual(run["error_message"], "budget_exceeded")
+        row = await (await self.conn.execute("SELECT status FROM papers WHERE id=1")).fetchone()
+        self.assertEqual(row["status"], "error")
+
+    async def test_mark_budget_blocked_ignores_running_rows(self):
+        now = "2026-07-14T00:00:00+00:00"; fresh = "2026-07-13T23:59:00+00:00"
+        await self._paper(1)
+        await ar.upsert_queued(self.conn, 1, now)
+        await ar.claim_next(self.conn, 3, now, fresh, fresh, 3)   # running — 예산 보류 대상 아님
+        n = await ar.mark_budget_blocked(self.conn, now)
+        self.assertEqual(n, 0)
+        run = await ar.get_run(self.conn, 1)
+        self.assertEqual(run["status"], "running")
+
+    async def test_mark_budget_blocked_noop_when_no_queued_rows(self):
+        now = "2026-07-14T00:00:00+00:00"
+        n = await ar.mark_budget_blocked(self.conn, now)
+        self.assertEqual(n, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

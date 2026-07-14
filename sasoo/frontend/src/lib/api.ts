@@ -38,7 +38,8 @@ export type PaperStatus =
   | 'pending'
   | 'analyzing'
   | 'completed'
-  | 'error';
+  | 'error'
+  | 'cancelled';
 
 export interface PaperFilters {
   domain?: string;

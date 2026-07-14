@@ -53,6 +53,23 @@ def build_spawn_env(base_env: dict | None = None) -> dict:
     return env
 
 
+# 스폰한 워커 핸들. start_new_session은 세션만 새로 열 뿐 부모를 바꾸지 않으므로("디태치"는
+# 터미널 신호로부터의 분리를 뜻한다) 워커는 서버의 직계 자식으로 남고, 회수는 서버 몫이다.
+_CHILDREN: list[subprocess.Popen] = []
+
+
+def reap_exited_workers() -> None:
+    """종료한 워커를 회수해 좀비(<defunct>)를 없앤다. 리컨실러 틱과 스폰 시점에 호출된다.
+
+    Popen 핸들을 버리면 CPython은 '다음 Popen 호출' 때만 회수하므로(subprocess._active +
+    _cleanup) 다음 분석이 오기 전까지 종료한 워커가 좀비로 남는다. 좀비는 메모리도 fd도 안
+    잡지만 pid 슬롯을 점유하고, 무엇보다 os.kill(pid, 0)을 통과한다 — 훗날 pid 기반 생존
+    판정을 넣으면 죽은 워커를 살아있다고 오판해 재스폰이 영영 막힌다(현재 생존 판정은
+    heartbeat 리스이며 pid는 정보성 필드다).
+    """
+    _CHILDREN[:] = [p for p in _CHILDREN if p.poll() is None]  # poll = waitpid(WNOHANG)
+
+
 def spawn_worker(paper_id: int, generation: int) -> int:
     """디태치 워커를 스폰하고 자식 pid를 반환한다. stdout/stderr는 per-run 로그로 리다이렉트."""
     _LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -70,7 +87,44 @@ def spawn_worker(paper_id: int, generation: int) -> int:
     # with 블록으로 부모 핸들 수명 관리(자식은 자기 fd 복사본 유지)
     with open(logpath, "ab") as f:
         proc = subprocess.Popen(argv, stdout=f, stderr=f, **kwargs)
+    # 핸들을 붙잡으면 Popen.__del__ → subprocess._active 경로가 안 타므로 회수는 전적으로
+    # reap_exited_workers() 책임이 된다. 리컨실러가 꺼진 경로에서도 새지 않도록 여기서도 부른다.
+    _CHILDREN.append(proc)
+    reap_exited_workers()
     return proc.pid
+
+
+def terminate_workers(grace_s: float = 5.0) -> int:
+    """결정①: 정상 종료(graceful shutdown) 훅 — 호출되면 살아있는 워커 전원에 SIGTERM →
+    grace_s 대기 → 미종료 시 SIGKILL. 종료시킨(SIGTERM을 보낸) 워커 개수를 반환한다.
+
+    이 함수 자체는 무조건 워커를 죽인다 — 리로드 내성은 이 함수가 아니라 "언제 이 함수를
+    부르느냐"에 달려 있다. 호출자 stop_reconciler가 SASOO_ENV == 'production'일 때만 이
+    함수를 불러 프로덕션 정상 종료(Electron 앱 quit → /shutdown)에서만 워커를 정리하고,
+    dev의 `uvicorn --reload` SIGTERM(코드 저장마다 같은 lifespan shutdown 경로를 태움)에서는
+    아예 부르지 않아 워커가 리로드를 넘어 살아남는다. 비정상 종료(크래시/SIGKILL)도
+    lifespan shutdown 경로 자체를 안 타므로 이 함수가 불리지 않아 워커가 그대로 살아남는다.
+    개별 워커 처리 중 예외는 삼키고 로그만 남겨, 한 워커 정리 실패가 나머지 워커 정리를
+    막지 않게 한다."""
+    n = 0
+    for proc in list(_CHILDREN):
+        try:
+            if proc.poll() is not None:
+                continue  # 이미 종료됨
+            proc.terminate()
+            try:
+                proc.wait(timeout=grace_s)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                try:
+                    proc.wait(timeout=grace_s)
+                except Exception:  # noqa: BLE001
+                    pass
+            n += 1
+        except Exception:  # noqa: BLE001
+            logger.exception("워커 종료 실패 pid=%s", getattr(proc, "pid", None))
+    reap_exited_workers()
+    return n
 
 
 def _iso_shift(now: "datetime", seconds: int) -> str:
@@ -87,6 +141,35 @@ async def read_max_concurrent() -> int:
         return 3
 
 
+async def read_budget_state() -> tuple[float, float]:
+    """(현재 지출, 월 한도) — /run(api/analysis_routes.py)의 예산 계산식과 동일한 값을 내야
+    한다(테스트로 고정). 월 시작~다음달 시작 범위, phase != 'error' 제외, 기본 한도 50.0,
+    api.settings._get_all_settings 사용. 리컨실러의 자동 재개 경로에도 /run과 같은 한도를
+    적용하기 위해 분리했다 — 계산식이 갈라지면 한도의 의미가 무너진다."""
+    from api.settings import _get_all_settings
+    from models.database import fetch_all
+
+    settings = await _get_all_settings()
+    monthly_limit = float(settings.get("monthly_budget_limit", "50.0"))
+
+    now = datetime.now(timezone.utc)
+    current_month = now.strftime("%Y-%m")
+    month_start = f"{current_month}-01"
+    month_num = int(current_month.split("-")[1])
+    year = int(current_month.split("-")[0])
+    if month_num == 12:
+        month_end = f"{year + 1}-01-01"
+    else:
+        month_end = f"{year}-{month_num + 1:02d}-01"
+
+    cost_rows = await fetch_all(
+        "SELECT cost_usd FROM analysis_results WHERE created_at >= ? AND created_at < ? AND phase != 'error'",
+        (month_start, month_end),
+    )
+    current_spending = sum(r.get("cost_usd") or 0.0 for r in cost_rows)
+    return current_spending, monthly_limit
+
+
 async def reconcile_once(conn, cap: int, spawn=spawn_worker) -> None:
     """stale 조정 → attempts 정리 → cap까지 claim+spawn."""
     now_dt = datetime.now(timezone.utc)
@@ -95,12 +178,39 @@ async def reconcile_once(conn, cap: int, spawn=spawn_worker) -> None:
     fresh_cut = stale_cut
     backoff_cut = _iso_shift(now_dt, BACKOFF_S)
 
+    # 스폰 시점에만 회수하면 다음 분석이 올 때까지 좀비가 남는다 — 틱마다 회수해 창을 닫는다.
+    reap_exited_workers()
+
     await ar.reconcile_stale(conn, stale_cut=stale_cut, max_attempts=MAX_ATTEMPTS, now=now)
+    # 결함1: reconcile_stale ②(cancel-wins)는 analysis_runs만 쓰고 papers를 안 건드린다 —
+    # run=terminal인데 papers='analyzing'로 영구 고착되는 좀비(취소 중 워커 사망, /cancel
+    # papers UPDATE 직전 사망, /run upsert_queued 실패로 이전 terminal 행 잔존)를 역방향
+    # 스윕으로 회수한다. running인 run은 건드리지 않아 정상 진행 중인 분석을 보호한다.
+    await ar.sweep_orphan_analyzing_papers(conn)
     # C1: cap 초과로 queued에 머문 채 cancel_requested=1만 세워진 행은 claim_next(cancel_requested=0
     # 필터)·reconcile_stale(status='running'만 봄)·mark_over_attempts_error(attempts만 봄) 어디서도
     # 소비되지 않아 영구 좀비가 된다. attempts 정리보다 먼저 cancel-wins으로 확정한다.
     await ar.sweep_cancelled_queued(conn, now)
     await ar.mark_over_attempts_error(conn, MAX_ATTEMPTS)
+
+    # 결정②: 큐 드레인(claim+spawn) 직전에 월 예산을 확인한다. /run은 402로 새 분석을
+    # 막지만, 리컨실러의 자동 재개 경로는 검사가 없어 한도를 넘긴 채 서버를 재시작하면
+    # 고아 분석이 그대로 재개돼 계속 과금됐다 — 한도의 의미가 무너지는 결함이었다.
+    # 예산 조회 실패(예외)는 가용성 우선 원칙상 드레인을 막지 않는다(경고 로그만).
+    try:
+        current_spending, monthly_limit = await read_budget_state()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("예산 조회 실패 — 드레인 계속: %s", exc)
+    else:
+        if current_spending >= monthly_limit:
+            # queued로 방치하면 C1과 같은 영구 "분석 중" 좀비가 되므로, 눈에 보이는 종료
+            # 상태(error/budget_exceeded)로 확정하고 이번 틱의 드레인(claim/spawn)을 건너뛴다.
+            await ar.mark_budget_blocked(conn, now)
+            logger.warning(
+                "예산 한도 초과($%.2f/$%.2f) — 자동 재개 보류. 설정에서 한도를 올린 뒤 다시 분석하세요.",
+                current_spending, monthly_limit,
+            )
+            return
 
     while True:
         claimed = await ar.claim_next(conn, cap=cap, now=now, fresh_cut=fresh_cut,
@@ -145,14 +255,68 @@ async def _reconciler_loop(app) -> None:
 
 
 async def start_reconciler(app) -> None:
+    """서브프로세스 모드에서만 리컨실러를 띄운다.
+
+    플래그가 꺼진 in-process 모드에서 리컨실러가 돌면, 고아 시드 → claim → 워커 스폰으로
+    이어져 "플래그 off = 기존 경로 그대로"라는 계약을 깨고 예상치 못한 과금이 발생한다
+    (터미널로 백엔드만 직접 띄우는 개발 경로 포함). 대신 구 안전망(analyzing 고아를 error로
+    정리)을 복원해, 리컨실러 없이도 프로세스 사망으로 남은 고아가 방치되지 않게 한다.
+    """
+    if os.environ.get("SASOO_ANALYSIS_SUBPROCESS") != "1":
+        from models.database import execute_update
+
+        try:
+            await execute_update("UPDATE papers SET status='error' WHERE status='analyzing'")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("legacy stuck-analysis cleanup failed: %s", exc)
+        return
     app.state.reconciler_task = asyncio.create_task(_reconciler_loop(app))
 
 
 async def stop_reconciler(app) -> None:
+    """정상 종료 훅 — main.py lifespan shutdown이 부른다.
+
+    reconciler_task가 없으면(서브프로세스 모드 off) 워커 자체가 없으므로 아무 것도 하지
+    않는다("플래그 off = 기존 경로 그대로" 계약 유지). 있으면 루프는 항상 취소한다.
+
+    워커 종료(SIGTERM→SIGKILL)와 중단된 running의 requeue는 SASOO_ENV == 'production'일
+    때만 수행한다 — 이 lifespan shutdown 경로는 두 가지 서로 다른 상황에서 모두 탄다:
+    프로덕션 정상 종료(Electron 앱 quit → /shutdown, 사용자가 진짜로 앱을 닫은 것)와 dev의
+    `uvicorn --reload` SIGTERM(코드 저장마다 워커 프로세스를 재시작하며 같은 경로를 태우는
+    것뿐, 앱 종료가 아님)이다. 프로덕션에서만 워커를 정리해야 dev에서 파일을 저장할
+    때마다 진행 중이던(유료) 분석이 강제 종료되는 사고를 막는다 — 이 아키텍처의 존재
+    이유(리로드 내성)가 여기서 지켜진다. requeue도 같은 이유로 production 전용이다:
+    dev에서 requeue하면 아직 살아있는 워커를 다음 리컨실러 틱이 orphan으로 오인해
+    재claim, 이중 스폰까지 이어질 수 있다. 정상 종료는 "실패"가 아니므로 attempts는
+    requeue_for_shutdown이 상쇄한다. 실패는 로그만 남기고 종료 자체를 막지 않는다.
+
+    한계: dev에서 uvicorn을 Ctrl-C로 완전히 내리면(=진짜 종료, reload 아님) 이 게이트가
+    SASOO_ENV != 'production'으로 워커 정리를 건너뛰므로 워커가 orphan으로 남는다 —
+    dev 전용 한계이며 프로덕션(shipping) 경로는 이 함수가 정상 커버한다.
+
+    한계: _CHILDREN은 이 서버 프로세스 메모리에만 있다 — 서버가 재기동돼 이전 서버가 남긴
+    워커가 있으면 이 함수는 그 워커를 못 죽인다(빈 _CHILDREN). 그 경우는 fence(generation)와
+    heartbeat 리스가 처리한다(범위 밖)."""
     task = getattr(app.state, "reconciler_task", None)
-    if task is not None:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+    if task is None:
+        return
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    if os.environ.get("SASOO_ENV") != "production":
+        return
+
+    try:
+        terminate_workers()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("terminate_workers 실패(정상 종료 계속 진행): %s", exc)
+
+    try:
+        from models.database import get_db
+        conn = await get_db()
+        await ar.requeue_for_shutdown(conn, datetime.now(timezone.utc).isoformat())
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("requeue_for_shutdown 실패(정상 종료 계속 진행): %s", exc)

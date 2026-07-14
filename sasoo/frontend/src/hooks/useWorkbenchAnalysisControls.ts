@@ -52,8 +52,15 @@ export function useWorkbenchAnalysisControls({
     setTerminalState('cancelled');
   }, [paperId]);
 
+  // 백엔드는 completed/error/cancelled 상태 모두 재분석을 허용한다(run이 terminal이면
+  // upsert_queued가 원자적으로 queued 리셋을 허용) — cancelled를 빠뜨리면 취소된 논문을
+  // 프론트에서 재분석할 방법이 없어진다.
   const canStartAnalysis =
-    !isRunning && (paper?.status === 'pending' || paper?.status === 'completed' || paper?.status === 'error');
+    !isRunning &&
+    (paper?.status === 'pending' ||
+      paper?.status === 'completed' ||
+      paper?.status === 'error' ||
+      paper?.status === 'cancelled');
 
   useEffect(() => {
     if (
