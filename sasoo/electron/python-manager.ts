@@ -150,6 +150,9 @@ export class PythonManager {
           SASOO_ENV: 'production',
           SASOO_API_TOKEN: this.apiToken,
           SASOO_SHUTDOWN_TOKEN: this.shutdownToken,
+          // 분석은 서버 프로세스 밖 디태치 워커에서 실행한다. 서버가 죽거나(dev reload,
+          // 크래시) 재시작해도 진행 중 분석이 살아남고, 고아는 리컨실러가 이어받는다.
+          SASOO_ANALYSIS_SUBPROCESS: '1',
         },
       });
     } else {
@@ -186,6 +189,9 @@ export class PythonManager {
           SASOO_ENV: this.config.isDev ? 'development' : 'production',
           SASOO_API_TOKEN: this.apiToken,
           SASOO_SHUTDOWN_TOKEN: this.shutdownToken,
+          // dev에서도 켠다 — --reload가 워커를 재기동해도 분석이 죽지 않게 하는 것이
+          // 이 분리의 주 목적이다(리로드·크래시 중 진행 중 분석 유실 방지).
+          SASOO_ANALYSIS_SUBPROCESS: '1',
         },
       });
     }
