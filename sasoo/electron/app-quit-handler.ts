@@ -34,16 +34,17 @@ export function registerGracefulBackendQuit(
     }
 
     backendStop = backend.stop()
+      .then(() => {
+        quitAllowed = true;
+        app.quit();
+      })
       .catch((error: unknown) => {
         if (error instanceof Error) {
           console.error('[Main] Backend shutdown failed during app quit', error.message);
-          return;
+        } else {
+          console.error('[Main] Backend shutdown failed during app quit with an unknown error');
         }
-        console.error('[Main] Backend shutdown failed during app quit with an unknown error');
-      })
-      .finally(() => {
-        quitAllowed = true;
-        app.quit();
+        backendStop = null;
       });
   });
 }
