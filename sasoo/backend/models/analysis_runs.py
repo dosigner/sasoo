@@ -134,7 +134,11 @@ async def get_run(conn: aiosqlite.Connection, paper_id: int) -> Optional[dict]:
 async def reconcile_stale(
     conn: aiosqlite.Connection, stale_cut: str, max_attempts: int, now: str,
 ) -> None:
-    """stale running을 우선순위로 조정: papers-terminal > cancel > attempts-error > requeue."""
+    """stale running을 우선순위로 조정: papers-terminal > cancel > attempts-error > requeue.
+
+    비-fence 스윕: stale 판정(45s 무heartbeat) 자체가 살아있는 fenced writer 부재를 함의하므로 안전.
+    워커 대면 프리미티브(fenced_heartbeat/finalize_run)와 구분된 경로.
+    """
     # ① papers가 terminal이면 그 값으로 finalize(requeue 금지)
     await conn.execute(
         "UPDATE analysis_runs SET status=(SELECT status FROM papers WHERE papers.id=analysis_runs.paper_id), "

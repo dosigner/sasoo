@@ -52,6 +52,31 @@ class AnalysisRunsTests(unittest.IsolatedAsyncioTestCase):
         # cap=1이고 이미 running 1개 → 더 못 잡음
         self.assertIsNone(await ar.claim_next(self.conn, 1, now, fresh, fresh, 3))
 
+    async def test_claim_next_atomic_under_two_connection_race(self):
+        # 같은 파일에 두 연결을 열고 asyncio.gather로 동시에 claim — cap=1이면 정확히 1개만 성공해야 한다.
+        # (aiosqlite는 연결마다 전용 스레드라 두 UPDATE가 실제로 경합하고, busy_timeout이 락 대기를 흡수.
+        #  claim_next는 내부에서 commit하므로 승자의 running 전이가 패자의 cap predicate에 보인다)
+        now = "2026-07-14T00:00:00+00:00"; fresh = "2026-07-13T23:59:00+00:00"
+        for pid in (1, 2):
+            await self._paper(pid); await ar.upsert_queued(self.conn, pid, now)
+
+        conn_a = await aiosqlite.connect(self.tmp.name)
+        conn_b = await aiosqlite.connect(self.tmp.name)
+        try:
+            for c in (conn_a, conn_b):
+                await c.execute("PRAGMA busy_timeout=5000")
+            results = await asyncio.gather(
+                ar.claim_next(conn_a, cap=1, now=now, fresh_cut=fresh,
+                              backoff_cut=fresh, max_attempts=3),
+                ar.claim_next(conn_b, cap=1, now=now, fresh_cut=fresh,
+                              backoff_cut=fresh, max_attempts=3),
+            )
+            claimed = [r for r in results if r is not None]
+            self.assertEqual(len(claimed), 1)  # cap=1: 두 연결 중 정확히 1개만 claim
+        finally:
+            await conn_a.close()
+            await conn_b.close()
+
     async def test_fenced_heartbeat_rejects_stale_generation(self):
         now = "2026-07-14T00:00:00+00:00"; fresh = "2026-07-13T23:59:00+00:00"
         await self._paper(1); await ar.upsert_queued(self.conn, 1, now)
