@@ -397,6 +397,73 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, {"paper_id": paper_id, "status": "cancelling"})
         req_cancel.assert_awaited_once()
 
+    async def test_run_subprocess_mode_returns_409_when_run_already_active_in_db(self):
+        # I3: 분석이 디태치 워커로 옮겨간 뒤엔 인메모리 _running_analyses가 항상 비어 있어
+        # 기존 409 가드가 무조건 통과한다 — DB(analysis_runs) 기준으로 다시 막아야 한다.
+        # 안 막으면 upsert_queued가 running 행을 queued/attempts=0으로 리셋해 즉시
+        # 재claim되면서 두 번째 워커가 스폰된다(중복 LLM 호출·과금).
+        paper_id = 6162
+        paper_row = {"id": paper_id, "folder_name": "f"}
+        upsert_mock = AsyncMock()
+        with (
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
+            patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
+            patch("models.database.get_db", new=AsyncMock(return_value=object())),
+            patch("models.analysis_runs.get_run", new=AsyncMock(return_value={"status": "running"})),
+            patch("models.analysis_runs.upsert_queued", new=upsert_mock),
+        ):
+            with self.assertRaises(Exception) as ctx:
+                await analysis_routes.run_analysis(paper_id, background_tasks=_StubBackgroundTasks())
+        self.assertEqual(getattr(ctx.exception, "status_code", None), 409)
+        upsert_mock.assert_not_awaited()
+
+    async def test_run_subprocess_mode_sets_papers_analyzing_before_queueing(self):
+        # I1: 이미 completed인 논문을 재분석할 때 /run(subprocess)이 papers.status를
+        # 건드리지 않고 claim+spawn하므로, 워커가 _run_full_analysis의 첫
+        # UPDATE papers SET status='analyzing'에 도달하기 전에 죽으면 papers는 여전히
+        # completed로 남는다 → 45초 후 reconcile_stale ①이 조용히 completed로 확정한다.
+        # upsert_queued 직전에 papers.status='analyzing'을 세워 이 창을 없앤다.
+        paper_id = 6161
+        paper_row = {"id": paper_id, "folder_name": "f"}
+        calls: list = []
+
+        async def _fake_execute_update(sql, params):
+            calls.append(("execute_update", params))
+            return 1
+
+        async def _fake_upsert_queued(conn, pid, now):
+            calls.append(("upsert_queued", pid))
+
+        async def _fake_settings(*args, **kwargs):
+            return {"monthly_budget_limit": "50.0"}
+
+        settings_stub = types.ModuleType("api.settings")
+        settings_stub._get_all_settings = _fake_settings
+
+        with (
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
+            patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.fetch_all", new=AsyncMock(return_value=[])),
+            patch("api.analysis_routes.execute_update", new=_fake_execute_update),
+            patch("models.database.get_db", new=AsyncMock(return_value=object())),
+            patch("models.analysis_runs.get_run", new=AsyncMock(return_value=None)),
+            patch("models.analysis_runs.upsert_queued", new=_fake_upsert_queued),
+            patch("services.analysis_supervisor.reconcile_once", new=AsyncMock()),
+            patch("services.analysis_supervisor.read_max_concurrent", new=AsyncMock(return_value=3)),
+            patch.dict(sys.modules, {"api.settings": settings_stub}),
+        ):
+            await analysis_routes.run_analysis(paper_id, background_tasks=_StubBackgroundTasks())
+
+        labels = [c[0] for c in calls]
+        self.assertIn("execute_update", labels)
+        self.assertIn("upsert_queued", labels)
+        self.assertLess(labels.index("execute_update"), labels.index("upsert_queued"))
+        exec_call = next(c for c in calls if c[0] == "execute_update")
+        self.assertIn("analyzing", exec_call[1])
+        self.assertIn(paper_id, exec_call[1])
+
     async def test_screening_prompt_puts_document_first(self):
         status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
         calls = {}

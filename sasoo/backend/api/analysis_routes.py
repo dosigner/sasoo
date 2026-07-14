@@ -2483,6 +2483,20 @@ async def run_analysis(paper_id: int, background_tasks: BackgroundTasks):
         if paper_id in _running_analyses:
             del _running_analyses[paper_id]
 
+    if _subprocess_mode():
+        # I3: 분석이 디태치 워커로 옮겨간 뒤엔 위 인메모리 _running_analyses 가드가 항상
+        # 비어 있어 무조건 통과한다 — DB(analysis_runs) 기준으로 다시 막는다. 안 막으면
+        # upsert_queued가 running 행을 queued/attempts=0으로 리셋해 즉시 재claim되며
+        # 두 번째 워커가 스폰된다(구 워커 self-abort까지의 창에서 중복 LLM 호출·과금).
+        from models.database import get_db
+        from models.analysis_runs import get_run
+        existing_run = await get_run(await get_db(), paper_id)
+        if existing_run and existing_run["status"] in ("queued", "running"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Analysis for paper {paper_id} is already running.",
+            )
+
     # Check budget before starting
     from api.settings import _get_all_settings
     settings = await _get_all_settings()
@@ -2517,6 +2531,11 @@ async def run_analysis(paper_id: int, background_tasks: BackgroundTasks):
         from models.analysis_runs import upsert_queued, utcnow_iso
         from services.analysis_supervisor import reconcile_once, read_max_concurrent
         conn = await get_db()
+        # I1: 이미 completed인 논문을 재분석할 때 papers.status를 안 건드리고 claim+spawn하면,
+        # 워커가 _run_full_analysis의 첫 UPDATE papers SET status='analyzing'에 도달하기 전에
+        # 죽어도 papers는 여전히 completed로 남아 reconcile_stale ①이 조용히 완료로 확정한다.
+        # upsert_queued 직전에 세워 그 창을 없앤다.
+        await execute_update("UPDATE papers SET status = ? WHERE id = ?", ("analyzing", paper_id))
         await upsert_queued(conn, paper_id, utcnow_iso())
         # 즉시 드레인 시도(cap 내면 이번 요청이 스폰, 초과면 queued로 남아 리컨실러가 픽업)
         await reconcile_once(conn, cap=await read_max_concurrent())
