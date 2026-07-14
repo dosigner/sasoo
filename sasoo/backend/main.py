@@ -8,6 +8,7 @@ Runs on http://localhost:8000 by default.
 import os
 import ssl
 from contextlib import asynccontextmanager
+from hmac import compare_digest, digest
 from pathlib import Path
 from typing import Optional
 
@@ -59,11 +60,12 @@ except ImportError:
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from models.database import (
     APP_DATA_ROOT,
     close_db,
+    fetch_one,
     get_library_root,
     get_library_search_roots,
     init_db,
@@ -165,7 +167,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Sasoo - AI Co-Scientist",
     description=(
-        "Backend API for Sasoo, an AI Co-Scientist desktop application "
+    "Backend API for Sasoo, an AI Co-Scientist desktop application "
         "that analyzes research papers using a 4-phase engineering analysis strategy "
         "(Screening -> Visual Verification -> Recipe Extraction -> Deep Dive) "
         "powered by the Gemini API (Interactions)."
@@ -196,6 +198,61 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def require_runtime_api_token(request, call_next):
+    """Require the per-launch Electron capability token for local API access.
+
+    Browsers and other local processes can both reach a loopback server.  A
+    localhost binding is therefore not an authentication boundary.  Electron
+    supplies ``SASOO_API_TOKEN`` when it launches the backend, while ``/health``
+    remains unauthenticated so startup can check that a newly selected port is
+    listening without disclosing application data.
+    """
+    expected_token = os.environ.get("SASOO_API_TOKEN", "")
+    if request.method == "OPTIONS" or request.url.path == "/health":
+        return await call_next(request)
+    if not expected_token:
+        if os.environ.get("SASOO_ENV") == "production":
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Local API token is not configured"},
+            )
+        return await call_next(request)
+
+    authorization = request.headers.get("Authorization", "")
+    bearer_token = (
+        authorization.removeprefix("Bearer ")
+        if authorization.startswith("Bearer ")
+        else ""
+    )
+    path = request.url.path
+    paper_id = path.removeprefix("/api/papers/").removesuffix("/pdf")
+    is_asset_path = path.startswith("/static/library/") or (
+        path == f"/api/papers/{paper_id}/pdf" and paper_id.isdigit()
+    )
+    supplied_asset_token = request.query_params.get("sasoo_asset_token", "")
+    expected_asset_token = digest(
+        expected_token.encode(),
+        f"sasoo-asset-v1:{path}".encode(),
+        "sha256",
+    ).hex()
+    has_valid_asset_token = (
+        is_asset_path
+        and bool(supplied_asset_token)
+        and compare_digest(supplied_asset_token, expected_asset_token)
+    )
+    if (
+        (not bearer_token or not compare_digest(bearer_token, expected_token))
+        and not has_valid_asset_token
+    ):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Missing or invalid local API token"},
+        )
+
+    return await call_next(request)
 
 # ---------------------------------------------------------------------------
 # Static file mount (unified library directory)
@@ -237,9 +294,14 @@ async def root():
 
 @app.get("/health", tags=["health"])
 async def health_check():
+    runtime_token = os.environ.get("SASOO_API_TOKEN", "")
     return {
         "status": "ok",
-        "library_path": str(get_library_root()),
+        "instance_proof": (
+            digest(runtime_token.encode(), b"sasoo-health-v1", "sha256").hex()
+            if runtime_token
+            else ""
+        ),
     }
 
 
@@ -248,6 +310,18 @@ async def library_asset(requested_path: str):
     relative_path = Path(requested_path)
     if relative_path.is_absolute() or ".." in relative_path.parts:
         raise HTTPException(status_code=400, detail="Invalid library asset path")
+
+    # Files are public only below a paper folder that exists in the database.
+    # This prevents a changed library root from turning this route into a
+    # general-purpose file server for the selected directory.
+    if not relative_path.parts:
+        raise HTTPException(status_code=404, detail="Library asset not found")
+    paper = await fetch_one(
+        "SELECT 1 FROM papers WHERE folder_name = ?",
+        (relative_path.parts[0],),
+    )
+    if paper is None:
+        raise HTTPException(status_code=404, detail="Library asset not found")
 
     for root in get_library_search_roots():
         resolved_root = root.resolve(strict=False)

@@ -9,7 +9,7 @@ import re
 import shutil
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Final, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
@@ -42,6 +42,9 @@ from services.artifact_status import resolve_artifact_status_contract
 
 router = APIRouter(prefix="/api/papers", tags=["papers"])
 logger = logging.getLogger(__name__)
+
+MAX_PDF_UPLOAD_BYTES: Final = 100 * 1024 * 1024
+UPLOAD_CHUNK_BYTES: Final = 1024 * 1024
 
 # ---------------------------------------------------------------------------
 # Domain classification heuristic (fast, pre-LLM)
@@ -181,17 +184,29 @@ async def upload_paper(file: UploadFile = File(...)):
     4. Insert record into the database.
     5. Return the paper record.
     """
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are accepted.")
+    safe_filename = safe_pdf_filename(file.filename)
+    first_chunk = await file.read(UPLOAD_CHUNK_BYTES)
+    if b"%PDF-" not in first_chunk[:1024]:
+        raise HTTPException(status_code=400, detail="The uploaded file is not a valid PDF.")
 
-    content = await file.read()
-    fallback_folder = f"{uuid.uuid4().hex[:12]}_{_sanitize_filename(file.filename)}"
+    fallback_folder = f"{uuid.uuid4().hex[:12]}_{_sanitize_filename(safe_filename)}"
     paper_dir = get_paper_dir(fallback_folder)
     paper_dir.mkdir(parents=True, exist_ok=True)
 
-    pdf_path = paper_dir / file.filename
-    with open(pdf_path, "wb") as f:
-        f.write(content)
+    pdf_path = paper_dir / safe_filename
+    try:
+        bytes_written = 0
+        chunk = first_chunk
+        with pdf_path.open("wb") as destination:
+            while chunk:
+                bytes_written += len(chunk)
+                if bytes_written > MAX_PDF_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="PDF files must not exceed 100 MB.")
+                destination.write(chunk)
+                chunk = await file.read(UPLOAD_CHUNK_BYTES)
+    except HTTPException:
+        shutil.rmtree(paper_dir, ignore_errors=True)
+        raise
 
     try:
         manifest = await ensure_text_artifacts_async(paper_dir, force=True)
@@ -214,7 +229,7 @@ async def upload_paper(file: UploadFile = File(...)):
         from services.naming_service import generate_folder_name
 
         suggested_name = await generate_folder_name(
-            title=metadata.get("title", file.filename),
+            title=metadata.get("title", safe_filename),
             year=metadata.get("year"),
             journal=metadata.get("journal"),
             domain=metadata.get("domain"),
@@ -480,6 +495,18 @@ def _sanitize_filename(filename: str) -> str:
     # Collapse multiple underscores
     sanitized = re.sub(r"_+", "_", sanitized)
     return sanitized[:80]  # Limit length
+
+
+def safe_pdf_filename(filename: str | None) -> str:
+    raw_name = str(filename or "").replace("\\", "/")
+    basename = Path(raw_name).name
+    if not basename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are accepted.")
+
+    stem = _sanitize_filename(basename)
+    if not stem:
+        raise HTTPException(status_code=400, detail="Invalid PDF filename.")
+    return f"{stem}.pdf"
 
 
 def _make_unique_folder_name(preferred: str, fallback: str) -> str:

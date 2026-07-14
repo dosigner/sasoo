@@ -193,6 +193,24 @@ def _mask_api_key(key: str) -> str:
 MAX_RESEARCH_AREAS = 3
 
 
+def resolve_library_path_update(raw_path: object) -> Path:
+    """Validate a user-selected paper library root before persisting it."""
+    candidate = usable_library_path(raw_path)
+    if candidate is None:
+        raise HTTPException(
+            status_code=400,
+            detail="보관함 경로는 절대 경로여야 합니다. (예: /Users/이름/Documents/sasoo)",
+        )
+
+    resolved = candidate.resolve(strict=False)
+    # `/` (or a drive root on Windows) must never become a library root: it
+    # would make a static-library mistake expose the whole machine.
+    if resolved == Path(resolved.anchor):
+        raise HTTPException(status_code=400, detail="파일 시스템 루트는 보관함으로 사용할 수 없습니다.")
+
+    return resolved
+
+
 def _parse_research_areas(raw: str) -> list[str]:
     """Decode the JSON-encoded research_areas setting, tolerating bad/legacy values."""
     try:
@@ -255,13 +273,7 @@ async def update_settings(update: SettingsUpdate):
         raise HTTPException(status_code=400, detail="No settings to update.")
 
     if "library_path" in update_data and update_data["library_path"] is not None:
-        candidate = usable_library_path(update_data.pop("library_path"))
-        if candidate is None:
-            raise HTTPException(
-                status_code=400,
-                detail="보관함 경로는 절대 경로여야 합니다. (예: /Users/이름/Documents/sasoo)",
-            )
-        new_path = candidate.resolve(strict=False)
+        new_path = resolve_library_path_update(update_data.pop("library_path"))
         new_path.mkdir(parents=True, exist_ok=True)
         # Stored per platform, so a Mac and a Windows machine sharing this
         # settings database each keep their own.

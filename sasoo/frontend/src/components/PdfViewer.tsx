@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from 'pdfjs-dist';
-import * as pdfjsViewer from 'pdfjs-dist/web/pdf_viewer';
+import * as pdfjsViewer from 'pdfjs-dist/web/pdf_viewer.mjs';
 import 'pdfjs-dist/web/pdf_viewer.css';
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.js?url';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { ContentState } from '@/components/ui';
 import { AppIcon } from '@/components/icons';
 import { type PdfNavigationRequest } from '@/lib/api';
@@ -337,7 +337,7 @@ export default function PdfViewer({
     eventBus.on('updatefindcontrolstate', handleFindControlState);
     eventBus.on('updatefindmatchescount', handleFindMatchesCount);
 
-    loadingTask = getDocument(pdfUrl);
+    loadingTask = getDocument({ url: pdfUrl, isEvalSupported: false });
 
     loadingTask.promise
       .then((pdfDocument) => {

@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as net from 'net';
+import * as crypto from 'crypto';
 import { PythonManager } from './python-manager';
 import {
   BACKEND_FALLBACK_PORT_RANGE,
@@ -43,9 +44,11 @@ async function createWindow(): Promise<void> {
       preload: getPreloadPath(),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       webSecurity: true,
-      additionalArguments: [`--sasoo-backend-port=${currentBackendPort}`],
+      additionalArguments: [
+        `--sasoo-backend-port=${currentBackendPort}`,
+      ],
     },
   });
 
@@ -81,20 +84,6 @@ function getBackendPath(): string {
   return path.join(process.resourcesPath, 'backend');
 }
 
-async function isHealthyBackendOnPort(port: number): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 1200);
-    const response = await fetch(`http://127.0.0.1:${port}/health`, {
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
 async function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const server = net.createServer();
@@ -116,11 +105,6 @@ async function resolveBackendPort(): Promise<number> {
     return BACKEND_PORT;
   }
 
-  if (await isHealthyBackendOnPort(BACKEND_PORT)) {
-    console.log(`[Main] Reusing healthy backend already listening on preferred port ${BACKEND_PORT}`);
-    return BACKEND_PORT;
-  }
-
   if (await isPortAvailable(BACKEND_PORT)) {
     return BACKEND_PORT;
   }
@@ -138,6 +122,9 @@ async function resolveBackendPort(): Promise<number> {
 }
 
 function registerIpcHandlers(): void {
+  const isMainWindowSender = (event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): boolean =>
+    event.sender === mainWindow?.webContents;
+
   // File dialog: Open directory (for library path selection)
   ipcMain.handle('dialog:openDirectory', async (_event, options?: {
     title?: string;
@@ -159,12 +146,40 @@ function registerIpcHandlers(): void {
   });
 
   // Get user data path
-  ipcMain.handle('app:getPath', (_event, name: string) => {
-    try {
-      return app.getPath(name as any);
-    } catch {
+  ipcMain.handle('app:getPath', (_event, name: 'documents' | 'home') => {
+    if (name !== 'documents' && name !== 'home') {
       return null;
     }
+    return app.getPath(name);
+  });
+
+  ipcMain.handle('backend:getAuthToken', (event) => {
+    if (!isMainWindowSender(event)) return null;
+    return pythonManager?.getApiToken() ?? null;
+  });
+
+  ipcMain.on('backend:getAssetToken', (event, requestPath: unknown) => {
+    if (!isMainWindowSender(event) || typeof requestPath !== 'string') {
+      event.returnValue = null;
+      return;
+    }
+
+    const isStaticAsset = requestPath.startsWith('/static/library/');
+    const paperPdfId = requestPath
+      .replace(/^\/api\/papers\//, '')
+      .replace(/\/pdf$/, '');
+    const isPaperPdf = requestPath === `/api/papers/${paperPdfId}/pdf`
+      && /^\d+$/.test(paperPdfId);
+    const apiToken = pythonManager?.getApiToken();
+    if ((!isStaticAsset && !isPaperPdf) || !apiToken) {
+      event.returnValue = null;
+      return;
+    }
+
+    event.returnValue = crypto
+      .createHmac('sha256', apiToken)
+      .update(`sasoo-asset-v1:${requestPath}`)
+      .digest('hex');
   });
 
   // Window control handlers (for custom titlebar)
@@ -205,7 +220,13 @@ async function initialize(): Promise<void> {
     console.log('[Main] Python backend started successfully');
   } catch (error) {
     console.error('[Main] Failed to start Python backend:', error);
-    // Continue without backend - frontend will show connection error
+    await pythonManager.stop();
+    dialog.showErrorBox(
+      'Sasoo를 시작할 수 없습니다',
+      '내부 분석 서버를 안전하게 시작하지 못했습니다. 앱을 다시 실행해 주세요.',
+    );
+    app.quit();
+    return;
   }
 
   registerIpcHandlers();
@@ -251,23 +272,23 @@ app.on('before-quit', async () => {
 
 // Security: Handle external links and prevent unwanted window creation
 app.on('web-contents-created', (_event, contents) => {
-  // Handle window.open() - open external URLs in system browser
   contents.setWindowOpenHandler(({ url }) => {
-    // Allow external URLs to open in system browser
-    if (url.startsWith('https://') || url.startsWith('http://')) {
-      shell.openExternal(url);
-    }
+    try {
+      const target = new URL(url);
+      if (target.protocol === 'https:' || target.protocol === 'http:') {
+        void shell.openExternal(target.toString());
+      }
+    } catch {}
     return { action: 'deny' };
   });
 
-  // Handle <a target="_blank"> clicks - open in system browser
   contents.on('will-navigate', (event, url) => {
-    // Allow navigation within the app (file:// or localhost)
-    if (url.startsWith('file://') || url.includes('localhost')) {
-      return;
-    }
-    // Open external URLs in system browser
     event.preventDefault();
-    shell.openExternal(url);
+    try {
+      const target = new URL(url);
+      if (target.protocol === 'https:' || target.protocol === 'http:') {
+        void shell.openExternal(target.toString());
+      }
+    } catch {}
   });
 });

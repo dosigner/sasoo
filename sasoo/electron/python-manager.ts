@@ -25,6 +25,7 @@ export class PythonManager {
   private startupResolver: ((value: boolean) => void) | null = null;
   private usesBundledBackend: boolean = false;
   private shutdownToken: string = '';
+  private apiToken: string;
   private logForwarder: ((level: string, message: string) => void) | null = null;
   // One IPC message per backend log line scales with request volume, so lines
   // are batched before crossing to the renderer.
@@ -46,6 +47,11 @@ export class PythonManager {
       startupTimeoutMs: 30000,
       ...config,
     };
+    this.apiToken = crypto.randomBytes(32).toString('hex');
+  }
+
+  getApiToken(): string {
+    return this.apiToken;
   }
 
   /**
@@ -118,12 +124,6 @@ export class PythonManager {
     console.log('[PythonManager] Backend path:', this.config.backendPath);
     console.log('[PythonManager] isDev:', this.config.isDev);
 
-    const existingBackendHealthy = await this.checkHealth();
-    if (existingBackendHealthy) {
-      console.log(`[PythonManager] Reusing healthy backend already running on port ${this.config.port}`);
-      return;
-    }
-
     // Check for bundled backend first (production mode)
     const bundledBackend = this.getBundledBackendPath();
     console.log('[PythonManager] Bundled backend path:', bundledBackend);
@@ -148,6 +148,7 @@ export class PythonManager {
           PYTHONUNBUFFERED: '1',
           SASOO_PORT: String(this.config.port),
           SASOO_ENV: 'production',
+          SASOO_API_TOKEN: this.apiToken,
           SASOO_SHUTDOWN_TOKEN: this.shutdownToken,
         },
       });
@@ -183,6 +184,7 @@ export class PythonManager {
           PYTHONUNBUFFERED: '1',
           SASOO_PORT: String(this.config.port),
           SASOO_ENV: this.config.isDev ? 'development' : 'production',
+          SASOO_API_TOKEN: this.apiToken,
           SASOO_SHUTDOWN_TOKEN: this.shutdownToken,
         },
       });
@@ -285,7 +287,23 @@ export class PythonManager {
       });
 
       clearTimeout(timeout);
-      return response.ok;
+      if (!response.ok || !this.apiToken) {
+        return false;
+      }
+
+      const body = await response.json() as { instance_proof?: unknown };
+      const expectedProof = crypto
+        .createHmac('sha256', this.apiToken)
+        .update('sasoo-health-v1')
+        .digest('hex');
+      const actualProof = typeof body.instance_proof === 'string' ? body.instance_proof : '';
+      if (actualProof.length !== expectedProof.length) {
+        return false;
+      }
+      return crypto.timingSafeEqual(
+        Buffer.from(actualProof, 'utf8'),
+        Buffer.from(expectedProof, 'utf8'),
+      );
     } catch {
       return false;
     }
@@ -301,9 +319,10 @@ export class PythonManager {
       if (this.isShuttingDown) return;
 
       const healthy = await this.checkHealth();
-      if (!healthy && this.process) {
+      const unhealthyProcess = this.process;
+      if (!healthy && unhealthyProcess) {
         console.warn('[PythonManager] Health check failed');
-        this.handleCrash();
+        unhealthyProcess.kill('SIGTERM');
       }
     }, this.config.healthCheckIntervalMs);
   }
@@ -320,17 +339,7 @@ export class PythonManager {
 
   private handleUnexpectedExit(code: number | null): void {
     if (this.isShuttingDown || code === 0) return;
-
-    void (async () => {
-      const healthy = await this.checkHealth();
-      if (healthy) {
-        console.log(`[PythonManager] Detected healthy backend on port ${this.config.port} after child exit; skipping restart loop`);
-        this.restartCount = 0;
-        return;
-      }
-
-      await this.handleCrash();
-    })();
+    void this.handleCrash();
   }
 
   /**
@@ -388,7 +397,10 @@ export class PythonManager {
       const timeout = setTimeout(() => controller.abort(), 3000);
       await fetch(`http://127.0.0.1:${this.config.port}/shutdown`, {
         method: 'POST',
-        headers: { 'X-Shutdown-Token': this.shutdownToken },
+        headers: {
+          Authorization: `Bearer ${this.apiToken}`,
+          'X-Shutdown-Token': this.shutdownToken,
+        },
         signal: controller.signal,
       });
       clearTimeout(timeout);
