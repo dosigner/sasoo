@@ -372,6 +372,35 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(merged["current_phase"])
         self.assertEqual(merged["progress_pct"], 10.0)
 
+    def test_status_overlay_does_not_report_running_for_cancelled_run(self):
+        # 테스트 공백(a)/C1 사용자 증상 고정: cancel_queued_now가 queued run을 원자적으로
+        # cancelled로 전환한 뒤(cancel_requested=1 동반)에도 overlay가 "running"으로
+        # 되돌리면 안 된다 — queued 좀비가 무한 "분석 중"으로 보이던 증상의 회귀 방지.
+        merged = analysis_routes._overlay_run_status(
+            base={"overall_status": "cancelled", "progress_pct": 0.0, "current_phase": None},
+            run={"status": "cancelled", "cancel_requested": 1, "current_phase": None, "progress_pct": 0.0},
+        )
+        self.assertNotEqual(merged["overall_status"], "running")
+        self.assertEqual(merged["overall_status"], "cancelled")
+
+    async def test_status_endpoint_does_not_report_running_after_queued_run_cancelled(self):
+        # 위 단위 테스트를 /status 엔드포인트 전체 경로로 고정 — get_run이 살아있는 DB에서
+        # 돌려주는 cancelled+cancel_requested=1 행을 그대로 통과시켜도 사용자에게 무한
+        # "분석 중"이 노출되지 않는지 확인한다.
+        paper_id = 7171
+        paper_row = {"id": paper_id, "status": "cancelled"}
+        run_row = {"status": "cancelled", "cancel_requested": 1, "current_phase": None, "progress_pct": 0.0}
+        with (
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
+            patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value={})),
+            patch("models.database.get_db", new=AsyncMock(return_value=object())),
+            patch("models.analysis_runs.get_run", new=AsyncMock(return_value=run_row)),
+        ):
+            result = await analysis_routes.get_analysis_status(paper_id)
+        self.assertNotEqual(result.overall_status, "running")
+        self.assertEqual(result.overall_status, "cancelled")
+
     async def test_cancel_subprocess_mode_falls_back_when_db_unavailable(self):
         # 플래그 on + analysis_runs 접근 실패(마이그레이션 전 DB 등) → 500 없이 레거시 취소 경로로 폴스루
         paper_id = 9911

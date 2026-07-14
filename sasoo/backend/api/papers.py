@@ -471,9 +471,12 @@ async def delete_paper(paper_id: int):
     # Delete from DB (cascading via foreign keys, but be explicit)
     db = await get_db()
     # I4: 실행 중이던 워커가 삭제를 모른 채 계속 돌면 FK 위반·파일 오류로 이어진다 —
-    # phase 경계에서 스스로 멈추도록 취소를 요청한 뒤 analysis_runs 잔여 행도 지운다.
-    # (남겨두면 reconcile_stale ①에서 papers 조회가 NULL=terminal 아님으로 보여
-    #  ④ requeue가 삭제된 논문에 워커를 재스폰한다.)
+    # analysis_runs 잔여 행을 지워 워커를 멈춘다(아래). (남겨두면 reconcile_stale ①에서
+    # papers 조회가 NULL=terminal 아님으로 보여 ④ requeue가 삭제된 논문에 워커를 재스폰한다.)
+    # request_cancel은 cancel_requested=1만 세우는데 4행 뒤 DELETE FROM analysis_runs가
+    # 그 행 자체를 지워버려 실질적으로 소비될 일이 거의 없는 조기 신호용 best-effort다.
+    # 실제 워커 종료는 행 삭제로 fence(paper_id+generation 매치)가 끊겨 fenced_heartbeat가
+    # rowcount 0을 받고 워커가 ≤1.5초 내 self-abort하는 경로가 담당한다.
     await request_cancel(db, paper_id)
     await db.execute("DELETE FROM analysis_results WHERE paper_id = ?", (paper_id,))
     await db.execute("DELETE FROM figures WHERE paper_id = ?", (paper_id,))
