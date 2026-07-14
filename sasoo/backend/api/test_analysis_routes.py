@@ -340,6 +340,31 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(merged["current_phase"], "recipe")
         self.assertEqual(merged["progress_pct"], 55.0)
 
+    def test_status_overlay_clamps_unknown_phase_to_none(self):
+        # 알 수 없는 phase 문자열은 AnalysisPhase enum 검증을 못 넘으므로 overlay에서 None으로 클램프
+        merged = analysis_routes._overlay_run_status(
+            base={"overall_status": "analyzing", "progress_pct": 0.0, "current_phase": None},
+            run={"status": "running", "current_phase": "warmup", "progress_pct": 10.0},
+        )
+        self.assertEqual(merged["overall_status"], "running")
+        self.assertIsNone(merged["current_phase"])
+        self.assertEqual(merged["progress_pct"], 10.0)
+
+    async def test_cancel_subprocess_mode_falls_back_when_db_unavailable(self):
+        # 플래그 on + analysis_runs 접근 실패(마이그레이션 전 DB 등) → 500 없이 레거시 취소 경로로 폴스루
+        paper_id = 9911
+        analysis_routes._cancel_events[paper_id] = threading.Event()
+        try:
+            with (
+                patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+                patch("models.database.get_db", new=AsyncMock(side_effect=RuntimeError("no analysis_runs table"))),
+            ):
+                result = await analysis_routes.cancel_analysis(paper_id)
+        finally:
+            event = analysis_routes._cancel_events.pop(paper_id, None)
+        self.assertEqual(result, {"paper_id": paper_id, "status": "cancelling"})
+        self.assertTrue(event.is_set())
+
     async def test_screening_prompt_puts_document_first(self):
         status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
         calls = {}

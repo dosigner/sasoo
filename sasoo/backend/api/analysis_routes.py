@@ -2433,8 +2433,14 @@ def _overlay_run_status(base: dict, run: Optional[dict]) -> dict:
     if st in ("queued", "running"):
         merged = dict(base)
         merged["overall_status"] = "running"          # 프론트 isRunning union + 폴링 지속
-        if run.get("current_phase"):
-            merged["current_phase"] = run["current_phase"]
+        # raw phase 문자열은 AnalysisPhase enum으로 클램프(미지의 값이면 None 유지 — 응답 검증 500 방지)
+        phase_raw = run.get("current_phase")
+        try:
+            phase = AnalysisPhase(phase_raw) if phase_raw else None
+        except ValueError:
+            phase = None
+        if phase is not None:
+            merged["current_phase"] = phase
         pct = run.get("progress_pct")
         if pct is not None and pct > merged.get("progress_pct", 0.0):
             merged["progress_pct"] = pct
@@ -2531,13 +2537,16 @@ async def cancel_analysis(paper_id: int):
     """
     # subprocess mode: DB flag를 세우면 워커 사이드카가 phase 경계에서 취소를 존중한다
     if _subprocess_mode():
-        from models.database import get_db
-        from models.analysis_runs import request_cancel, get_run
-        conn = await get_db()
-        run = await get_run(conn, paper_id)
-        if run and run.get("status") in ("queued", "running"):
-            await request_cancel(conn, paper_id)
-            return {"paper_id": paper_id, "status": "cancelling"}
+        try:
+            from models.database import get_db
+            from models.analysis_runs import request_cancel, get_run
+            conn = await get_db()
+            run = await get_run(conn, paper_id)
+            if run and run.get("status") in ("queued", "running"):
+                await request_cancel(conn, paper_id)
+                return {"paper_id": paper_id, "status": "cancelling"}
+        except Exception as exc:  # noqa: BLE001 — 마이그레이션 전 DB 등: 레거시 인메모리 경로로 폴스루
+            logger.warning("cancel: analysis_runs 접근 실패 — 레거시 취소 경로로 폴스루: %s", exc)
 
     # in-process(레거시/테스트) 경로 — 기존 동작 보존
     if paper_id in _cancel_events:
