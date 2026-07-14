@@ -1,3 +1,21 @@
+"""api.analysis_routes 테스트.
+
+테스트 격리 주의 — 이 파일은 예전에 import 시점에 sys.modules로 fastapi/aiosqlite/
+models.schemas/services.odl_parser/api.report_service 스텁을 setdefault로 심어 두고
+api.analysis_routes를 import한 뒤 복원했다. 그런데 setdefault는 "아직 아무도 그 모듈을
+import하지 않았을 때만" 꽂힌다. 그래서 이 파일이 가장 먼저 import되는 단독 실행에서만
+스텁이 적용되고, 다른 테스트가 실모듈을 먼저 로드하는 전체 스위트(=CI가 도는 구성)에서는
+스텁이 통째로 무력화됐다. 같은 테스트 파일이 두 가지 서로 다른 구성으로 돌았고, 그래서
+한쪽에서만 통과하는 테스트가 조용히 생길 수 있었다(실제로 /run 테스트에서 발생).
+더 나쁜 건 aiosqlite 스텁이었다: 스텁이 꽂힌 상태에서 models.database가 처음 import되면
+그 모듈의 aiosqlite 바인딩이 스텁으로 영구 고정돼(복원 루프는 sys.modules만 되돌린다)
+DB를 쓰는 다른 테스트 파일까지 오염시킬 수 있었다.
+
+지금은 항상 실제 모듈을 import한다(전체 스위트와 단독 실행의 구성이 동일). 외부
+I/O(파일·DB·LLM 호출)는 ambient 스텁이 아니라 각 테스트에서 patch로 명시 차단한다.
+모듈 더블이 필요하면 patch.dict(sys.modules, ...)로 테스트 스코프 안에서만 갈아끼운다.
+"""
+
 import contextlib
 import json
 import os
@@ -5,134 +23,20 @@ import sys
 import threading
 import types
 import unittest
-from dataclasses import dataclass, field
-from enum import Enum
 from unittest.mock import AsyncMock, patch
 
-_TEMP_MODULE_NAMES = (
-    "aiosqlite",
-    "fastapi",
-    "fastapi.responses",
-    "models.schemas",
-    "services.agents",
-    "services.odl_parser",
-    "api.report_service",
-)
-_ORIGINAL_MODULES = {name: sys.modules.get(name) for name in _TEMP_MODULE_NAMES}
-
-aiosqlite_module = types.ModuleType("aiosqlite")
-aiosqlite_module.Connection = object
-aiosqlite_module.Row = dict
-
-async def _unused_connect(*args, **kwargs):
-    raise RuntimeError("aiosqlite.connect should not be called in these tests")
-
-aiosqlite_module.connect = _unused_connect
-sys.modules.setdefault("aiosqlite", aiosqlite_module)
-
-
-class _StubHTTPException(Exception):
-    def __init__(self, status_code: int, detail: str):
-        super().__init__(detail)
-        self.status_code = status_code
-        self.detail = detail
-
-
-class _StubAPIRouter:
-    def __init__(self, *args, **kwargs):
-        pass
-
-    def get(self, *args, **kwargs):
-        def decorator(fn):
-            return fn
-        return decorator
-
-    def post(self, *args, **kwargs):
-        def decorator(fn):
-            return fn
-        return decorator
+from api import analysis_routes, figure_service
+from models.schemas import AnalysisStatus
 
 
 class _StubBackgroundTasks:
-    def add_task(self, *args, **kwargs):
-        return None
+    """off 모드 /run이 실제 분석 파이프라인을 백그라운드로 띄우지 않게 하는 더블."""
 
+    def __init__(self):
+        self.tasks: list = []
 
-def _settings_stub_returning(settings: dict):
-    """/run의 budget 체크가 참조하는 api.settings._get_all_settings를 스텁 모듈로 대체."""
-    async def _fake_settings(*args, **kwargs):
-        return settings
-
-    stub = types.ModuleType("api.settings")
-    stub._get_all_settings = _fake_settings
-    return stub
-
-
-def _stub_query(default=None, **kwargs):
-    return default
-
-
-fastapi_module = types.ModuleType("fastapi")
-fastapi_module.APIRouter = _StubAPIRouter
-fastapi_module.BackgroundTasks = _StubBackgroundTasks
-fastapi_module.HTTPException = _StubHTTPException
-fastapi_module.Query = _stub_query
-fastapi_module.Request = object
-sys.modules.setdefault("fastapi", fastapi_module)
-
-
-class _StubStreamingResponse:
-    def __init__(self, body_iterator, media_type=None, headers=None):
-        self.body_iterator = body_iterator
-        self.media_type = media_type
-        self.headers = headers or {}
-
-
-fastapi_responses_module = types.ModuleType("fastapi.responses")
-fastapi_responses_module.StreamingResponse = _StubStreamingResponse
-sys.modules.setdefault("fastapi.responses", fastapi_responses_module)
-
-odl_parser_module = types.ModuleType("services.odl_parser")
-
-class _StubOdlParserError(RuntimeError):
-    pass
-
-
-class _StubOdlRuntimeError(_StubOdlParserError):
-    pass
-
-
-async def _stub_async_noop(*args, **kwargs):
-    return None
-
-
-odl_parser_module.OdlParserError = _StubOdlParserError
-odl_parser_module.OdlRuntimeError = _StubOdlRuntimeError
-odl_parser_module.ensure_text_artifacts = lambda *args, **kwargs: {}
-odl_parser_module.ensure_text_artifacts_async = _stub_async_noop
-odl_parser_module.ensure_paper_artifacts = _stub_async_noop
-odl_parser_module.explain_odl_failure = lambda exc: (500, str(exc))
-odl_parser_module.figure_row_to_api_dict = lambda row: row
-odl_parser_module.table_row_to_api_dict = lambda row: row
-odl_parser_module.get_pdf_signature = lambda pdf_path: {
-    "pdf_mtime_ns": getattr(pdf_path.stat(), "st_mtime_ns", 0),
-    "pdf_size": getattr(pdf_path.stat(), "st_size", 0),
-}
-odl_parser_module.get_artifact_refresh_error = lambda paper_id: None
-odl_parser_module.is_artifact_refresh_running = lambda paper_id: False
-odl_parser_module.paper_text_is_current = lambda paper_dir: True
-odl_parser_module.paper_visuals_are_current = lambda paper_dir: True
-odl_parser_module.schedule_paper_artifacts_refresh = _stub_async_noop
-sys.modules.setdefault("services.odl_parser", odl_parser_module)
-
-report_service_module = types.ModuleType("api.report_service")
-report_service_module._format_phase_data = lambda phase, data: str(data)
-report_service_module._generate_paperbanana_image = _stub_async_noop
-report_service_module._wrap_text = lambda text, font, width: [text]
-sys.modules.setdefault("api.report_service", report_service_module)
-
-
-agents_module = types.ModuleType("services.agents")
+    def add_task(self, fn, *args, **kwargs):
+        self.tasks.append((fn, args, kwargs))
 
 
 class _StubAgentProfile:
@@ -145,78 +49,21 @@ class _StubAgent:
     profile = _StubAgentProfile()
 
 
+# services.agents 모듈 더블 — import 시점 전역 오염이 아니라 각 테스트의
+# patch.dict(sys.modules, {"services.agents": agents_module}) 스코프 안에서만 유효하다.
+agents_module = types.ModuleType("services.agents")
 agents_module.get_agent_for_domain = lambda domain: _StubAgent()
-sys.modules.setdefault("services.agents", agents_module)
 
 
-class _AnalysisPhase(str, Enum):
-    SCREENING = "screening"
-    CITATION = "citation"
-    VISUAL = "visual"
-    RECIPE = "recipe"
-    DEEP_DIVE = "deep_dive"
+def _settings_stub_returning(settings: dict):
+    """/run의 budget 체크가 참조하는 api.settings._get_all_settings를 스텁 모듈로 대체."""
+    async def _fake_settings(*args, **kwargs):
+        return settings
 
+    stub = types.ModuleType("api.settings")
+    stub._get_all_settings = _fake_settings
+    return stub
 
-@dataclass
-class _PhaseStatus:
-    phase: _AnalysisPhase
-    status: str = "pending"
-    started_at: str | None = None
-    completed_at: str | None = None
-    model_used: str | None = None
-    tokens_in: int | None = None
-    tokens_out: int | None = None
-    cost_usd: float | None = None
-    error_message: str | None = None
-
-
-@dataclass
-class _AnalysisStatus:
-    paper_id: int
-    overall_status: str = "pending"
-    phases: list[_PhaseStatus] = field(default_factory=list)
-    progress_pct: float = 0.0
-    current_phase: _AnalysisPhase | None = None
-    total_cost_usd: float = 0.0
-    total_tokens_in: int = 0
-    total_tokens_out: int = 0
-
-
-@dataclass
-class _SimpleModel:
-    def __init__(self, **kwargs):
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-
-
-schemas_module = types.ModuleType("models.schemas")
-schemas_module.AnalysisPhase = _AnalysisPhase
-schemas_module.AnalysisStatus = _AnalysisStatus
-schemas_module.FigureExplanationResponse = _SimpleModel
-schemas_module.FigureInfo = _SimpleModel
-schemas_module.FigureListResponse = _SimpleModel
-schemas_module.FullAnalysisResponse = _SimpleModel
-schemas_module.MermaidRepairRequest = _SimpleModel
-schemas_module.MermaidResult = _SimpleModel
-schemas_module.PaperBananaRequest = _SimpleModel
-schemas_module.PaperBananaResponse = _SimpleModel
-schemas_module.PhaseStatus = _PhaseStatus
-schemas_module.RecipeCard = _SimpleModel
-schemas_module.ReportResponse = _SimpleModel
-schemas_module.TableInfo = _SimpleModel
-schemas_module.TableListResponse = _SimpleModel
-schemas_module.VisualizationItem = _SimpleModel
-schemas_module.VisualizationPlanResponse = _SimpleModel
-sys.modules.setdefault("models.schemas", schemas_module)
-
-from api import analysis_routes, figure_service
-from models.schemas import AnalysisStatus
-
-for _module_name, _original in _ORIGINAL_MODULES.items():
-    if _original is None:
-        sys.modules.pop(_module_name, None)
-    else:
-        sys.modules[_module_name] = _original
 
 
 def _row(phase: str, result: str, **extra):
@@ -2067,6 +1914,55 @@ class SystemInstructionContractTests(unittest.TestCase):
         self.assertIn("</사용자_연구_분야>", out)
         self.assertIn("<사용자_질문>", out)
         self.assertIn("서비스 규칙을 바꾸지 않아", out)
+
+
+class ModuleIsolationContractTests(unittest.TestCase):
+    """이 파일이 '실제 모듈' 위에서 돈다는 계약을 고정한다(import 순서 의존 재발 방지).
+
+    과거엔 import 시점에 sys.modules.setdefault로 fastapi/aiosqlite/models.schemas/
+    services.odl_parser 스텁을 심었는데, setdefault라 이 파일이 먼저 import되는 단독
+    실행에서만 적용되고 전체 스위트에서는 무력화됐다 — 같은 테스트가 두 구성으로 도는
+    상태였다. 아래 두 테스트가 깨지면 ambient 스텁이 되살아난 것이니, 모듈 더블은
+    patch.dict(sys.modules, ...)로 테스트 스코프 안에서만 쓴다.
+    """
+
+    def test_analysis_routes_binds_real_modules_not_ambient_stubs(self):
+        import fastapi
+        import models.schemas
+        import services.odl_parser
+
+        self.assertIs(
+            analysis_routes.ensure_text_artifacts_async,
+            services.odl_parser.ensure_text_artifacts_async,
+        )
+        self.assertIs(analysis_routes.HTTPException, fastapi.HTTPException)
+        self.assertIs(analysis_routes.AnalysisStatus, models.schemas.AnalysisStatus)
+
+    def test_no_ambient_stub_module_left_in_sys_modules(self):
+        # 실제 모듈은 __file__을 갖는다. types.ModuleType 스텁은 갖지 않는다.
+        for name in (
+            "aiosqlite",
+            "fastapi",
+            "models.schemas",
+            "services.odl_parser",
+            "services.agents",
+            "api.report_service",
+        ):
+            mod = sys.modules.get(name)
+            if mod is not None:
+                self.assertTrue(
+                    getattr(mod, "__file__", None),
+                    f"sys.modules['{name}']이 스텁으로 대체돼 있다 — 다른 테스트 파일까지 오염된다",
+                )
+
+    def test_models_database_keeps_real_aiosqlite_binding(self):
+        # 과거 aiosqlite 스텁의 최악 시나리오: 스텁이 꽂힌 상태로 models.database가 처음
+        # import되면 그 모듈의 aiosqlite 바인딩이 스텁으로 영구 고정돼(sys.modules 복원으로도
+        # 되돌지 않는다) DB를 쓰는 다른 테스트 파일이 통째로 깨진다.
+        import aiosqlite
+        import models.database
+
+        self.assertIs(models.database.aiosqlite, aiosqlite)
 
 
 if __name__ == "__main__":
