@@ -87,6 +87,87 @@ class SpawnBuilderTests(unittest.TestCase):
             os.waitpid(pid, os.WNOHANG)
 
 
+class TerminateWorkersTests(unittest.TestCase):
+    """결정①: 정상 종료 시 워커도 함께 종료 — SIGTERM → grace_s 대기 → 미종료 시 SIGKILL."""
+
+    def test_sigterm_then_sigkill_when_still_alive_after_grace(self):
+        from services import analysis_supervisor as sup
+        import subprocess as sp
+
+        self.addCleanup(sup._CHILDREN.clear)
+        proc = MagicMock()
+        proc.pid = 111
+        proc.poll.side_effect = [None, 0]  # 진입 시 생존 확인 -> 회수 시엔 종료 확인
+        proc.wait.side_effect = [sp.TimeoutExpired(cmd="x", timeout=5), 0]
+        sup._CHILDREN.clear()
+        sup._CHILDREN.append(proc)
+
+        n = sup.terminate_workers(grace_s=5.0)
+
+        self.assertEqual(n, 1)
+        proc.terminate.assert_called_once()
+        proc.kill.assert_called_once()
+        self.assertEqual(sup._CHILDREN, [])  # 종료 후 reap되어 목록에서 빠짐
+
+    def test_no_sigkill_when_terminates_within_grace(self):
+        from services import analysis_supervisor as sup
+
+        self.addCleanup(sup._CHILDREN.clear)
+        proc = MagicMock()
+        proc.pid = 222
+        proc.poll.side_effect = [None, 0]
+        proc.wait.side_effect = [0]  # SIGTERM만으로 grace 내 종료
+        sup._CHILDREN.clear()
+        sup._CHILDREN.append(proc)
+
+        n = sup.terminate_workers(grace_s=5.0)
+
+        self.assertEqual(n, 1)
+        proc.terminate.assert_called_once()
+        proc.kill.assert_not_called()
+
+    def test_skips_already_exited_children(self):
+        from services import analysis_supervisor as sup
+
+        self.addCleanup(sup._CHILDREN.clear)
+        proc = MagicMock()
+        proc.pid = 333
+        proc.poll.return_value = 0  # 이미 종료됨
+        sup._CHILDREN.clear()
+        sup._CHILDREN.append(proc)
+
+        n = sup.terminate_workers(grace_s=5.0)
+
+        self.assertEqual(n, 0)
+        proc.terminate.assert_not_called()
+
+    def test_swallows_per_worker_exception_and_continues(self):
+        from services import analysis_supervisor as sup
+
+        self.addCleanup(sup._CHILDREN.clear)
+        bad = MagicMock()
+        bad.pid = 444
+        bad.poll.return_value = None
+        bad.terminate.side_effect = RuntimeError("boom")
+        good = MagicMock()
+        good.pid = 555
+        good.poll.side_effect = [None, 0]
+        good.wait.side_effect = [0]
+        sup._CHILDREN.clear()
+        sup._CHILDREN.extend([bad, good])
+
+        n = sup.terminate_workers(grace_s=5.0)
+
+        self.assertEqual(n, 1)  # bad는 예외로 실패, good은 성공
+        good.terminate.assert_called_once()
+
+    def test_returns_zero_when_no_children(self):
+        from services import analysis_supervisor as sup
+        self.addCleanup(sup._CHILDREN.clear)
+        sup._CHILDREN.clear()
+        self.assertEqual(sup.terminate_workers(), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -123,3 +204,54 @@ class ReconcilerFlagGateTests(unittest.IsolatedAsyncioTestCase):
             await sup.start_reconciler(app)
             self.assertIsNotNone(app.state.reconciler_task)
             await sup.stop_reconciler(app)
+
+
+class StopReconcilerShutdownTests(unittest.IsolatedAsyncioTestCase):
+    """결정①: 정상 종료 시 stop_reconciler가 워커를 함께 종료하고 running을 requeue한다.
+
+    비정상 종료(크래시/SIGKILL)는 이 코드 경로 자체를 안 타므로 범위 밖 — lifespan shutdown이
+    도는 정상 종료에서만 적용된다."""
+
+    async def test_stop_reconciler_terminates_workers_and_requeues_when_reconciler_was_running(self):
+        import asyncio
+        from unittest.mock import AsyncMock
+        from services import analysis_supervisor as sup
+
+        app = types.SimpleNamespace(state=types.SimpleNamespace())
+        app.state.reconciler_task = asyncio.create_task(asyncio.sleep(10))
+
+        fake_conn = object()
+        with patch.object(sup, "terminate_workers", return_value=2) as terminate_mock, \
+             patch("models.database.get_db", new=AsyncMock(return_value=fake_conn)), \
+             patch.object(sup.ar, "requeue_for_shutdown", new=AsyncMock(return_value=3)) as requeue_mock:
+            await sup.stop_reconciler(app)
+
+        terminate_mock.assert_called_once()
+        requeue_mock.assert_awaited_once()
+        self.assertIs(requeue_mock.await_args.args[0], fake_conn)
+
+    async def test_stop_reconciler_does_not_touch_workers_when_flag_was_off(self):
+        # start_reconciler가 플래그 off에서 reconciler_task를 아예 세우지 않으므로,
+        # stop_reconciler는 워커 정리를 시도하지 말아야 한다(off 모드엔 워커가 없다).
+        from services import analysis_supervisor as sup
+
+        app = types.SimpleNamespace(state=types.SimpleNamespace())
+        with patch.object(sup, "terminate_workers") as terminate_mock, \
+             patch.object(sup.ar, "requeue_for_shutdown") as requeue_mock:
+            await sup.stop_reconciler(app)
+
+        terminate_mock.assert_not_called()
+        requeue_mock.assert_not_called()
+
+    async def test_stop_reconciler_swallows_requeue_failure(self):
+        # 정상 종료 자체를 막으면 안 된다 — DB 접근 실패는 로그만 남기고 넘어간다.
+        import asyncio
+        from unittest.mock import AsyncMock
+        from services import analysis_supervisor as sup
+
+        app = types.SimpleNamespace(state=types.SimpleNamespace())
+        app.state.reconciler_task = asyncio.create_task(asyncio.sleep(10))
+
+        with patch.object(sup, "terminate_workers", return_value=0), \
+             patch("models.database.get_db", new=AsyncMock(side_effect=RuntimeError("db closed"))):
+            await sup.stop_reconciler(app)  # 예외 없이 반환돼야 함

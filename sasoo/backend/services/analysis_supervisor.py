@@ -94,6 +94,35 @@ def spawn_worker(paper_id: int, generation: int) -> int:
     return proc.pid
 
 
+def terminate_workers(grace_s: float = 5.0) -> int:
+    """결정①: 정상 종료(graceful shutdown) 훅 — 살아있는 워커에 SIGTERM → grace_s 대기 →
+    미종료 시 SIGKILL. 종료시킨(SIGTERM을 보낸) 워커 개수를 반환한다.
+
+    비정상 종료(크래시/SIGKILL)는 이 함수가 호출되는 lifespan shutdown 경로 자체를 타지
+    않으므로 워커가 그대로 살아남는다 — 그게 이 아키텍처의 존재 이유(리로드·크래시 내성)라
+    의도적으로 건드리지 않는다. 개별 워커 처리 중 예외는 삼키고 로그만 남겨, 한 워커 정리
+    실패가 나머지 워커 정리를 막지 않게 한다."""
+    n = 0
+    for proc in list(_CHILDREN):
+        try:
+            if proc.poll() is not None:
+                continue  # 이미 종료됨
+            proc.terminate()
+            try:
+                proc.wait(timeout=grace_s)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                try:
+                    proc.wait(timeout=grace_s)
+                except Exception:  # noqa: BLE001
+                    pass
+            n += 1
+        except Exception:  # noqa: BLE001
+            logger.exception("워커 종료 실패 pid=%s", getattr(proc, "pid", None))
+    reap_exited_workers()
+    return n
+
+
 def _iso_shift(now: "datetime", seconds: int) -> str:
     from datetime import timedelta
     return (now - timedelta(seconds=seconds)).isoformat()
@@ -193,10 +222,34 @@ async def start_reconciler(app) -> None:
 
 
 async def stop_reconciler(app) -> None:
+    """정상 종료 훅 — main.py lifespan shutdown이 부른다.
+
+    reconciler_task가 없으면(서브프로세스 모드 off) 워커 자체가 없으므로 아무 것도 하지
+    않는다("플래그 off = 기존 경로 그대로" 계약 유지). 있으면 루프를 취소한 뒤 워커를 함께
+    종료(SIGTERM→SIGKILL)하고, 중단된 running을 requeue해 다음 서버 기동 때 45초 stale
+    대기 없이 곧바로 재개되게 한다. 정상 종료는 "실패"가 아니므로 attempts는 requeue_for_shutdown이
+    상쇄한다. 실패는 로그만 남기고 종료 자체를 막지 않는다.
+
+    한계: _CHILDREN은 이 서버 프로세스 메모리에만 있다 — 서버가 재기동돼 이전 서버가 남긴
+    워커가 있으면 이 함수는 그 워커를 못 죽인다(빈 _CHILDREN). 그 경우는 fence(generation)와
+    heartbeat 리스가 처리한다(범위 밖)."""
     task = getattr(app.state, "reconciler_task", None)
-    if task is not None:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+    if task is None:
+        return
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    try:
+        terminate_workers()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("terminate_workers 실패(정상 종료 계속 진행): %s", exc)
+
+    try:
+        from models.database import get_db
+        conn = await get_db()
+        await ar.requeue_for_shutdown(conn, datetime.now(timezone.utc).isoformat())
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("requeue_for_shutdown 실패(정상 종료 계속 진행): %s", exc)

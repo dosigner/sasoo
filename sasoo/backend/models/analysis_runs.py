@@ -266,6 +266,39 @@ async def mark_over_attempts_error(conn: aiosqlite.Connection, max_attempts: int
     return ids
 
 
+async def requeue_for_shutdown(conn: aiosqlite.Connection, now: str) -> int:
+    """결정①: 정상 종료(graceful shutdown)로 중단된 running을 queued로 되돌린다.
+
+    attempts를 1 줄이는 이유: claim_next이 다음 claim에서 다시 +1 하므로, 정상 종료가
+    재시도 예산(MAX_ATTEMPTS)을 갉아먹지 않도록 상쇄한다 — graceful shutdown은 "실패"가
+    아니라 사용자가 앱을 닫은 것뿐이고, 다음 서버 기동 때 곧바로 재개돼야 한다."""
+    cur = await conn.execute(
+        "UPDATE analysis_runs SET status='queued', pid=NULL, "
+        "attempts=MAX(0, attempts-1), updated_at=? WHERE status='running'",
+        (now,),
+    )
+    await conn.commit()
+    return cur.rowcount
+
+
+async def mark_budget_blocked(conn: aiosqlite.Connection, now: str) -> int:
+    """결정②: 월 예산 초과 상태로 서버가 재기동됐을 때 queued를 눈에 보이는 종료 상태로
+    떨어뜨린다(C1처럼 queued 방치 시 영구 "분석 중"에 갇힌다). attempts는 건드리지 않는다
+    — 재시도 실패가 아니라 정책적 보류이므로 재시도 예산을 소비할 대상이 아니다. 한도를
+    올린 뒤 사용자가 다시 /run을 호출하면 upsert_queued가 attempts를 리셋한다."""
+    cur = await conn.execute("SELECT paper_id FROM analysis_runs WHERE status='queued'")
+    ids = [r[0] for r in await cur.fetchall()]
+    if ids:
+        await conn.execute(
+            "UPDATE analysis_runs SET status='error', error_message='budget_exceeded', updated_at=? "
+            "WHERE status='queued'",
+            (now,),
+        )
+        await conn.executemany("UPDATE papers SET status='error' WHERE id=?", [(i,) for i in ids])
+        await conn.commit()
+    return len(ids)
+
+
 async def seed_legacy(conn: aiosqlite.Connection, now: str) -> int:
     """runs 행이 없는 papers.status='analyzing'(구버전/inprocess 크래시 잔재)에 queued 행 시드."""
     cur = await conn.execute(
