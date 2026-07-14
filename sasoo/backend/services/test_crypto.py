@@ -156,6 +156,16 @@ class CryptoTests(unittest.TestCase):
         self.assertFalse((self.root / ".sasoo_key").exists())
         self.assertEqual(crypto.decrypt_value(migrated), "old")
 
+    def test_invalid_keyring_entry_is_replaced_during_legacy_migration(self):
+        legacy_key = crypto._create_file_key()
+        legacy = crypto.ENCRYPTED_PREFIX + Fernet(legacy_key).encrypt(b"old").decode()
+        self.keyring_key = b"not-a-fernet-key"
+
+        migrated = crypto.migrate_value_to_primary(legacy)
+
+        self.assertNotEqual(self.keyring_key, b"not-a-fernet-key")
+        self.assertEqual(crypto.decrypt_value(migrated), "old")
+
     def test_keyring_failure_does_not_fall_back_next_to_database(self):
         keyring_module = sys.modules["keyring"]
         keyring_module.set_password = lambda *_args: (_ for _ in ()).throw(

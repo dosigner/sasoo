@@ -50,6 +50,15 @@ def _key_path():
     return APP_DATA_ROOT / _KEY_FILENAME
 
 
+def _valid_fernet_key(key: bytes, source: str) -> Optional[bytes]:
+    try:
+        Fernet(key)
+    except (TypeError, ValueError):
+        logger.error("Ignoring an invalid Fernet key from %s", source)
+        return None
+    return key
+
+
 def _restrict_file_permissions(path) -> bool:
     if os.name == "nt":
         try:
@@ -89,7 +98,7 @@ def _read_file_key() -> Optional[bytes]:
     except OSError:
         logger.error("Could not read encryption key: %s", path)
         return None
-    return key or None
+    return _valid_fernet_key(key, str(path)) if key else None
 
 
 def _create_file_key() -> bytes:
@@ -131,7 +140,9 @@ def _read_keyring_key() -> Optional[bytes]:
     except (ImportError, KeyringError, OSError) as exc:
         logger.debug("Keyring unavailable: %s", exc)
         return None
-    return stored.encode("utf-8") if stored else None
+    if not stored:
+        return None
+    return _valid_fernet_key(stored.encode("utf-8"), "the OS credential store")
 
 
 def _prefer_file_key() -> bool:
