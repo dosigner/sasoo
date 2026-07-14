@@ -72,8 +72,8 @@ class SpawnBuilderTests(unittest.TestCase):
         좀비로 남는다. 좀비 pid는 os.kill(pid, 0)을 통과하니, 훗날 pid 기반 생존 판정을
         넣으면 죽은 워커를 살아있다고 오판해 재스폰이 영영 막힌다.
         """
-        if sys.platform == "win32":
-            self.skipTest("좀비는 POSIX 시맨틱")
+        if not hasattr(os, "waitid"):
+            self.skipTest("os.waitid is unavailable on this platform")
         from services import analysis_supervisor as sup
         with tempfile.TemporaryDirectory() as td, \
              patch.object(sup, "_LOG_DIR", Path(td)), \

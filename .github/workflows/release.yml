@@ -62,7 +62,9 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: sasoo/backend/requirements.txt
+          cache-dependency-path: |
+            sasoo/backend/requirements.txt
+            sasoo/backend/requirements-test.txt
 
       - name: Install Python dependencies
         shell: bash
@@ -71,9 +73,9 @@ jobs:
             python -m venv backend/.venv
             source backend/.venv/bin/activate
             python -m pip install --upgrade pip
-            python -m pip install -r backend/requirements.txt pyinstaller
+            python -m pip install -r backend/requirements.txt -r backend/requirements-test.txt pyinstaller
           else
-            pip install -r backend/requirements.txt
+            pip install -r backend/requirements.txt -r backend/requirements-test.txt
             pip install pyinstaller
           fi
 
@@ -94,7 +96,7 @@ jobs:
           pnpm --dir frontend build
           pnpm --dir frontend lint
           pnpm audit --audit-level=moderate
-          pnpm --dir frontend audit --prod --audit-level=moderate
+          pnpm --dir frontend audit --audit-level=moderate
 
       - name: Run backend tests
         shell: bash
