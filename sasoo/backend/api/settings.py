@@ -3,6 +3,7 @@ Sasoo - Settings API Router
 Endpoints for managing application settings and tracking API costs.
 """
 
+import asyncio
 import json
 import os
 import sqlite3
@@ -204,7 +205,7 @@ async def _set_settings(values: dict[str, str]) -> None:
             tuple(params),
         )
         await db.commit()
-    except sqlite3.Error:
+    except (asyncio.CancelledError, sqlite3.Error):
         await db.rollback()
         raise
 

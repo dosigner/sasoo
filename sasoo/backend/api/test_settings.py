@@ -219,6 +219,18 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
         set_setting.assert_not_awaited()
         encrypt.assert_not_called()
 
+    async def test_batch_update_rolls_back_when_commit_is_cancelled(self) -> None:
+        import asyncio
+
+        db = AsyncMock()
+        db.commit.side_effect = asyncio.CancelledError()
+
+        with patch("api.settings.get_db", new=AsyncMock(return_value=db)):
+            with self.assertRaises(asyncio.CancelledError):
+                await settings._set_settings({"theme": "dark"})
+
+        db.rollback.assert_awaited_once()
+
     def test_image_settings_reject_invalid_values(self) -> None:
         """SettingsUpdate should reject invalid image_provider and image_quality values."""
         import pydantic

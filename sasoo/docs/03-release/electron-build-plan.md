@@ -6,7 +6,7 @@ Use a split build strategy that matches the repo's actual platform constraints:
 
 - Run local dev/runtime and packaged artifact checks on the current macOS ARM machine.
 - Keep Windows packaging on a real Windows runner via the GitHub Actions release workflow or on a real Windows machine.
-- Treat [release.yml](/Users/dongj/Documents/논문/.github/workflows/release.yml) as the source of truth for cross-platform release packaging.
+- Treat [release.yml](../../../.github/workflows/release.yml) as the source of truth for cross-platform release packaging.
 
 This matches the current platform guards in:
 

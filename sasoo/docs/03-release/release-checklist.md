@@ -47,8 +47,9 @@ Current local artifact verifiers:
 8. Confirm both previously exposed Google API keys are disabled or deleted at the provider, and review usage, billing, and audit logs.
 9. Confirm the exact release commit passed the Windows `Build Check` workflow.
 10. Before publishing any new release, enable GitHub's **Immutable Releases** setting for the repository.
-11. Confirm `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` are configured.
-12. Re-enable the `Release` workflow only after every gate above passes.
+11. Configure `IMMUTABLE_RELEASES_TOKEN` with repository Administration read permission for the immutable-release check.
+12. Confirm `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` are configured.
+13. Re-enable the `Release` workflow only after every gate above passes.
 
 ## Local Smoke Checks
 
