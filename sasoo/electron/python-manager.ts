@@ -71,6 +71,7 @@ export class PythonManager {
       shutdownToken: this.shutdownToken,
     });
     this.process = child;
+    let launchReady = false;
 
     // Log stdout — forward to renderer DevTools via IPC (batched)
     child.stdout?.on('data', (data: Buffer) => {
@@ -101,7 +102,9 @@ export class PythonManager {
       }
       this.stopHealthChecks();
       this.process = null;
-      this.handleUnexpectedExit(code);
+      if (launchReady) {
+        this.handleUnexpectedExit(code);
+      }
     });
 
     child.on('error', (error) => {
@@ -112,20 +115,38 @@ export class PythonManager {
       this.stopHealthChecks();
       this.process = null;
 
-      if (!this.isShuttingDown) {
+      if (!this.isShuttingDown && launchReady) {
         this.handleUnexpectedExit(1);
       }
     });
 
     // Wait for server to become healthy
     const started = await this.waitForStartup(child, launchApiToken);
-    if (!started) {
+    if (
+      !started
+      || this.process !== child
+      || child.exitCode !== null
+      || child.signalCode !== null
+    ) {
+      this.stopHealthChecks();
+      if (
+        this.process === child
+        && child.exitCode === null
+        && child.signalCode === null
+      ) {
+        const wasShuttingDown = this.isShuttingDown;
+        try {
+          await this.stop();
+        } finally {
+          this.isShuttingDown = wasShuttingDown;
+        }
+      }
       throw new Error(`FastAPI server failed to start within ${this.config.startupTimeoutMs}ms`);
     }
 
     // Start periodic health checks
+    launchReady = true;
     this.startHealthChecks();
-    this.restartCount = 0;
 
     console.log('[PythonManager] FastAPI server is ready');
   }
@@ -171,15 +192,13 @@ export class PythonManager {
    * Check if the FastAPI server is responding.
    */
   async checkHealth(apiToken: string = this.apiToken): Promise<boolean> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.config.healthCheckTimeoutMs);
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), this.config.healthCheckTimeoutMs);
-
       const response = await fetch(`http://127.0.0.1:${this.config.port}/health`, {
         signal: controller.signal,
       });
 
-      clearTimeout(timeout);
       if (!response.ok || !apiToken) {
         return false;
       }
@@ -199,6 +218,8 @@ export class PythonManager {
       );
     } catch {
       return false;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
@@ -214,11 +235,32 @@ export class PythonManager {
       const checkedProcess = this.process;
       if (!checkedProcess) return;
       const healthy = await this.checkHealth();
+      if (healthy && this.process === checkedProcess) {
+        this.restartCount = 0;
+        return;
+      }
       if (!healthy && !this.isShuttingDown && this.process === checkedProcess) {
         console.warn('[PythonManager] Health check failed');
-        checkedProcess.kill('SIGTERM');
+        void this.recoverUnhealthyProcess(checkedProcess);
       }
     }, this.config.healthCheckIntervalMs);
+  }
+
+  private async recoverUnhealthyProcess(child: ChildProcess): Promise<void> {
+    if (this.isShuttingDown || this.process !== child) return;
+    this.stopHealthChecks();
+    try {
+      await this.stop();
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error('[PythonManager] Unhealthy backend shutdown failed:', error.message);
+      } else {
+        console.error('[PythonManager] Unhealthy backend shutdown failed with an unknown error');
+      }
+      return;
+    }
+    this.isShuttingDown = false;
+    await this.handleCrash();
   }
 
   /**
@@ -264,6 +306,9 @@ export class PythonManager {
       console.log('[PythonManager] Successfully restarted after crash');
     } catch (error) {
       console.error('[PythonManager] Restart failed:', error);
+      if (!this.isShuttingDown && !this.process) {
+        void this.handleCrash();
+      }
     }
   }
 

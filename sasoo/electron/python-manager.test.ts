@@ -176,6 +176,56 @@ describe('PythonManager shutdown', () => {
     expect(replacementKill).not.toHaveBeenCalled();
   });
 
+  it('rejects startup if ownership is lost after health reports success', async () => {
+    const child = new ChildProcess();
+    vi.mocked(launchBackendProcess).mockReturnValue(child);
+    const manager = new PythonManager({
+      backendPath: '/tmp/sasoo-backend',
+      port: 8000,
+      isDev: false,
+    });
+    const startup = manager as unknown as {
+      waitForStartup(target: ChildProcess, token: string): Promise<boolean>;
+    };
+    vi.spyOn(startup, 'waitForStartup').mockImplementation(async () => {
+      manager['process'] = null;
+      return true;
+    });
+
+    await expect(manager.start()).rejects.toThrow('failed to start');
+
+    expect(manager['healthCheckTimer']).toBeNull();
+  });
+
+  it('keeps the health timeout active while reading the response body', async () => {
+    vi.useFakeTimers();
+    const manager = new PythonManager({
+      backendPath: '/tmp/sasoo-backend',
+      port: 8000,
+      isDev: false,
+      healthCheckTimeoutMs: 1_000,
+    });
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => ({
+      ok: true,
+      json: () => new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      }),
+    })));
+
+    const health = manager.checkHealth('launch-token');
+    await vi.advanceTimersByTimeAsync(999);
+    let settled = false;
+    void health.finally(() => {
+      settled = true;
+    });
+    await vi.runAllTicks();
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    await expect(health).resolves.toBe(false);
+  });
+
   it('rejects startup when the launched child is no longer tracked', async () => {
     vi.useFakeTimers();
     const child = new ChildProcess();
@@ -234,5 +284,100 @@ describe('PythonManager shutdown', () => {
     await secondStart;
 
     expect(manager.getApiToken()).not.toBe(firstToken);
+  });
+
+  it('uses authenticated bounded shutdown after a periodic health failure', async () => {
+    vi.useFakeTimers();
+    const child = new ChildProcess();
+    const kill = vi.spyOn(child, 'kill').mockReturnValue(true);
+    const manager = new PythonManager({
+      backendPath: '/tmp/sasoo-backend',
+      port: 8000,
+      isDev: false,
+      healthCheckIntervalMs: 1_000,
+    });
+    vi.spyOn(manager, 'checkHealth').mockResolvedValue(false);
+    const fetchMock = vi.fn(async () => {
+      queueMicrotask(() => child.emit('exit', 0, null));
+      return new Response(null, { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    manager['process'] = child;
+    manager['apiToken'] = 'api-token';
+    manager['shutdownToken'] = 'shutdown-token';
+    manager['startHealthChecks']();
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.runAllTicks();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:8000/shutdown',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(kill).not.toHaveBeenCalled();
+  });
+
+  it('retries after a crash replacement fails its startup check', async () => {
+    vi.useFakeTimers();
+    const firstChild = new ChildProcess();
+    const failedReplacement = new ChildProcess();
+    const healthyReplacement = new ChildProcess();
+    vi.mocked(launchBackendProcess)
+      .mockReturnValueOnce(firstChild)
+      .mockReturnValueOnce(failedReplacement)
+      .mockReturnValueOnce(healthyReplacement);
+    const manager = new PythonManager({
+      backendPath: '/tmp/sasoo-backend',
+      port: 8000,
+      isDev: false,
+      startupTimeoutMs: 1_000,
+    });
+    vi.spyOn(manager, 'checkHealth')
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true);
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      queueMicrotask(() => failedReplacement.emit('exit', 0, null));
+      return new Response(null, { status: 200 });
+    }));
+
+    const firstStart = manager.start();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await firstStart;
+    firstChild.emit('exit', 1, null);
+
+    await vi.advanceTimersByTimeAsync(6_500);
+
+    expect(launchBackendProcess).toHaveBeenCalledTimes(3);
+    expect(manager['process']).toBe(healthyReplacement);
+  });
+
+  it('counts rapid ready-then-crash cycles toward the restart limit', async () => {
+    vi.useFakeTimers();
+    const firstChild = new ChildProcess();
+    const replacement = new ChildProcess();
+    const extraReplacement = new ChildProcess();
+    vi.mocked(launchBackendProcess)
+      .mockReturnValueOnce(firstChild)
+      .mockReturnValueOnce(replacement)
+      .mockReturnValueOnce(extraReplacement);
+    const manager = new PythonManager({
+      backendPath: '/tmp/sasoo-backend',
+      port: 8000,
+      isDev: false,
+      maxRestartAttempts: 1,
+    });
+    vi.spyOn(manager, 'checkHealth').mockResolvedValue(true);
+
+    const firstStart = manager.start();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await firstStart;
+    firstChild.emit('exit', 1, null);
+    await vi.advanceTimersByTimeAsync(2_000);
+    replacement.emit('exit', 1, null);
+    await vi.advanceTimersByTimeAsync(4_000);
+
+    expect(launchBackendProcess).toHaveBeenCalledTimes(2);
+    expect(manager['process']).toBeNull();
   });
 });

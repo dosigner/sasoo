@@ -17,6 +17,7 @@ export function registerGracefulBackendQuit(
 ): void {
   let quitAllowed = false;
   let backendStop: Promise<void> | null = null;
+  let quitRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
   app.on('before-quit', (event) => {
     if (quitAllowed) {
@@ -32,6 +33,10 @@ export function registerGracefulBackendQuit(
     if (backendStop) {
       return;
     }
+    if (quitRetryTimer) {
+      clearTimeout(quitRetryTimer);
+      quitRetryTimer = null;
+    }
 
     backendStop = backend.stop()
       .then(() => {
@@ -45,6 +50,10 @@ export function registerGracefulBackendQuit(
           console.error('[Main] Backend shutdown failed during app quit with an unknown error');
         }
         backendStop = null;
+        quitRetryTimer = setTimeout(() => {
+          quitRetryTimer = null;
+          app.quit();
+        }, 1000);
       });
   });
 }

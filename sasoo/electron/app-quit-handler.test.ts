@@ -96,4 +96,31 @@ describe('graceful Electron quit', () => {
     expect(stop).toHaveBeenCalledTimes(2);
     expect(quit).toHaveBeenCalledOnce();
   });
+
+  it('automatically retries quit after backend shutdown fails', async () => {
+    vi.useFakeTimers();
+    let beforeQuit: ((event: { preventDefault(): void }) => void) | null = null;
+    const stop = vi.fn()
+      .mockRejectedValueOnce(new Error('backend still running'))
+      .mockResolvedValueOnce(undefined);
+    const preventDefault = vi.fn();
+    const quit = vi.fn(() => {
+      beforeQuit?.({ preventDefault });
+    });
+    const app = {
+      on: vi.fn((_event: 'before-quit', listener: typeof beforeQuit) => {
+        beforeQuit = listener;
+      }),
+      quit,
+    };
+    registerGracefulBackendQuit(app, () => ({ stop }));
+
+    beforeQuit?.({ preventDefault });
+    await vi.runAllTicks();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.runAllTicks();
+
+    expect(stop).toHaveBeenCalledTimes(2);
+    expect(quit).toHaveBeenCalledTimes(2);
+  });
 });
