@@ -334,24 +334,18 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             calls.append(("upsert_queued", pid))
             return True  # 결함2: 원자 가드 도입 후 upsert_queued는 bool을 반환한다
 
-        async def _fake_settings(*args, **kwargs):
-            return {"monthly_budget_limit": "50.0"}
-
-        settings_stub = types.ModuleType("api.settings")
-        settings_stub._get_all_settings = _fake_settings
-
         with (
             patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
             patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
             patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.fetch_all", new=AsyncMock(return_value=[])),
             patch("api.analysis_routes.execute_update", new=_fake_execute_update),
             patch("models.database.get_db", new=AsyncMock(return_value=object())),
             patch("models.analysis_runs.get_run", new=AsyncMock(return_value=None)),
             patch("models.analysis_runs.upsert_queued", new=_fake_upsert_queued),
             patch("services.analysis_supervisor.reconcile_once", new=AsyncMock()),
             patch("services.analysis_supervisor.read_max_concurrent", new=AsyncMock(return_value=3)),
-            patch.dict(sys.modules, {"api.settings": settings_stub}),
+            # 결함2: /run이 read_budget_state()(단일 소스)를 쓰므로 예산 통과 상태만 스텁한다.
+            patch("services.analysis_supervisor.read_budget_state", new=AsyncMock(return_value=(0.0, 50.0))),
         ):
             await analysis_routes.run_analysis(paper_id, background_tasks=_StubBackgroundTasks())
 
@@ -375,14 +369,14 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
             patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
             patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.fetch_all", new=AsyncMock(return_value=[])),
             patch("api.analysis_routes.execute_update", new=AsyncMock()),
             patch("models.database.get_db", new=AsyncMock(return_value=object())),
             patch("models.analysis_runs.get_run", new=AsyncMock(return_value=None)),  # 빠른 경로는 통과
             patch("models.analysis_runs.upsert_queued", new=AsyncMock(return_value=False)),  # 원자 가드가 차단
             patch("services.analysis_supervisor.reconcile_once", new=reconcile_mock),
             patch("services.analysis_supervisor.read_max_concurrent", new=AsyncMock(return_value=3)),
-            patch.dict(sys.modules, {"api.settings": _settings_stub_returning({"monthly_budget_limit": "50.0"})}),
+            # 결함2: /run이 read_budget_state()(단일 소스)를 쓰므로 예산 통과 상태만 스텁한다.
+            patch("services.analysis_supervisor.read_budget_state", new=AsyncMock(return_value=(0.0, 50.0))),
         ):
             with self.assertRaises(Exception) as ctx:
                 await analysis_routes.run_analysis(paper_id, background_tasks=_StubBackgroundTasks())
@@ -400,14 +394,14 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
             patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
             patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.fetch_all", new=AsyncMock(return_value=[])),
             patch("api.analysis_routes.execute_update", new=AsyncMock()),
             patch("models.database.get_db", new=AsyncMock(return_value=object())),
             patch("models.analysis_runs.get_run", new=AsyncMock(return_value={"status": "completed"})),
             patch("models.analysis_runs.upsert_queued", new=AsyncMock(return_value=True)),
             patch("services.analysis_supervisor.reconcile_once", new=reconcile_mock),
             patch("services.analysis_supervisor.read_max_concurrent", new=AsyncMock(return_value=3)),
-            patch.dict(sys.modules, {"api.settings": _settings_stub_returning({"monthly_budget_limit": "50.0"})}),
+            # 결함2: /run이 read_budget_state()(단일 소스)를 쓰므로 예산 통과 상태만 스텁한다.
+            patch("services.analysis_supervisor.read_budget_state", new=AsyncMock(return_value=(0.0, 50.0))),
         ):
             result = await analysis_routes.run_analysis(paper_id, background_tasks=_StubBackgroundTasks())
         self.assertEqual(result["paper_id"], paper_id)
@@ -1321,6 +1315,29 @@ class BudgetParityTests(unittest.IsolatedAsyncioTestCase):
         self.assertAlmostEqual(limit_from_sup, limit_from_run, places=2)
         self.assertAlmostEqual(spending_from_sup, 3.5, places=2)  # NULL은 0으로, error/월경계는 제외
         self.assertEqual(limit_from_sup, 1.0)
+
+    async def test_run_delegates_budget_check_to_read_budget_state(self):
+        # 결함2: /run은 자체 SQL(월 경계 계산 + cost_rows 쿼리)을 복제하지 않고
+        # services.analysis_supervisor.read_budget_state()를 단일 소스로 호출해야 한다.
+        # fetch_all/settings도 옛 경로와 같은 결과(10.0 >= 5.0)를 내도록 함께 패치해 두어,
+        # 이 테스트가 "402를 던지는지"가 아니라 "누가 그 계산을 했는지"만 가른다.
+        paper_id = 7171
+        paper_row = {"id": paper_id, "folder_name": "f"}
+        read_budget_mock = AsyncMock(return_value=(10.0, 5.0))
+        legacy_settings_stub = _settings_stub_returning({"monthly_budget_limit": "5.0"})
+        with (
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
+            patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.fetch_all", new=AsyncMock(return_value=[{"cost_usd": 10.0}])),
+            patch.dict(sys.modules, {"api.settings": legacy_settings_stub}),
+            patch("services.analysis_supervisor.read_budget_state", new=read_budget_mock),
+        ):
+            with self.assertRaises(Exception) as ctx:
+                await analysis_routes.run_analysis(paper_id, background_tasks=_StubBackgroundTasks())
+
+        self.assertEqual(getattr(ctx.exception, "status_code", None), 402)
+        self.assertIn("$10.00 / $5.00", ctx.exception.detail)
+        read_budget_mock.assert_awaited_once()
 
 
 class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):

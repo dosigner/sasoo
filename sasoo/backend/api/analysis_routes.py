@@ -2505,26 +2505,10 @@ async def run_analysis(paper_id: int, background_tasks: BackgroundTasks):
                 detail=f"Analysis for paper {paper_id} is already running.",
             )
 
-    # Check budget before starting
-    from api.settings import _get_all_settings
-    settings = await _get_all_settings()
-    monthly_limit = float(settings.get("monthly_budget_limit", "50.0"))
-
-    # Calculate current month spending
-    current_month = _utcnow().strftime("%Y-%m")
-    month_start = f"{current_month}-01"
-    month_num = int(current_month.split("-")[1])
-    year = int(current_month.split("-")[0])
-    if month_num == 12:
-        month_end = f"{year + 1}-01-01"
-    else:
-        month_end = f"{year}-{month_num + 1:02d}-01"
-
-    cost_rows = await fetch_all(
-        "SELECT cost_usd FROM analysis_results WHERE created_at >= ? AND created_at < ? AND phase != 'error'",
-        (month_start, month_end),
-    )
-    current_spending = sum(r.get("cost_usd") or 0.0 for r in cost_rows)
+    # Check budget before starting — 결함2: read_budget_state()가 단일 소스(/run과 리컨실러가
+    # 공유). 월 경계 계산·cost_rows 쿼리·phase 필터를 여기서 다시 복제하지 않는다.
+    from services.analysis_supervisor import read_budget_state
+    current_spending, monthly_limit = await read_budget_state()
 
     if current_spending >= monthly_limit:
         raise HTTPException(
