@@ -1,6 +1,9 @@
+import os
 import sys
+import tempfile
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
@@ -46,7 +49,9 @@ class SpawnBuilderTests(unittest.TestCase):
 
     def test_spawn_worker_uses_detach_flags(self):
         from services import analysis_supervisor as sup
-        fake_proc = types.SimpleNamespace(pid=4242)
+        self.addCleanup(sup._CHILDREN.clear)   # 모듈 전역 회수 목록이 테스트 간 새지 않게
+        # poll()=0 → 이미 종료한 셈이라 spawn_worker의 회수 패스가 곧바로 목록에서 제거한다.
+        fake_proc = types.SimpleNamespace(pid=4242, poll=lambda: 0)
         with patch("services.analysis_supervisor.subprocess.Popen", return_value=fake_proc) as popen, \
              patch("services.analysis_supervisor.open", create=True):
             pid = sup.spawn_worker(7, 3)
@@ -57,6 +62,29 @@ class SpawnBuilderTests(unittest.TestCase):
             self.assertIn("creationflags", kwargs)
         else:
             self.assertTrue(kwargs.get("start_new_session"))
+
+    def test_reap_exited_workers_reaps_without_a_new_spawn(self):
+        """분석이 더 오지 않아도 종료한 워커를 회수한다 — 좀비(<defunct>) 잔존 방지.
+
+        start_new_session은 세션만 새로 열 뿐 부모를 바꾸지 않으므로 워커는 서버의 직계
+        자식으로 남는다. CPython은 핸들이 버려진 자식을 '다음 Popen 호출' 때만 회수하므로
+        (subprocess._active + _cleanup), 다음 분석이 없으면 종료한 워커가 백엔드 수명 내내
+        좀비로 남는다. 좀비 pid는 os.kill(pid, 0)을 통과하니, 훗날 pid 기반 생존 판정을
+        넣으면 죽은 워커를 살아있다고 오판해 재스폰이 영영 막힌다.
+        """
+        if sys.platform == "win32":
+            self.skipTest("좀비는 POSIX 시맨틱")
+        from services import analysis_supervisor as sup
+        with tempfile.TemporaryDirectory() as td, \
+             patch.object(sup, "_LOG_DIR", Path(td)), \
+             patch.object(sup, "build_worker_argv", return_value=[sys.executable, "-c", ""]):
+            pid = sup.spawn_worker(1, 1)
+            # 종료만 기다리고 회수는 하지 않는다(WNOWAIT) — 회수는 프로덕션 코드 몫이어야 한다.
+            os.waitid(os.P_PID, pid, os.WEXITED | os.WNOWAIT)
+            sup.reap_exited_workers()   # 새 스폰 없이 회수돼야 한다
+        # 회수됐다면 pid는 더 이상 우리 자식이 아니다.
+        with self.assertRaises(ChildProcessError):
+            os.waitpid(pid, os.WNOHANG)
 
 
 if __name__ == "__main__":

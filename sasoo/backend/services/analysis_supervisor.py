@@ -53,6 +53,23 @@ def build_spawn_env(base_env: dict | None = None) -> dict:
     return env
 
 
+# 스폰한 워커 핸들. start_new_session은 세션만 새로 열 뿐 부모를 바꾸지 않으므로("디태치"는
+# 터미널 신호로부터의 분리를 뜻한다) 워커는 서버의 직계 자식으로 남고, 회수는 서버 몫이다.
+_CHILDREN: list[subprocess.Popen] = []
+
+
+def reap_exited_workers() -> None:
+    """종료한 워커를 회수해 좀비(<defunct>)를 없앤다. 리컨실러 틱과 스폰 시점에 호출된다.
+
+    Popen 핸들을 버리면 CPython은 '다음 Popen 호출' 때만 회수하므로(subprocess._active +
+    _cleanup) 다음 분석이 오기 전까지 종료한 워커가 좀비로 남는다. 좀비는 메모리도 fd도 안
+    잡지만 pid 슬롯을 점유하고, 무엇보다 os.kill(pid, 0)을 통과한다 — 훗날 pid 기반 생존
+    판정을 넣으면 죽은 워커를 살아있다고 오판해 재스폰이 영영 막힌다(현재 생존 판정은
+    heartbeat 리스이며 pid는 정보성 필드다).
+    """
+    _CHILDREN[:] = [p for p in _CHILDREN if p.poll() is None]  # poll = waitpid(WNOHANG)
+
+
 def spawn_worker(paper_id: int, generation: int) -> int:
     """디태치 워커를 스폰하고 자식 pid를 반환한다. stdout/stderr는 per-run 로그로 리다이렉트."""
     _LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -70,6 +87,10 @@ def spawn_worker(paper_id: int, generation: int) -> int:
     # with 블록으로 부모 핸들 수명 관리(자식은 자기 fd 복사본 유지)
     with open(logpath, "ab") as f:
         proc = subprocess.Popen(argv, stdout=f, stderr=f, **kwargs)
+    # 핸들을 붙잡으면 Popen.__del__ → subprocess._active 경로가 안 타므로 회수는 전적으로
+    # reap_exited_workers() 책임이 된다. 리컨실러가 꺼진 경로에서도 새지 않도록 여기서도 부른다.
+    _CHILDREN.append(proc)
+    reap_exited_workers()
     return proc.pid
 
 
@@ -94,6 +115,9 @@ async def reconcile_once(conn, cap: int, spawn=spawn_worker) -> None:
     stale_cut = _iso_shift(now_dt, LEASE_S)
     fresh_cut = stale_cut
     backoff_cut = _iso_shift(now_dt, BACKOFF_S)
+
+    # 스폰 시점에만 회수하면 다음 분석이 올 때까지 좀비가 남는다 — 틱마다 회수해 창을 닫는다.
+    reap_exited_workers()
 
     await ar.reconcile_stale(conn, stale_cut=stale_cut, max_attempts=MAX_ATTEMPTS, now=now)
     # 결함1: reconcile_stale ②(cancel-wins)는 analysis_runs만 쓰고 papers를 안 건드린다 —
