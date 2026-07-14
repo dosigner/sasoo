@@ -94,6 +94,65 @@ class ReporterBridgeTests(unittest.IsolatedAsyncioTestCase):
         analysis_state._running_analyses.pop(1, None)
         self.assertTrue(main_task.cancelled())
 
+    async def test_reporter_flushes_heartbeat_even_without_shared_status(self):
+        """I5: 공유 status(_running_analyses)가 없으면 heartbeat/fence 검사 자체를 건너뛰던 문제.
+
+        지금은 _run_full_analysis가 첫 await 전에 등록해 무해하지만, 그 함수(무수정 대상)의
+        내부 순서에 암묵 의존한다. 등록이 뒤로 밀리면 heartbeat 없이 45초 후 false-stale
+        재스폰(이중 워커)이 일어난다 — st가 None이어도 폴백 값으로 heartbeat를 계속 찍어야 한다.
+        """
+        from services import analysis_worker
+        from api import analysis_state
+        pid, gen = self.claimed
+        analysis_state._running_analyses.pop(1, None)   # 공유 status 미등록 상태를 재현
+
+        calls: list = []
+        orig_fenced_heartbeat = ar.fenced_heartbeat
+
+        async def _tracking_heartbeat(*args, **kwargs):
+            calls.append(args)
+            return await orig_fenced_heartbeat(*args, **kwargs)
+
+        async def _fake_main():
+            await asyncio.sleep(0.05)
+
+        main_task = asyncio.create_task(_fake_main())
+        with patch("services.analysis_worker.ar.fenced_heartbeat", new=_tracking_heartbeat):
+            side = asyncio.create_task(
+                analysis_worker._reporter_and_cancel_bridge(1, gen, main_task, self.conn, interval=0.01)
+            )
+            await main_task
+            side.cancel()
+
+        self.assertTrue(
+            calls, "st가 None이어도 fenced_heartbeat가 호출돼야 한다(heartbeat 갱신·fence 감지 지속)"
+        )
+        run = await ar.get_run(self.conn, 1)
+        self.assertEqual(run["status"], "running")
+
+    async def test_bridge_self_aborts_on_fence_loss_without_shared_status(self):
+        """I5: 공유 status가 없어도 fence 실패(generation 밀림)를 감지해 self-abort해야 한다."""
+        from services import analysis_worker
+        from api import analysis_state
+        pid, gen = self.claimed
+        analysis_state._running_analyses.pop(1, None)   # 공유 status 미등록
+        await self.conn.execute("UPDATE analysis_runs SET generation=generation+1 WHERE paper_id=1")
+        await self.conn.commit()
+
+        async def _fake_main():
+            await asyncio.sleep(1.0)
+
+        main_task = asyncio.create_task(_fake_main())
+        side = asyncio.create_task(
+            analysis_worker._reporter_and_cancel_bridge(1, gen, main_task, self.conn, interval=0.01)
+        )
+        try:
+            await asyncio.wait_for(main_task, timeout=1.0)
+        except asyncio.CancelledError:
+            pass
+        self.assertTrue(main_task.cancelled())
+        side.cancel()
+
     async def test_sidecar_unexpected_exception_aborts_main_task(self):
         """사이드카가 OperationalError 아닌 예외로 죽으면 본 분석도 중단돼야 한다.
 
@@ -215,6 +274,33 @@ class WorkerShutdownTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(code, analysis_worker.EXIT_SELF_ABORT)
         self.assertTrue(closed, "self-abort 경로에서 close_db()가 호출되지 않음")
+
+    async def test_worker_awaits_sidecar_after_cancel(self):
+        """M5: side.cancel() 뒤 asyncio.gather로 실제 종료를 기다려야 한다.
+
+        기다리지 않으면 side task가 완전히 멈추기 전에 side_conn.close()/close_db()가
+        불려 레이스가 생기고, 잡히지 않은 예외가 있으면 'Task exception was never
+        retrieved' 경고로 이어진다(종료 비결정론).
+        """
+        from services import analysis_worker
+        _pid, gen = self.claimed
+        closed: list = []
+
+        async def _fake_main(paper_id):
+            return None
+
+        gather_calls: list = []
+        orig_gather = asyncio.gather
+
+        async def _tracking_gather(*args, **kwargs):
+            gather_calls.append((args, kwargs))
+            return await orig_gather(*args, **kwargs)
+
+        with patch("services.analysis_worker.asyncio.gather", new=_tracking_gather):
+            await self._run_worker(gen, closed, _fake_main)
+
+        self.assertTrue(gather_calls, "side.cancel() 후 asyncio.gather로 종료를 기다리지 않음")
+        self.assertEqual(gather_calls[0][1].get("return_exceptions"), True)
 
 
 if __name__ == "__main__":

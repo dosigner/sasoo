@@ -37,18 +37,25 @@ async def _reporter_and_cancel_bridge(
     fail_streak = 0.0
     while not main_task.done():
         try:
+            # I5: st가 없다고 heartbeat/fence 검사를 통째로 건너뛰면 등록 타이밍에 암묵
+            # 의존하게 된다(_run_full_analysis는 무수정 대상이라 남이 순서를 바꿀 수 있음).
+            # st 없이도 폴백 값(running/None/0.0)으로 계속 heartbeat를 찍고 fence를 본다.
             st = _running_analyses.get(paper_id)
             if st is not None:
                 cur_phase = getattr(getattr(st, "current_phase", None), "value", None)
-                n = await ar.fenced_heartbeat(
-                    conn, paper_id, generation,
-                    getattr(st, "overall_status", "running"), cur_phase,
-                    float(getattr(st, "progress_pct", 0.0)), ar.utcnow_iso(),
-                )
-                if n == 0:
-                    logger.warning("worker fence lost (paper=%s gen=%s) → self-abort", paper_id, generation)
-                    main_task.cancel()
-                    return
+                hb_status = getattr(st, "overall_status", "running")
+                hb_pct = float(getattr(st, "progress_pct", 0.0))
+            else:
+                cur_phase = None
+                hb_status = "running"
+                hb_pct = 0.0
+            n = await ar.fenced_heartbeat(
+                conn, paper_id, generation, hb_status, cur_phase, hb_pct, ar.utcnow_iso(),
+            )
+            if n == 0:
+                logger.warning("worker fence lost (paper=%s gen=%s) → self-abort", paper_id, generation)
+                main_task.cancel()
+                return
             run = await ar.get_run(conn, paper_id)
             if run and run.get("cancel_requested"):
                 ev = _cancel_events.get(paper_id)
@@ -101,6 +108,10 @@ async def run_analysis_worker(paper_id: int, generation: int) -> int:
         return exit_code
     finally:
         side.cancel()
+        # M5: cancel()은 취소를 예약만 할 뿐이다 — 실제로 끝날 때까지 기다리지 않으면
+        # 아래 conn.close() 호출과 레이스하고, "Task exception was never retrieved"
+        # 경고로도 이어질 수 있다(종료 결정론화).
+        await asyncio.gather(side, return_exceptions=True)
         if exit_code == EXIT_OK:
             # papers.status(진실원)를 읽어 analysis_runs.status를 fence하에 확정
             try:
