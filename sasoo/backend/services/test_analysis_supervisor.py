@@ -213,6 +213,7 @@ class StopReconcilerShutdownTests(unittest.IsolatedAsyncioTestCase):
     도는 정상 종료에서만 적용된다."""
 
     async def test_stop_reconciler_terminates_workers_and_requeues_when_reconciler_was_running(self):
+        # 결함1: 워커 종료·requeue는 SASOO_ENV=='production'(프로덕션 정상 종료)에서만 돈다.
         import asyncio
         from unittest.mock import AsyncMock
         from services import analysis_supervisor as sup
@@ -221,7 +222,8 @@ class StopReconcilerShutdownTests(unittest.IsolatedAsyncioTestCase):
         app.state.reconciler_task = asyncio.create_task(asyncio.sleep(10))
 
         fake_conn = object()
-        with patch.object(sup, "terminate_workers", return_value=2) as terminate_mock, \
+        with patch.dict(os.environ, {"SASOO_ENV": "production"}), \
+             patch.object(sup, "terminate_workers", return_value=2) as terminate_mock, \
              patch("models.database.get_db", new=AsyncMock(return_value=fake_conn)), \
              patch.object(sup.ar, "requeue_for_shutdown", new=AsyncMock(return_value=3)) as requeue_mock:
             await sup.stop_reconciler(app)
@@ -229,6 +231,48 @@ class StopReconcilerShutdownTests(unittest.IsolatedAsyncioTestCase):
         terminate_mock.assert_called_once()
         requeue_mock.assert_awaited_once()
         self.assertIs(requeue_mock.await_args.args[0], fake_conn)
+
+    async def test_stop_reconciler_preserves_workers_when_env_is_development(self):
+        # 결함1: dev의 uvicorn --reload SIGTERM도 이 lifespan shutdown 경로를 태우지만,
+        # 리로드일 뿐 진짜 앱 종료가 아니므로 워커를 죽이면 안 된다(진행 중 유료 분석 보호).
+        # 리컨실러 태스크 취소는 env와 무관하게 항상 일어나야 한다.
+        import asyncio
+        from unittest.mock import AsyncMock
+        from services import analysis_supervisor as sup
+
+        app = types.SimpleNamespace(state=types.SimpleNamespace())
+        app.state.reconciler_task = asyncio.create_task(asyncio.sleep(10))
+
+        with patch.dict(os.environ, {"SASOO_ENV": "development"}), \
+             patch.object(sup, "terminate_workers") as terminate_mock, \
+             patch.object(sup.ar, "requeue_for_shutdown", new=AsyncMock()) as requeue_mock:
+            await sup.stop_reconciler(app)
+
+        terminate_mock.assert_not_called()
+        requeue_mock.assert_not_awaited()
+        self.assertTrue(app.state.reconciler_task.cancelled())
+
+    async def test_stop_reconciler_preserves_workers_when_env_unset(self):
+        # 결함1: SASOO_ENV 미설정(맨 터미널 dev 실행 포함)도 dev와 동일하게 워커를 보존한다.
+        import asyncio
+        from unittest.mock import AsyncMock
+        from services import analysis_supervisor as sup
+
+        app = types.SimpleNamespace(state=types.SimpleNamespace())
+        app.state.reconciler_task = asyncio.create_task(asyncio.sleep(10))
+
+        saved = os.environ.pop("SASOO_ENV", None)
+        try:
+            with patch.object(sup, "terminate_workers") as terminate_mock, \
+                 patch.object(sup.ar, "requeue_for_shutdown", new=AsyncMock()) as requeue_mock:
+                await sup.stop_reconciler(app)
+        finally:
+            if saved is not None:
+                os.environ["SASOO_ENV"] = saved
+
+        terminate_mock.assert_not_called()
+        requeue_mock.assert_not_awaited()
+        self.assertTrue(app.state.reconciler_task.cancelled())
 
     async def test_stop_reconciler_does_not_touch_workers_when_flag_was_off(self):
         # start_reconciler가 플래그 off에서 reconciler_task를 아예 세우지 않으므로,
@@ -244,7 +288,7 @@ class StopReconcilerShutdownTests(unittest.IsolatedAsyncioTestCase):
         requeue_mock.assert_not_called()
 
     async def test_stop_reconciler_swallows_requeue_failure(self):
-        # 정상 종료 자체를 막으면 안 된다 — DB 접근 실패는 로그만 남기고 넘어간다.
+        # 정상 종료(production) 자체를 막으면 안 된다 — DB 접근 실패는 로그만 남기고 넘어간다.
         import asyncio
         from unittest.mock import AsyncMock
         from services import analysis_supervisor as sup
@@ -252,7 +296,8 @@ class StopReconcilerShutdownTests(unittest.IsolatedAsyncioTestCase):
         app = types.SimpleNamespace(state=types.SimpleNamespace())
         app.state.reconciler_task = asyncio.create_task(asyncio.sleep(10))
 
-        with patch.object(sup, "terminate_workers", return_value=0), \
+        with patch.dict(os.environ, {"SASOO_ENV": "production"}), \
+             patch.object(sup, "terminate_workers", return_value=0), \
              patch("models.database.get_db", new=AsyncMock(side_effect=RuntimeError("db closed"))):
             await sup.stop_reconciler(app)  # 예외 없이 반환돼야 함
 

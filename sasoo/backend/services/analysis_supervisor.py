@@ -95,13 +95,17 @@ def spawn_worker(paper_id: int, generation: int) -> int:
 
 
 def terminate_workers(grace_s: float = 5.0) -> int:
-    """결정①: 정상 종료(graceful shutdown) 훅 — 살아있는 워커에 SIGTERM → grace_s 대기 →
-    미종료 시 SIGKILL. 종료시킨(SIGTERM을 보낸) 워커 개수를 반환한다.
+    """결정①: 정상 종료(graceful shutdown) 훅 — 호출되면 살아있는 워커 전원에 SIGTERM →
+    grace_s 대기 → 미종료 시 SIGKILL. 종료시킨(SIGTERM을 보낸) 워커 개수를 반환한다.
 
-    비정상 종료(크래시/SIGKILL)는 이 함수가 호출되는 lifespan shutdown 경로 자체를 타지
-    않으므로 워커가 그대로 살아남는다 — 그게 이 아키텍처의 존재 이유(리로드·크래시 내성)라
-    의도적으로 건드리지 않는다. 개별 워커 처리 중 예외는 삼키고 로그만 남겨, 한 워커 정리
-    실패가 나머지 워커 정리를 막지 않게 한다."""
+    이 함수 자체는 무조건 워커를 죽인다 — 리로드 내성은 이 함수가 아니라 "언제 이 함수를
+    부르느냐"에 달려 있다. 호출자 stop_reconciler가 SASOO_ENV == 'production'일 때만 이
+    함수를 불러 프로덕션 정상 종료(Electron 앱 quit → /shutdown)에서만 워커를 정리하고,
+    dev의 `uvicorn --reload` SIGTERM(코드 저장마다 같은 lifespan shutdown 경로를 태움)에서는
+    아예 부르지 않아 워커가 리로드를 넘어 살아남는다. 비정상 종료(크래시/SIGKILL)도
+    lifespan shutdown 경로 자체를 안 타므로 이 함수가 불리지 않아 워커가 그대로 살아남는다.
+    개별 워커 처리 중 예외는 삼키고 로그만 남겨, 한 워커 정리 실패가 나머지 워커 정리를
+    막지 않게 한다."""
     n = 0
     for proc in list(_CHILDREN):
         try:
@@ -273,10 +277,22 @@ async def stop_reconciler(app) -> None:
     """정상 종료 훅 — main.py lifespan shutdown이 부른다.
 
     reconciler_task가 없으면(서브프로세스 모드 off) 워커 자체가 없으므로 아무 것도 하지
-    않는다("플래그 off = 기존 경로 그대로" 계약 유지). 있으면 루프를 취소한 뒤 워커를 함께
-    종료(SIGTERM→SIGKILL)하고, 중단된 running을 requeue해 다음 서버 기동 때 45초 stale
-    대기 없이 곧바로 재개되게 한다. 정상 종료는 "실패"가 아니므로 attempts는 requeue_for_shutdown이
-    상쇄한다. 실패는 로그만 남기고 종료 자체를 막지 않는다.
+    않는다("플래그 off = 기존 경로 그대로" 계약 유지). 있으면 루프는 항상 취소한다.
+
+    워커 종료(SIGTERM→SIGKILL)와 중단된 running의 requeue는 SASOO_ENV == 'production'일
+    때만 수행한다 — 이 lifespan shutdown 경로는 두 가지 서로 다른 상황에서 모두 탄다:
+    프로덕션 정상 종료(Electron 앱 quit → /shutdown, 사용자가 진짜로 앱을 닫은 것)와 dev의
+    `uvicorn --reload` SIGTERM(코드 저장마다 워커 프로세스를 재시작하며 같은 경로를 태우는
+    것뿐, 앱 종료가 아님)이다. 프로덕션에서만 워커를 정리해야 dev에서 파일을 저장할
+    때마다 진행 중이던(유료) 분석이 강제 종료되는 사고를 막는다 — 이 아키텍처의 존재
+    이유(리로드 내성)가 여기서 지켜진다. requeue도 같은 이유로 production 전용이다:
+    dev에서 requeue하면 아직 살아있는 워커를 다음 리컨실러 틱이 orphan으로 오인해
+    재claim, 이중 스폰까지 이어질 수 있다. 정상 종료는 "실패"가 아니므로 attempts는
+    requeue_for_shutdown이 상쇄한다. 실패는 로그만 남기고 종료 자체를 막지 않는다.
+
+    한계: dev에서 uvicorn을 Ctrl-C로 완전히 내리면(=진짜 종료, reload 아님) 이 게이트가
+    SASOO_ENV != 'production'으로 워커 정리를 건너뛰므로 워커가 orphan으로 남는다 —
+    dev 전용 한계이며 프로덕션(shipping) 경로는 이 함수가 정상 커버한다.
 
     한계: _CHILDREN은 이 서버 프로세스 메모리에만 있다 — 서버가 재기동돼 이전 서버가 남긴
     워커가 있으면 이 함수는 그 워커를 못 죽인다(빈 _CHILDREN). 그 경우는 fence(generation)와
@@ -289,6 +305,9 @@ async def stop_reconciler(app) -> None:
         await task
     except asyncio.CancelledError:
         pass
+
+    if os.environ.get("SASOO_ENV") != "production":
+        return
 
     try:
         terminate_workers()
