@@ -17,13 +17,49 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release-source.outputs.tag }}
+      sha: ${{ steps.release-source.outputs.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || (github.event_name == 'workflow_dispatch' && inputs.tag || github.ref) }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: release-source
+        name: Resolve and verify release source
+        env:
+          TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          if [[ "$TAG_NAME" != v* ]] || ! git check-ref-format "refs/tags/$TAG_NAME"; then
+            echo "Release tag must be a valid Git tag beginning with v." >&2
+            exit 1
+          fi
+
+          BUILD_SHA="$(git rev-parse HEAD)"
+          if TAG_SHA="$(git rev-parse --verify --quiet "refs/tags/$TAG_NAME^{commit}")"; then
+            if [[ "$TAG_SHA" != "$BUILD_SHA" ]]; then
+              echo "Release tag $TAG_NAME does not point to the selected build commit." >&2
+              exit 1
+            fi
+          fi
+
+          echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "sha=$BUILD_SHA" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: resolve
     strategy:
       fail-fast: false
       matrix:
@@ -34,8 +70,6 @@ jobs:
             builder_flag: --mac
 
     runs-on: ${{ matrix.os }}
-    env:
-      TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     defaults:
       run:
         working-directory: sasoo
@@ -43,8 +77,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || env.TAG_NAME }}
+          ref: ${{ needs.resolve.outputs.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v4
         with:
@@ -154,8 +189,12 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: build
+    needs:
+      - resolve
+      - build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/download-artifact@v4
@@ -170,7 +209,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          TAG_NAME: ${{ needs.resolve.outputs.tag }}
+          BUILD_SHA: ${{ needs.resolve.outputs.sha }}
         shell: bash
         run: |
           cat > release-notes.md <<'EOF'
@@ -195,8 +235,10 @@ jobs:
             RELEASE_ID="$(jq -r '.id' <<<"$RELEASE_JSON")"
             RELEASE_PAYLOAD="$(jq -n \
               --arg body "$(cat release-notes.md)" \
+              --arg target "$BUILD_SHA" \
               '{
-                body: $body
+                body: $body,
+                target_commitish: $target
               }'
             )"
             gh api \
@@ -219,10 +261,12 @@ jobs:
                 --arg tag "$TAG_NAME" \
                 --arg name "$TAG_NAME" \
                 --arg body "$(cat release-notes.md)" \
+                --arg target "$BUILD_SHA" \
                 '{
                   tag_name: $tag,
                   name: $name,
-                  body: $body
+                  body: $body,
+                  target_commitish: $target
                 }'
               )"
               gh api \
@@ -236,10 +280,12 @@ jobs:
                 --arg tag "$TAG_NAME" \
                 --arg name "$TAG_NAME" \
                 --arg body "$(cat release-notes.md)" \
+                --arg target "$BUILD_SHA" \
                 '{
                   tag_name: $tag,
                   name: $name,
                   body: $body,
+                  target_commitish: $target,
                   draft: true
                 }'
               )"
