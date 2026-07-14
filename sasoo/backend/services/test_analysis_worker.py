@@ -35,11 +35,9 @@ class ReporterBridgeTests(unittest.IsolatedAsyncioTestCase):
             progress_pct = 42.0
 
         analysis_state._running_analyses[1] = _St()
-        done = asyncio.Event()
 
         async def _fake_main():
             await asyncio.sleep(0.05)  # 리포터가 최소 1회 flush할 시간
-            done.set()
 
         main_task = asyncio.create_task(_fake_main())
         side = asyncio.create_task(
@@ -91,6 +89,36 @@ class ReporterBridgeTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.wait_for(main_task, timeout=1.0)
         except asyncio.CancelledError:
             pass
+        analysis_state._running_analyses.pop(1, None)
+        self.assertTrue(main_task.cancelled())
+
+    async def test_sidecar_unexpected_exception_aborts_main_task(self):
+        """사이드카가 OperationalError 아닌 예외로 죽으면 본 분석도 중단돼야 한다.
+
+        죽은 채 방치되면 heartbeat가 멈추고 → 리컨실러가 false-stale로 판정 →
+        같은 논문에 두 번째 워커를 스폰한다(이중 실행·중복 과금).
+        """
+        from services import analysis_worker
+        from api import analysis_state
+        pid, gen = self.claimed
+        analysis_state._running_analyses[1] = type("S", (), {
+            "overall_status": "running", "current_phase": None, "progress_pct": 1.0})()
+
+        async def _fake_main():
+            await asyncio.sleep(1.0)  # 사이드카가 중단시키기 전엔 안 끝남
+
+        main_task = asyncio.create_task(_fake_main())
+        with patch("services.analysis_worker.ar.fenced_heartbeat",
+                   new=AsyncMock(side_effect=RuntimeError("unexpected sidecar bug"))):
+            side = asyncio.create_task(
+                analysis_worker._reporter_and_cancel_bridge(1, gen, main_task, self.conn, interval=0.01)
+            )
+            try:
+                await asyncio.wait_for(main_task, timeout=1.0)
+            except asyncio.CancelledError:
+                pass
+            await side  # 사이드카는 본 태스크를 죽인 뒤 스스로 조용히 종료한다
+
         analysis_state._running_analyses.pop(1, None)
         self.assertTrue(main_task.cancelled())
 

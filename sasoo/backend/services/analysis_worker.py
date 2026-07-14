@@ -60,6 +60,14 @@ async def _reporter_and_cancel_bridge(
                 logger.error("worker reporter DB failure > %ss → self-abort (paper=%s)", SIDE_FAIL_ABORT_S, paper_id)
                 main_task.cancel()
                 return
+        except asyncio.CancelledError:  # 정상 종료 경로(run_analysis_worker의 side.cancel()) — 삼키지 않는다
+            raise
+        except Exception:  # noqa: BLE001
+            # "리포터 사망 = 워커 사망". 사이드카만 죽고 본 분석이 계속 돌면 heartbeat가 끊겨
+            # 리컨실러가 false-stale로 판정하고 같은 논문에 두 번째 워커를 스폰한다(이중 실행·중복 과금).
+            logger.exception("worker reporter 예기치 못한 오류 → self-abort (paper=%s)", paper_id)
+            main_task.cancel()
+            return
         await asyncio.sleep(interval)
 
 
@@ -72,6 +80,18 @@ async def run_analysis_worker(paper_id: int, generation: int) -> int:
     side_conn = await open_side_connection()
     main_task = asyncio.create_task(_run_full_analysis(paper_id))
     side = asyncio.create_task(_reporter_and_cancel_bridge(paper_id, generation, main_task, side_conn))
+
+    # 안전망: 루프 내 except가 놓친 경로(루프 밖 예외 등)로 사이드카가 죽어도 본 분석을 중단시킨다.
+    # heartbeat 없는 채 계속 도는 워커는 리컨실러에 stale로 보여 이중 스폰을 유발한다.
+    def _side_died(t: "asyncio.Task") -> None:
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc is not None and not main_task.done():
+            logger.error("사이드카 비정상 종료 — 본 분석 중단(false-stale 재스폰 방지): %r", exc)
+            main_task.cancel()
+
+    side.add_done_callback(_side_died)
     exit_code = EXIT_OK
     try:
         await main_task
