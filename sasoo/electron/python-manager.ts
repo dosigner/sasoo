@@ -205,11 +205,12 @@ export class PythonManager {
     this.healthCheckTimer = setInterval(async () => {
       if (this.isShuttingDown) return;
 
+      const checkedProcess = this.process;
+      if (!checkedProcess) return;
       const healthy = await this.checkHealth();
-      const unhealthyProcess = this.process;
-      if (!healthy && unhealthyProcess) {
+      if (!healthy && !this.isShuttingDown && this.process === checkedProcess) {
         console.warn('[PythonManager] Health check failed');
-        unhealthyProcess.kill('SIGTERM');
+        checkedProcess.kill('SIGTERM');
       }
     }, this.config.healthCheckIntervalMs);
   }

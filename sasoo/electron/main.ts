@@ -19,6 +19,7 @@ import { initAutoUpdater } from './updater';
 installStdioEpipeGuard();
 
 const isDev = !app.isPackaged;
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 let mainWindow: BrowserWindow | null = null;
 let pythonManager: PythonManager | null = null;
@@ -256,7 +257,19 @@ async function initialize(): Promise<void> {
 }
 
 // App lifecycle
-app.whenReady().then(initialize);
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+    }
+    mainWindow.show();
+    mainWindow.focus();
+  });
+  app.whenReady().then(initialize);
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

@@ -115,4 +115,35 @@ describe('PythonManager shutdown', () => {
 
     expect(manager['process']).toBe(replacement);
   });
+
+  it('ignores a stale health result after the backend is replaced', async () => {
+    vi.useFakeTimers();
+    const oldChild = new ChildProcess();
+    const replacement = new ChildProcess();
+    const oldKill = vi.spyOn(oldChild, 'kill');
+    const replacementKill = vi.spyOn(replacement, 'kill');
+    let resolveHealth: ((healthy: boolean) => void) | undefined;
+    const manager = new PythonManager({
+      backendPath: '/tmp/sasoo-backend',
+      port: 8000,
+      isDev: false,
+      healthCheckIntervalMs: 1_000,
+    });
+    vi.spyOn(manager, 'checkHealth').mockImplementation(
+      () => new Promise((resolve) => {
+        resolveHealth = resolve;
+      }),
+    );
+    manager['process'] = oldChild;
+    manager['startHealthChecks']();
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    manager['process'] = replacement;
+    resolveHealth?.(false);
+    await vi.runAllTicks();
+    manager['stopHealthChecks']();
+
+    expect(oldKill).not.toHaveBeenCalled();
+    expect(replacementKill).not.toHaveBeenCalled();
+  });
 });
