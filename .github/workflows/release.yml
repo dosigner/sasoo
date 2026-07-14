@@ -39,6 +39,7 @@ jobs:
       - id: release-source
         name: Resolve and verify release source
         env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         shell: bash
         run: |
@@ -48,6 +49,14 @@ jobs:
           fi
 
           BUILD_SHA="$(git rev-parse HEAD)"
+          git fetch --no-tags origin \
+            "+refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH"
+          TRUSTED_SHA="$(git rev-parse "refs/remotes/origin/$DEFAULT_BRANCH^{commit}")"
+          if ! git merge-base --is-ancestor "$BUILD_SHA" "$TRUSTED_SHA"; then
+            echo "Release source must already be part of $DEFAULT_BRANCH." >&2
+            exit 1
+          fi
+
           if TAG_SHA="$(git rev-parse --verify --quiet "refs/tags/$TAG_NAME^{commit}")"; then
             if [[ "$TAG_SHA" != "$BUILD_SHA" ]]; then
               echo "Release tag $TAG_NAME does not point to the selected build commit." >&2
