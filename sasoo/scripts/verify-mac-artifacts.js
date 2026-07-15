@@ -67,49 +67,52 @@ function parseLatestMacYaml(filePath) {
   return parsed;
 }
 
-function verifyUpdateManifest(zipFiles) {
+function verifyUpdateManifest(macZipFiles) {
   if (!fs.existsSync(UPDATE_FILE)) {
     fail(`latest-mac.yml not found at ${UPDATE_FILE}`);
   }
 
   const manifest = parseLatestMacYaml(UPDATE_FILE);
-  const knownFiles = new Map();
 
-  for (const filePath of zipFiles) {
-    const stat = fs.statSync(filePath);
-    knownFiles.set(path.basename(filePath), {
-      path: filePath,
-      size: stat.size,
-      sha512: sha512Base64(filePath),
-    });
+  if (manifest.files.length === 0) {
+    fail('latest-mac.yml lists no files.');
   }
 
-  if (manifest.files.length !== knownFiles.size) {
-    fail(`latest-mac.yml lists ${manifest.files.length} files, but dist has ${knownFiles.size} mac ZIP artifacts.`);
-  }
-
+  // electron-builder가 zip과 dmg를 모두 빌드하면 latest-mac.yml이 둘 다 나열한다.
+  // manifest가 참조하는 각 아티팩트(zip/dmg)를 dist에서 찾아 size/sha512를 대조한다.
   for (const entry of manifest.files) {
-    const file = knownFiles.get(entry.url);
-    if (!file) {
+    const filePath = path.join(DIST_DIR, entry.url);
+    if (!fs.existsSync(filePath)) {
       fail(`latest-mac.yml references missing file: ${entry.url}`);
     }
-    if (entry.size !== file.size) {
-      fail(`Size mismatch for ${entry.url}: manifest=${entry.size}, actual=${file.size}`);
+    const stat = fs.statSync(filePath);
+    if (entry.size !== stat.size) {
+      fail(`Size mismatch for ${entry.url}: manifest=${entry.size}, actual=${stat.size}`);
     }
-    if (entry.sha512 !== file.sha512) {
+    if (entry.sha512 !== sha512Base64(filePath)) {
       fail(`sha512 mismatch for ${entry.url}`);
     }
   }
 
-  const defaultFile = knownFiles.get(manifest.path);
-  if (!defaultFile) {
+  // mac ZIP은 electron-updater의 기본 업데이트 대상이므로 반드시 manifest에 포함돼야 한다.
+  const zipName = path.basename(macZipFiles[0]);
+  if (!manifest.files.some((entry) => entry.url === zipName)) {
+    fail(`latest-mac.yml does not list the mac ZIP artifact ${zipName}.`);
+  }
+
+  // 최상위 default path/sha512 (electron-updater가 실제로 내려받는 대상) 검증.
+  if (!manifest.path) {
+    fail('latest-mac.yml is missing the default path field.');
+  }
+  const defaultPath = path.join(DIST_DIR, manifest.path);
+  if (!fs.existsSync(defaultPath)) {
     fail(`latest-mac.yml default path does not exist: ${manifest.path}`);
   }
-  if (manifest.sha512 !== defaultFile.sha512) {
+  if (manifest.sha512 !== sha512Base64(defaultPath)) {
     fail(`latest-mac.yml default sha512 does not match ${manifest.path}`);
   }
 
-  log('latest-mac.yml matches generated artifacts.');
+  log(`latest-mac.yml matches generated artifacts (${manifest.files.length} file(s)).`);
 }
 
 function verifyZip(zipPath) {
