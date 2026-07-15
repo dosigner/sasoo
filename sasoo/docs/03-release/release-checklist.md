@@ -123,7 +123,7 @@ The release workflow verifies macOS ZIP extraction and update-manifest integrity
    - Windows installer `.exe`
    - Windows blockmap
    - `latest.yml`
-2. Add release notes
+2. Add release notes, including the mandatory upgrade warning that API keys saved in earlier versions can no longer be decrypted and must be re-entered in Settings
 3. Publish the draft release
 4. Keep one final manual install check on each target OS before broad distribution
 

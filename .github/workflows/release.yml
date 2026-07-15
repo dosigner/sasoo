@@ -248,6 +248,10 @@ jobs:
         shell: bash
         run: |
           cat > release-notes.md <<'EOF'
+          ## Upgrading from an earlier version
+
+          This release moves API key encryption to your OS credential store. **API keys saved in earlier versions can no longer be decrypted.** After updating, open Settings and re-enter your Gemini/OpenAI API keys.
+
           ## macOS install note
 
           The macOS build is distributed as an unsigned, unnotarized ZIP. Only use an artifact downloaded directly from this official GitHub release.
