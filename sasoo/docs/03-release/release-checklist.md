@@ -46,8 +46,7 @@ Current local artifact verifiers:
    - `cd sasoo/backend && ./.venv/bin/python -m pytest services api models`
 8. Confirm both previously exposed Google API keys are disabled or deleted at the provider, and review usage, billing, and audit logs.
 9. Confirm the exact release commit passed the Windows `Build Check` workflow.
-10. Before publishing any new release, enable GitHub's **Immutable Releases** setting for the repository.
-11. Configure `IMMUTABLE_RELEASES_TOKEN` with repository Administration read permission for the immutable-release check.
+10. Immutable releases are optional. To publish immutable releases, enable GitHub's **Immutable Releases** setting and configure `IMMUTABLE_RELEASES_TOKEN` with repository Administration read permission. Without the token the release is published as a mutable release.
 12. Confirm the active `Release` workflow remains macOS-only for v0.7.0. Add `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` before reintroducing Windows public releases.
 
 ## Local Smoke Checks

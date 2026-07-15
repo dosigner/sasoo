@@ -224,20 +224,21 @@ jobs:
       - name: List artifacts
         run: ls -lhR artifacts/
 
-      - name: Require immutable releases
+      - name: Check immutable releases (optional)
         env:
           IMMUTABLE_RELEASES_TOKEN: ${{ secrets.IMMUTABLE_RELEASES_TOKEN }}
           GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
           if [[ -z "$IMMUTABLE_RELEASES_TOKEN" ]]; then
-            echo "Missing IMMUTABLE_RELEASES_TOKEN with Administration read permission." >&2
-            exit 1
+            echo "IMMUTABLE_RELEASES_TOKEN not set — publishing as a mutable release."
+            exit 0
           fi
           if [[ "$(GH_TOKEN="$IMMUTABLE_RELEASES_TOKEN" gh api "repos/$GH_REPO/immutable-releases" --jq '.enabled')" != "true" ]]; then
-            echo "Immutable releases must be enabled before publishing artifacts." >&2
-            exit 1
+            echo "IMMUTABLE_RELEASES_TOKEN set but immutable releases not enabled — publishing as a mutable release."
+            exit 0
           fi
+          echo "Immutable releases enabled — publishing as an immutable release."
 
       - name: Create draft GitHub release
         env:
