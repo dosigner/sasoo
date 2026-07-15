@@ -250,7 +250,7 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## Upgrading from an earlier version
 
-          This release moves API key encryption to your OS credential store. **API keys saved in earlier versions can no longer be decrypted.** After updating, open Settings and re-enter your Gemini/OpenAI API keys.
+          This release moves API key encryption to your OS credential store. Saved API keys are migrated automatically when the legacy encryption key is available. If a key cannot be migrated, or you revoked or deleted it with its provider, open Settings and enter a new Gemini/OpenAI API key.
 
           ## macOS install note
 
