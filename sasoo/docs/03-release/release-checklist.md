@@ -80,14 +80,14 @@ Windows:
 
 ## GitHub Actions Release Flow
 
-Tagged release:
+Current v0.7.0 tagged release:
 
 1. Push `main`
 2. Push the tag:
    - `git push origin vX.Y.Z`
 3. GitHub Actions will:
    - build macOS ARM on `macos-14`
-   - build Windows on `windows-latest`
+   - does not publish a Windows build until an Authenticode certificate is configured
    - use Python `3.12`
    - verify generated artifacts
    - upload assets to the matching GitHub draft release
@@ -120,9 +120,6 @@ The release workflow verifies macOS ZIP extraction and update-manifest integrity
    - mac ZIP
    - mac blockmap
    - `latest-mac.yml`
-   - Windows installer `.exe`
-   - Windows blockmap
-   - `latest.yml`
 2. Add release notes explaining that saved API keys migrate automatically when possible, and users must re-enter keys that cannot be migrated or were revoked/deleted with the provider
 3. Publish the draft release
 4. Keep one final manual install check on each target OS before broad distribution

@@ -5,8 +5,10 @@
 Use a split build strategy that matches the repo's actual platform constraints:
 
 - Run local dev/runtime and packaged artifact checks on the current macOS ARM machine.
-- Keep Windows packaging on a real Windows runner via the GitHub Actions release workflow or on a real Windows machine.
+- Keep Windows package validation on the Build Check runner or a real Windows machine; add it to the public release workflow only after signing is configured.
 - Treat [release.yml](../../../.github/workflows/release.yml) as the source of truth for cross-platform release packaging.
+
+For the current v0.7.0 public release, the workflow publishes macOS only because an Authenticode certificate is not available. Windows packaging remains a validation path until signing is configured.
 
 This matches the current platform guards in:
 
@@ -131,10 +133,9 @@ Run at least these checks:
 
 ## 3. Release-Quality Cross-Platform Path
 
-Use the existing GitHub Actions release workflow for final cross-platform packaging:
+Use the existing GitHub Actions release workflow for final packaging. The current v0.7.0 public matrix is macOS only:
 
 - mac build on `macos-14`
-- Windows build on `windows-latest`
 - Python pinned to `3.12`
 
 Trigger paths:
@@ -147,9 +148,6 @@ Expected release assets:
 - mac ZIP
 - mac blockmap
 - `latest-mac.yml`
-- Windows installer `.exe`
-- Windows blockmap
-- `latest.yml`
 
 ## 4. Important Constraints
 
