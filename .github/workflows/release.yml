@@ -82,8 +82,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
-            builder_flag: --win
+          # v0.7.0: macOS 단독 릴리스. Windows는 코드서명 인증서 확보 후 이 커밋을 revert해 복원한다.
+          # 아래 "Configure and require Windows signing" 게이트는 그대로 보존한다.
           - os: macos-14
             builder_flag: --mac
 
