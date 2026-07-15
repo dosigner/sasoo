@@ -760,7 +760,11 @@ class VisualPromotionTests(unittest.TestCase):
             sidecar = paper_dir / ".document_context.json"
             sidecar.write_text("{\"stale\": true}", encoding="utf-8")
 
-            with patch(
+            # gemini는 GEMINI_API_KEY가 있을 때만 계획에 오른다. Java 가용성은 참으로 고정해
+            # 계획을 결정적으로 만든다(_run_convert를 mock하므로 실제 java는 무의미).
+            with _parser_env(GEMINI_API_KEY="k"), patch(
+                "services.odl_parser._java_runtime_available", return_value=True
+            ), patch(
                 "services.odl_parser._run_convert",
                 side_effect=_stage_convert_side_effect(),
             ):
@@ -787,7 +791,9 @@ class VisualPromotionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             paper_dir = self._make_paper(tmp_dir)
             side = _stage_convert_side_effect()
-            with patch("services.odl_parser._run_convert", side_effect=side):
+            with _parser_env(GEMINI_API_KEY="k"), patch(
+                "services.odl_parser._java_runtime_available", return_value=True
+            ), patch("services.odl_parser._run_convert", side_effect=side):
                 ensure_visual_artifacts(
                     paper_dir, mode="java", extraction_pipeline_version="legacy", force=True
                 )
@@ -810,7 +816,10 @@ class VisualPromotionTests(unittest.TestCase):
             sidecar = paper_dir / ".document_context.json"
             sidecar.write_text("{\"stale\": true}", encoding="utf-8")
 
-            with patch(
+            # gemini(1차)가 실패해도 Java(검증 통과)가 있으면 odl로 폴백해 visual이 성공한다.
+            with _parser_env(GEMINI_API_KEY="k"), patch(
+                "services.odl_parser._java_runtime_available", return_value=True
+            ), patch(
                 "services.odl_parser._run_convert",
                 side_effect=_stage_convert_side_effect(visual_fail=True),
             ):
@@ -840,7 +849,10 @@ class VisualPromotionTests(unittest.TestCase):
                 }
                 return copy.deepcopy(root), ODL_TEXT, "odl-java"
 
-            with patch("services.odl_parser._run_convert", side_effect=_all_odl):
+            # SASOO_PDF_VISUAL_ENGINE=odl → 계획이 odl만. 키 없음 + java 가용으로 고정.
+            with _parser_env(SASOO_PDF_VISUAL_ENGINE="odl"), patch(
+                "services.odl_parser._java_runtime_available", return_value=True
+            ), patch("services.odl_parser._run_convert", side_effect=_all_odl):
                 manifest = ensure_visual_artifacts(
                     paper_dir, mode="java", extraction_pipeline_version="legacy", force=True
                 )

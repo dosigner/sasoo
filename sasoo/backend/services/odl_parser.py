@@ -154,16 +154,69 @@ def _ensure_java_tool_options() -> None:
     os.environ["JAVA_TOOL_OPTIONS"] = f"{current} {headless_flag}".strip() if current else headless_flag
 
 
+# (java 실행 파일 경로 → 동작 여부) 검증 결과 캐시. `java -version` subprocess 프로브는
+# 비용이 있으므로 경로별 결과를 모듈 레벨에 캐싱해 반복 호출을 없앤다. 테스트는
+# 이 dict를 clear()해 프로브를 다시 강제할 수 있다.
+_JAVA_VALIDATION_CACHE: dict[str, bool] = {}
+_JAVA_PROBE_TIMEOUT_SECONDS = 10.0
+
+
+def _java_executable_works(java_exe: str | Path) -> bool:
+    """`java -version`을 실제로 실행해 이 java 실행 파일이 동작하는지 검증한다.
+
+    macOS는 JDK가 없어도 `/usr/bin/java` 스텁을 제공하는데, 이 스텁은 실행 시
+    "Unable to locate a Java Runtime. Please visit http://www.java.com ..."를 stderr로
+    내고 종료코드 1로 죽는다. 따라서 존재 여부(exists())만으로는 스텁을 걸러낼 수 없고,
+    반드시 실행해 종료코드 0을 확인해야 한다.
+
+    - GUI 다이얼로그/입력 대기를 유발하지 않도록 stdin=DEVNULL과 timeout으로 감싼다.
+    - 프로브 비용을 없애기 위해 (경로→bool)을 모듈 레벨에 캐싱한다.
+    """
+    key = str(java_exe)
+    cached = _JAVA_VALIDATION_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    ok = False
+    try:
+        if Path(key).exists():
+            proc = subprocess.run(
+                [key, "-version"],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                timeout=_JAVA_PROBE_TIMEOUT_SECONDS,
+                check=False,
+            )
+            ok = proc.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        ok = False
+
+    _JAVA_VALIDATION_CACHE[key] = ok
+    return ok
+
+
+def _java_runtime_unavailable_message() -> str:
+    return (
+        "표·그림 추출에 필요한 Java 실행 환경을 찾지 못했습니다. "
+        "동작하는 Java 11+ 런타임을 설치하거나 `backend/java-runtime`에 번들 런타임을 두세요. "
+        "(GEMINI_API_KEY가 설정돼 있으면 Gemini 엔진으로 자동 대체됩니다.)"
+    )
+
+
 def ensure_java_runtime() -> str:
     """
     Ensure Java is available for OpenDataLoader.
     Returns the java executable path.
+
+    후보 java 실행 파일은 반드시 `java -version`으로 실제 동작을 검증한 뒤에만 반환한다.
+    검증 없이 반환하면 macOS의 `/usr/bin/java` 스텁을 유효한 java로 오인해, 서드파티
+    wrapper가 PATH의 "java"(=스텁)를 실행 → exit 1 + java.com 안내가 표/그림 오류로 노출된다.
     """
     _ensure_java_tool_options()
     for candidate in _runtime_candidates():
         if candidate.exists():
             java_exe = _java_executable_for_home(candidate)
-            if java_exe.exists():
+            if java_exe.exists() and _java_executable_works(java_exe):
                 java_home = candidate
                 if java_exe.parent.parent.name == "Home" and java_exe.parent.parent.parent.name == "Contents":
                     java_home = java_exe.parent.parent
@@ -175,13 +228,25 @@ def ensure_java_runtime() -> str:
                 return str(java_exe)
 
     java_on_path = shutil.which("java")
-    if java_on_path:
+    if java_on_path and _java_executable_works(java_on_path):
+        # PATH의 java가 실제로 동작할 때만 반환한다. 스텁(exit≠0)은 여기서 거부되어
+        # 아래 OdlRuntimeError로 떨어진다(그러면 text는 PyMuPDF, visual은 Gemini로 대체).
         return java_on_path
 
-    raise OdlRuntimeError(
-        "Java runtime was not found. Install Java 11+ or bundle a runtime under "
-        "`backend/java-runtime`."
-    )
+    raise OdlRuntimeError(_java_runtime_unavailable_message())
+
+
+def _java_runtime_available() -> bool:
+    """`ensure_java_runtime`이 예외 없이 동작하는(=실제 실행 가능한 java가 있는) 경우 True.
+
+    검증 통과 시 ensure_java_runtime의 부수효과(PATH prepend + JAVA_HOME)가 그대로 적용되어,
+    이후 ODL 엔진이 선택되면 번들 java가 실제로 실행된다. 결과 자체는 검증 캐시로 저렴하다.
+    """
+    try:
+        ensure_java_runtime()
+        return True
+    except OdlRuntimeError:
+        return False
 
 
 def get_configured_parser_mode() -> str:
@@ -821,6 +886,41 @@ def _run_convert(
     return _run_convert_odl(pdf_path, output_dir, figures_dir, mode)
 
 
+def _visual_runtime_unavailable_message() -> str:
+    return (
+        "표·그림 추출에 Java 실행 환경 또는 Gemini API 키가 필요합니다. "
+        "동작하는 Java 런타임(backend/java-runtime)이 없고 GEMINI_API_KEY도 설정돼 있지 않습니다."
+    )
+
+
+def _plan_visual_engines() -> list[str]:
+    """visual 단계에서 시도할 엔진을 우선순위대로 반환한다(빈 리스트 = 가용 엔진 없음).
+
+    - 스테이지 기본 엔진(_resolve_stage_engine("visual"))을 먼저, 실패 대비로 반대 엔진을 뒤에.
+    - gemini는 GEMINI_API_KEY가 있을 때만 후보에 넣는다. (없으면 _run_convert가 내부적으로
+      ODL로 downgrade해 스텁 java 에러를 만들 뿐이므로 애초에 시도하지 않는다.)
+    - odl은 ensure_java_runtime 검증이 통과할 때만 후보에 넣는다. (스텁 오탐지 시 굳이
+      시도해 java.com 에러를 만들지 말고 건너뛰어 Gemini로 넘어간다.)
+
+    이 순서화가 "Java가 안 되면 Gemini로, Gemini가 안 되면 Java로"의 양방향 폴백을 만든다.
+    """
+    stage_default = _resolve_stage_engine("visual")
+    ordered = [stage_default] + [
+        engine for engine in (GEMINI_ENGINE_NAME, "odl") if engine != stage_default
+    ]
+    gemini_ok = bool((os.environ.get("GEMINI_API_KEY") or "").strip())
+    java_ok = _java_runtime_available()
+
+    plan: list[str] = []
+    for engine in ordered:
+        if engine == GEMINI_ENGINE_NAME and not gemini_ok:
+            continue
+        if engine == "odl" and not java_ok:
+            continue
+        plan.append(engine)
+    return plan
+
+
 def _run_convert_odl(pdf_path: Path, output_dir: Path, figures_dir: Path, mode: str) -> tuple[dict[str, Any], str, str]:
     ensure_java_runtime()
     odl = _import_odl_module()
@@ -875,14 +975,44 @@ def _run_convert_gemini(pdf_path: Path, output_dir: Path, figures_dir: Path) -> 
         raise OdlParserError(f"Gemini parser engine failed: {exc}") from exc
 
 
+# 서드파티 wrapper/JVM 스텁이 내는 "java 미탐지" 신호. 이 문자열이 보이면 실제 ODL 파싱
+# 실패가 아니라 Java 실행 환경이 없다는 뜻이므로, raw java.com 안내 대신 한국어 안내를 준다.
+_JAVA_MISSING_SIGNATURES = (
+    "www.java.com",
+    "unable to locate a java runtime",
+    "'java' command not found",
+    "java command not found",
+    "no java runtime present",
+)
+
+
+def _looks_like_java_missing(text: str | None) -> bool:
+    lowered = (text or "").lower()
+    return any(signature in lowered for signature in _JAVA_MISSING_SIGNATURES)
+
+
+def _java_missing_user_message() -> str:
+    return (
+        "표·그림 추출에 Java 실행 환경 또는 Gemini API 키가 필요합니다. "
+        "Java 런타임이 설치돼 있지 않거나 실행되지 않았습니다. "
+        "Java 11+를 설치하거나 GEMINI_API_KEY를 설정하면 표·그림을 추출할 수 있습니다."
+    )
+
+
 def _convert_error_message(exc: Exception) -> str:
     if isinstance(exc, subprocess.CalledProcessError):
-        details: list[str] = [f"OpenDataLoader convert failed with exit code {exc.returncode}."]
         output = exc.stderr or exc.stdout or exc.output
+        if _looks_like_java_missing(output if isinstance(output, str) else None):
+            # 스텁 java가 exit≠0으로 죽은 경우 — 파싱 실패가 아니라 런타임 부재.
+            return _java_missing_user_message()
+        details: list[str] = [f"OpenDataLoader convert failed with exit code {exc.returncode}."]
         if output:
             last_line = output.strip().splitlines()[-1][:400]
             details.append(last_line)
         return " ".join(details)
+    if _looks_like_java_missing(str(exc)):
+        # wrapper가 던지는 FileNotFoundError("Error: 'java' command not found ...") 등.
+        return _java_missing_user_message()
     return f"OpenDataLoader convert failed: {exc}"
 
 
@@ -1316,20 +1446,47 @@ def ensure_visual_artifacts(
     # 일어날 때만 채워지고, ODL 폴백/키 부재/캐시 히트에선 빈 채로 남는다(→ 미기록).
     _visual_parse_usage_channel.usage = {}
     try:
-        try:
-            root, markdown_text, actual_engine = _run_convert(
-                pdf_path, output_dir, raw_image_dir, requested_mode, stage="visual"
-            )
-        except (OdlParserError, OdlRuntimeError) as exc:
-            # 프로덕션 폴백: visual 엔진(gemini) 실패 → ODL로 자동 재시도(사용자 눈엔 visual이 그냥 됨).
-            # 폴백 시엔 승격 없음. _run_convert 저수준은 불변 — 여기서만 engine="odl"로 강제한다.
-            logger.warning(
-                "Visual parser engine failed for %s; retrying with ODL: %s", paper_dir.name, exc
-            )
-            shutil.rmtree(raw_image_dir, ignore_errors=True)
-            raw_image_dir.mkdir(parents=True, exist_ok=True)
-            root, markdown_text, actual_engine = _run_convert(
-                pdf_path, output_dir, raw_image_dir, requested_mode, stage="visual", engine="odl"
+        # 프로덕션 폴백(양방향): 가용한 엔진을 우선순위대로 시도한다. 기본 엔진이 실패하면
+        # 아직 안 써본 반대 엔진으로 넘어가 사용자 눈엔 visual이 그냥 되게 한다.
+        #   - Java가 안 되면 odl은 계획에서 빠지고 Gemini(키 있을 때)로 넘어간다.
+        #   - Gemini가 안 되면(키 부재/변환 실패) Java(검증 통과 시)로 넘어간다.
+        # _run_convert 저수준 디스패처는 불변 — 여기서만 engine을 명시해 엔진을 강제한다.
+        # 스테이지 기본 엔진은 engine=None으로 넘겨 _resolve_stage_engine 의미를 그대로 태운다.
+        engine_plan = _plan_visual_engines()
+        if not engine_plan:
+            raise OdlRuntimeError(_visual_runtime_unavailable_message())
+        stage_default = _resolve_stage_engine("visual")
+        root = markdown_text = actual_engine = None  # type: ignore[assignment]
+        last_error: Exception | None = None
+        for attempt_index, engine_name in enumerate(engine_plan):
+            if attempt_index > 0:
+                # 각 엔진 재시도 전 raw 이미지 디렉터리를 청소해 부분 결과 오염을 막는다.
+                shutil.rmtree(raw_image_dir, ignore_errors=True)
+                raw_image_dir.mkdir(parents=True, exist_ok=True)
+            engine_override = None if engine_name == stage_default else engine_name
+            try:
+                root, markdown_text, actual_engine = _run_convert(
+                    pdf_path,
+                    output_dir,
+                    raw_image_dir,
+                    requested_mode,
+                    stage="visual",
+                    engine=engine_override,
+                )
+                break
+            except (OdlParserError, OdlRuntimeError) as exc:
+                last_error = exc
+                logger.warning(
+                    "Visual parser engine '%s' failed for %s; trying next engine: %s",
+                    engine_name,
+                    paper_dir.name,
+                    exc,
+                )
+        else:
+            # 계획한 모든 엔진이 실패 → 마지막 예외를 그대로 던진다(사용자 대면 메시지는
+            # _run_convert/_convert_error_message가 Java 미탐지면 한국어로 이미 변환).
+            raise last_error if last_error is not None else OdlRuntimeError(
+                _visual_runtime_unavailable_message()
             )
     finally:
         visual_parse_usage = getattr(_visual_parse_usage_channel, "usage", None)
@@ -1904,7 +2061,14 @@ def explain_odl_failure(exc: Exception) -> tuple[int, str]:
     if isinstance(exc, FileNotFoundError):
         return 404, str(exc)
     if isinstance(exc, OdlRuntimeError):
+        # OdlRuntimeError 메시지는 이미 소스에서 명확히 구성되므로 그대로 전달한다.
         return 503, str(exc)
     if isinstance(exc, OdlParserError):
-        return 422, str(exc)
+        message = str(exc)
+        if _looks_like_java_missing(message):
+            # 실제 ODL 파싱 실패가 아니라 Java 실행 환경 부재(런타임 문제) → 503 + 한국어 안내.
+            return 503, _java_missing_user_message()
+        return 422, message
+    if _looks_like_java_missing(str(exc)):
+        return 503, _java_missing_user_message()
     return 503, f"OpenDataLoader failed: {exc}"
