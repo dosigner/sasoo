@@ -9,6 +9,7 @@ type QuitApp = {
 
 type StoppableBackend = {
   stop(): Promise<void>;
+  forceStop?(): Promise<void>;
 };
 
 const MAX_AUTOMATIC_QUIT_RETRIES = 3;
@@ -55,9 +56,19 @@ export function registerGracefulBackendQuit(
         backendStop = null;
         shutdownFailures += 1;
         if (shutdownFailures >= MAX_AUTOMATIC_QUIT_RETRIES) {
-          console.error('[Main] Allowing app quit after repeated backend shutdown failures');
-          quitAllowed = true;
-          app.quit();
+          console.error('[Main] Forcing final backend shutdown before app quit');
+          backendStop = Promise.resolve(backend.forceStop?.())
+            .catch((forceError: unknown) => {
+              if (forceError instanceof Error) {
+                console.error('[Main] Final backend force-stop failed during app quit', forceError.message);
+              } else {
+                console.error('[Main] Final backend force-stop failed during app quit with an unknown error');
+              }
+            })
+            .then(() => {
+              quitAllowed = true;
+              app.quit();
+            });
           return;
         }
         quitRetryTimer = setTimeout(() => {

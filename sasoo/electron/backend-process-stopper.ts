@@ -85,6 +85,20 @@ async function forceKillWindowsTree(child: ChildProcess): Promise<void> {
   });
 }
 
+export async function forceKillBackendProcess(
+  child: ChildProcess,
+  platform: NodeJS.Platform = process.platform,
+): Promise<void> {
+  if (hasExited(child)) {
+    return;
+  }
+  if (platform === 'win32') {
+    await forceKillWindowsTree(child);
+    return;
+  }
+  child.kill('SIGKILL');
+}
+
 export async function stopBackendProcess(
   child: ChildProcess,
   config: BackendShutdownConfig,

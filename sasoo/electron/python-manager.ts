@@ -2,7 +2,7 @@ import type { ChildProcess } from 'child_process';
 import * as crypto from 'crypto';
 
 import { launchBackendProcess } from './backend-process-launcher';
-import { stopBackendProcess } from './backend-process-stopper';
+import { forceKillBackendProcess, stopBackendProcess } from './backend-process-stopper';
 import { LogBatcher } from './log-batcher';
 
 export interface PythonManagerConfig {
@@ -257,6 +257,10 @@ export class PythonManager {
       } else {
         console.error('[PythonManager] Unhealthy backend shutdown failed with an unknown error');
       }
+      this.isShuttingDown = false;
+      if (this.process === child) {
+        this.startHealthChecks();
+      }
       return;
     }
     this.isShuttingDown = false;
@@ -334,6 +338,20 @@ export class PythonManager {
       this.process = null;
     }
     console.log('[PythonManager] FastAPI server stopped');
+  }
+
+  async forceStop(): Promise<void> {
+    const child = this.process;
+    if (!child) {
+      return;
+    }
+    this.isShuttingDown = true;
+    this.stopHealthChecks();
+    this.logBatcher.flush();
+    await forceKillBackendProcess(child);
+    if (this.process === child) {
+      this.process = null;
+    }
   }
 
   /**

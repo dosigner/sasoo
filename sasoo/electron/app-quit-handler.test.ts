@@ -129,6 +129,7 @@ describe('graceful Electron quit', () => {
     try {
       let beforeQuit: ((event: { preventDefault(): void }) => void) | null = null;
       const stop = vi.fn().mockRejectedValue(new Error('backend still running'));
+      const forceStop = vi.fn().mockResolvedValue(undefined);
       const preventDefault = vi.fn();
       const quit = vi.fn(() => {
         beforeQuit?.({ preventDefault });
@@ -139,12 +140,13 @@ describe('graceful Electron quit', () => {
         }),
         quit,
       };
-      registerGracefulBackendQuit(app, () => ({ stop }));
+      registerGracefulBackendQuit(app, () => ({ stop, forceStop }));
 
       beforeQuit?.({ preventDefault });
       await vi.advanceTimersByTimeAsync(3_000);
 
       expect(stop).toHaveBeenCalledTimes(3);
+      expect(forceStop).toHaveBeenCalledOnce();
       expect(preventDefault).toHaveBeenCalledTimes(3);
       expect(quit).toHaveBeenCalledTimes(3);
     } finally {

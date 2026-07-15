@@ -94,6 +94,22 @@ describe('PythonManager shutdown', () => {
     },
   );
 
+  it.runIf(process.platform !== 'win32')('force stops the tracked backend before app exit', async () => {
+    const manager = new PythonManager({
+      backendPath: '/tmp/sasoo-backend',
+      port: 8000,
+      isDev: false,
+    });
+    const child = new ChildProcess();
+    const kill = vi.spyOn(child, 'kill').mockReturnValue(true);
+    manager['process'] = child;
+
+    await manager.forceStop();
+
+    expect(kill).toHaveBeenCalledWith('SIGKILL');
+    expect(manager['process']).toBeNull();
+  });
+
   it('ignores a stale child exit after a replacement process is installed', async () => {
     vi.useFakeTimers();
     const oldChild = new ChildProcess();
@@ -315,6 +331,23 @@ describe('PythonManager shutdown', () => {
       expect.objectContaining({ method: 'POST' }),
     );
     expect(kill).not.toHaveBeenCalled();
+  });
+
+  it('resumes health checks when unhealthy backend shutdown fails', async () => {
+    const child = new ChildProcess();
+    const manager = new PythonManager({
+      backendPath: '/tmp/sasoo-backend',
+      port: 8000,
+      isDev: false,
+    });
+    manager['process'] = child;
+    vi.spyOn(manager, 'stop').mockRejectedValue(new Error('backend did not exit'));
+
+    await manager['recoverUnhealthyProcess'](child);
+
+    expect(manager['isShuttingDown']).toBe(false);
+    expect(manager['healthCheckTimer']).not.toBeNull();
+    manager['stopHealthChecks']();
   });
 
   it('retries after a crash replacement fails its startup check', async () => {
