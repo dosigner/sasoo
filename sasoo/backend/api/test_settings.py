@@ -211,6 +211,23 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(context.exception.status_code, 503)
         set_setting.assert_not_awaited()
 
+    async def test_update_settings_reports_credential_store_unavailable_without_writing_key(self) -> None:
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch(
+                "api.settings.encrypt_value",
+                side_effect=CryptoKeyStoreError("credential store unavailable"),
+            ),
+            patch("api.settings._set_settings", new=AsyncMock()) as set_settings,
+        ):
+            with self.assertRaises(HTTPException) as context:
+                await settings.update_settings(SettingsUpdate(gemini_api_key="new-api-key"))
+
+            self.assertNotIn("GEMINI_API_KEY", os.environ)
+
+        self.assertEqual(context.exception.status_code, 503)
+        set_settings.assert_not_awaited()
+
     async def test_masked_api_key_does_not_replace_the_runtime_key(self) -> None:
         with (
             patch.dict(os.environ, {"GEMINI_API_KEY": "live-key"}, clear=False),

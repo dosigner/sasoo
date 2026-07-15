@@ -345,9 +345,15 @@ async def update_settings(update: SettingsUpdate):
             raise HTTPException(status_code=400, detail="pdf_visual_engine must be 'gemini' or 'odl'.")
         stored_updates[key] = str_value
 
-    for key, value in api_key_updates.items():
-        if value:
-            stored_updates[key] = encrypt_value(value, replace_invalid_key=True)
+    try:
+        for key, value in api_key_updates.items():
+            if value:
+                stored_updates[key] = encrypt_value(value, replace_invalid_key=True)
+    except CryptoKeyStoreError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="OS credential store is unavailable. Unlock it and try again.",
+        ) from exc
 
     if new_path is not None:
         new_path.mkdir(parents=True, exist_ok=True)
