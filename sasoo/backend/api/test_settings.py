@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 from api import settings
 from models.schemas import SettingsUpdate
+from services.crypto import CryptoKeyStoreError
 
 
 def _native_library_path(name: str) -> str:
@@ -187,6 +188,28 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(response.openai_key_unreadable)
         self.assertEqual(response.image_provider, "openai")
         self.assertEqual(response.image_quality, "high")
+
+    async def test_get_settings_reports_credential_store_unavailable_for_plaintext_key(self) -> None:
+        rows = [
+            {"key": "gemini_api_key", "value": "legacy-plaintext-key"},
+            {"key": "pdf_parser_mode", "value": "java"},
+            {"key": "extraction_pipeline_version", "value": "resolver_v1"},
+        ]
+
+        with (
+            patch("api.settings._ensure_defaults", new=AsyncMock()),
+            patch("api.settings.fetch_all", new=AsyncMock(return_value=rows)),
+            patch(
+                "api.settings.encrypt_value",
+                side_effect=CryptoKeyStoreError("credential store unavailable"),
+            ),
+            patch("api.settings._set_setting", new=AsyncMock()) as set_setting,
+        ):
+            with self.assertRaises(HTTPException) as context:
+                await settings.get_settings()
+
+        self.assertEqual(context.exception.status_code, 503)
+        set_setting.assert_not_awaited()
 
     async def test_masked_api_key_does_not_replace_the_runtime_key(self) -> None:
         with (

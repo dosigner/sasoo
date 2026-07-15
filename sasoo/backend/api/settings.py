@@ -23,7 +23,13 @@ from models.database import (
     usable_library_path,
 )
 from models.schemas import SettingsModel, SettingsUpdate
-from services.crypto import decrypt_value, encrypt_value, is_encrypted, is_unreadable
+from services.crypto import (
+    CryptoKeyStoreError,
+    decrypt_value,
+    encrypt_value,
+    is_encrypted,
+    is_unreadable,
+)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -259,7 +265,13 @@ async def get_settings():
     Get current application settings.
     API keys are masked for security.
     """
-    raw = await _get_all_settings()
+    try:
+        raw = await _get_all_settings()
+    except CryptoKeyStoreError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="OS credential store is unavailable. Unlock it and try again.",
+        ) from exc
     unreadable = await _unreadable_api_keys()
 
     return SettingsModel(
