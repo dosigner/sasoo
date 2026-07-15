@@ -6,24 +6,25 @@ This checklist covers the tagged desktop release flow for Sasoo on macOS ARM and
 
 Current automated workflows:
 
-- [release.yml](/Users/dongj/Documents/논문/.github/workflows/release.yml)
+- [build-check.yml](../../../.github/workflows/build-check.yml)
+- [release.yml](../../../.github/workflows/release.yml)
 
 Current build plan:
 
-- [electron-build-plan.md](/Users/dongj/Documents/논문/sasoo/docs/03-release/electron-build-plan.md)
+- [electron-build-plan.md](electron-build-plan.md)
 
 Current local artifact verifiers:
 
-- [verify-mac-artifacts.js](/Users/dongj/Documents/논문/sasoo/scripts/verify-mac-artifacts.js)
-- [verify-win-artifacts.js](/Users/dongj/Documents/논문/sasoo/scripts/verify-win-artifacts.js)
+- [verify-mac-artifacts.js](../../scripts/verify-mac-artifacts.js)
+- [verify-win-artifacts.js](../../scripts/verify-win-artifacts.js)
 
 ## Before Tagging
 
 1. Confirm the version is aligned in:
-   - [VERSION](/Users/dongj/Documents/논문/sasoo/VERSION)
-   - [package.json](/Users/dongj/Documents/논문/sasoo/package.json)
-   - [frontend/package.json](/Users/dongj/Documents/논문/sasoo/frontend/package.json)
-   - [backend/main.py](/Users/dongj/Documents/논문/sasoo/backend/main.py)
+   - [VERSION](../../VERSION)
+   - [package.json](../../package.json)
+   - [frontend/package.json](../../frontend/package.json)
+   - [backend/main.py](../../backend/main.py)
 2. Confirm the local build machine matches the intended path:
    - macOS local validation is for `Darwin arm64`
    - Windows packaging must run on `windows-latest` CI or a real Windows machine
@@ -35,19 +36,26 @@ Current local artifact verifiers:
 4. Preferred release packaging Python is `3.12`.
    - local Python `3.14.x` is acceptable for development validation, but not the release baseline
 5. Confirm local-only data is ignored by git:
-   - [sasoo/.gitignore](/Users/dongj/Documents/논문/sasoo/.gitignore)
+   - [sasoo/.gitignore](../../.gitignore)
 6. Run the frontend validation:
-   - `cd /Users/dongj/Documents/논문/sasoo/frontend && pnpm build`
+   - `cd sasoo/frontend && pnpm tsc --noEmit`
+   - `cd sasoo/frontend && pnpm test`
+   - `cd sasoo/frontend && pnpm build`
+   - `cd sasoo/frontend && pnpm lint`
 7. Run backend test validation:
-   - `cd /Users/dongj/Documents/논문/sasoo/backend && ./.venv/bin/python -m unittest discover -s services -p 'test*.py'`
-   - `cd /Users/dongj/Documents/논문/sasoo/backend && ./.venv/bin/python -m unittest discover -s api -p 'test*.py'`
+   - `cd sasoo/backend && ./.venv/bin/python -m pytest services api models`
+8. Confirm both previously exposed Google API keys are disabled or deleted at the provider, and review usage, billing, and audit logs.
+9. Confirm the exact release commit passed the Windows `Build Check` workflow.
+10. Before publishing any new release, enable GitHub's **Immutable Releases** setting for the repository.
+11. Configure `IMMUTABLE_RELEASES_TOKEN` with repository Administration read permission for the immutable-release check.
+12. Confirm the active `Release` workflow remains macOS-only for v0.7.0. Add `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` before reintroducing Windows public releases.
 
 ## Local Smoke Checks
 
 macOS ARM:
 
-1. `cd /Users/dongj/Documents/논문/sasoo && pnpm build:mac:release`
-2. Open the generated ZIP from [dist](/Users/dongj/Documents/논문/sasoo/dist)
+1. `cd sasoo && pnpm build:mac:release`
+2. Open the generated ZIP from `sasoo/dist`
 3. Validate:
    - App launches cleanly
    - Library screen opens
@@ -55,6 +63,7 @@ macOS ARM:
    - Workbench opens and docked chat behaves correctly
    - Analysis can start
    - App can close and relaunch
+   - A legacy `.sasoo_key` value migrates to macOS Keychain and the file is removed
 
 Windows:
 
@@ -66,44 +75,43 @@ Windows:
    - Installer launches without immediate crash
    - Backend bundle starts
    - PDF open, analysis, and docked chat work
+   - New API-key encryption uses Windows Credential Manager, not `.sasoo_key`
 
 ## GitHub Actions Release Flow
 
-Tagged release:
+Current v0.7.0 tagged release:
 
 1. Push `main`
 2. Push the tag:
    - `git push origin vX.Y.Z`
 3. GitHub Actions will:
    - build macOS ARM on `macos-14`
-   - build Windows on `windows-latest`
+   - does not publish a Windows build until an Authenticode certificate is configured
    - use Python `3.12`
    - verify generated artifacts
    - upload assets to the matching GitHub draft release
 
-Manual rerun for an existing tag:
+Manual build for an existing tag that has no GitHub release:
 
 1. Open Actions
 2. Run `Release`
-3. Enter the exact tag, for example `v0.6.7`
+3. Enter the exact tag, for example `v0.7.0`
+
+The workflow never modifies an existing draft or published release and never replaces an existing asset. If a stale draft exists, inspect and delete it manually before starting a clean rerun.
 
 ## Signing And Trust
 
-GitHub Release publishing is blocked unless macOS signing/notarization and Windows Authenticode secrets are configured. Unsigned builds are only for local development and internal checks; never publish them.
+macOS releases are currently distributed as unsigned, unnotarized ZIP files. Every release note and the repository README must disclose this and provide the limited `xattr -dr com.apple.quarantine /Applications/Sasoo.app` installation procedure. Never describe the macOS artifact as signed, notarized, or Gatekeeper-approved.
 
-Recommended signing/notarization secrets for GitHub Actions:
+Only use the `xattr` workaround for an artifact downloaded directly from the official `dosigner/sasoo` GitHub Releases page. It removes quarantine protection; it does not verify the publisher or make the app pass Apple's signing and notarization checks.
 
-- macOS:
-  - `CSC_LINK`
-  - `CSC_KEY_PASSWORD`
-  - `APPLE_ID`
-  - `APPLE_APP_SPECIFIC_PASSWORD`
-  - `APPLE_TEAM_ID`
+Windows Release publishing remains blocked unless Authenticode secrets are configured:
+
 - Windows:
   - `WIN_CSC_LINK`
   - `WIN_CSC_KEY_PASSWORD`
 
-The release workflow verifies the extracted macOS app with `codesign` and Gatekeeper assessment, and verifies the Windows installer with `Get-AuthenticodeSignature`.
+The current release workflow verifies macOS ZIP extraction and update-manifest integrity. A future Windows public release must verify the installer with `Get-AuthenticodeSignature`.
 
 ## Release Completion
 
@@ -111,10 +119,7 @@ The release workflow verifies the extracted macOS app with `codesign` and Gateke
    - mac ZIP
    - mac blockmap
    - `latest-mac.yml`
-   - Windows installer `.exe`
-   - Windows blockmap
-   - `latest.yml`
-2. Add release notes
+2. Add release notes explaining that saved API keys migrate automatically when possible, and users must re-enter keys that cannot be migrated or were revoked/deleted with the provider
 3. Publish the draft release
 4. Keep one final manual install check on each target OS before broad distribution
 

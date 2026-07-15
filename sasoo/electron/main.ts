@@ -3,6 +3,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as net from 'net';
 import * as crypto from 'crypto';
+import { registerGracefulBackendQuit } from './app-quit-handler';
+import { installStdioEpipeGuard } from './stdio-epipe-guard';
 import { PythonManager } from './python-manager';
 import {
   BACKEND_FALLBACK_PORT_RANGE,
@@ -12,7 +14,12 @@ import {
 } from './config';
 import { initAutoUpdater } from './updater';
 
+// Concurrently can close stdio before app shutdown finishes. Ignore EPIPE so
+// the guarded quit path can stop the backend instead of leaving an orphan.
+installStdioEpipeGuard();
+
 const isDev = !app.isPackaged;
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 let mainWindow: BrowserWindow | null = null;
 let pythonManager: PythonManager | null = null;
@@ -250,7 +257,19 @@ async function initialize(): Promise<void> {
 }
 
 // App lifecycle
-app.whenReady().then(initialize);
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+    }
+    mainWindow.show();
+    mainWindow.focus();
+  });
+  app.whenReady().then(initialize);
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -264,11 +283,7 @@ app.on('activate', async () => {
   }
 });
 
-app.on('before-quit', async () => {
-  if (pythonManager) {
-    await pythonManager.stop();
-  }
-});
+registerGracefulBackendQuit(app, () => pythonManager);
 
 // Security: Handle external links and prevent unwanted window creation
 app.on('web-contents-created', (_event, contents) => {

@@ -3,9 +3,11 @@ Sasoo - Settings API Router
 Endpoints for managing application settings and tracking API costs.
 """
 
+import asyncio
 import json
 import os
-from datetime import datetime, timedelta
+import sqlite3
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -21,7 +23,13 @@ from models.database import (
     usable_library_path,
 )
 from models.schemas import SettingsModel, SettingsUpdate
-from services.crypto import decrypt_value, encrypt_value, is_encrypted, is_unreadable
+from services.crypto import (
+    CryptoKeyStoreError,
+    decrypt_value,
+    encrypt_value,
+    is_encrypted,
+    is_unreadable,
+)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -183,6 +191,31 @@ async def _set_setting(key: str, value: str) -> None:
     await db.commit()
 
 
+async def _set_settings(values: dict[str, str]) -> None:
+    if not values:
+        return
+
+    timestamp = datetime.now(timezone.utc).isoformat()
+    placeholders = ", ".join("(?, ?, ?)" for _ in values)
+    params: list[str] = []
+    for key, value in values.items():
+        params.extend((key, value, timestamp))
+
+    db = await get_db()
+    try:
+        await db.execute(
+            "INSERT INTO settings (key, value, updated_at) VALUES "
+            f"{placeholders} "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value, "
+            "updated_at = excluded.updated_at",
+            tuple(params),
+        )
+        await db.commit()
+    except (asyncio.CancelledError, sqlite3.Error):
+        await db.rollback()
+        raise
+
+
 def _mask_api_key(key: str) -> str:
     """Mask an API key for safe display: show first 8 and last 4 chars."""
     if not key or len(key) < 16:
@@ -232,7 +265,13 @@ async def get_settings():
     Get current application settings.
     API keys are masked for security.
     """
-    raw = await _get_all_settings()
+    try:
+        raw = await _get_all_settings()
+    except CryptoKeyStoreError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="OS credential store is unavailable. Unlock it and try again.",
+        ) from exc
     unreadable = await _unreadable_api_keys()
 
     return SettingsModel(
@@ -272,14 +311,15 @@ async def update_settings(update: SettingsUpdate):
     if not update_data:
         raise HTTPException(status_code=400, detail="No settings to update.")
 
-    if "library_path" in update_data and update_data["library_path"] is not None:
-        new_path = resolve_library_path_update(update_data.pop("library_path"))
-        new_path.mkdir(parents=True, exist_ok=True)
-        # Stored per platform, so a Mac and a Windows machine sharing this
-        # settings database each keep their own.
-        await _set_setting(library_path_setting_key(), str(new_path))
-        invalidate_library_root_cache()
+    library_path = update_data.pop("library_path", None)
+    new_path = (
+        resolve_library_path_update(library_path)
+        if library_path is not None
+        else None
+    )
 
+    api_key_updates: dict[str, str | None] = {}
+    stored_updates: dict[str, str] = {}
     for key, value in update_data.items():
         # Convert booleans, enums, and list-valued settings to string for storage
         if key == "research_areas":
@@ -292,31 +332,57 @@ async def update_settings(update: SettingsUpdate):
             str_value = value.value
         else:
             str_value = str(value)
-        # Skip empty or masked API key values (empty = no change, masked = stale)
+        # A masked value is display-only. An empty value explicitly clears a key.
         if key in _API_KEY_FIELDS:
-            if not str_value or "..." in str_value:
+            if "..." in str_value:
                 continue
-            str_value = encrypt_value(str_value)
+            api_key_updates[key] = str_value or None
         if key == "pdf_parser_mode" and str_value != "java":
             raise HTTPException(status_code=400, detail="Slim build supports only 'java' for pdf_parser_mode.")
         if key == "extraction_pipeline_version" and str_value != "resolver_v1":
             raise HTTPException(status_code=400, detail="extraction_pipeline_version must be 'resolver_v1'.")
         if key == "pdf_visual_engine" and str_value not in {"gemini", "odl"}:
             raise HTTPException(status_code=400, detail="pdf_visual_engine must be 'gemini' or 'odl'.")
-        await _set_setting(key, str_value)
+        stored_updates[key] = str_value
 
-    # If API keys changed, update environment variables for current session
-    # (use original plaintext value, not encrypted)
-    if "gemini_api_key" in update_data and update_data["gemini_api_key"]:
-        os.environ["GEMINI_API_KEY"] = update_data["gemini_api_key"]
-    if "openai_api_key" in update_data and update_data["openai_api_key"]:
-        os.environ["OPENAI_API_KEY"] = update_data["openai_api_key"]
+    try:
+        for key, value in api_key_updates.items():
+            if value:
+                stored_updates[key] = encrypt_value(value, replace_invalid_key=True)
+    except CryptoKeyStoreError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="OS credential store is unavailable. Unlock it and try again.",
+        ) from exc
+
+    if new_path is not None:
+        new_path.mkdir(parents=True, exist_ok=True)
+        stored_updates[library_path_setting_key()] = str(new_path)
+
+    if stored_updates:
+        await _set_settings(stored_updates)
+
+    if new_path is not None:
+        invalidate_library_root_cache()
+
+    # Apply only values that passed persistence checks above.
+    for key, env_name in {
+        "gemini_api_key": "GEMINI_API_KEY",
+        "openai_api_key": "OPENAI_API_KEY",
+    }.items():
+        if key not in api_key_updates:
+            continue
+        value = api_key_updates[key]
+        if value is None:
+            os.environ.pop(env_name, None)
+        else:
+            os.environ[env_name] = value
 
     # odl_parser._resolve_stage_engine reads SASOO_PDF_VISUAL_ENGINE from
     # os.environ at call time, so updating it here takes effect on the next
     # parse without a restart.
-    if "pdf_visual_engine" in update_data and update_data["pdf_visual_engine"]:
-        os.environ["SASOO_PDF_VISUAL_ENGINE"] = update_data["pdf_visual_engine"]
+    if "pdf_visual_engine" in stored_updates:
+        os.environ["SASOO_PDF_VISUAL_ENGINE"] = stored_updates["pdf_visual_engine"]
 
     return await get_settings()
 

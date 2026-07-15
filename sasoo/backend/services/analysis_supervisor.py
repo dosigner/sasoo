@@ -13,6 +13,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -94,7 +95,7 @@ def spawn_worker(paper_id: int, generation: int) -> int:
     return proc.pid
 
 
-def terminate_workers(grace_s: float = 5.0) -> int:
+def terminate_workers(grace_s: float = 3.0, kill_grace_s: float = 2.0) -> int:
     """결정①: 정상 종료(graceful shutdown) 훅 — 호출되면 살아있는 워커 전원에 SIGTERM →
     grace_s 대기 → 미종료 시 SIGKILL. 종료시킨(SIGTERM을 보낸) 워커 개수를 반환한다.
 
@@ -106,23 +107,48 @@ def terminate_workers(grace_s: float = 5.0) -> int:
     lifespan shutdown 경로 자체를 안 타므로 이 함수가 불리지 않아 워커가 그대로 살아남는다.
     개별 워커 처리 중 예외는 삼키고 로그만 남겨, 한 워커 정리 실패가 나머지 워커 정리를
     막지 않게 한다."""
-    n = 0
+    live_workers = []
     for proc in list(_CHILDREN):
         try:
             if proc.poll() is not None:
                 continue  # 이미 종료됨
+            live_workers.append(proc)
+        except Exception:  # noqa: BLE001
+            logger.exception("워커 상태 확인 실패 pid=%s", getattr(proc, "pid", None))
+
+    n = 0
+    for proc in live_workers:
+        try:
             proc.terminate()
-            try:
-                proc.wait(timeout=grace_s)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                try:
-                    proc.wait(timeout=grace_s)
-                except Exception:  # noqa: BLE001
-                    pass
             n += 1
         except Exception:  # noqa: BLE001
-            logger.exception("워커 종료 실패 pid=%s", getattr(proc, "pid", None))
+            logger.exception("워커 SIGTERM 실패 pid=%s", getattr(proc, "pid", None))
+
+    graceful_deadline = time.monotonic() + grace_s
+    survivors = []
+    for proc in live_workers:
+        try:
+            proc.wait(timeout=max(0.0, graceful_deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            survivors.append(proc)
+        except Exception:  # noqa: BLE001
+            logger.exception("워커 graceful wait 실패 pid=%s", getattr(proc, "pid", None))
+            survivors.append(proc)
+
+    for proc in survivors:
+        try:
+            proc.kill()
+        except Exception:  # noqa: BLE001
+            logger.exception("워커 SIGKILL 실패 pid=%s", getattr(proc, "pid", None))
+
+    kill_deadline = time.monotonic() + kill_grace_s
+    for proc in survivors:
+        try:
+            proc.wait(timeout=max(0.0, kill_deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            logger.error("워커 종료 미확인 pid=%s", getattr(proc, "pid", None))
+        except Exception:  # noqa: BLE001
+            logger.exception("워커 kill wait 실패 pid=%s", getattr(proc, "pid", None))
     reap_exited_workers()
     return n
 
@@ -310,13 +336,13 @@ async def stop_reconciler(app) -> None:
         return
 
     try:
-        terminate_workers()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("terminate_workers 실패(정상 종료 계속 진행): %s", exc)
-
-    try:
         from models.database import get_db
         conn = await get_db()
         await ar.requeue_for_shutdown(conn, datetime.now(timezone.utc).isoformat())
     except Exception as exc:  # noqa: BLE001
         logger.warning("requeue_for_shutdown 실패(정상 종료 계속 진행): %s", exc)
+
+    try:
+        terminate_workers()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("terminate_workers 실패(정상 종료 계속 진행): %s", exc)

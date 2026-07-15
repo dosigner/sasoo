@@ -14,7 +14,7 @@ Output:
 import os
 import sys
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 # Get the backend directory
 backend_dir = Path(SPECPATH).resolve()
@@ -102,12 +102,17 @@ elif os.environ.get("SASOO_BUNDLED_JAVA_HOME") or os.environ.get("JAVA_HOME"):
 odl_data = collect_data_files("opendataloader_pdf")
 print(f"[SPEC] OpenDataLoader package data files collected: {len(odl_data)}")
 
+# `keyring` discovers its platform backend dynamically. Explicit collection is
+# required so packaged macOS/Windows builds retain Keychain/Credential Manager.
+keyring_hiddenimports = collect_submodules("keyring.backends")
+
 a = Analysis(
     ['main.py'],
     pathex=[str(backend_dir)],
     binaries=[],
     datas=agents_data + paperbanana_data + java_runtime_data + odl_data,
     hiddenimports=[
+        *keyring_hiddenimports,
         # FastAPI and dependencies
         'fastapi',
         'starlette',

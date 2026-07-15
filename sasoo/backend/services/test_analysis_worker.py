@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import suppress
 import os
 import sys
 import tempfile
@@ -66,8 +67,17 @@ class ReporterBridgeTests(unittest.IsolatedAsyncioTestCase):
         side = asyncio.create_task(
             analysis_worker._reporter_and_cancel_bridge(1, gen, main_task, self.conn, interval=0.01)
         )
-        await main_task; side.cancel()
-        analysis_state._cancel_events.pop(1, None)
+        try:
+            await asyncio.wait_for(ev.wait(), timeout=1.0)
+        finally:
+            side.cancel()
+            main_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await side
+            with suppress(asyncio.CancelledError):
+                await main_task
+            analysis_state._cancel_events.pop(1, None)
+
         self.assertTrue(ev.is_set())
 
     async def test_bridge_self_aborts_on_generation_fence(self):

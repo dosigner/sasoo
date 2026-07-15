@@ -12,6 +12,24 @@ from services import crypto, odl_parser
 
 
 class RuntimeLibraryPathTests(unittest.TestCase):
+    def test_explicit_app_data_root_keeps_packaged_qa_out_of_user_data(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            isolated_root = Path(tmp_dir) / "appdata"
+            with patch.dict(
+                os.environ,
+                {"SASOO_ENV": "production", "SASOO_APP_DATA_ROOT": str(isolated_root)},
+                clear=False,
+            ):
+                self.assertEqual(
+                    database._get_app_data_root(),
+                    isolated_root.resolve(strict=False),
+                )
+
+    def test_explicit_app_data_root_must_be_absolute(self) -> None:
+        with patch.dict(os.environ, {"SASOO_APP_DATA_ROOT": "relative/path"}, clear=False):
+            with self.assertRaisesRegex(ValueError, "must be an absolute path"):
+                database._get_app_data_root()
+
     def test_get_paper_dir_falls_back_to_default_root_for_existing_papers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -61,24 +79,25 @@ class RuntimeLibraryPathTests(unittest.TestCase):
 
 class CryptoStorageTests(unittest.TestCase):
     """
-    Encryption must not depend on the OS keyring.
+    Encryption uses the OS credential store in every launch mode.
 
-    Keyring backends can block or fail inside bundled Python subprocesses on
-    macOS, so packaged builds have always used the file key. The key store used
-    to be chosen by launch mode, which meant a key written in development was
-    unreadable once packaged. Encryption now uses the file key in every mode;
-    the keyring is read-only fallback for values sealed by older builds.
+    The packaged and development processes must choose the same primary store;
+    the colocated file key is only a legacy decryption/migration source.
     """
 
-    def test_encryption_uses_the_file_key_not_the_keyring(self) -> None:
+    def test_encryption_uses_the_keyring_in_every_launch_mode(self) -> None:
         fake_key = b"fake-key"
         for env in ("production", "development"):
             with self.subTest(env=env):
-                with patch.dict(os.environ, {"SASOO_ENV": env}, clear=False):
+                with patch.dict(
+                    os.environ,
+                    {"SASOO_ENV": env, "SASOO_USE_FILE_KEY": ""},
+                    clear=False,
+                ):
                     with (
-                        patch("services.crypto._read_file_key", return_value=fake_key) as file_key,
-                        patch("services.crypto._read_keyring_key") as keyring_key,
+                        patch("services.crypto._read_file_key") as file_key,
+                        patch("services.crypto._read_keyring_key", return_value=fake_key) as keyring_key,
                     ):
                         self.assertEqual(crypto._encryption_key(), fake_key)
-                        file_key.assert_called_once()
-                        keyring_key.assert_not_called()
+                        keyring_key.assert_called_once()
+                        file_key.assert_not_called()

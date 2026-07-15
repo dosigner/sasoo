@@ -26,6 +26,7 @@ truststore>=0.10.0
 
 # Security / Encryption
 cryptography>=44.0.0
+filelock>=3.16.0
 keyring>=25.0.0
 
 # Environment

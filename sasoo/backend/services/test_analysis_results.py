@@ -1,28 +1,10 @@
 import unittest
-import sys
-import types
 from unittest.mock import AsyncMock, patch
-
-_ORIGINAL_AIOSQLITE = sys.modules.get("aiosqlite")
-aiosqlite_module = types.ModuleType("aiosqlite")
-aiosqlite_module.Connection = object
-aiosqlite_module.Row = dict
-
-async def _unused_connect(*args, **kwargs):
-    raise RuntimeError("aiosqlite.connect should not be called in these tests")
-
-aiosqlite_module.connect = _unused_connect
-sys.modules.setdefault("aiosqlite", aiosqlite_module)
 
 from services.analysis_results import (
     get_latest_completed_phase_row,
     get_latest_completed_phase_rows,
 )
-
-if _ORIGINAL_AIOSQLITE is None:
-    sys.modules.pop("aiosqlite", None)
-else:
-    sys.modules["aiosqlite"] = _ORIGINAL_AIOSQLITE
 
 
 class LatestCompletedPhaseRowsTests(unittest.IsolatedAsyncioTestCase):

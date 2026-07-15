@@ -41,8 +41,8 @@ class ReconcileTests(unittest.IsolatedAsyncioTestCase):
         큐가 비어 스폰이 한 번도 일어나지 않는 틱에서도 회수돼야 한다. 회수를 spawn 시점에만
         두면 CPython 기본 동작(다음 Popen 때 _cleanup)과 다를 바 없어 창이 닫히지 않는다.
         """
-        if sys.platform == "win32":
-            self.skipTest("좀비는 POSIX 시맨틱")
+        if not hasattr(os, "waitid"):
+            self.skipTest("os.waitid is unavailable on this platform")
         from services import analysis_supervisor as sup
         with tempfile.TemporaryDirectory() as td, \
              patch.object(sup, "_LOG_DIR", Path(td)), \

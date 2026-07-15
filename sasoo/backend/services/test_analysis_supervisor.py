@@ -72,8 +72,8 @@ class SpawnBuilderTests(unittest.TestCase):
         좀비로 남는다. 좀비 pid는 os.kill(pid, 0)을 통과하니, 훗날 pid 기반 생존 판정을
         넣으면 죽은 워커를 살아있다고 오판해 재스폰이 영영 막힌다.
         """
-        if sys.platform == "win32":
-            self.skipTest("좀비는 POSIX 시맨틱")
+        if not hasattr(os, "waitid"):
+            self.skipTest("os.waitid is unavailable on this platform")
         from services import analysis_supervisor as sup
         with tempfile.TemporaryDirectory() as td, \
              patch.object(sup, "_LOG_DIR", Path(td)), \
@@ -167,6 +167,52 @@ class TerminateWorkersTests(unittest.TestCase):
         sup._CHILDREN.clear()
         self.assertEqual(sup.terminate_workers(), 0)
 
+    def test_signals_every_worker_before_waiting_for_any_worker(self):
+        from services import analysis_supervisor as sup
+
+        self.addCleanup(sup._CHILDREN.clear)
+        events = []
+        first = MagicMock()
+        first.pid = 601
+        first.poll.return_value = None
+        first.terminate.side_effect = lambda: events.append("terminate-first")
+        first.wait.side_effect = lambda **_kwargs: events.append("wait-first")
+        second = MagicMock()
+        second.pid = 602
+        second.poll.return_value = None
+        second.terminate.side_effect = lambda: events.append("terminate-second")
+        second.wait.side_effect = lambda **_kwargs: events.append("wait-second")
+        sup._CHILDREN[:] = [first, second]
+
+        sup.terminate_workers(grace_s=5.0)
+
+        self.assertLess(events.index("terminate-second"), events.index("wait-first"))
+
+    def test_workers_share_one_grace_deadline(self):
+        from services import analysis_supervisor as sup
+        import subprocess as sp
+
+        self.addCleanup(sup._CHILDREN.clear)
+        first = MagicMock()
+        first.pid = 611
+        first.poll.side_effect = [None, 0]
+        first.wait.side_effect = [sp.TimeoutExpired(cmd="first", timeout=3), 0]
+        second = MagicMock()
+        second.pid = 612
+        second.poll.side_effect = [None, 0]
+        second.wait.side_effect = [sp.TimeoutExpired(cmd="second", timeout=1), 0]
+        sup._CHILDREN[:] = [first, second]
+
+        with patch.object(
+            sup.time,
+            "monotonic",
+            side_effect=[100.0, 102.0, 104.0, 200.0, 201.0, 202.0],
+        ):
+            sup.terminate_workers(grace_s=5.0, kill_grace_s=2.0)
+
+        self.assertEqual(first.wait.call_args_list[0].kwargs["timeout"], 3.0)
+        self.assertEqual(second.wait.call_args_list[0].kwargs["timeout"], 1.0)
+
 
 if __name__ == "__main__":
     unittest.main()
@@ -231,6 +277,26 @@ class StopReconcilerShutdownTests(unittest.IsolatedAsyncioTestCase):
         terminate_mock.assert_called_once()
         requeue_mock.assert_awaited_once()
         self.assertIs(requeue_mock.await_args.args[0], fake_conn)
+
+    async def test_stop_reconciler_requeues_before_terminating_workers(self):
+        import asyncio
+        from unittest.mock import ANY, AsyncMock, MagicMock, call
+        from services import analysis_supervisor as sup
+
+        app = types.SimpleNamespace(state=types.SimpleNamespace())
+        app.state.reconciler_task = asyncio.create_task(asyncio.sleep(10))
+        order = MagicMock()
+
+        with patch.dict(os.environ, {"SASOO_ENV": "production"}), \
+             patch.object(sup, "terminate_workers", side_effect=order.terminate), \
+             patch("models.database.get_db", new=AsyncMock(return_value=object())), \
+             patch.object(sup.ar, "requeue_for_shutdown", new=AsyncMock(side_effect=order.requeue)):
+            await sup.stop_reconciler(app)
+
+        self.assertLess(
+            order.mock_calls.index(call.requeue(ANY, ANY)),
+            order.mock_calls.index(call.terminate()),
+        )
 
     async def test_stop_reconciler_preserves_workers_when_env_is_development(self):
         # 결함1: dev의 uvicorn --reload SIGTERM도 이 lifespan shutdown 경로를 태우지만,

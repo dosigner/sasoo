@@ -12,6 +12,8 @@ from hmac import compare_digest, digest
 from pathlib import Path
 from typing import Optional
 
+import uvicorn
+
 # ---------------------------------------------------------------------------
 # SSL: Use OS certificate store for all outbound HTTPS connections.
 # Fixes SSL errors on corporate/university networks with SSL inspection proxies.
@@ -76,6 +78,8 @@ _env_path = Path(__file__).resolve().parent / ".env"
 if _env_path.exists():
     load_dotenv(_env_path)
 
+_shutdown_server: Optional[uvicorn.Server] = None
+
 
 # ---------------------------------------------------------------------------
 # Runtime bootstrap (shared by the server process and detached analysis workers)
@@ -114,8 +118,8 @@ async def bootstrap_runtime(worker: bool = False) -> None:
     # 처리 방식은 다르다: api 키는 암호화 저장되어 복호화가 필요하고, pdf_visual_engine은
     # 평문 문자열이다. 파싱은 개별 try로 감싸 한쪽 실패가 다른 쪽 로드를 막지 않게 한다.
     from models.database import fetch_all
-    from services.crypto import decrypt_value
-    settings_map: dict = {}
+    from services.api_key_runtime import load_api_keys_from_settings
+    settings_map: dict[str, str] = {}
     try:
         rows = await fetch_all(
             "SELECT key, value FROM settings "
@@ -125,17 +129,7 @@ async def bootstrap_runtime(worker: bool = False) -> None:
     except Exception as exc:
         print(f"[Sasoo] Warning: Could not load settings from DB: {exc}")
 
-    try:
-        env_names = {"gemini_api_key": "GEMINI_API_KEY", "openai_api_key": "OPENAI_API_KEY"}
-        for setting_key, env_name in env_names.items():
-            value = settings_map.get(setting_key)
-            if value:
-                decrypted = decrypt_value(value)
-                if decrypted:
-                    os.environ[env_name] = decrypted
-        print("[Sasoo] API keys loaded from database into environment.")
-    except Exception as exc:
-        print(f"[Sasoo] Warning: Could not load API keys from DB: {exc}")
+    await load_api_keys_from_settings(settings_map, worker)
 
     # PDF visual-engine preference: odl_parser의 _resolve_stage_engine이 호출 시점에
     # SASOO_PDF_VISUAL_ENGINE을 읽으므로, 저장된 선택을 여기서 env에 심어 이번 세션 첫
@@ -191,7 +185,7 @@ app = FastAPI(
         "(Screening -> Visual Verification -> Recipe Extraction -> Deep Dive) "
         "powered by the Gemini API (Interactions)."
     ),
-    version="0.6.7",
+    version="0.7.0",
     lifespan=lifespan,
 )
 
@@ -306,7 +300,7 @@ async def root():
     return {
         "service": "sasoo",
         "status": "running",
-        "version": "0.6.7",
+        "version": "0.7.0",
         "library_path": str(get_library_root()),
     }
 
@@ -360,12 +354,14 @@ async def shutdown(x_shutdown_token: Optional[str] = Header(None)):
     """Graceful shutdown endpoint (called by Electron on app quit).
     Requires X-Shutdown-Token header matching SASOO_SHUTDOWN_TOKEN env var."""
     expected_token = os.environ.get("SASOO_SHUTDOWN_TOKEN", "")
-    if expected_token and x_shutdown_token != expected_token:
+    if not expected_token:
+        raise HTTPException(status_code=503, detail="Shutdown token is not configured")
+    if not x_shutdown_token or not compare_digest(x_shutdown_token, expected_token):
         raise HTTPException(status_code=403, detail="Invalid shutdown token")
 
-    import signal
-
-    os.kill(os.getpid(), signal.SIGINT)
+    if _shutdown_server is None:
+        raise HTTPException(status_code=503, detail="Graceful shutdown is unavailable")
+    _shutdown_server.should_exit = True
     return {"status": "shutting_down"}
 
 
@@ -377,7 +373,6 @@ async def shutdown(x_shutdown_token: Optional[str] = Header(None)):
 if __name__ == "__main__":
     import argparse
     import sys
-    import uvicorn
 
     parser = argparse.ArgumentParser(description="Sasoo Backend Server")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
@@ -400,15 +395,18 @@ if __name__ == "__main__":
     # Determine if we're running as a bundled executable
     is_bundled = getattr(sys, 'frozen', False)
 
-    # In bundled mode, run the app object directly (no reload)
-    # In development, allow reload
-    if is_bundled:
-        uvicorn.run(
+    if is_bundled or not args.reload:
+        config = uvicorn.Config(
             app,
             host=args.host,
             port=args.port,
             log_level="info",
         )
+        _shutdown_server = uvicorn.Server(config)
+        try:
+            _shutdown_server.run()
+        finally:
+            _shutdown_server = None
     else:
         uvicorn.run(
             "main:app",

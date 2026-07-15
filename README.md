@@ -8,7 +8,7 @@
 
 <p>
   <a href="https://github.com/dosigner/sasoo/releases/tag/v0.6.7">
-    <img src="https://img.shields.io/badge/version-v0.6.7-0f766e?style=for-the-badge" alt="Version v0.6.7" />
+    <img src="https://img.shields.io/badge/v0.6.7-withdrawn-b91c1c?style=for-the-badge" alt="v0.6.7 withdrawn" />
   </a>
   <a href="https://github.com/dosigner/sasoo/releases/latest">
     <img src="https://img.shields.io/badge/release-latest-111827?style=for-the-badge" alt="Latest release" />
@@ -17,7 +17,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/Electron-28-1f2937?style=flat-square&logo=electron&logoColor=9feaf9" alt="Electron 28" />
+  <img src="https://img.shields.io/badge/Electron-43-1f2937?style=flat-square&logo=electron&logoColor=9feaf9" alt="Electron 43" />
   <img src="https://img.shields.io/badge/React-18-0f172a?style=flat-square&logo=react" alt="React 18" />
   <img src="https://img.shields.io/badge/FastAPI-0.115-065f46?style=flat-square&logo=fastapi" alt="FastAPI" />
   <img src="https://img.shields.io/badge/TypeScript-5.3-1d4ed8?style=flat-square&logo=typescript" alt="TypeScript 5.3" />
@@ -25,11 +25,8 @@
 </p>
 
 <p>
-  <a href="https://github.com/dosigner/sasoo/releases/download/v0.6.7/Sasoo.Setup.0.6.7.exe">
-    <img src="https://img.shields.io/badge/Download-Windows%20Installer-2563eb?style=for-the-badge&logo=windows&logoColor=white" alt="Download Windows installer" />
-  </a>
-  <a href="https://github.com/dosigner/sasoo/releases/download/v0.6.7/Sasoo-0.6.7-arm64-mac.zip">
-    <img src="https://img.shields.io/badge/Download-macOS%20Apple%20Silicon-111827?style=for-the-badge&logo=apple&logoColor=white" alt="Download macOS zip" />
+  <a href="https://github.com/dosigner/sasoo/releases">
+    <img src="https://img.shields.io/badge/Downloads-GitHub%20Releases-111827?style=for-the-badge&logo=github&logoColor=white" alt="GitHub Releases" />
   </a>
 </p>
 
@@ -78,9 +75,10 @@
 
 ## Current Release
 
-`v0.6.7`은 지금 공개 배포 중인 최신 릴리즈입니다.
+`v0.6.7` 실행 파일은 서명 상태 문제로 회수됐습니다. 다음 실행 파일은 새 버전으로 다시 배포합니다.
 
-- Windows NSIS 인스톨러와 macOS Apple Silicon ZIP이 함께 배포됩니다.
+- 현재 v0.6.7 릴리즈에는 설치 가능한 실행 파일이 없습니다.
+- 다음 macOS Apple Silicon 빌드는 미서명 ZIP으로 배포하며, 아래의 `xattr` 절차가 필요합니다.
 - 데스크톱 설정 저장과 라이브러리 경로 처리 안정화가 반영됐습니다.
 - `resolver_v1` 기반 figure/table 추출 경로가 기본값입니다.
 - 릴리즈 빌드에서 Java 기반 OpenDataLoader 런타임을 함께 패키징합니다.
@@ -135,22 +133,26 @@ flowchart LR
 
 | Platform | Asset | Notes |
 | --- | --- | --- |
-| Windows 10/11 | [`Sasoo.Setup.0.6.7.exe`](https://github.com/dosigner/sasoo/releases/download/v0.6.7/Sasoo.Setup.0.6.7.exe) | NSIS installer |
-| macOS Apple Silicon | [`Sasoo-0.6.7-arm64-mac.zip`](https://github.com/dosigner/sasoo/releases/download/v0.6.7/Sasoo-0.6.7-arm64-mac.zip) | unsigned ZIP |
+| Windows 10/11 | [GitHub Releases](https://github.com/dosigner/sasoo/releases) | 새 버전 자산이 게시된 경우에만 제공 |
+| macOS Apple Silicon | `Sasoo-<version>-arm64-mac.zip` | 공식 GitHub Release에서 제공하는 미서명 ZIP |
 | Linux | source build | 현재 GitHub release asset은 제공하지 않음 |
 
 ### macOS note
 
-macOS 배포본은 unsigned ZIP입니다.
+macOS 배포본은 Apple Developer ID로 서명되거나 공증되지 않은 ZIP입니다. 따라서 Gatekeeper가 실행을 차단할 수 있으며, 아래 명령은 해당 앱의 quarantine 속성을 사용자가 직접 제거하는 우회 절차입니다.
 
-1. ZIP을 풀고 `Sasoo.app`를 `/Applications`로 옮깁니다.
-2. 실행이 막히면 아래를 실행합니다.
+1. 반드시 [`dosigner/sasoo` 공식 GitHub Releases](https://github.com/dosigner/sasoo/releases)에서 ZIP을 받습니다. 제3자가 다시 올린 파일에는 이 절차를 사용하지 마세요.
+2. ZIP을 풀고 `Sasoo.app`를 `/Applications`로 옮깁니다.
+3. 실행이 차단될 때만 Terminal에서 아래 명령을 실행합니다.
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Sasoo.app
 ```
 
-3. 그래도 경고가 뜨면 앱을 우클릭한 뒤 `Open`으로 1회 실행합니다.
+4. Finder에서 `Sasoo.app`를 우클릭하고 `Open`을 선택해 1회 실행합니다.
+
+> [!WARNING]
+> 이 명령은 Apple의 서명과 공증 검증을 통과시키는 것이 아니라 quarantine 보호를 제거합니다. 출처를 직접 확인한 공식 Sasoo 앱에만 사용하고, 다운로드한 ZIP이나 앱을 다른 경로에 둔 경우 명령의 경로를 정확히 확인하세요.
 
 ## API Keys
 
@@ -160,6 +162,8 @@ xattr -dr com.apple.quarantine /Applications/Sasoo.app
 - OpenAI: figure/이미지 생성(기본 이미지 프로바이더 — `Settings`에서 이미지 생성을 Gemini로 바꾸면 OpenAI 키 없이도 동작)
 
 설치 후 `Settings`에서 바로 입력할 수 있습니다.
+
+API 키의 암호화 키는 기본적으로 macOS Keychain, Windows Credential Manager 등 OS 자격 증명 저장소에 보관됩니다. 이전 버전의 `.sasoo_key`로 암호화된 값은 첫 실행 때 OS 저장소로 마이그레이션된 뒤 해당 파일을 제거합니다.
 
 ## Quick Start
 
@@ -245,8 +249,8 @@ pnpm build:linux
 
 ## Notes For Reviewers
 
-- 현재 공개 최신 릴리즈는 [`v0.6.7`](https://github.com/dosigner/sasoo/releases/tag/v0.6.7) 입니다.
-- `latest.yml`과 `latest-mac.yml`이 함께 배포되므로 auto-update 메타데이터도 릴리즈 자산에 포함됩니다.
+- [`v0.6.7`](https://github.com/dosigner/sasoo/releases/tag/v0.6.7) 실행 파일은 회수됐으며 새 버전 자산이 게시되기 전까지 직접 다운로드 링크를 제공하지 않습니다.
+- macOS 공개 빌드는 현재 미서명 ZIP 정책이며 README의 제한된 `xattr` 설치 절차를 사용합니다.
 - 릴리즈 재태깅 상황에서는 GitHub 자동 changelog가 역방향 비교 링크를 만들 수 있으므로 본문을 수동 검토하는 편이 안전합니다.
 
 ## License

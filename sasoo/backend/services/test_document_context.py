@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, patch
 _TEMP_MODULE_NAMES = (
     "fitz",
     "PIL",
-    "aiosqlite",
     "services.odl_parser",
 )
 _ORIGINAL_MODULES = {name: sys.modules.get(name) for name in _TEMP_MODULE_NAMES}
@@ -18,15 +17,6 @@ sys.modules.setdefault("fitz", types.SimpleNamespace())
 pil_module = types.ModuleType("PIL")
 pil_module.Image = types.SimpleNamespace()
 sys.modules.setdefault("PIL", pil_module)
-aiosqlite_module = types.ModuleType("aiosqlite")
-aiosqlite_module.Connection = object
-aiosqlite_module.Row = dict
-
-async def _unused_connect(*args, **kwargs):
-    raise RuntimeError("aiosqlite.connect should not be called in these tests")
-
-aiosqlite_module.connect = _unused_connect
-sys.modules.setdefault("aiosqlite", aiosqlite_module)
 odl_parser_module = types.ModuleType("services.odl_parser")
 
 class _StubOdlParserError(RuntimeError):
