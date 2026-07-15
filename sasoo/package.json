@@ -87,7 +87,8 @@
     "mac": {
       "category": "public.app-category.education",
       "target": [
-        "zip"
+        "zip",
+        "dmg"
       ]
     },
     "win": {
