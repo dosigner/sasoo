@@ -202,6 +202,7 @@ jobs:
           path: |
             sasoo/dist/*.exe
             sasoo/dist/*-mac.zip
+            sasoo/dist/*.dmg
             sasoo/dist/*.blockmap
             sasoo/dist/latest.yml
             sasoo/dist/latest-mac.yml
