@@ -7,9 +7,6 @@
 ### 논문을 읽기 전에 구조를 세우고, 읽는 동안 figure를 해석하고, 읽은 뒤에는 재현 파라미터까지 남기는 AI 연구 워크벤치
 
 <p>
-  <a href="https://github.com/dosigner/sasoo/releases/tag/v0.6.7">
-    <img src="https://img.shields.io/badge/v0.6.7-withdrawn-b91c1c?style=for-the-badge" alt="v0.6.7 withdrawn" />
-  </a>
   <a href="https://github.com/dosigner/sasoo/releases/latest">
     <img src="https://img.shields.io/badge/release-latest-111827?style=for-the-badge" alt="Latest release" />
   </a>
@@ -75,10 +72,9 @@
 
 ## Current Release
 
-`v0.6.7` 실행 파일은 서명 상태 문제로 회수됐습니다. 다음 실행 파일은 새 버전으로 다시 배포합니다.
+현재 릴리스는 [`v0.7.0`](https://github.com/dosigner/sasoo/releases/latest)입니다. macOS Apple Silicon용 미서명 ZIP과 DMG로 배포합니다.
 
-- 현재 v0.6.7 릴리즈에는 설치 가능한 실행 파일이 없습니다.
-- 다음 macOS Apple Silicon 빌드는 미서명 ZIP으로 배포하며, 아래의 `xattr` 절차가 필요합니다.
+- macOS Apple Silicon 빌드는 미서명 ZIP/DMG로 배포하며, 아래의 `xattr` 절차가 필요합니다.
 - 데스크톱 설정 저장과 라이브러리 경로 처리 안정화가 반영됐습니다.
 - `resolver_v1` 기반 figure/table 추출 경로가 기본값입니다.
 - 릴리즈 빌드에서 Java 기반 OpenDataLoader 런타임을 함께 패키징합니다.
@@ -134,7 +130,7 @@ flowchart LR
 | Platform | Asset | Notes |
 | --- | --- | --- |
 | Windows 10/11 | [GitHub Releases](https://github.com/dosigner/sasoo/releases) | 새 버전 자산이 게시된 경우에만 제공 |
-| macOS Apple Silicon | `Sasoo-<version>-arm64-mac.zip` | 공식 GitHub Release에서 제공하는 미서명 ZIP |
+| macOS Apple Silicon | `Sasoo-<version>-arm64-mac.zip` · `Sasoo-<version>-arm64.dmg` | 공식 GitHub Release에서 제공하는 미서명 ZIP/DMG |
 | Linux | source build | 현재 GitHub release asset은 제공하지 않음 |
 
 ### macOS note
@@ -249,7 +245,7 @@ pnpm build:linux
 
 ## Notes For Reviewers
 
-- [`v0.6.7`](https://github.com/dosigner/sasoo/releases/tag/v0.6.7) 실행 파일은 회수됐으며 새 버전 자산이 게시되기 전까지 직접 다운로드 링크를 제공하지 않습니다.
+- 현재 릴리스는 [`v0.7.0`](https://github.com/dosigner/sasoo/releases/latest)이며, 공식 GitHub Releases에서 macOS 미서명 ZIP/DMG를 제공합니다.
 - macOS 공개 빌드는 현재 미서명 ZIP 정책이며 README의 제한된 `xattr` 설치 절차를 사용합니다.
 - 릴리즈 재태깅 상황에서는 GitHub 자동 changelog가 역방향 비교 링크를 만들 수 있으므로 본문을 수동 검토하는 편이 안전합니다.
 
