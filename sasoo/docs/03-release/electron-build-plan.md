@@ -95,7 +95,7 @@ Do not attempt Windows packaging on the current macOS machine.
 
 Use one of these repo-aligned paths:
 
-- GitHub Actions release workflow on `windows-latest`
+- GitHub Actions Build Check on `windows-latest`
 - a real Windows machine running `pnpm build:win:release`
 
 ### Windows execution sequence

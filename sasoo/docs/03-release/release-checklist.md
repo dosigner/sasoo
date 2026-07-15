@@ -48,8 +48,7 @@ Current local artifact verifiers:
 9. Confirm the exact release commit passed the Windows `Build Check` workflow.
 10. Before publishing any new release, enable GitHub's **Immutable Releases** setting for the repository.
 11. Configure `IMMUTABLE_RELEASES_TOKEN` with repository Administration read permission for the immutable-release check.
-12. Confirm `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` are configured.
-13. Re-enable the `Release` workflow only after every gate above passes.
+12. Confirm the active `Release` workflow remains macOS-only for v0.7.0. Add `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` before reintroducing Windows public releases.
 
 ## Local Smoke Checks
 
@@ -112,7 +111,7 @@ Windows Release publishing remains blocked unless Authenticode secrets are confi
   - `WIN_CSC_LINK`
   - `WIN_CSC_KEY_PASSWORD`
 
-The release workflow verifies macOS ZIP extraction and update-manifest integrity. It verifies the Windows installer with `Get-AuthenticodeSignature`.
+The current release workflow verifies macOS ZIP extraction and update-manifest integrity. A future Windows public release must verify the installer with `Get-AuthenticodeSignature`.
 
 ## Release Completion
 
