@@ -16,6 +16,7 @@ which does not exist. The path is now stored per platform, and anything that is
 not absolute here is refused rather than resolved.
 """
 
+import os
 import sqlite3
 import tempfile
 import unittest
@@ -25,20 +26,20 @@ from unittest.mock import patch
 from models import database
 
 
-class UsableLibraryPathTests(unittest.TestCase):
-    def test_windows_path_is_not_usable_on_posix(self) -> None:
-        win = r"C:\Users\dongj\Documents\sasoo\backend\library"
-        with patch.object(database.sys, "platform", "darwin"):
-            self.assertIsNone(
-                database.usable_library_path(win),
-                "a Windows path must be refused on POSIX, not resolved against the CWD",
-            )
+def _foreign_library_path() -> str:
+    if os.name == "nt":
+        return "/Users/dongj/sasoo/library"
+    return r"C:\Users\dongj\Documents\sasoo\library"
 
-    def test_absolute_posix_path_is_usable(self) -> None:
-        self.assertEqual(
-            database.usable_library_path("/Users/dongj/sasoo/library"),
-            Path("/Users/dongj/sasoo/library"),
-        )
+
+class UsableLibraryPathTests(unittest.TestCase):
+    def test_other_platform_path_is_not_usable(self) -> None:
+        self.assertIsNone(database.usable_library_path(_foreign_library_path()))
+
+    def test_absolute_native_path_is_usable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sasoo-library"
+            self.assertEqual(database.usable_library_path(str(path)), path)
 
     def test_home_relative_path_is_expanded(self) -> None:
         resolved = database.usable_library_path("~/sasoo/library")
@@ -50,6 +51,7 @@ class UsableLibraryPathTests(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertIsNone(database.usable_library_path(value))
 
+    @unittest.skipIf(os.name == "nt", "The glued legacy path is a POSIX-only case")
     def test_already_glued_path_is_refused(self) -> None:
         """
         The value an older build actually persisted.
@@ -62,19 +64,21 @@ class UsableLibraryPathTests(unittest.TestCase):
             "/Users/dongj/dev/논문_사수_개발중/sasoo/backend/"
             r"C:\Users\dongj\Documents\논문\sasoo\backend\library"
         )
-        with patch.object(database.sys, "platform", "darwin"):
-            self.assertTrue(Path(glued).is_absolute(), "precondition: it is absolute")
-            self.assertIsNone(
-                database.usable_library_path(glued),
-                "a POSIX path carrying a drive letter or backslash came from Windows",
-            )
+        self.assertTrue(Path(glued).is_absolute(), "precondition: it is absolute")
+        self.assertIsNone(
+            database.usable_library_path(glued),
+            "a POSIX path carrying a drive letter or backslash came from Windows",
+        )
 
+    @unittest.skipIf(os.name == "nt", "Backslashes have native meaning on Windows")
     def test_backslash_alone_is_enough_to_refuse_on_posix(self) -> None:
-        with patch.object(database.sys, "platform", "darwin"):
-            self.assertIsNone(database.usable_library_path(r"/Users/dongj\library"))
+        self.assertIsNone(database.usable_library_path(r"/Users/dongj\library"))
 
 
 class PlatformScopedKeyTests(unittest.TestCase):
+    def setUp(self) -> None:
+        database.invalidate_library_root_cache()
+
     def test_key_is_scoped_per_platform(self) -> None:
         for platform, expected in (
             ("darwin", "library_path_darwin"),
@@ -85,40 +89,35 @@ class PlatformScopedKeyTests(unittest.TestCase):
                 with patch.object(database.sys, "platform", platform):
                     self.assertEqual(database.library_path_setting_key(), expected)
 
-    def test_mac_and_windows_keep_separate_paths(self) -> None:
-        """One settings DB, two machines, two library roots."""
+    def test_platform_specific_path_keeps_foreign_path_untouched(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            native_path = root / "native-library"
+            foreign_key = (
+                "library_path_darwin"
+                if database.sys.platform != "darwin"
+                else "library_path_win32"
+            )
             self._write_settings(root, {
-                "library_path_darwin": "/Users/dongj/sasoo/library",
-                "library_path_win32": r"C:\Users\dongj\Documents\sasoo\library",
+                database.library_path_setting_key(): str(native_path),
+                foreign_key: _foreign_library_path(),
             })
 
             with patch.object(database, "_get_app_data_root", lambda: root):
-                with patch.object(database.sys, "platform", "darwin"):
-                    self.assertEqual(
-                        database.get_library_root(),
-                        Path("/Users/dongj/sasoo/library"),
-                    )
-                # The Windows value is still there, untouched, for that machine.
                 self.assertEqual(
-                    self._read_setting(root, "library_path_win32"),
-                    r"C:\Users\dongj\Documents\sasoo\library",
+                    database.get_library_root(), native_path,
                 )
+            self.assertEqual(self._read_setting(root, foreign_key), _foreign_library_path())
 
-    def test_windows_legacy_value_does_not_leak_into_the_mac_root(self) -> None:
-        """The actual bug: a Windows-written library_path read on a Mac."""
+    def test_other_platform_legacy_value_does_not_leak_into_native_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             default = root / "default-library"
-            self._write_settings(root, {
-                "library_path": r"C:\Users\dongj\Documents\논문\sasoo\backend\library",
-            })
+            self._write_settings(root, {"library_path": _foreign_library_path()})
 
             with (
                 patch.object(database, "_get_app_data_root", lambda: root),
                 patch.object(database, "_get_default_library_root", lambda: default),
-                patch.object(database.sys, "platform", "darwin"),
             ):
                 resolved = database.get_library_root()
 
@@ -126,39 +125,31 @@ class PlatformScopedKeyTests(unittest.TestCase):
                 resolved, default,
                 "an unusable stored path must fall back to the platform default",
             )
-            self.assertNotIn(
-                "C:", str(resolved),
-                "the Windows path was glued onto the resolved root again",
-            )
 
     def test_legacy_value_is_still_honoured_on_the_platform_that_wrote_it(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            self._write_settings(root, {"library_path": "/Users/dongj/sasoo/library"})
+            native_path = root / "native-library"
+            self._write_settings(root, {"library_path": str(native_path)})
 
-            with (
-                patch.object(database, "_get_app_data_root", lambda: root),
-                patch.object(database.sys, "platform", "darwin"),
-            ):
+            with patch.object(database, "_get_app_data_root", lambda: root):
                 self.assertEqual(
-                    database.get_library_root(),
-                    Path("/Users/dongj/sasoo/library"),
+                    database.get_library_root(), native_path,
                 )
 
     def test_platform_key_wins_over_legacy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            old_path = root / "old-library"
+            new_path = root / "new-library"
             self._write_settings(root, {
-                "library_path": "/Users/dongj/old/library",
-                "library_path_darwin": "/Users/dongj/new/library",
+                "library_path": str(old_path),
+                database.library_path_setting_key(): str(new_path),
             })
 
-            with (
-                patch.object(database, "_get_app_data_root", lambda: root),
-                patch.object(database.sys, "platform", "darwin"),
-            ):
+            with patch.object(database, "_get_app_data_root", lambda: root):
                 self.assertEqual(
-                    database.get_library_root(), Path("/Users/dongj/new/library")
+                    database.get_library_root(), new_path
                 )
 
     # -- helpers ---------------------------------------------------------
@@ -200,7 +191,7 @@ class LibraryRootCacheTests(unittest.TestCase):
         conn.execute(
             "INSERT INTO settings (key, value) VALUES (?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            ("library_path_darwin", path),
+            (database.library_path_setting_key(), path),
         )
         conn.commit()
         conn.close()
@@ -208,11 +199,9 @@ class LibraryRootCacheTests(unittest.TestCase):
     def test_second_call_within_ttl_skips_sqlite(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            self._configure(root, "/Users/dongj/sasoo/library")
-            with (
-                patch.object(database, "_get_app_data_root", lambda: root),
-                patch.object(database.sys, "platform", "darwin"),
-            ):
+            expected = root / "sasoo-library"
+            self._configure(root, str(expected))
+            with patch.object(database, "_get_app_data_root", lambda: root):
                 first = database.get_library_root()
                 with patch.object(
                     database.sqlite3,
@@ -221,45 +210,45 @@ class LibraryRootCacheTests(unittest.TestCase):
                 ):
                     second = database.get_library_root()
 
-        self.assertEqual(first, Path("/Users/dongj/sasoo/library"))
+        self.assertEqual(first, expected)
         self.assertEqual(second, first)
 
     def test_invalidate_forces_reread(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            self._configure(root, "/Users/dongj/old/library")
-            with (
-                patch.object(database, "_get_app_data_root", lambda: root),
-                patch.object(database.sys, "platform", "darwin"),
-            ):
+            old_path = root / "old-library"
+            new_path = root / "new-library"
+            self._configure(root, str(old_path))
+            with patch.object(database, "_get_app_data_root", lambda: root):
                 self.assertEqual(
-                    database.get_library_root(), Path("/Users/dongj/old/library")
+                    database.get_library_root(), old_path
                 )
-                self._configure(root, "/Users/dongj/new/library")
+                self._configure(root, str(new_path))
                 database.invalidate_library_root_cache()
                 self.assertEqual(
-                    database.get_library_root(), Path("/Users/dongj/new/library")
+                    database.get_library_root(), new_path
                 )
 
     def test_ttl_expiry_forces_reread(self) -> None:
         clock = {"t": 0.0}
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            self._configure(root, "/Users/dongj/old/library")
+            old_path = root / "old-library"
+            new_path = root / "new-library"
+            self._configure(root, str(old_path))
             with (
                 patch.object(database, "_get_app_data_root", lambda: root),
-                patch.object(database.sys, "platform", "darwin"),
                 patch.object(
                     database.time, "monotonic", side_effect=lambda: clock["t"]
                 ),
             ):
                 self.assertEqual(
-                    database.get_library_root(), Path("/Users/dongj/old/library")
+                    database.get_library_root(), old_path
                 )
-                self._configure(root, "/Users/dongj/new/library")
+                self._configure(root, str(new_path))
                 clock["t"] = 100.0
                 self.assertEqual(
-                    database.get_library_root(), Path("/Users/dongj/new/library")
+                    database.get_library_root(), new_path
                 )
 
 

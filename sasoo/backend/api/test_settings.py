@@ -1,4 +1,5 @@
 import os
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -7,6 +8,16 @@ from fastapi import HTTPException
 
 from api import settings
 from models.schemas import SettingsUpdate
+
+
+def _native_library_path(name: str) -> str:
+    return str(Path(tempfile.gettempdir()) / name)
+
+
+def _foreign_library_path() -> str:
+    if os.name == "nt":
+        return "/Users/dongj/sasoo/library"
+    return r"C:\Users\dongj\Documents\sasoo\library"
 
 
 class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
@@ -18,7 +29,7 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
     """
 
     async def test_get_settings_reports_this_platforms_library_root(self) -> None:
-        platform_root = "/tmp/sasoo-library"
+        platform_root = _native_library_path("sasoo-library")
         rows = [
             {"key": "library_path", "value": ""},
             {"key": "pdf_parser_mode", "value": "java"},
@@ -36,11 +47,11 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
         ensure_defaults.assert_awaited_once()
         self.assertEqual(response.library_path, platform_root)
 
-    async def test_windows_path_in_storage_is_not_reported_to_a_mac(self) -> None:
-        """The stored Windows value must never reach the client as-is."""
-        platform_root = "/Users/dongj/sasoo/library"
+    async def test_other_platform_path_in_storage_is_not_reported(self) -> None:
+        platform_root = _native_library_path("sasoo-library")
+        foreign_path = _foreign_library_path()
         rows = [
-            {"key": "library_path", "value": r"C:\Users\dongj\Documents\sasoo\library"},
+            {"key": "library_path", "value": foreign_path},
             {"key": "pdf_parser_mode", "value": "java"},
             {"key": "extraction_pipeline_version", "value": "resolver_v1"},
         ]
@@ -54,12 +65,12 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
             response = await settings.get_settings()
 
         self.assertEqual(response.library_path, platform_root)
-        self.assertNotIn("C:", response.library_path)
+        self.assertNotEqual(response.library_path, foreign_path)
 
     async def test_ensure_library_path_seeds_the_platform_key(self) -> None:
         # Already resolved: on macOS /tmp is itself a symlink to /private/tmp,
         # and _ensure_library_path resolves before storing.
-        resolved = Path("/tmp/sasoo-library").resolve(strict=False)
+        resolved = Path(_native_library_path("sasoo-library")).resolve(strict=False)
         db = AsyncMock()
 
         with (
@@ -76,7 +87,7 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(params, ("library_path_darwin", str(resolved)))
 
     async def test_ensure_library_path_leaves_a_good_value_alone(self) -> None:
-        resolved = Path("/tmp/sasoo-library").resolve(strict=False)
+        resolved = Path(_native_library_path("sasoo-library")).resolve(strict=False)
         db = AsyncMock()
 
         with (
@@ -93,7 +104,7 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
         get_library_root() is cached with a TTL; changing the path through the
         API must drop that cache so the very next read sees the new root.
         """
-        update = SettingsUpdate(library_path="/tmp/sasoo-moved-library")
+        update = SettingsUpdate(library_path=_native_library_path("sasoo-moved-library"))
 
         with (
             patch("api.settings._set_settings", new=AsyncMock()),
@@ -106,7 +117,7 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
         invalidate.assert_called_once()
 
     async def test_ensure_library_path_invalidates_cache_after_write(self) -> None:
-        resolved = Path("/tmp/sasoo-library").resolve(strict=False)
+        resolved = Path(_native_library_path("sasoo-library")).resolve(strict=False)
         db = AsyncMock()
 
         with (
@@ -131,7 +142,7 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
         """
         from unittest.mock import MagicMock
 
-        resolved = Path("/tmp/sasoo-library").resolve(strict=False)
+        resolved = Path(_native_library_path("sasoo-library")).resolve(strict=False)
         db = AsyncMock()
         order = MagicMock()
         order.resolve.return_value = resolved

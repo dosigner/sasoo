@@ -6,6 +6,7 @@ next to the encrypted SQLite database. Legacy file keys remain readable only
 long enough to migrate existing ciphertext.
 """
 
+import os
 import sys
 import threading
 import types
@@ -67,10 +68,30 @@ class CryptoTests(unittest.TestCase):
         self.assertEqual(crypto.decrypt_value(""), "")
         self.assertFalse(crypto.is_unreadable(""))
 
+    @unittest.skipIf(os.name == "nt", "Windows uses ACLs instead of POSIX mode bits")
     def test_legacy_key_file_is_owner_only(self):
         crypto._create_file_key()
         mode = (self.root / ".sasoo_key").stat().st_mode & 0o777
         self.assertEqual(mode, 0o600)
+
+    def test_legacy_key_file_restricts_windows_acl(self):
+        with (
+            patch.object(crypto.os, "name", "nt"),
+            patch("subprocess.run", return_value=types.SimpleNamespace(returncode=0)) as run,
+        ):
+            crypto._create_file_key()
+
+        run.assert_called_once_with(
+            [
+                "icacls",
+                str(self.root / ".sasoo_key"),
+                "/inheritance:r",
+                "/grant:r",
+                f"{os.environ.get('USERNAME', 'CURRENT_USER')}:(R,W)",
+            ],
+            capture_output=True,
+            check=False,
+        )
 
     @unittest.skipIf(sys.platform == "win32", "POSIX permission bits are unavailable")
     def test_existing_key_file_permissions_are_restricted(self):

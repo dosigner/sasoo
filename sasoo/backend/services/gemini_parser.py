@@ -359,7 +359,7 @@ def _open_metadata(pdf_path: Path) -> tuple[int, str | None, str | None]:
     # ensure_visual_artifacts의 폴백(except OdlParserError)을 우회한다. 엔진 계약대로
     # GeminiParserError로 감싸 폴백이 ODL 실패와 동일하게 동작하게 한다(원인 체이닝 유지).
     try:
-        doc = fitz.open(str(pdf_path))
+        doc = fitz.open(stream=pdf_path.read_bytes(), filetype="pdf")
     except Exception as exc:  # noqa: BLE001 - 폴백 유도용으로 엔진 계약 예외로 변환
         raise GeminiParserError(f"failed to open PDF: {exc}") from exc
     try:

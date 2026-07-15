@@ -363,7 +363,7 @@ class FailFastAndPartialUsageTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(open_spy.call_count, pool_size + 1)
             self.assertLess(open_spy.call_count, 8)  # 페이지당 1회 재파싱이 아님
 
-    async def test_corrupt_pdf_raises_gemini_parser_error(self):
+    async def test_corrupt_pdf_uses_memory_stream_and_raises_gemini_parser_error(self):
         # F1: fitz.open이 거부하는 파일(비-PDF 바이트)은 raw fitz 예외가 아니라 GeminiParserError로
         # 나와야 폴백(ensure_visual_artifacts의 except OdlParserError 체인)이 동작한다.
         with TemporaryDirectory() as tmp:
@@ -371,9 +371,14 @@ class FailFastAndPartialUsageTests(unittest.IsolatedAsyncioTestCase):
             bad_path = tmpdir / "corrupt.pdf"
             bad_path.write_bytes(b"%PDF-1.4 this is not a real pdf \x00\x01\x02")
 
-            with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}):
+            with (
+                patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}),
+                patch.object(gemini_parser.fitz, "open", wraps=fitz.open) as open_spy,
+            ):
                 with self.assertRaises(GeminiParserError):
                     await run_convert_gemini(bad_path, tmpdir, tmpdir / "figures")
+
+            open_spy.assert_called_once_with(stream=bad_path.read_bytes(), filetype="pdf")
 
 
 class MediaResolutionInjectionTests(unittest.TestCase):
