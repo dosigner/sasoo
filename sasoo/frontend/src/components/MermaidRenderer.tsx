@@ -44,10 +44,6 @@ interface MermaidRendererProps {
 
 type MermaidLayout = 'elk' | 'dagre';
 
-// ELK produces much cleaner layouts for dense flowcharts; dagre stays as the
-// fallback when the ELK engine rejects a graph.
-const LAYOUTS: MermaidLayout[] = ['elk', 'dagre'];
-
 function isDarkTheme(): boolean {
   return document.documentElement.classList.contains('dark');
 }
@@ -603,8 +599,13 @@ async function attemptRender(
   const candidates = buildRenderCandidates(code);
   let lastError: unknown = null;
 
+  // ELK produces much cleaner layouts for dense flowcharts, but non-flowchart
+  // diagrams (sequence, mindmap, ...) ignore pluggable layouts entirely — an
+  // ELK attempt there is a wasted render pass, so only flowcharts get it.
+  const layouts: MermaidLayout[] = isFlowchart(code) ? ['elk', 'dagre'] : ['dagre'];
+
   for (let i = 0; i < candidates.length; i++) {
-    for (const layout of LAYOUTS) {
+    for (const layout of layouts) {
       try {
         initMermaid(isDarkTheme(), layout);
         const diagramId = `mermaid-${Date.now()}-${renderId}-${i}-${layout}`;
@@ -624,6 +625,24 @@ async function attemptRender(
     error:
       lastError instanceof Error ? lastError.message : S.mermaid.renderFailed,
   };
+}
+
+// ---------------------------------------------------------------------------
+// User-facing error mapping
+// ---------------------------------------------------------------------------
+
+// attemptRender's raw error is a parser exception message or, in some cases,
+// a native V8 error surfaced through a failed dynamic import — neither is
+// meaningful to a non-technical user. Map to a short Korean explanation and
+// keep the raw text out of the UI (callers should console.error it instead).
+function friendlyMermaidError(raw: string): string {
+  if (/Parse error|Expecting|got '|Syntax error/i.test(raw)) {
+    return S.mermaid.errorSyntax;
+  }
+  if (/Invalid or unexpected token|Failed to fetch|import|module|Unexpected token '<'/i.test(raw)) {
+    return S.mermaid.errorEngine;
+  }
+  return S.mermaid.renderFailed;
 }
 
 export default function MermaidRenderer({
@@ -703,6 +722,9 @@ export default function MermaidRenderer({
       if ('error' in outcome) {
         setStyleDegraded(false);
         setWasRepaired(false);
+        // Raw parser/engine error stays in the console for debugging; the UI
+        // only ever shows the friendly mapping (see friendlyMermaidError).
+        console.error('Mermaid render failed:', outcome.error);
         setRenderError(outcome.error);
       } else {
         setSvgContent(outcome.svg);
@@ -914,7 +936,7 @@ export default function MermaidRenderer({
               {S.mermaid.renderFailed}
             </p>
             <p className="text-2xs text-fg-muted max-w-md">
-              {renderError}
+              {friendlyMermaidError(renderError)}
             </p>
           </div>
         )}

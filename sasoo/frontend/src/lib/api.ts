@@ -547,19 +547,6 @@ export async function updatePaper(
   });
 }
 
-export interface RewriteResponse {
-  text: string;
-  level: string;
-  cached: boolean;
-}
-
-export function rewriteSection(paperId: number, phase: string, level: string): Promise<RewriteResponse> {
-  return request<RewriteResponse>(`/papers/${paperId}/rewrite`, {
-    method: 'POST',
-    body: JSON.stringify({ phase, level }),
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Analysis endpoints
 // ---------------------------------------------------------------------------

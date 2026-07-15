@@ -386,9 +386,6 @@ export const S = {
     phase5Desc: '프로세스 다이어그램과 시각 요약을 만들어요',
     analyzingDots: '분석 중...',
     loadingResults: '결과를 불러오고 있어요...',
-    rewriteLevel: '설명 수준',
-    rewriting: '수준에 맞게 다시 쓰는 중...',
-    rewriteFailed: '재작성하지 못했어요. 다시 시도해 주세요.',
     // formatPhaseAsMarkdown labels
     md: {
       domain: '분야',
@@ -541,6 +538,8 @@ export const S = {
     reset: '초기화',
     mermaidCode: 'Mermaid 코드',
     renderFailed: '다이어그램을 그리지 못했어요',
+    errorSyntax: '다이어그램 문법에 오류가 있어요',
+    errorEngine: '다이어그램 엔진을 불러오지 못했어요',
     emptyCode: '다이어그램 코드가 비어 있어요',
     styleFallback: '스타일 구문에 오류가 있어 일부 스타일을 빼고 그렸어요',
     repairing: 'AI가 다이어그램 오류를 고치고 있어요...',

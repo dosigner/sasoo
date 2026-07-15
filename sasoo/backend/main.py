@@ -280,13 +280,11 @@ get_library_root().mkdir(parents=True, exist_ok=True)
 
 from api.papers import router as papers_router              # noqa: E402
 from api.analysis_routes import router as analysis_router   # noqa: E402
-from api.analysis_routes import rewrite_router              # noqa: E402
 from api.settings import router as settings_router          # noqa: E402
 from api.agents import router as agents_router              # noqa: E402
 
 app.include_router(papers_router)
 app.include_router(analysis_router)
-app.include_router(rewrite_router)
 app.include_router(settings_router)
 app.include_router(agents_router)
 

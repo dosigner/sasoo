@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -28,13 +28,10 @@ import {
   type AnalysisPhase,
   type Figure,
   type Table,
-  rewriteSection,
 } from '@/lib/api';
 import { getAgentMeta } from '@/lib/agents';
 import { buildPhaseSummary, buildWorkbenchStatusSummary } from '@/lib/workbenchSummaries';
 import { S } from '@/lib/strings';
-import { useToast } from '@/components/Toast';
-import LevelSlider from './LevelSlider';
 import FigureGallery from './FigureGallery';
 import TableGallery from './TableGallery';
 import RecipeCard from './RecipeCard';
@@ -74,39 +71,6 @@ export interface CitationFocus {
   anchor: string;
   /** monotonically increasing token so repeated clicks re-trigger the effect. */
   token: number;
-}
-
-// ---------------------------------------------------------------------------
-// deep_dive 수준 재작성 — 표시 상태 결정 (순수 함수, 단위 검증 가능)
-// ---------------------------------------------------------------------------
-
-export interface DeepDiveViewState {
-  /** 렌더할 텍스트. null이면 원본 마크다운 대신 하위 로더/children으로 폴백 */
-  content: string | null;
-  /** true면 스켈레톤 표시 + 슬라이더 disabled */
-  loading: boolean;
-}
-
-/**
- * 현재 viewLevel에 대해 어떤 deep_dive 텍스트를 보여줄지 결정한다.
- * - viewLevel === paperLevel  → 원본(분석 시 사용된 수준)
- * - rewrites[viewLevel] 존재  → 프론트 캐시된 재작성본
- * - rewriting === true        → 로딩(스켈레톤), 그동안 원본 유지
- * - 그 외(실패/미요청)         → 원본 유지(폴백)
- */
-export function resolveDeepDiveView(params: {
-  viewLevel: string;
-  paperLevel: string;
-  original: string | null;
-  rewrites: Record<string, string>;
-  rewriting: boolean;
-}): DeepDiveViewState {
-  const { viewLevel, paperLevel, original, rewrites, rewriting } = params;
-  if (viewLevel === paperLevel) return { content: original, loading: false };
-  const cached = rewrites[viewLevel];
-  if (cached !== undefined) return { content: cached, loading: false };
-  if (rewriting) return { content: original, loading: true };
-  return { content: original, loading: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -206,10 +170,6 @@ interface PhaseSectionProps {
   tone?: 'primary' | 'muted' | 'practical';
   accentColor?: string;
   children?: React.ReactNode;
-  /** 확장된 본문 상단에 렌더할 컨트롤(예: 설명 수준 슬라이더) */
-  headerControl?: React.ReactNode;
-  /** true면 content 대신 스켈레톤을 표시(재작성 로딩) */
-  contentLoading?: boolean;
 }
 
 function rgbaFromHex(color: string, alpha: number): string {
@@ -242,8 +202,6 @@ function PhaseSection({
   tone = 'muted',
   accentColor,
   children,
-  headerControl,
-  contentLoading = false,
 }: PhaseSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const meta = PHASE_META[phaseName];
@@ -356,22 +314,6 @@ function PhaseSection({
 
       {expanded && hasContent && (
         <div className="pb-5">
-          {headerControl && (
-            <div className="mb-3">
-              {headerControl}
-            </div>
-          )}
-
-          {contentLoading ? (
-            <div className="mt-2 space-y-2" role="status" aria-busy="true" aria-label={S.analysis.rewriting}>
-              <div className="h-3 w-11/12 animate-pulse rounded bg-surface-hover" />
-              <div className="h-3 w-full animate-pulse rounded bg-surface-hover" />
-              <div className="h-3 w-10/12 animate-pulse rounded bg-surface-hover" />
-              <div className="h-3 w-9/12 animate-pulse rounded bg-surface-hover" />
-              <span className="sr-only">{S.analysis.rewriting}</span>
-            </div>
-          ) : (
-          <>
           {phaseStatus === 'running' && !content && (
             <div className="flex items-center gap-2 py-4" role="status" aria-busy="true">
               <Loader2 className="w-4 h-4 text-accent animate-spin" />
@@ -402,8 +344,6 @@ function PhaseSection({
             <div className="mt-4 space-y-5 fade-in-up">
               {children}
             </div>
-          )}
-          </>
           )}
         </div>
       )}
@@ -1007,52 +947,12 @@ export default function AnalysisPanel({
   isRunning,
   agentName,
   paperId,
-  paperLevel,
   onJumpToFigurePage,
   onJumpToTablePage,
   citationFocus,
   terminalState,
 }: AnalysisPanelProps) {
   const [activeTab, setActiveTab] = useState<'summary' | 'figures' | 'tables' | 'recipe' | 'experiment'>('summary');
-  const { toast } = useToast();
-
-  // deep_dive 섹션의 설명 수준 재작성 상태
-  const originalLevel = paperLevel ?? 'masters';
-  const [viewLevel, setViewLevel] = useState<string>(originalLevel);
-  const [rewrites, setRewrites] = useState<Record<string, string>>({}); // level → text
-  const [rewriting, setRewriting] = useState(false);
-  // 연타 경쟁 조건 방지용 요청 시퀀스 카운터: 응답 처리 시 "여전히 최신 요청인지" 확인
-  const levelRequestSeqRef = useRef(0);
-
-  // 논문(또는 원본 수준)이 바뀌면 재작성 상태 초기화
-  useEffect(() => {
-    levelRequestSeqRef.current += 1; // 진행 중인 이전 요청을 무효화
-    setViewLevel(originalLevel);
-    setRewrites({});
-    setRewriting(false);
-  }, [paperId, originalLevel]);
-
-  const handleLevelChange = useCallback(async (level: string) => {
-    setViewLevel(level);
-    if (level === originalLevel || rewrites[level] !== undefined || !paperId) return; // 원본/캐시
-    const seq = ++levelRequestSeqRef.current; // 이 요청의 토큰
-    setRewriting(true);
-    try {
-      const r = await rewriteSection(Number(paperId), 'deep_dive', level);
-      // 캐시 저장은 낡은 응답이라도 무해하므로 항상 반영
-      setRewrites((prev) => ({ ...prev, [level]: r.text }));
-      if (seq !== levelRequestSeqRef.current) return; // 더 최신 요청이 있으면 뷰 상태는 건드리지 않음
-    } catch {
-      if (seq !== levelRequestSeqRef.current) return; // 낡은 실패 응답이 최신 선택을 되돌리지 않도록
-      // 실패 시 원본 유지 + 한국어 에러 토스트
-      setViewLevel(originalLevel);
-      toast.error(S.analysis.rewriteFailed);
-    } finally {
-      if (seq === levelRequestSeqRef.current) {
-        setRewriting(false);
-      }
-    }
-  }, [originalLevel, rewrites, paperId, toast]);
 
   useEffect(() => {
     setActiveTab('summary');
@@ -1110,15 +1010,6 @@ export default function AnalysisPanel({
   const visualSummary = buildPhaseSummary('visual', results, recipe, figureList, tableList, visualizations);
   const recipeSummary = buildPhaseSummary('recipe', results, recipe, figureList, tableList, visualizations);
   const deepDiveSummary = buildPhaseSummary('deep_dive', results, recipe, figureList, tableList, visualizations);
-  const deepDiveOriginal = getPhaseContent('deep_dive');
-  const deepDiveView = resolveDeepDiveView({
-    viewLevel,
-    paperLevel: originalLevel,
-    original: deepDiveOriginal,
-    rewrites,
-    rewriting,
-  });
-  const deepDiveCompleted = getPhaseStatus('deep_dive') === 'completed';
   const recipeReady = getPhaseStatus('recipe') === 'completed' && Boolean(paperId);
   const workbenchStatus = buildWorkbenchStatusSummary({
     status,
@@ -1233,29 +1124,13 @@ export default function AnalysisPanel({
               <PhaseSection
                 phaseName="deep_dive"
                 phaseStatus={getPhaseStatus('deep_dive')}
-                content={deepDiveView.content}
-                contentLoading={deepDiveView.loading}
+                content={getPhaseContent('deep_dive')}
                 defaultExpanded={false}
                 summaryLine={deepDiveSummary.summaryLine}
                 collapsedMeta={deepDiveSummary.collapsedMeta}
                 expandedMeta={deepDiveSummary.expandedMeta}
                 tone={deepDiveSummary.tone}
                 accentColor={phaseAccentColor}
-                headerControl={
-                  deepDiveCompleted && paperId ? (
-                    <div className="rounded-lg border border-border bg-surface-hover px-3 py-2">
-                      <div className="mb-1.5 text-2xs text-fg-muted">
-                        {S.analysis.rewriteLevel}
-                      </div>
-                      <LevelSlider
-                        compact
-                        value={viewLevel}
-                        onChange={(key) => void handleLevelChange(key)}
-                        disabled={rewriting}
-                      />
-                    </div>
-                  ) : undefined
-                }
               >
                 <VisualizationGallery
                   visualizations={visualizations}
