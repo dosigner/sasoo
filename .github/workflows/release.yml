@@ -153,8 +153,8 @@ jobs:
           pnpm --dir=frontend test
           pnpm --dir=frontend build
           pnpm --dir=frontend lint
-          pnpm audit --audit-level=moderate
-          pnpm --dir=frontend audit --audit-level=moderate
+          npx --yes pnpm@11.0.0 audit --audit-level=moderate
+          npx --yes pnpm@11.0.0 --dir=frontend audit --audit-level=moderate
 
       - name: Run backend tests
         shell: bash
