@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { Markdown } from '@/components/Markdown';
 import {
   BookOpen,
   GitBranch,
@@ -335,9 +334,7 @@ function PhaseSection({
 
           {content && (
             <div className="analysis-content mt-2 fade-in-up">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {content}
-              </ReactMarkdown>
+              <Markdown>{content}</Markdown>
             </div>
           )}
 

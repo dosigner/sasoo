@@ -9,18 +9,12 @@ import {
   User,
   X,
 } from 'lucide-react';
-import ReactMarkdown, { type Components } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import 'katex/dist/katex.min.css';
+import { type Components } from 'react-markdown';
+import { Markdown } from '@/components/Markdown';
 import { chatWithAgent, type ChatDoneMeta, type ChatMessage } from '@/lib/api';
 import { createTokenBuffer } from '@/lib/tokenBuffer';
 import { getAgentMeta } from '@/lib/agents';
 import { detectCitations, type CitationType } from '@/lib/citations';
-
-const REMARK_PLUGINS = [remarkGfm, remarkMath];
-const REHYPE_PLUGINS = [rehypeKatex];
 
 // Tokens are routed to their own bubble by id, so two turns can never bleed
 // into each other the way appending to the tail of the array would.
@@ -466,18 +460,9 @@ export default function ChatPanel({
                             <div className={`chat-bubble ${msg.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-agent'}`}>
                               {msg.role === 'agent' ? (
                                 <>
-                                  {isStreaming ? (
-                                    <span className="whitespace-pre-wrap">{msg.content}</span>
-                                  ) : (
-                                    <ReactMarkdown
-                                      className="chat-markdown"
-                                      remarkPlugins={REMARK_PLUGINS}
-                                      rehypePlugins={REHYPE_PLUGINS}
-                                      components={markdownComponents}
-                                    >
-                                      {msg.content}
-                                    </ReactMarkdown>
-                                  )}
+                                  <Markdown className="chat-markdown" components={markdownComponents}>
+                                    {msg.content}
+                                  </Markdown>
                                   {isStreaming && (
                                     <span className="ml-1 inline-block h-3.5 w-1.5 animate-pulse bg-accent align-middle" />
                                   )}

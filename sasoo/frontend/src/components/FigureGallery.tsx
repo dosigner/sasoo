@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { Markdown } from '@/components/Markdown';
 import { Loader2, Download } from 'lucide-react';
 import { getLibraryAssetUrl, type Figure, type VisualState } from '@/lib/api';
 import { S } from '@/lib/strings';
@@ -480,9 +479,7 @@ function Lightbox({
                   )}
                 </div>
                 <div className="analysis-content figure-explanation-content">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {cached.explanation}
-                  </ReactMarkdown>
+                  <Markdown>{cached.explanation}</Markdown>
                 </div>
               </div>
             ) : (

@@ -1,5 +1,4 @@
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { Markdown } from '@/components/Markdown';
 import { Loader2 } from 'lucide-react';
 import { getLibraryAssetUrl, type Table, type VisualState } from '@/lib/api';
 import { S } from '@/lib/strings';
@@ -236,9 +235,7 @@ export default function TableGallery({
                     {S.tables.markdownPreview}
                   </div>
                   <div className="analysis-content line-clamp-6 text-sm leading-6 text-fg-secondary">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {table.markdown_text}
-                    </ReactMarkdown>
+                    <Markdown>{table.markdown_text}</Markdown>
                   </div>
                 </div>
               )}
