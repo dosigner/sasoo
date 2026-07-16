@@ -1,6 +1,6 @@
 {
   "name": "sasoo",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Sasoo - AI-powered academic paper analysis tool",
   "private": true,
   "main": "dist-electron/main.js",

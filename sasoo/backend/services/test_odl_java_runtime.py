@@ -80,7 +80,13 @@ def _env(**overrides):
 
 
 def _bundled_java() -> Path:
-    return odl._backend_root() / "java-runtime" / "bin" / "java"
+    """번들 java 실행 파일 경로. 소스와 동일한 플랫폼별 이름 해석을 쓴다.
+
+    번들 런타임은 macOS 전용(Mach-O)이라 Windows 체크아웃에도 `bin/java` 파일 자체는
+    존재한다. 이름을 "java"로 고정하면 Windows에서 exists()가 참이 되어 실행 불가능한
+    Mach-O를 유효한 번들로 오인하고, 아래 테스트들이 skip 대신 실패한다.
+    """
+    return odl._java_executable_for_home(odl._backend_root() / "java-runtime")
 
 
 def _write_exec_script(path: Path, body: str) -> None:
