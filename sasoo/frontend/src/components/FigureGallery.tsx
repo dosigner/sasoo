@@ -220,7 +220,11 @@ function Lightbox({
       const blob = await res.blob();
       const objUrl = URL.createObjectURL(blob);
       const ext = (figure.file_path.split('.').pop() || 'png').split(/[?#]/)[0];
-      const base = (figure.figure_num || `figure_${currentIndex + 1}`).replace(/[^\w.-]+/g, '_');
+      // \p{L}/\p{N} keeps non-ASCII letters (한글 등) that ASCII-only \w drops.
+      const base =
+        (figure.figure_num || `figure_${currentIndex + 1}`)
+          .replace(/[^\p{L}\p{N}._-]+/gu, '_')
+          .replace(/^_+|_+$/g, '') || `figure_${currentIndex + 1}`;
       const a = document.createElement('a');
       a.href = objUrl;
       a.download = `${base}.${ext}`;

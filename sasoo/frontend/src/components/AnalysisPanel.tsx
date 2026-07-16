@@ -10,6 +10,7 @@ import {
   AlertCircle,
   RefreshCw,
   FolderDown,
+  Download,
 } from 'lucide-react';
 import {
   type ArtifactStatus,
@@ -686,6 +687,38 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
 // ---------------------------------------------------------------------------
 
 function PaperBananaViewer({ item }: { item: VisualizationItem }) {
+  const [saving, setSaving] = useState(false);
+
+  // Download the generated illustration. Served same-origin from the backend
+  // (/static/...), so a blob + anchor click is enough.
+  const handleDownload = useCallback(async () => {
+    if (!item.image_url) return;
+    setSaving(true);
+    try {
+      const res = await fetch(getStaticUrl(item.image_url));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const ext = (item.image_url.split('.').pop() || 'png').split(/[?#]/)[0];
+      // \p{L}/\p{N} keeps non-ASCII letters (한글 등) that ASCII-only \w drops.
+      const base =
+        (item.title || 'illustration')
+          .replace(/[^\p{L}\p{N}._-]+/gu, '_')
+          .replace(/^_+|_+$/g, '') || 'illustration';
+      const a = document.createElement('a');
+      a.href = objUrl;
+      a.download = `${base}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objUrl);
+    } catch (err) {
+      console.error('Illustration download failed:', err);
+    } finally {
+      setSaving(false);
+    }
+  }, [item.image_url, item.title]);
+
   if (item.status === 'error') {
     return (
       <div className="flex flex-col items-center justify-center py-6 text-center">
@@ -707,13 +740,26 @@ function PaperBananaViewer({ item }: { item: VisualizationItem }) {
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
+    <div className="group relative overflow-hidden rounded-lg border border-border">
       <img
         src={getStaticUrl(item.image_url)}
         alt={item.title}
         className="w-full h-auto object-contain bg-surface"
         loading="lazy"
       />
+      <button
+        onClick={handleDownload}
+        disabled={saving}
+        className="absolute right-2 top-2 flex items-center justify-center rounded-md border border-border/60 bg-surface/90 p-1.5 text-fg-muted opacity-0 shadow-sm backdrop-blur transition hover:text-fg focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-50"
+        aria-label={S.figures.saveImage}
+        title={S.figures.saveImage}
+      >
+        {saving ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Download className="h-4 w-4" />
+        )}
+      </button>
     </div>
   );
 }
