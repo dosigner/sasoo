@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Download } from 'lucide-react';
 import { getLibraryAssetUrl, type Figure, type VisualState } from '@/lib/api';
 import { S } from '@/lib/strings';
 import { generateFigureExplanation } from '@/lib/api';
@@ -205,7 +205,37 @@ function Lightbox({
   const [scrolled, setScrolled] = useState(false);
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const [saving, setSaving] = useState(false);
   useFocusTrap(modalRef, true, onClose);
+
+  // Download the figure image. The asset is served same-origin from the
+  // backend (/static/library/...), so a blob + anchor click is enough — no
+  // dependency on the heavy Mermaid export module.
+  const handleDownload = useCallback(async () => {
+    if (!figure?.file_path) return;
+    setSaving(true);
+    try {
+      const res = await fetch(getFigureImageUrl(figure));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const ext = (figure.file_path.split('.').pop() || 'png').split(/[?#]/)[0];
+      const base = (figure.figure_num || `figure_${currentIndex + 1}`).replace(/[^\w.-]+/g, '_');
+      const a = document.createElement('a');
+      a.href = objUrl;
+      a.download = `${base}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objUrl);
+      setError(null);
+    } catch (err) {
+      console.error('Figure download failed:', err);
+      setError(S.figures.saveFailed);
+    } finally {
+      setSaving(false);
+    }
+  }, [figure, currentIndex]);
 
   // Fetch explanation when figure changes
   useEffect(() => {
@@ -343,6 +373,20 @@ function Lightbox({
                 <AppIcon name="chevron-right" className="w-4 h-4" />
               </button>
             </div>
+            {/* Download */}
+            <button
+              onClick={handleDownload}
+              disabled={saving || !figure?.file_path}
+              className="p-1.5 rounded-md text-fg-muted hover:text-fg hover:bg-surface-hover transition-colors disabled:opacity-30 disabled:pointer-events-none"
+              aria-label={S.figures.saveImage}
+              title={S.figures.saveImage}
+            >
+              {saving ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+            </button>
             {/* Close */}
             <button
               onClick={onClose}
