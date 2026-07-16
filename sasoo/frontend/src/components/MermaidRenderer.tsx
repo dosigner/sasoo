@@ -333,6 +333,15 @@ export default function MermaidRenderer({
   const renderIdRef = useRef(0);
   // Last source we already asked the LLM to repair — one attempt per source.
   const repairAttemptedForRef = useRef<string | null>(null);
+  // Keep the latest onRepair without making renderDiagram depend on its
+  // identity. Callers pass a fresh onRepair on every render (e.g. an inline
+  // `makeRepairHandler(...)` closure), so depending on it would re-create
+  // renderDiagram every parent render and re-fire the render effect below,
+  // re-rendering the whole diagram in a loop.
+  const onRepairRef = useRef(onRepair);
+  useEffect(() => {
+    onRepairRef.current = onRepair;
+  }, [onRepair]);
 
   // Render the mermaid diagram
   const renderDiagram = useCallback(
@@ -358,15 +367,16 @@ export default function MermaidRenderer({
       let repaired = false;
 
       // Local fallbacks exhausted → ask the LLM to fix the code, once per source.
+      const onRepairFn = onRepairRef.current;
       if (
         'error' in outcome &&
-        onRepair &&
+        onRepairFn &&
         repairAttemptedForRef.current !== sanitized
       ) {
         repairAttemptedForRef.current = sanitized;
         if (currentRenderId === renderIdRef.current) setIsRepairing(true);
         try {
-          const fixed = await onRepair(sanitized, outcome.error);
+          const fixed = await onRepairFn(sanitized, outcome.error);
           const fixedSanitized = fixed ? sanitizeMermaidCode(fixed) : '';
           if (fixedSanitized) {
             const second = await attemptRender(fixedSanitized, currentRenderId);
@@ -402,7 +412,7 @@ export default function MermaidRenderer({
       }
       setIsRendering(false);
     },
-    [onRepair]
+    []
   );
 
   // Re-render when the theme changes (attemptRender re-reads the theme on
