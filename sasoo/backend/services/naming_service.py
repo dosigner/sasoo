@@ -16,6 +16,7 @@ import uuid
 from typing import Optional
 
 from services.llm.interactions_client import call_interaction
+from services.models import MODEL_FLASH_LITE
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ async def generate_folder_name(
         result = await call_interaction(
             prompt,
             lane="pipeline",
-            model="gemini-3.1-flash-lite",
+            model=MODEL_FLASH_LITE,
             system_instruction=_NAMING_SYSTEM_INSTRUCTION,
             thinking_level="minimal",
             store=False,
@@ -136,7 +137,7 @@ async def generate_figure_names(
         result = await call_interaction(
             prompt,
             lane="pipeline",
-            model="gemini-3.1-flash-lite",
+            model=MODEL_FLASH_LITE,
             system_instruction=_NAMING_SYSTEM_INSTRUCTION,
             thinking_level="minimal",
             store=False,
@@ -190,7 +191,7 @@ async def generate_paperbanana_name(
         result = await call_interaction(
             prompt,
             lane="pipeline",
-            model="gemini-3.1-flash-lite",
+            model=MODEL_FLASH_LITE,
             system_instruction=_NAMING_SYSTEM_INSTRUCTION,
             thinking_level="minimal",
             store=False,

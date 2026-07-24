@@ -15,6 +15,7 @@ from services.document_manifest import build_document_manifest
 from services.figure_candidates import build_figure_candidates
 from services.table_candidates import build_table_candidates
 from services.table_resolver import _repair_with_vlm, resolve_table_candidates
+from services.models import MODEL_FLASH_HQ
 
 
 def _make_png(path: Path, size: tuple[int, int] = (40, 20)) -> bytes:
@@ -327,7 +328,7 @@ class RepairWithVlmCallInteractionTests(unittest.IsolatedAsyncioTestCase):
             fake_call = AsyncMock(
                 return_value={
                     "text": '{"rows": [["Name", "Value"], ["A", "1.0"]], "confidence": 0.5}',
-                    "model": "gemini-3.5-flash",
+                    "model": MODEL_FLASH_HQ,
                     "tokens_in": 1,
                     "tokens_out": 1,
                 }
@@ -344,12 +345,12 @@ class RepairWithVlmCallInteractionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(contents[0]["mime_type"], "image/png")
             self.assertEqual(base64.b64decode(contents[0]["data"]), image_bytes)
             self.assertEqual(contents[1]["type"], "text")
-            self.assertEqual(kwargs["model"], "gemini-3.5-flash")
+            self.assertEqual(kwargs["model"], MODEL_FLASH_HQ)
             self.assertEqual(kwargs["thinking_level"], "minimal")
             self.assertIs(kwargs["store"], False)
 
             self.assertEqual(grid, [["Name", "Value"], ["A", "1.0"]])
-            self.assertEqual(model_used, "gemini-3.5-flash")
+            self.assertEqual(model_used, MODEL_FLASH_HQ)
             self.assertAlmostEqual(confidence, 0.5)
 
     async def test_no_api_key_skips_call_interaction(self) -> None:

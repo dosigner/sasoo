@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from services.concurrency import CHAT_EXECUTOR, PIPELINE_EXECUTOR, pipeline_llm_sem
+from services.models import MODEL_FLASH_HQ
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,7 @@ async def call_interaction(
     prompt,
     *,
     lane: Lane,
-    model: str = "gemini-3.5-flash",
+    model: str = MODEL_FLASH_HQ,
     system_instruction: str | None = None,
     thinking_level: str | None = None,
     previous_interaction_id: str | None = None,
@@ -149,7 +150,7 @@ async def stream_interaction(
     prompt,
     *,
     lane: Lane,
-    model: str = "gemini-3.5-flash",
+    model: str = MODEL_FLASH_HQ,
     system_instruction: str | None = None,
     thinking_level: str | None = None,
     previous_interaction_id: str | None = None,

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from PIL import Image
 
 from services.llm.interactions_client import call_interaction
+from services.models import MODEL_FLASH_HQ
 from models.paper import Figure
 
 _SUBFIGURE_RESPONSE_SCHEMA = {
@@ -149,7 +150,7 @@ If no sub-figures are detected, return:
                     {"type": "text", "text": self.DETECTION_PROMPT},
                 ],
                 lane="pipeline",
-                model="gemini-3.5-flash",
+                model=MODEL_FLASH_HQ,
                 thinking_level="minimal",
                 store=False,
                 response_schema=_SUBFIGURE_RESPONSE_SCHEMA,

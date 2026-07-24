@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 from PIL import Image
 
 from services import figure_resolver
+from services.models import MODEL_FLASH_HQ
 
 
 def _make_png(path: Path, size: tuple[int, int] = (40, 20)) -> bytes:
@@ -35,7 +36,7 @@ class MaybeSelectCandidateCallInteractionTests(unittest.IsolatedAsyncioTestCase)
             fake_call = AsyncMock(
                 return_value={
                     "text": '{"selected_candidate_id": "cand:2", "confidence": 0.1}',
-                    "model": "gemini-3.5-flash",
+                    "model": MODEL_FLASH_HQ,
                     "tokens_in": 1,
                     "tokens_out": 1,
                 }
@@ -54,12 +55,12 @@ class MaybeSelectCandidateCallInteractionTests(unittest.IsolatedAsyncioTestCase)
             self.assertEqual(contents[0]["mime_type"], "image/png")
             self.assertEqual(base64.b64decode(contents[0]["data"]), image_bytes)
             self.assertEqual(contents[1]["type"], "text")
-            self.assertEqual(kwargs["model"], "gemini-3.5-flash")
+            self.assertEqual(kwargs["model"], MODEL_FLASH_HQ)
             self.assertEqual(kwargs["thinking_level"], "minimal")
             self.assertIs(kwargs["store"], False)
 
             self.assertEqual(chosen["id"], "cand:2")
-            self.assertEqual(model_used, "gemini-3.5-flash")
+            self.assertEqual(model_used, MODEL_FLASH_HQ)
 
     async def test_call_interaction_exception_falls_back_to_heuristic(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -131,7 +132,7 @@ class MaybeRerankCaptionCallInteractionTests(unittest.IsolatedAsyncioTestCase):
             fake_call = AsyncMock(
                 return_value={
                     "text": '{"selected_caption_id": "cap:2", "confidence": 0.12}',
-                    "model": "gemini-3.5-flash",
+                    "model": MODEL_FLASH_HQ,
                     "tokens_in": 1,
                     "tokens_out": 1,
                 }
@@ -150,13 +151,13 @@ class MaybeRerankCaptionCallInteractionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(contents[0]["mime_type"], "image/png")
             self.assertEqual(base64.b64decode(contents[0]["data"]), image_bytes)
             self.assertEqual(contents[1]["type"], "text")
-            self.assertEqual(kwargs["model"], "gemini-3.5-flash")
+            self.assertEqual(kwargs["model"], MODEL_FLASH_HQ)
             self.assertEqual(kwargs["thinking_level"], "minimal")
             self.assertIs(kwargs["store"], False)
 
             self.assertEqual(selected, "cap:2")
             self.assertAlmostEqual(delta, 0.12)
-            self.assertEqual(model_used, "gemini-3.5-flash")
+            self.assertEqual(model_used, MODEL_FLASH_HQ)
 
 
 if __name__ == "__main__":
