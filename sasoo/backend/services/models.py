@@ -5,10 +5,9 @@ Single source of truth for every LLM model string used across the backend.
 Pair with services/pricing.py: every ID here must have a PRICING entry.
 
 Model choice rationale (2026-07, Gemini-only stack):
-  FLASH_LITE  - cheapest triage tier; screening only.
-  FLASH       - workhorse for text-only comparison work.
-  FLASH_HQ    - Gemini 3.6 Flash. MRCR@128k 77.3% (vs 67.2% on FLASH) and
-                MMMU-Pro 83.6% / CharXiv 84.2%, which beats PRO on vision.
+  FLASH_LITE  - cheapest triage tier; screening + 파일명 생성.
+  FLASH_HQ    - Gemini 3.6 Flash. MRCR@128k 77.3% and MMMU-Pro 83.6% /
+                CharXiv 84.2%, which beats PRO on vision.
                 Used wherever we search a full paper or read a figure.
   PRO         - deepest reasoning (GPQA 94.3%); 5단계 텍스트 분석에는 미사용
                 (A/B 후 승격 후보). 이미지 설명 플래너(viz/figure_gen.py)는 사용 중.
@@ -19,7 +18,6 @@ Model choice rationale (2026-07, Gemini-only stack):
 
 # Text models
 MODEL_FLASH_LITE = "gemini-3.5-flash-lite"
-MODEL_FLASH = "gemini-3-flash-preview"
 MODEL_FLASH_HQ = "gemini-3.6-flash"
 MODEL_PRO = "gemini-3.1-pro-preview"
 
@@ -40,6 +38,3 @@ MODEL_VIZ_PLANNING = MODEL_FLASH_HQ  # 실효 운영값
 MODEL_MERMAID = MODEL_FLASH_HQ       # 실효 운영값
 MODEL_CHAT = MODEL_FLASH_HQ          # the only path the user watches live
 MODEL_FIGURE_EXPLAIN = MODEL_FLASH_HQ
-
-# Resolver / detector utilities (short, mechanical judgements)
-MODEL_RESOLVER = MODEL_FLASH
