@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, lazy, Suspense } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { Markdown } from '@/components/Markdown';
 import {
   BookOpen,
@@ -207,6 +207,9 @@ function PhaseSection({
 }: PhaseSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const outline = useMemo(() => (content ? extractOutline(content) : []), [content]);
+  // .analysis-content 본문 컨테이너 ref. 목차 점프 조회를 이 단계 안으로 좁혀서
+  // 다른 PhaseSection과 헤딩 id가 겹쳐도(예: "요약") 엉뚱한 단계로 튀지 않게 한다.
+  const contentRef = useRef<HTMLDivElement>(null);
   const meta = PHASE_META[phaseName];
   const statusInfo = getPhaseStatusInfo(phaseStatus);
   const isActive = phaseStatus === 'running';
@@ -336,9 +339,15 @@ function PhaseSection({
           )}
 
           {content && (
-            <div className="analysis-content mt-2 fade-in-up">
-              {outline.length >= 2 && <SectionOutline outline={outline} />}
-              <Markdown headingAnchors>{content}</Markdown>
+            <div className="mt-2 fade-in-up">
+              {/* .analysis-content 밖: 안에 있으면 .analysis-content ul 규칙(list-disc
+                  list-inside, mb-4, space-y-1.5)을 상속해 목차 항목이 두 줄로 깨진다. */}
+              {outline.length >= 2 && (
+                <SectionOutline outline={outline} scopeRef={contentRef} />
+              )}
+              <div className="analysis-content" ref={contentRef}>
+                <Markdown headingAnchors>{content}</Markdown>
+              </div>
             </div>
           )}
 

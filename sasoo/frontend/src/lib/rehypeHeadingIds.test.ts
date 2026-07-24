@@ -33,6 +33,16 @@ describe('rehypeHeadingIds', () => {
     expect(node.properties?.id).toBe('custom');
   });
 
+  it('does not let a heading with an existing id consume a later duplicate counter', () => {
+    const first = h('h2', '개요');
+    first.properties = { id: 'custom' };
+    const second = h('h3', '개요');
+    run({ type: 'root', children: [first, second] });
+    expect(first.properties?.id).toBe('custom');
+    // '개요'는 아직 한 번도 slug로 소비되지 않았으므로 second는 '-2'가 아니라 base를 받는다.
+    expect(second.properties?.id).toBe('개요');
+  });
+
   it('leaves non-heading elements alone', () => {
     const node = h('p', '본문');
     run({ type: 'root', children: [node] });

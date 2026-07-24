@@ -12,7 +12,10 @@ import { rehypeHeadingIds } from '@/lib/rehypeHeadingIds';
 const REMARK_PLUGINS = [remarkGfm, remarkMath];
 const REHYPE_PLUGINS = [rehypeKatex];
 
-const REHYPE_PLUGINS_WITH_IDS = [rehypeKatex, rehypeHeadingIds];
+// id는 katex가 헤딩 안 수식을 span 더미로 바꾸기 전에 붙여야 한다. 순서를 뒤집으면
+// rehypeHeadingIds가 katex 렌더 결과(mathml 텍스트 등)를 읽어 extractOutline의 slug와
+// 어긋난다(ToC 클릭이 조용히 무반응이 됨).
+const REHYPE_PLUGINS_WITH_IDS = [rehypeHeadingIds, rehypeKatex];
 
 interface MarkdownProps {
   children: string;
