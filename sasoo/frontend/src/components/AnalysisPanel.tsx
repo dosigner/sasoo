@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
+import { useState, useCallback, useEffect, useMemo, lazy, Suspense } from 'react';
 import { Markdown } from '@/components/Markdown';
 import {
   BookOpen,
@@ -32,6 +32,8 @@ import {
 import { getAgentMeta } from '@/lib/agents';
 import { buildPhaseSummary, buildWorkbenchStatusSummary } from '@/lib/workbenchSummaries';
 import { S } from '@/lib/strings';
+import { extractOutline } from '@/lib/mdOutline';
+import SectionOutline from './SectionOutline';
 import FigureGallery from './FigureGallery';
 import TableGallery from './TableGallery';
 import RecipeCard from './RecipeCard';
@@ -204,6 +206,7 @@ function PhaseSection({
   children,
 }: PhaseSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const outline = useMemo(() => (content ? extractOutline(content) : []), [content]);
   const meta = PHASE_META[phaseName];
   const statusInfo = getPhaseStatusInfo(phaseStatus);
   const isActive = phaseStatus === 'running';
@@ -334,7 +337,8 @@ function PhaseSection({
 
           {content && (
             <div className="analysis-content mt-2 fade-in-up">
-              <Markdown>{content}</Markdown>
+              {outline.length >= 2 && <SectionOutline outline={outline} />}
+              <Markdown headingAnchors>{content}</Markdown>
             </div>
           )}
 
