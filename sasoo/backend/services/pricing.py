@@ -15,6 +15,8 @@ PRICING: dict[str, dict[str, float]] = {
     "gemini-3.1-pro-preview": {"input": 2.00, "output": 12.00},
     # NOTE: >200K-token prompts are billed at $4.00 / $18.00. calc_cost applies
     # the flat rate, so long-context calls under-report. See PRO_LONG_CONTEXT.
+    "gemini-3.6-flash": {"input": 1.50, "output": 7.50},  # 2026-07-21 발표, 공식 pricing 확인함 (ai.google.dev, 2026-07-24); output은 thinking 토큰 포함
+    "gemini-3.5-flash-lite": {"input": 0.30, "output": 2.50},  # 2026-07-21 발표, 공식 pricing 확인함 (ai.google.dev, 2026-07-24); output은 thinking 토큰 포함
     "gemini-3.5-flash": {"input": 1.50, "output": 9.00},
     "gemini-3-flash-preview": {"input": 0.50, "output": 3.00},
     "gemini-3.1-flash-lite": {"input": 0.25, "output": 1.50},

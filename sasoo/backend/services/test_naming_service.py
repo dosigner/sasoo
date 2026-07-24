@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from services import naming_service
+from services.models import MODEL_FLASH_LITE
 
 
 class GenerateFolderNameTests(unittest.IsolatedAsyncioTestCase):
@@ -11,7 +12,7 @@ class GenerateFolderNameTests(unittest.IsolatedAsyncioTestCase):
         fake_call = AsyncMock(
             return_value={
                 "text": "2024_NatPhoton_MetasurfLens_Optics",
-                "model": "gemini-3.1-flash-lite",
+                "model": MODEL_FLASH_LITE,
                 "tokens_in": 42,
                 "tokens_out": 8,
             }
@@ -32,7 +33,7 @@ class GenerateFolderNameTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(prompt, str)
         self.assertIn("Metasurface lens for broadband imaging", prompt)
 
-        self.assertEqual(kwargs["model"], "gemini-3.1-flash-lite")
+        self.assertEqual(kwargs["model"], MODEL_FLASH_LITE)
         self.assertEqual(kwargs["thinking_level"], "minimal")
         self.assertIs(kwargs["store"], False)
         self.assertEqual(kwargs["system_instruction"], naming_service._NAMING_SYSTEM_INSTRUCTION)
@@ -59,7 +60,7 @@ class GenerateFigureNamesTests(unittest.IsolatedAsyncioTestCase):
         fake_call = AsyncMock(
             return_value={
                 "text": '["fig1_sem_cross_section", "fig2_transmission_spectrum"]',
-                "model": "gemini-3.1-flash-lite",
+                "model": MODEL_FLASH_LITE,
                 "tokens_in": 30,
                 "tokens_out": 12,
             }
@@ -74,7 +75,7 @@ class GenerateFigureNamesTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(prompt, str)
         self.assertIn("SEM cross-section of the device", prompt)
 
-        self.assertEqual(kwargs["model"], "gemini-3.1-flash-lite")
+        self.assertEqual(kwargs["model"], MODEL_FLASH_LITE)
         self.assertEqual(kwargs["thinking_level"], "minimal")
         self.assertIs(kwargs["store"], False)
         self.assertEqual(kwargs["system_instruction"], naming_service._NAMING_SYSTEM_INSTRUCTION)
@@ -98,7 +99,7 @@ class GenerateFigureNamesTests(unittest.IsolatedAsyncioTestCase):
             {"figure_num": "p3_img1", "caption": "Transmission spectrum", "page": 3},
         ]
         fake_call = AsyncMock(
-            return_value={"text": '["only_one_name"]', "model": "gemini-3.1-flash-lite"}
+            return_value={"text": '["only_one_name"]', "model": MODEL_FLASH_LITE}
         )
 
         with patch("services.naming_service.call_interaction", new=fake_call):
@@ -112,7 +113,7 @@ class GeneratePaperbananaNameTests(unittest.IsolatedAsyncioTestCase):
         fake_call = AsyncMock(
             return_value={
                 "text": "optical_setup_illustration",
-                "model": "gemini-3.1-flash-lite",
+                "model": MODEL_FLASH_LITE,
                 "tokens_in": 20,
                 "tokens_out": 6,
             }
@@ -130,7 +131,7 @@ class GeneratePaperbananaNameTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(prompt, str)
         self.assertIn("Optical Setup Diagram", prompt)
 
-        self.assertEqual(kwargs["model"], "gemini-3.1-flash-lite")
+        self.assertEqual(kwargs["model"], MODEL_FLASH_LITE)
         self.assertEqual(kwargs["thinking_level"], "minimal")
         self.assertIs(kwargs["store"], False)
         self.assertEqual(kwargs["system_instruction"], naming_service._NAMING_SYSTEM_INSTRUCTION)

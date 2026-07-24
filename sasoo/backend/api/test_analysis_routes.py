@@ -27,6 +27,7 @@ from unittest.mock import AsyncMock, patch
 
 from api import analysis_routes, figure_service
 from models.schemas import AnalysisStatus
+from services.models import MODEL_FLASH_HQ, MODEL_FLASH_LITE
 
 
 class _StubBackgroundTasks:
@@ -420,7 +421,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                         '"key_topics":["광학"],"is_experimental":true,'
                         '"methodology_type":"experimental",'
                         '"recipe_applicable":true,"deep_dive_applicable":true}',
-                "model": "gemini-3.1-flash-lite",
+                "model": MODEL_FLASH_LITE,
                 "tokens_in": 10, "tokens_out": 10, "interaction_id": None,
             }
 
@@ -633,7 +634,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                         '"why_cited":"기반 이론이라 자주 인용됨.","evidence_context":"이 방법은 [1]을 따른다"}],'
                         '"summary":"요약","citation_balance":"balanced",'
                         '"key_influences":["[1]"],"limitations":"상위 10개 기반 평가"}',
-                "model": "gemini-3.5-flash",
+                "model": MODEL_FLASH_HQ,
                 "tokens_in": 10, "tokens_out": 10, "interaction_id": None,
             }
 
@@ -886,7 +887,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                         '"methodology_type": "experimental", "summary": "요약", '
                         '"is_experimental": true, "has_figures": true, '
                         '"estimated_complexity": "low"}',
-                "model": "gemini-3.1-flash-lite",
+                "model": MODEL_FLASH_LITE,
                 "tokens_in": 10,
                 "tokens_out": 10,
                 "interaction_id": None,
@@ -899,14 +900,14 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         ):
             result = await analysis_routes._run_screening(7, "논문 텍스트", status)
 
-        self.assertEqual(calls["model"], "gemini-3.1-flash-lite")
+        self.assertEqual(calls["model"], MODEL_FLASH_LITE)
         self.assertEqual(calls["thinking_level"], "minimal")
         self.assertIs(calls["store"], False)
         self.assertIn("domain", calls["response_schema"]["properties"])
         # 프롬프트에서 JSON 골격/펜스 지시는 제거되었지만 논문 텍스트는 유지
         self.assertIn("논문 텍스트", calls["prompt"])
         self.assertNotIn("Return ONLY valid JSON", calls["prompt"])
-        self.assertEqual(result["model"], "gemini-3.1-flash-lite")
+        self.assertEqual(result["model"], MODEL_FLASH_LITE)
         self.assertEqual(result["interaction_id"], None)
         insert_mock.assert_awaited_once()
 
@@ -991,7 +992,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                 chunks.append(chunk)
 
         # stateless 전환: stream_interaction으로 넘어간 계약 검증
-        self.assertEqual(captured["model"], "gemini-3.5-flash")
+        self.assertEqual(captured["model"], MODEL_FLASH_HQ)
         self.assertIs(captured["store"], False)
         system_prompt = captured["system_instruction"]
         self.assertIn("CHAT-CONTEXT", system_prompt)
@@ -1166,10 +1167,10 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
     def test_stage_models_match_constants_and_effective_values(self):
         from services import models as m
         # 상수 파일이 실효 동작(Flash)과 일치해야 한다 (Pro 승격은 A/B 후 별도 결정)
-        self.assertEqual(m.MODEL_RECIPE, "gemini-3.5-flash")
-        self.assertEqual(m.MODEL_DEEP_DIVE, "gemini-3.5-flash")
-        self.assertEqual(m.MODEL_VIZ_PLANNING, "gemini-3.5-flash")
-        self.assertEqual(m.MODEL_MERMAID, "gemini-3.5-flash")
+        self.assertEqual(m.MODEL_RECIPE, MODEL_FLASH_HQ)
+        self.assertEqual(m.MODEL_DEEP_DIVE, MODEL_FLASH_HQ)
+        self.assertEqual(m.MODEL_VIZ_PLANNING, MODEL_FLASH_HQ)
+        self.assertEqual(m.MODEL_MERMAID, MODEL_FLASH_HQ)
         # 체인 스테이지 → 모델 매핑이 상수를 사용
         self.assertEqual(analysis_routes._STAGE_MODELS, {
             "visual": m.MODEL_VISUAL,
@@ -1207,7 +1208,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                         '"why_cited":"기반 이론.","evidence_context":"이 방법은 [1]을 따른다"}],'
                         '"summary":"요약","citation_balance":"balanced","key_influences":["[1]"],'
                         '"limitations":"상위 10개 기반"}',
-                "model": "gemini-3.5-flash", "tokens_in": 10, "tokens_out": 10, "interaction_id": None,
+                "model": MODEL_FLASH_HQ, "tokens_in": 10, "tokens_out": 10, "interaction_id": None,
             }
 
         local_result = {
@@ -1600,7 +1601,7 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
             captured["contents"] = contents
             captured.update(kwargs)
             return {"text": '{"quality_summary":"ok","key_findings_from_visuals":[]}',
-                    "model": "gemini-3.5-flash", "tokens_in": 5, "tokens_out": 5,
+                    "model": MODEL_FLASH_HQ, "tokens_in": 5, "tokens_out": 5,
                     "interaction_id": "int_new"}
         return _fake
 
@@ -1670,7 +1671,7 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
             captured["contents"] = contents
             captured.update(kwargs)
             return {"text": '{"title":"r","objective":"o","parameters":[],"steps":[]}',
-                    "model": "gemini-3.5-flash", "tokens_in": 1, "tokens_out": 1,
+                    "model": MODEL_FLASH_HQ, "tokens_in": 1, "tokens_out": 1,
                     "interaction_id": "int_recipe"}
 
         insert_mock = AsyncMock()
@@ -1736,7 +1737,7 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
             })
             return {
                 "text": '{"visualizations": []}',
-                "model": "gemini-3.5-flash",
+                "model": MODEL_FLASH_HQ,
                 "tokens_in": 1,
                 "tokens_out": 1,
                 "interaction_id": iid,
@@ -1895,7 +1896,7 @@ class CitationPromptTests(unittest.IsolatedAsyncioTestCase):
             return {
                 "text": '{"ref_analyses":[],"summary":"s","citation_balance":"balanced",'
                         '"key_influences":[],"limitations":"l"}',
-                "model": "gemini-3.5-flash", "tokens_in": 1, "tokens_out": 1, "interaction_id": None,
+                "model": MODEL_FLASH_HQ, "tokens_in": 1, "tokens_out": 1, "interaction_id": None,
             }
 
         local_result = {

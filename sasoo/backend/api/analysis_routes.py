@@ -91,6 +91,7 @@ from services.models import (
     MODEL_VIZ_PLANNING,
     MODEL_MERMAID,
     MODEL_CHAT,
+    MODEL_FLASH_HQ,
 )
 from api.report_service import (
     _format_phase_data,
@@ -760,7 +761,7 @@ async def _run_citation(
 
 
 # ---------------------------------------------------------------------------
-# Stateful chain: Visual -> Recipe -> Deep Dive -> Viz planning (gemini-3.5-flash)
+# Stateful chain: Visual -> Recipe -> Deep Dive -> Viz planning (gemini-3.6-flash)
 # ---------------------------------------------------------------------------
 
 # 단계별 thinking_level (visual=low, recipe=medium, deep_dive=high, visualization=medium)
@@ -2834,7 +2835,7 @@ Paper text excerpt:
 Return ONLY valid Mermaid syntax starting with "flowchart TD" or "flowchart LR".
 """
 
-    result = await call_interaction(prompt, lane="chat", model="gemini-3.5-flash", store=False)
+    result = await call_interaction(prompt, lane="chat", model=MODEL_FLASH_HQ, store=False)
 
     mermaid_code = _sanitize_mermaid_code(result["text"])
 
@@ -2939,7 +2940,7 @@ async def repair_mermaid(paper_id: int, request: MermaidRepairRequest):
 - linkStyle 인덱스가 엣지 수를 벗어나면 해당 linkStyle 줄을 삭제해.
 - 수정된 전체 Mermaid 코드만 반환해. 설명 금지."""
 
-    result = await call_interaction(prompt, lane="chat", model="gemini-3.5-flash", store=False)
+    result = await call_interaction(prompt, lane="chat", model=MODEL_FLASH_HQ, store=False)
     repaired = _sanitize_mermaid_code(result["text"])
     if not repaired:
         raise HTTPException(status_code=502, detail="Repair produced empty Mermaid code.")
@@ -3270,7 +3271,7 @@ Return ONLY valid JSON (마크다운 펜스 없이):
 }}
 """
 
-    result = await call_interaction(prompt, lane="chat", model="gemini-3.5-flash", store=False)
+    result = await call_interaction(prompt, lane="chat", model=MODEL_FLASH_HQ, store=False)
     cleaned_text = _clean_llm_json(result["text"])
 
     # Validate JSON

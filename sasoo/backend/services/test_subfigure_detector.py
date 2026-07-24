@@ -10,6 +10,7 @@ from PIL import Image
 
 from models.paper import Figure
 from services.subfigure_detector import SubFigureDetector
+from services.models import MODEL_FLASH_HQ
 
 
 def _make_png(path: Path, size: tuple[int, int] = (40, 20)) -> bytes:
@@ -37,7 +38,7 @@ class SubFigureDetectorCallInteractionTests(unittest.IsolatedAsyncioTestCase):
                         '"confidence": 0.9, "subfigures": '
                         '[{"label": "A", "bbox": [0.0, 0.0, 0.5, 1.0], "description": "left panel"}]}'
                     ),
-                    "model": "gemini-3.5-flash",
+                    "model": MODEL_FLASH_HQ,
                     "tokens_in": 10,
                     "tokens_out": 5,
                 }
@@ -64,7 +65,7 @@ class SubFigureDetectorCallInteractionTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("sub-figures", contents[1]["text"])
 
             # 모델/thinking/store 계약
-            self.assertEqual(kwargs["model"], "gemini-3.5-flash")
+            self.assertEqual(kwargs["model"], MODEL_FLASH_HQ)
             self.assertEqual(kwargs["thinking_level"], "minimal")
             self.assertIs(kwargs["store"], False)
             self.assertIn("response_schema", kwargs)

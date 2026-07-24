@@ -18,6 +18,7 @@ from PIL import Image
 from api.analysis_helpers import _clean_llm_json
 from models.paper import Figure as ParsedFigure
 from services.llm.interactions_client import call_interaction
+from services.models import MODEL_FLASH_HQ
 from services.subfigure_detector import SubFigureDetector
 
 FIGURE_LABEL_PATTERN = re.compile(r"^\s*(?:Figure|Fig\.?)\s*(\d+[A-Za-z]?)\b", re.IGNORECASE)
@@ -283,7 +284,7 @@ async def _maybe_select_candidate(
                 {"type": "text", "text": json.dumps(prompt, ensure_ascii=False)},
             ],
             lane="pipeline",
-            model="gemini-3.5-flash",
+            model=MODEL_FLASH_HQ,
             thinking_level="minimal",
             store=False,
         )
@@ -348,7 +349,7 @@ async def _maybe_rerank_caption(
                 {"type": "text", "text": json.dumps(prompt, ensure_ascii=False)},
             ],
             lane="pipeline",
-            model="gemini-3.5-flash",
+            model=MODEL_FLASH_HQ,
             thinking_level="minimal",
             store=False,
         )

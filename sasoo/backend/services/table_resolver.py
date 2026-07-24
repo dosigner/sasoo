@@ -15,6 +15,7 @@ from typing import Any
 
 from api.analysis_helpers import _clean_llm_json
 from services.llm.interactions_client import call_interaction
+from services.models import MODEL_FLASH_HQ
 
 TABLE_LABEL_PATTERN = re.compile(r"^\s*(?:Table|Tbl\.?)\s*(\d+[A-Za-z]?)\b", re.IGNORECASE)
 
@@ -191,7 +192,7 @@ async def _repair_with_vlm(candidate: dict[str, Any], manifest: dict[str, Any], 
                 {"type": "text", "text": json.dumps(prompt, ensure_ascii=False)},
             ],
             lane="pipeline",
-            model="gemini-3.5-flash",
+            model=MODEL_FLASH_HQ,
             thinking_level="minimal",
             store=False,
         )

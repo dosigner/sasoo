@@ -8,6 +8,7 @@ import pytest
 
 from services.llm.interactions_client import call_interaction, upload_pdf_for_paper
 import services.llm.interactions_client as interactions_client
+from services.models import MODEL_FLASH_HQ
 
 
 def _fake_interaction(text="결과", interaction_id="int_1", total_thought_tokens=0):
@@ -36,7 +37,7 @@ def test_call_interaction_basic():
     assert result["tokens_out"] == 100  # total_output_tokens(50) + total_thought_tokens(50)
     assert result["tokens_thought"] == 50
     kwargs = fake_client.interactions.create.call_args.kwargs
-    assert kwargs["model"] == "gemini-3.5-flash"
+    assert kwargs["model"] == MODEL_FLASH_HQ
     assert set(kwargs.keys()) == {"model", "input", "system_instruction", "store"}
 
 
@@ -144,7 +145,7 @@ def test_stream_interaction_yields_tokens_then_done():
     # stream=True 전달 + 금지 파라미터 부재
     kwargs = fake_client.interactions.create.call_args.kwargs
     assert kwargs["stream"] is True
-    assert kwargs["model"] == "gemini-3.5-flash"
+    assert kwargs["model"] == MODEL_FLASH_HQ
     for disallowed in ("temperature", "top_p", "top_k", "thinking_budget", "generation_config"):
         assert disallowed not in kwargs
 
