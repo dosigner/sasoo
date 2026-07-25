@@ -38,6 +38,13 @@
   <img src="sasoo/docs/assets/procedure.ko.svg" alt="Sasoo 5단계 분석 워크플로" width="900" />
 </div>
 
+<!-- 데모 GIF 준비 후 아래 주석 해제 (녹화 시나리오: docs/marketing/demo-scenario.md)
+<div align="center">
+  <img src="sasoo/docs/assets/demo.gif" alt="PDF 업로드부터 figure 해설, recipe 추출까지 30초 데모" width="900" />
+</div>
+-->
+
+
 <!-- README-I18N:START -->
 
 **한국어** | [English](./README.en.md)
@@ -50,6 +57,15 @@
   <img src="sasoo/docs/assets/storyline.png" alt="Sasoo 스토리라인: 논문 더미 정리, figure 검토, 라이브러리 보관" width="900" />
   <p><sub>읽기 전 — 구조를 세우고 · 읽는 동안 — figure를 해석하고 · 읽은 뒤 — 재현 파라미터까지 남깁니다</sub></p>
 </div>
+
+## 3분 안에 시작하기
+
+Gemini 무료 키만 있으면 비용 없이 바로 써볼 수 있습니다.
+
+1. **다운로드** — [GitHub Releases](https://github.com/dosigner/sasoo/releases/latest)에서 `Sasoo-<version>-arm64.dmg`(macOS Apple Silicon)를 받습니다.
+2. **설치** — `Sasoo.app`를 `/Applications`로 옮깁니다. 실행이 차단되면 아래의 [macOS note](#macos-note) 절차(명령 1줄)를 따릅니다.
+3. **무료 API 키 발급** — [Google AI Studio](https://aistudio.google.com/apikey)에서 Google 계정으로 로그인하고 `Get API key`를 누르면 끝입니다. 신용카드 등록 없이 무료 티어로 발급되며, 핵심 분석은 이 Gemini 키 하나로 동작합니다.
+4. **첫 분석** — 앱 실행 → `Settings`에 키 입력 → PDF를 드래그하면 도메인 감지와 5단계 분석이 시작됩니다.
 
 ## Why Sasoo
 
@@ -72,7 +88,7 @@
 
 ## Current Release
 
-현재 릴리스는 [`v0.7.0`](https://github.com/dosigner/sasoo/releases/latest)입니다. macOS Apple Silicon용 미서명 ZIP과 DMG로 배포합니다.
+현재 릴리스는 [`v0.7.1`](https://github.com/dosigner/sasoo/releases/latest)입니다. macOS Apple Silicon용 미서명 ZIP과 DMG로 배포합니다.
 
 - macOS Apple Silicon 빌드는 미서명 ZIP/DMG로 배포하며, 아래의 `xattr` 절차가 필요합니다.
 - 데스크톱 설정 저장과 라이브러리 경로 처리 안정화가 반영됐습니다.
@@ -152,7 +168,7 @@ xattr -dr com.apple.quarantine /Applications/Sasoo.app
 
 ## API Keys
 
-핵심 분석은 `Gemini` 키만으로 동작합니다. 기본 이미지 생성 경로가 OpenAI라서, 그대로 쓰려면 `OpenAI` 키도 넣는 것이 좋습니다.
+핵심 분석은 `Gemini` 키만으로 동작합니다. Gemini 키는 [Google AI Studio](https://aistudio.google.com/apikey)에서 신용카드 등록 없이 무료 티어로 발급할 수 있습니다. 기본 이미지 생성 경로가 OpenAI라서, 그대로 쓰려면 `OpenAI` 키도 넣는 것이 좋습니다.
 
 - Gemini: screening, visual 분석, deep dive, Mermaid/diagram 생성 등 대부분의 텍스트·비전 분석
 - OpenAI: figure/이미지 생성(기본 이미지 프로바이더 — `Settings`에서 이미지 생성을 Gemini로 바꾸면 OpenAI 키 없이도 동작)
@@ -245,7 +261,7 @@ pnpm build:linux
 
 ## Notes For Reviewers
 
-- 현재 릴리스는 [`v0.7.0`](https://github.com/dosigner/sasoo/releases/latest)이며, 공식 GitHub Releases에서 macOS 미서명 ZIP/DMG를 제공합니다.
+- 현재 릴리스는 [`v0.7.1`](https://github.com/dosigner/sasoo/releases/latest)이며, 공식 GitHub Releases에서 macOS 미서명 ZIP/DMG를 제공합니다.
 - macOS 공개 빌드는 현재 미서명 ZIP 정책이며 README의 제한된 `xattr` 설치 절차를 사용합니다.
 - 릴리즈 재태깅 상황에서는 GitHub 자동 changelog가 역방향 비교 링크를 만들 수 있으므로 본문을 수동 검토하는 편이 안전합니다.
 

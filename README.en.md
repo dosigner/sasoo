@@ -38,6 +38,12 @@
   <img src="sasoo/docs/assets/procedure.en.svg" alt="Sasoo 5-phase analysis workflow" width="900" />
 </div>
 
+<!-- Uncomment after recording the demo GIF (see docs/marketing/demo-scenario.md)
+<div align="center">
+  <img src="sasoo/docs/assets/demo.gif" alt="30-second demo: PDF upload to figure interpretation and recipe extraction" width="900" />
+</div>
+-->
+
 <!-- README-I18N:START -->
 
 [한국어](./README.md) | **English**
@@ -50,6 +56,15 @@
   <img src="sasoo/docs/assets/storyline.png" alt="Sasoo storyline: organizing a paper pile, examining a figure, archiving to the library" width="900" />
   <p><sub>Before — build the structure · During — interpret the figures · After — keep what it takes to reproduce</sub></p>
 </div>
+
+## Get started in 3 minutes
+
+A free Gemini key is enough to try it out at no cost.
+
+1. **Download** — Get `Sasoo-<version>-arm64.dmg` (macOS Apple Silicon) from [GitHub Releases](https://github.com/dosigner/sasoo/releases/latest).
+2. **Install** — Move `Sasoo.app` to `/Applications`. If launch is blocked, follow the one-command [macOS note](#macos-note) procedure below.
+3. **Free API key** — Sign in with your Google account at [Google AI Studio](https://aistudio.google.com/apikey) and click `Get API key`. No credit card required, and the free-tier key alone drives core analysis.
+4. **First analysis** — Launch the app, enter the key in `Settings`, then drag in a PDF to kick off domain detection and the 5-phase analysis.
 
 ## Why Sasoo
 
@@ -72,7 +87,7 @@ Attach optics, bio, deep learning, or circuit agents — or add your own by drop
 
 ## Current Release
 
-The current release is [`v0.7.0`](https://github.com/dosigner/sasoo/releases/latest), distributed as an unsigned ZIP and DMG for macOS Apple Silicon.
+The current release is [`v0.7.1`](https://github.com/dosigner/sasoo/releases/latest), distributed as an unsigned ZIP and DMG for macOS Apple Silicon.
 
 - The macOS Apple Silicon build is distributed as an unsigned ZIP/DMG and requires the `xattr` procedure below.
 - Includes stabilization of desktop settings persistence and library path handling.
@@ -152,7 +167,7 @@ xattr -dr com.apple.quarantine /Applications/Sasoo.app
 
 ## API Keys
 
-Core analysis runs on the `Gemini` key alone. Since the default image-generation path uses OpenAI, it is best to also configure an `OpenAI` key to use it as-is.
+Core analysis runs on the `Gemini` key alone. A Gemini key can be issued for free from [Google AI Studio](https://aistudio.google.com/apikey) on the free tier. Since the default image-generation path uses OpenAI, it is best to also configure an `OpenAI` key to use it as-is.
 
 - Gemini: screening, visual analysis, deep dive, Mermaid/diagram generation, and most text/vision analysis
 - OpenAI: figure/image generation (the default image provider — switch image generation to Gemini in `Settings` to run without an OpenAI key)
@@ -245,7 +260,7 @@ pnpm build:linux
 
 ## Notes For Reviewers
 
-- The current release is [`v0.7.0`](https://github.com/dosigner/sasoo/releases/latest); the official GitHub Releases provide the macOS unsigned ZIP/DMG.
+- The current release is [`v0.7.1`](https://github.com/dosigner/sasoo/releases/latest); the official GitHub Releases provide the macOS unsigned ZIP/DMG.
 - Public macOS builds currently follow the unsigned-ZIP policy and use the limited `xattr` installation procedure documented in this README.
 - When a release is re-tagged, GitHub's auto-generated changelog can produce reversed comparison links, so reviewing the release notes manually is safer.
 
