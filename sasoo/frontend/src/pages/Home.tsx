@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 import { getPapers, getCostSummary, type Paper } from '@/lib/api';
 import { S } from '@/lib/strings';
 import UploadPanel from '@/components/home/UploadPanel';

@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink } from 'react-router';
 import { Sun, Moon } from 'lucide-react';
 import { S } from '@/lib/strings';
 import { updateSettings } from '@/lib/api';

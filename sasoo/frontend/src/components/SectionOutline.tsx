@@ -18,7 +18,7 @@ interface SectionOutlineProps {
    * 같은 헤딩 텍스트를 쓰면 문서 전역에 id가 중복된다. 생략하면 document 전체에서
    * 찾아 엉뚱한 단계로 점프할 수 있다.
    */
-  scopeRef?: RefObject<HTMLElement>;
+  scopeRef?: RefObject<HTMLElement | null>;
 }
 
 export default function SectionOutline({ outline, scopeRef }: SectionOutlineProps) {
