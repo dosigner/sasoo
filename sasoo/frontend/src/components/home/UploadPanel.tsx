@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, type CSSProperties } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { Loader2 } from 'lucide-react';
 import {
   ApiError,

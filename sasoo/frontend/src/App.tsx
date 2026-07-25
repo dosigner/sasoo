@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router';
 import { S } from '@/lib/strings';
 import { getSettings } from '@/lib/api';
 import { fetchAllAgents } from '@/lib/agents';
