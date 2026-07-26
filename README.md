@@ -86,9 +86,10 @@ Gemini 무료 키만 있으면 비용 없이 바로 써볼 수 있습니다.
 
 ## Current Release
 
-현재 릴리스는 [`v0.7.1`](https://github.com/dosigner/sasoo/releases/latest)입니다. macOS Apple Silicon용 미서명 ZIP과 DMG로 배포합니다.
+현재 릴리스는 [`v0.8.0`](https://github.com/dosigner/sasoo/releases/latest)입니다. macOS Apple Silicon용 미서명 ZIP/DMG와 Windows x64용 미서명 설치본을 배포합니다.
 
 - macOS Apple Silicon 빌드는 미서명 ZIP/DMG로 배포하며, 아래의 `xattr` 절차가 필요합니다.
+- Windows 빌드도 미서명이라 처음 실행할 때 SmartScreen 경고가 뜹니다. `추가 정보 → 실행`으로 넘어가면 됩니다.
 - 데스크톱 설정 저장과 라이브러리 경로 처리 안정화가 반영됐습니다.
 - `resolver_v1` 기반 figure/table 추출 경로가 기본값입니다.
 - 릴리즈 빌드에서 Java 기반 OpenDataLoader 런타임을 함께 패키징합니다.
@@ -259,8 +260,9 @@ pnpm build:linux
 
 ## Notes For Reviewers
 
-- 현재 릴리스는 [`v0.7.1`](https://github.com/dosigner/sasoo/releases/latest)이며, 공식 GitHub Releases에서 macOS 미서명 ZIP/DMG를 제공합니다.
+- 현재 릴리스는 [`v0.8.0`](https://github.com/dosigner/sasoo/releases/latest)이며, 공식 GitHub Releases에서 macOS 미서명 ZIP/DMG와 Windows 미서명 설치본을 제공합니다.
 - macOS 공개 빌드는 현재 미서명 ZIP 정책이며 README의 제한된 `xattr` 설치 절차를 사용합니다.
+- Windows 빌드는 v0.8.0에서 처음 배포하며, 실기기 검증 없이 CI 산출물을 그대로 올린 상태입니다.
 - 릴리즈 재태깅 상황에서는 GitHub 자동 changelog가 역방향 비교 링크를 만들 수 있으므로 본문을 수동 검토하는 편이 안전합니다.
 
 ## License
