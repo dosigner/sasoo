@@ -38,11 +38,9 @@
   <img src="sasoo/docs/assets/procedure.ko.svg" alt="Sasoo 5단계 분석 워크플로" width="900" />
 </div>
 
-<!-- 데모 GIF 준비 후 아래 주석 해제 (녹화 시나리오: docs/marketing/demo-scenario.md)
 <div align="center">
-  <img src="sasoo/docs/assets/demo.gif" alt="PDF 업로드부터 figure 해설, recipe 추출까지 30초 데모" width="900" />
+  <img src="sasoo/docs/assets/demo.gif" alt="PDF 업로드부터 에이전트 배정, 시각화, figure 해설, recipe 추출까지 26초 데모" width="900" />
 </div>
--->
 
 
 <!-- README-I18N:START -->

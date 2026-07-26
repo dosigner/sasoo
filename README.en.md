@@ -38,11 +38,9 @@
   <img src="sasoo/docs/assets/procedure.en.svg" alt="Sasoo 5-phase analysis workflow" width="900" />
 </div>
 
-<!-- Uncomment after recording the demo GIF (see docs/marketing/demo-scenario.md)
 <div align="center">
-  <img src="sasoo/docs/assets/demo.gif" alt="30-second demo: PDF upload to figure interpretation and recipe extraction" width="900" />
+  <img src="sasoo/docs/assets/demo.gif" alt="26-second demo: PDF upload, agent assignment, visualizations, figure interpretation, and recipe extraction" width="900" />
 </div>
--->
 
 <!-- README-I18N:START -->
 
