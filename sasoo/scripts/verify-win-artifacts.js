@@ -5,6 +5,9 @@ const crypto = require('crypto');
 const ROOT_DIR = path.resolve(__dirname, '..');
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
 const UPDATE_FILE = path.join(DIST_DIR, 'latest.yml');
+// 미서명 Windows 배포에서만 1로 설정된다(릴리스 워크플로가 인증서 시크릿 부재 시 지정).
+// 이 값이 없으면 기존대로 Authenticode 서명을 강제한다 — 기본값은 fail-closed 유지.
+const ALLOW_UNSIGNED = process.env.SASOO_ALLOW_UNSIGNED_WIN === '1';
 
 function fail(message) {
   console.error(`[verify-win-artifacts] ${message}`);
@@ -159,8 +162,18 @@ for (const exePath of exeFiles) {
     fail(`${path.basename(exePath)} is empty.`);
   }
   verifyPortableExecutable(exePath);
-  verifyAuthenticodeSignature(exePath);
+  // 미서명 배포(SASOO_ALLOW_UNSIGNED_WIN=1)에서는 Authenticode가 존재할 수 없으므로 건너뛴다.
+  // 인증서를 확보해 서명 빌드로 돌아가면 이 플래그가 사라지고 검증이 자동으로 복원된다.
+  if (ALLOW_UNSIGNED) {
+    log(`Skipping Authenticode check for ${path.basename(exePath)} (unsigned release).`);
+  } else {
+    verifyAuthenticodeSignature(exePath);
+  }
   log(`Verified installer ${path.basename(exePath)} (${Math.round(stat.size / 1024 / 1024)} MB).`);
 }
 
-log('Windows artifacts passed installer, Authenticode, and update manifest checks.');
+log(
+  ALLOW_UNSIGNED
+    ? 'Windows artifacts passed installer and update manifest checks (UNSIGNED: Authenticode skipped).'
+    : 'Windows artifacts passed installer, Authenticode, and update manifest checks.',
+);
