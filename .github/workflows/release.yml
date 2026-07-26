@@ -82,10 +82,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # v0.7.0: macOS 단독 릴리스. Windows는 코드서명 인증서 확보 후 이 커밋을 revert해 복원한다.
-          # 아래 "Configure and require Windows signing" 게이트는 그대로 보존한다.
+          # Windows는 미서명으로 배포한다(설치 시 SmartScreen 경고). 코드서명 인증서를
+          # WIN_CSC_LINK/WIN_CSC_KEY_PASSWORD 시크릿으로 넣으면 아래 게이트가 자동으로
+          # 서명 빌드 + Authenticode 검증으로 전환된다(워크플로 수정 불필요).
           - os: macos-14
             builder_flag: --mac
+          - os: windows-latest
+            builder_flag: --win
 
     runs-on: ${{ matrix.os }}
     defaults:
@@ -168,16 +171,22 @@ jobs:
           cd backend
           "${PYTHON#backend/}" -m pytest services api models
 
-      - name: Configure and require Windows signing
+      - name: Detect Windows signing capability
+        id: win_signing
         if: runner.os == 'Windows'
         shell: bash
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: |
-          if [[ -z "$WIN_CSC_LINK" || -z "$WIN_CSC_KEY_PASSWORD" ]]; then
-            echo "Missing required Windows code-signing secrets." >&2
-            exit 1
+          # 시크릿이 둘 다 있으면 서명 빌드 + Authenticode 검증, 없으면 미서명 빌드.
+          # 미서명 산출물은 설치 시 SmartScreen 경고가 뜨며, 이는 의도된 동작이다.
+          if [[ -n "$WIN_CSC_LINK" && -n "$WIN_CSC_KEY_PASSWORD" ]]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Windows code-signing secrets present; building signed release."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Windows code-signing secrets absent; building UNSIGNED release (SmartScreen warning expected)."
           fi
 
       - name: Build macOS release
@@ -188,11 +197,21 @@ jobs:
           pnpm build:mac:release
 
       - name: Build signed Windows release
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.win_signing.outputs.enabled == 'true'
         shell: bash
         env:
           CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: pnpm build:win:release
+
+      - name: Build unsigned Windows release
+        if: runner.os == 'Windows' && steps.win_signing.outputs.enabled != 'true'
+        shell: bash
+        env:
+          # 인증서가 없으므로 electron-builder의 자동 인증서 탐색을 끈다.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          # verify:win-artifact의 Authenticode 검사를 건너뛴다(미서명이므로 반드시 실패).
+          SASOO_ALLOW_UNSIGNED_WIN: "1"
         run: pnpm build:win:release
 
       - name: Upload build artifacts
@@ -253,6 +272,13 @@ jobs:
           ## Upgrading from an earlier version
 
           This release moves API key encryption to your OS credential store. Saved API keys are migrated automatically when the legacy encryption key is available. If a key cannot be migrated, or you revoked or deleted it with its provider, open Settings and enter a new Gemini/OpenAI API key.
+
+          ## Windows install note
+
+          The Windows build is distributed unsigned. Windows SmartScreen will warn that the publisher is unknown. Only use an artifact downloaded directly from this official GitHub release.
+
+          1. Run the `.exe` installer.
+          2. If SmartScreen shows "Windows protected your PC", click `More info` → `Run anyway`.
 
           ## macOS install note
 
