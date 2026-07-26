@@ -21,6 +21,7 @@
     "katex": "^0.16.38",
     "lucide-react": "^0.312.0",
     "mermaid": "^11.16.0",
+    "motion": "^12.42.2",
     "pdfjs-dist": "^5.7.284",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
