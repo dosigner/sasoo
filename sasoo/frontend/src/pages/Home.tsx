@@ -4,6 +4,7 @@ import { getPapers, getCostSummary, type Paper } from '@/lib/api';
 import { S } from '@/lib/strings';
 import UploadPanel from '@/components/home/UploadPanel';
 import RecentPaperRow, { formatPaperDate } from '@/components/home/RecentPaperRow';
+import ArcCards from '@/components/amicro/ArcCards';
 
 function todayLabel(): string {
   return new Date().toLocaleDateString('ko-KR', {
@@ -32,6 +33,7 @@ export default function Home() {
   const [recentPapers, setRecentPapers] = useState<Paper[]>([]);
   const [papersTotal, setPapersTotal] = useState<number | null>(null);
   const [cost, setCost] = useState<CostTileData | null>(null);
+  const [libraryHovered, setLibraryHovered] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -162,15 +164,22 @@ export default function Home() {
             )}
 
             {papersTotal !== null && (
-              <section className="card">
+              <section
+                className="card"
+                onMouseEnter={() => setLibraryHovered(true)}
+                onMouseLeave={() => setLibraryHovered(false)}
+              >
                 <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-fg-muted">
                   {S.home.libraryTitle}
                 </div>
-                <div className="mt-2 text-[1.7rem] font-semibold leading-none tracking-[-0.01em] text-fg tabular-nums">
-                  {papersTotal}
-                  <span className="ml-1 text-base font-normal text-fg-muted">
-                    {S.home.libraryUnit}
-                  </span>
+                <div className="mt-2 flex items-end justify-between gap-2">
+                  <div className="text-[1.7rem] font-semibold leading-none tracking-[-0.01em] text-fg tabular-nums">
+                    {papersTotal}
+                    <span className="ml-1 text-base font-normal text-fg-muted">
+                      {S.home.libraryUnit}
+                    </span>
+                  </div>
+                  <ArcCards hovered={libraryHovered} className="mr-2" />
                 </div>
                 <Link
                   to="/library"
