@@ -469,6 +469,8 @@ export const S = {
     clickForExplanation: '그림을 누르면 AI 전문가가 자세히 설명해요.',
     prevFigure: '이전 그림',
     nextFigure: '다음 그림',
+    viewGrid: '그리드',
+    viewCoverflow: '커버플로우',
     close: '닫기',
     viewDetail: (name: string) => `${name} 상세 보기`,
     qualityHigh: '고화질',

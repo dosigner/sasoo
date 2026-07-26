@@ -8,6 +8,7 @@ import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { AppIcon } from '@/components/icons';
 import { Badge, Tooltip } from '@/components/ui';
 import type { BadgeProps } from '@/components/ui/Badge';
+import CoverFlow from '@/components/amicro/CoverFlow';
 
 type BadgeVariant = BadgeProps['variant'];
 
@@ -647,6 +648,8 @@ export default function FigureGallery({
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxVisible, setLightboxVisible] = useState(false);
   const [lightboxClosing, setLightboxClosing] = useState(false);
+  const [viewMode, setViewMode] = useState<'grid' | 'coverflow'>('grid');
+  const [coverflowIndex, setCoverflowIndex] = useState(0);
   const figureGroups = buildFigureGroups(figures);
   const figureCards = figureGroups.flatMap(({ parent, children }, groupIndex) => {
     const parentIndex = Math.max(figures.indexOf(parent), 0);
@@ -758,13 +761,35 @@ export default function FigureGallery({
 
   return (
     <div>
-      <h3 className="text-sm font-semibold text-fg mb-3 flex items-center gap-2">
-        <AppIcon name="figures" className="w-4 h-4 text-accent" />
-        {S.figures.title}
-        <span className="badge-primary text-2xs ml-1">
-          {figures.length}
-        </span>
-      </h3>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-fg flex items-center gap-2">
+          <AppIcon name="figures" className="w-4 h-4 text-accent" />
+          {S.figures.title}
+          <span className="badge-primary text-2xs ml-1">
+            {figures.length}
+          </span>
+        </h3>
+        <div className="flex items-center gap-1 rounded-lg border border-border p-0.5">
+          <button
+            type="button"
+            onClick={() => setViewMode('grid')}
+            className={`rounded-md px-2 py-1 text-2xs transition-colors ${
+              viewMode === 'grid' ? 'bg-surface-hover text-fg' : 'text-fg-muted hover:text-fg'
+            }`}
+          >
+            {S.figures.viewGrid}
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('coverflow')}
+            className={`rounded-md px-2 py-1 text-2xs transition-colors ${
+              viewMode === 'coverflow' ? 'bg-surface-hover text-fg' : 'text-fg-muted hover:text-fg'
+            }`}
+          >
+            {S.figures.viewCoverflow}
+          </button>
+        </div>
+      </div>
 
       {hasArtifactError ? (
         <div className="mb-3 flex items-center gap-2 rounded-lg border border-danger/20 bg-danger/8 px-3 py-2 text-xs text-danger">
@@ -785,18 +810,30 @@ export default function FigureGallery({
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-        {figureCards.map(({ key, figure, index, childCount }) => (
-          <FigureCard
-            key={key}
-            figure={figure}
-            index={index}
-            childCount={childCount}
-            onOpen={openLightbox}
-            onJumpToFigurePage={onJumpToFigurePage}
-          />
-        ))}
-      </div>
+      {viewMode === 'coverflow' ? (
+        <CoverFlow
+          items={figureCards.map(({ figure, index }) => ({
+            src: getFigureImageUrl(figure),
+            title: figure.figure_num || `Figure ${index + 1}`,
+          }))}
+          activeIndex={Math.min(coverflowIndex, Math.max(figureCards.length - 1, 0))}
+          onActiveChange={setCoverflowIndex}
+          onOpen={(i) => openLightbox(figureCards[i].index)}
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {figureCards.map(({ key, figure, index, childCount }) => (
+            <FigureCard
+              key={key}
+              figure={figure}
+              index={index}
+              childCount={childCount}
+              onOpen={openLightbox}
+              onJumpToFigurePage={onJumpToFigurePage}
+            />
+          ))}
+        </div>
+      )}
 
       {lightboxVisible && lightboxIndex !== null && (
         <Lightbox
