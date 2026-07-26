@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import type { Recipe } from '@/lib/api';
 import { S } from '@/lib/strings';
 import { AppIcon } from '@/components/icons';
+import CascadeIn from '@/components/amicro/CascadeIn';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -204,6 +205,7 @@ export default function RecipeCard({
 
       {/* Scores */}
       {(confidence !== undefined || reproducibilityScore !== undefined) && (
+        <CascadeIn index={0}>
         <div className="card p-3 mb-3 flex items-center gap-4">
           {confidence !== undefined && (
             <div className="text-xs text-fg-muted">
@@ -216,20 +218,24 @@ export default function RecipeCard({
             </div>
           )}
         </div>
+        </CascadeIn>
       )}
 
       {/* Objective */}
       {objective && (
+        <CascadeIn index={1}>
         <div className="card p-3 mb-3">
           <p className="text-xs text-fg-secondary leading-relaxed">
             <span className="font-semibold text-fg">{S.recipe.objective} </span>
             {objective}
           </p>
         </div>
+        </CascadeIn>
       )}
 
       {/* Materials */}
       {materials.length > 0 && (
+        <CascadeIn index={2}>
         <div className="card p-3 mb-3">
           <h4 className="mb-2 text-2xs font-medium uppercase tracking-wide text-fg-muted">{S.recipe.materials}</h4>
           <ul className="space-y-1">
@@ -241,10 +247,12 @@ export default function RecipeCard({
             ))}
           </ul>
         </div>
+        </CascadeIn>
       )}
 
       {/* Parameters Table */}
       {parameters.length > 0 && (
+        <CascadeIn index={3}>
         <div className="card p-0 overflow-hidden mb-3">
           <div className="px-3 py-2 border-b border-border bg-surface/70">
             <h4 className="text-2xs font-medium uppercase tracking-wide text-fg-muted">
@@ -276,19 +284,23 @@ export default function RecipeCard({
             </table>
           </div>
         </div>
+        </CascadeIn>
       )}
 
       {/* No parameters warning */}
       {parameters.length === 0 && (
+        <CascadeIn index={3}>
         <div className="card p-3 mb-3 border-warning/20 bg-warning/5">
           <p className="text-xs text-warning/80">
             {S.recipe.noParams}
           </p>
         </div>
+        </CascadeIn>
       )}
 
       {/* Steps */}
       {steps.length > 0 && (
+        <CascadeIn index={4}>
         <div className="card p-3 mb-3">
           <h4 className="mb-2 text-2xs font-medium uppercase tracking-wide text-fg-muted">{S.recipe.steps}</h4>
           <ol className="space-y-1.5">
@@ -300,10 +312,12 @@ export default function RecipeCard({
             ))}
           </ol>
         </div>
+        </CascadeIn>
       )}
 
       {/* Critical Notes */}
       {criticalNotes.length > 0 && (
+        <CascadeIn index={5}>
         <div className="mb-3">
           <h4 className="mb-2 text-2xs font-medium uppercase tracking-wide text-fg-muted">{S.recipe.criticalNotes}</h4>
           <div className="space-y-1.5">
@@ -320,10 +334,12 @@ export default function RecipeCard({
             ))}
           </div>
         </div>
+        </CascadeIn>
       )}
 
       {/* Missing Info */}
       {missingInfo.length > 0 && (
+        <CascadeIn index={6}>
         <div className="card p-3 mb-3 border-danger/20 bg-danger/5">
           <h4 className="mb-1.5 text-2xs font-medium uppercase tracking-wide text-danger">{S.recipe.missingInfo}</h4>
           <ul className="space-y-1">
@@ -335,6 +351,7 @@ export default function RecipeCard({
             ))}
           </ul>
         </div>
+        </CascadeIn>
       )}
     </div>
   );
