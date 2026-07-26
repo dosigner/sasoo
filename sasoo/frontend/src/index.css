@@ -1070,6 +1070,13 @@
     width: min(26rem, calc(100vw - 1.5rem));
   }
 
+  /* 카드는 bottom 고정이라 내용이 늘면 위로 자란다. 스트리밍 중에는 그게 초당
+     스무 번 넘게 일어나 읽던 답변이 계속 밀리고, blur 레이어가 매번 재배치된다.
+     대화가 시작된 뒤에는 높이를 최대치로 고정해 한 번만 커지게 한다. */
+  .chat-floating-card[data-expanded] {
+    height: min(42rem, calc(100vh - 2rem));
+  }
+
   .chat-floating-header {
     @apply flex items-start justify-between gap-3 px-4 py-4;
     border-bottom: 1px solid transparent;
@@ -1091,6 +1098,10 @@
       max-height: min(38rem, calc(100vh - 1rem));
     }
 
+    .chat-floating-card[data-expanded] {
+      height: min(38rem, calc(100vh - 1rem));
+    }
+
     .chat-launcher {
       width: min(18rem, calc(100vw - 1rem));
     }
@@ -1101,6 +1112,10 @@
       width: calc(100vw - 1rem);
       max-height: min(36rem, calc(100vh - 1rem));
       border-radius: var(--radius-surface);
+    }
+
+    .chat-floating-card[data-expanded] {
+      height: min(36rem, calc(100vh - 1rem));
     }
 
     .chat-launcher {

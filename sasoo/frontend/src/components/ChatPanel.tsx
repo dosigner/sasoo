@@ -91,7 +91,7 @@ export default function ChatPanel({
   const [totalCost, setTotalCost] = useState(0);
   const [scrolled, setScrolled] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
   // Aborts the turn currently on the wire; queued turns have not started yet.
   const abortRef = useRef<AbortController | null>(null);
   const runningRef = useRef(false);
@@ -112,9 +112,14 @@ export default function ChatPanel({
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  // 스트리밍 중에는 토큰 플러시마다(약 25회/초) 이 효과가 돈다. scrollIntoView는
+  // 호출할 때마다 부드러운 스크롤을 새로 시작해 끝나지 않고, 조상 스크롤 컨테이너까지
+  // 건드린다. 메시지 목록의 scrollTop만 직접 옮겨 채팅 영역 안에서만 끝낸다.
   useEffect(() => {
     if (!open) return;
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = messagesRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
   }, [messages, open]);
 
   useEffect(() => {
@@ -342,8 +347,10 @@ export default function ChatPanel({
           </button>
         )}
 
+        {/* data-expanded: 대화가 시작되면 카드 높이를 최대치로 고정한다(index.css).
+            카드가 bottom 고정이라 그러지 않으면 토큰마다 위로 자란다. */}
         {open && (
-          <div className="chat-floating-card">
+          <div className="chat-floating-card" data-expanded={hasMessages || undefined}>
             <div className="chat-floating-header" data-scrolled={scrolled || undefined}>
               <div className="min-w-0">
                 <div className="mb-1 flex items-center gap-2">
@@ -406,7 +413,11 @@ export default function ChatPanel({
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-4 py-4" onScroll={handleMessagesScroll}>
+                <div
+                  ref={messagesRef}
+                  className="flex-1 overflow-y-auto px-4 py-4"
+                  onScroll={handleMessagesScroll}
+                >
                   {!hasMessages && (
                     <div className="chat-empty-state">
                       <div className="chat-empty-icon">
@@ -505,7 +516,6 @@ export default function ChatPanel({
                       );
                     })}
                   </div>
-                  <div ref={messagesEndRef} />
                 </div>
 
                 <div className="border-t border-border/45 px-4 py-3">

@@ -85,9 +85,10 @@ Attach optics, bio, deep learning, or circuit agents — or add your own by drop
 
 ## Current Release
 
-The current release is [`v0.7.1`](https://github.com/dosigner/sasoo/releases/latest), distributed as an unsigned ZIP and DMG for macOS Apple Silicon.
+The current release is [`v0.8.0`](https://github.com/dosigner/sasoo/releases/latest), distributed as an unsigned ZIP/DMG for macOS Apple Silicon and an unsigned installer for Windows x64.
 
 - The macOS Apple Silicon build is distributed as an unsigned ZIP/DMG and requires the `xattr` procedure below.
+- The Windows build is unsigned too, so the first launch shows a SmartScreen warning. Choose **More info → Run anyway**.
 - Includes stabilization of desktop settings persistence and library path handling.
 - The `resolver_v1`-based figure/table extraction path is the default.
 - Release builds bundle the Java-based OpenDataLoader runtime.
@@ -258,8 +259,9 @@ pnpm build:linux
 
 ## Notes For Reviewers
 
-- The current release is [`v0.7.1`](https://github.com/dosigner/sasoo/releases/latest); the official GitHub Releases provide the macOS unsigned ZIP/DMG.
+- The current release is [`v0.8.0`](https://github.com/dosigner/sasoo/releases/latest); the official GitHub Releases provide the macOS unsigned ZIP/DMG and the Windows unsigned installer.
 - Public macOS builds currently follow the unsigned-ZIP policy and use the limited `xattr` installation procedure documented in this README.
+- The Windows build ships for the first time in v0.8.0 and is published straight from CI without verification on real hardware.
 - When a release is re-tagged, GitHub's auto-generated changelog can produce reversed comparison links, so reviewing the release notes manually is safer.
 
 ## License
