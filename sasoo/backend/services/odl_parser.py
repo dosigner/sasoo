@@ -1143,6 +1143,18 @@ async def _build_resolver_v1_manifest(
     manifest["audit"] = audit
     suspect_pages = set(audit.get("suspect_pages", []))
 
+    # gemini 파서가 못 읽어 PyMuPDF 텍스트로 메운 페이지는 caption/image 요소가 없다.
+    # audit은 본문 텍스트 기준이라 이런 페이지를 놓칠 수 있으므로 명시적으로 suspect에 넣어
+    # aggressive 후보 재생성을 태운다(pymupdf image 블록은 파서와 무관하게 살아 있다).
+    parser_failed_pages = {
+        page for page in (manifest.get("parser_failed_pages") or []) if isinstance(page, int)
+    }
+    if parser_failed_pages:
+        suspect_pages |= parser_failed_pages
+        audit["suspect_pages"] = sorted(suspect_pages)
+        audit["triggered"] = True
+        audit["reason"] = audit.get("reason") or "parser_page_failure"
+
     # 재시도 패스 병합: 예전에는 (1) low_confidence 재시도와 (2) audit suspect 재시도가
     # 그림·표 각각 따로 돌아 문서당 최대 6번의 resolve 패스가 나갔다. 두 페이지 집합을
     # 합쳐 한 번만 재시도하면 최대 4패스로 줄고, 커버리지는 합집합이라 이전 이상이다.

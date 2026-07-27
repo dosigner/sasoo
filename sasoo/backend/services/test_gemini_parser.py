@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -412,3 +413,144 @@ class MediaResolutionInjectionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PartialFailureToleranceTests(unittest.IsolatedAsyncioTestCase):
+    """소수 페이지 실패를 문서 전체 폐기가 아니라 보충으로 처리한다.
+
+    실측 로그에서 9페이지 중 1페이지가 저작권 필터 400에 걸려 이미 성공(=과금)한
+    8페이지가 통째로 버려지고 ODL이 문서를 처음부터 다시 파싱했다.
+    """
+
+    @staticmethod
+    def _make_distinct_pdf(path: Path, pages: int) -> dict[int, int]:
+        """페이지마다 다른 양의 텍스트를 넣어 렌더 결과가 페이지별로 구분되게 한다.
+
+        공용 _make_pdf는 빈 페이지를 만들어 전 페이지 PNG가 동일해진다 — 그러면
+        "특정 페이지만 실패" 시나리오를 표현할 수 없다.
+        반환: {렌더된 PNG base64 길이 -> 페이지 번호}는 호출 시점에만 알 수 있으므로
+        여기서는 PDF만 만들고, 페이지 구분은 _seq_call이 등장 순서로 학습한다.
+        """
+        doc = fitz.open()
+        for i in range(pages):
+            page = doc.new_page(width=PAGE_WIDTH, height=PAGE_HEIGHT)
+            # 페이지마다 줄 수를 다르게 해 래스터 바이트 길이가 확실히 달라지게 한다.
+            for line in range(i + 1):
+                page.insert_text((72, 100 + line * 14), f"page {i + 1} line {line} lorem ipsum")
+        doc.save(str(path))
+        doc.close()
+        return {}
+
+    def _seq_call(self, fail_pages: set[int]):
+        """페이지를 렌더된 PNG 내용으로 구분해, 지정한 페이지만 계속 실패시킨다.
+
+        base64 자체를 키로 쓴다(길이만 쓰면 서로 다른 페이지가 우연히 같은 길이일 수 있다).
+        페이지 번호는 '처음 등장한 순서'가 아니라 PDF 페이지 순서를 알아야 하므로,
+        호출부가 미리 렌더해 만든 매핑을 쓴다.
+        """
+        seen: dict[str, int] = {}
+        order: list[str] = []
+
+        async def _call(prompt, **kwargs):
+            b64 = ""
+            for part in prompt:
+                if isinstance(part, dict) and part.get("type") == "image":
+                    b64 = part.get("data", "")
+            if b64 not in seen:
+                order.append(b64)
+                seen[b64] = self._page_map.get(b64, -1)
+            idx = seen[b64]
+            if idx in fail_pages:
+                raise RuntimeError(f"blocked page {idx}")
+            return {
+                "text": json.dumps(_CANNED_PAGE),
+                "model": "gemini-3.6-flash",
+                "tokens_in": 100, "tokens_out": 50, "tokens_thought": 0,
+                "interaction_id": None,
+            }
+
+        return _call
+
+    def _build_page_map(self, pdf_path: Path, pages: int) -> None:
+        """프로덕션과 동일한 방식으로 각 페이지를 렌더해 base64 -> 페이지번호 표를 만든다."""
+        import base64 as _b64
+
+        from services.gemini_parser import RENDER_DPI
+
+        doc = fitz.open(str(pdf_path))
+        try:
+            self._page_map = {}
+            for i in range(pages):
+                matrix = fitz.Matrix(RENDER_DPI / 72.0, RENDER_DPI / 72.0)
+                pix = doc[i].get_pixmap(matrix=matrix, alpha=False)
+                self._page_map[_b64.b64encode(pix.tobytes("png")).decode("ascii")] = i + 1
+        finally:
+            doc.close()
+        self.assertEqual(len(self._page_map), pages, "페이지별 렌더 결과가 구분되지 않는다")
+
+    async def test_single_page_failure_is_filled_not_fatal(self):
+        pages = 10
+        with TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            pdf_path = tmpdir / "sample.pdf"
+            self._make_distinct_pdf(pdf_path, pages)
+            self._build_page_map(pdf_path, pages)
+
+            usage: dict = {}
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), patch(
+                "services.gemini_parser.call_interaction", new=self._seq_call({4})
+            ):
+                root, markdown, engine = await run_convert_gemini(
+                    pdf_path, tmpdir, tmpdir / "figures", usage_out=usage
+                )
+
+            self.assertEqual(engine, "gemini")
+            # 실패 페이지가 기록돼 하류가 aggressive 재시도로 덮을 수 있어야 한다.
+            self.assertEqual(root["parser_failed_pages"], [4])
+            self.assertTrue(usage["partial"])
+            self.assertEqual(usage["pages"], pages - 1)  # 과금은 성공분만
+
+            # 본문에 구멍이 없어야 한다 — 모든 페이지 마커가 정확한 번호로 존재.
+            for n in range(1, pages + 1):
+                self.assertIn(f"--- Page {n} ---", markdown)
+            # 실패 페이지는 PyMuPDF 축자 텍스트로 메워진다.
+            self.assertIn("Page 4", markdown)
+
+    async def test_page_markers_keep_real_numbers_when_a_page_fails(self):
+        """실패 페이지가 있어도 마커 번호가 밀리지 않는다(enumerate 재번호 회귀 방지)."""
+        with TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            pdf_path = tmpdir / "sample.pdf"
+            self._make_distinct_pdf(pdf_path, 10)
+            self._build_page_map(pdf_path, 10)
+
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), patch(
+                "services.gemini_parser.call_interaction", new=self._seq_call({2})
+            ):
+                _, markdown, _ = await run_convert_gemini(pdf_path, tmpdir, tmpdir / "figures")
+
+            markers = re.findall(r"--- Page (\d+) ---", markdown)
+            self.assertEqual([int(m) for m in markers], list(range(1, 11)))
+
+    async def test_too_many_failures_still_falls_back(self):
+        """임계값(20%, 최소 1)을 넘으면 예전처럼 raise해 엔진 폴백을 태운다."""
+        with TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            pdf_path = tmpdir / "sample.pdf"
+            self._make_distinct_pdf(pdf_path, 10)
+            self._build_page_map(pdf_path, 10)
+
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), patch(
+                "services.gemini_parser.call_interaction", new=self._seq_call({2, 3, 4})
+            ):
+                with self.assertRaises(GeminiParserError):
+                    await run_convert_gemini(pdf_path, tmpdir, tmpdir / "figures")
+
+    def test_partial_failure_budget_scales_with_length(self):
+        from services.gemini_parser import _partial_failure_budget
+
+        self.assertEqual(_partial_failure_budget(1), 0)   # 1페이지 전멸은 항상 폴백
+        self.assertEqual(_partial_failure_budget(3), 1)
+        self.assertEqual(_partial_failure_budget(9), 1)
+        self.assertEqual(_partial_failure_budget(20), 4)
+        self.assertEqual(_partial_failure_budget(30), 6)
