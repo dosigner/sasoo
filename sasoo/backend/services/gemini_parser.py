@@ -59,7 +59,9 @@ def _env_str(name: str, default: str) -> str:
 #   SASOO_GEMINI_PARSER_DPI=180 SASOO_GEMINI_PARSER_THINKING=low \
 #   SASOO_GEMINI_PARSER_MEDIA_RESOLUTION= SASOO_GEMINI_PARSER_ELEMENTS=full
 RENDER_DPI = _env_int("SASOO_GEMINI_PARSER_DPI", 150)  # 페이지 래스터화 해상도(하향: 150)
-PAGE_CONCURRENCY = _env_int("SASOO_GEMINI_PARSER_PAGE_CONCURRENCY", 4)
+# 4 -> 8. 실효 동시성은 이 값과 services.concurrency.PIPELINE_LLM_CONCURRENCY 중 작은 쪽이라
+# 둘을 같이 올려야 의미가 있다(한쪽만 올리면 다른 쪽 세마포어에서 그대로 막힌다).
+PAGE_CONCURRENCY = _env_int("SASOO_GEMINI_PARSER_PAGE_CONCURRENCY", 8)
 _PAGE_RETRIES = 1              # 페이지 호출 실패 시 추가 재시도 횟수(총 2회 시도)
 # thinking 토큰은 출력 단가로 과금됨. ThinkingLevel 허용값 minimal<low<medium<high 중 최저치.
 _THINKING_LEVEL = _env_str("SASOO_GEMINI_PARSER_THINKING", "minimal")
@@ -404,16 +406,37 @@ async def run_convert_gemini(
         doc_pool.put_nowait(_doc)
 
     try:
-        # F5: 시스템성 오류(bad key/쿼터 소진 등) fail-fast. 페이지 1을 먼저 단독 시도하고,
-        # 실패하면 나머지 페이지를 팬아웃하지 않고 즉시 중단한다(28p 논문에서 N×2회 헛호출을
-        # 페이지 1의 2회로 축소). 페이지 1이 성공해야만 나머지를 병렬 fan-out한다.
-        first = await _process_page(doc_pool, 0, page_sem, MODEL_VISUAL)  # 실패 시 GeminiParserError 전파
-        results: list[Any] = [first]
-        if page_count > 1:
+        # F5: 시스템성 오류(bad key/쿼터 소진 등) fail-fast. 단, 프로브를 "페이지 1 단독"이
+        # 아니라 "첫 웨이브 전체"로 잡는다.
+        #
+        # 예전에는 페이지 1이 끝날 때까지 나머지가 전부 대기해, 정상 케이스에서 항상 한 페이지
+        # 분량(5~15초)이 직렬로 낭비됐다. 첫 웨이브를 통째로 프로브로 쓰면 그 시간에 8페이지가
+        # 실제 작업을 하므로 happy path의 직렬 구간이 사라진다.
+        #
+        # fail-fast 성질은 유지된다: bad key/쿼터 소진이면 웨이브가 전멸하므로 나머지 페이지를
+        # 팬아웃하지 않는다. 대신 시스템성 실패 시 헛호출이 2회 -> 웨이브 크기만큼 늘어난다.
+        # 이는 감수한다 — 재시도 정책 정비 이후 401/403/400은 재시도 없이 1회로 끝나므로
+        # 그 헛호출들이 백오프 없이 즉시 떨어진다.
+        probe_size = max(1, min(PAGE_CONCURRENCY, page_count))
+        probe = await asyncio.gather(
+            *[
+                _process_page(doc_pool, page_index, page_sem, MODEL_VISUAL)
+                for page_index in range(probe_size)
+            ],
+            return_exceptions=True,
+        )
+        if all(isinstance(item, BaseException) for item in probe):
+            first_error = probe[0]
+            raise GeminiParserError(
+                f"first {probe_size} page(s) all failed (systemic); "
+                f"aborting before fan-out: {first_error}"
+            ) from first_error
+        results: list[Any] = list(probe)
+        if page_count > probe_size:
             rest = await asyncio.gather(
                 *[
                     _process_page(doc_pool, page_index, page_sem, MODEL_VISUAL)
-                    for page_index in range(1, page_count)
+                    for page_index in range(probe_size, page_count)
                 ],
                 return_exceptions=True,
             )

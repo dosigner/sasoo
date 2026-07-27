@@ -1052,6 +1052,42 @@ def _merge_page_scoped_items(
     return kept + replacement
 
 
+def _prune_orphan_figure_files(paper_dir: Path, figures: list[dict[str, Any]]) -> None:
+    """최종 매니페스트가 참조하지 않는 figures/*.png를 지운다.
+
+    resolve 패스는 후보를 고를 때마다 크롭 PNG를 쓰는데, 재시도 패스가 같은 페이지를
+    다시 해석하면 이전 패스의 크롭은 매니페스트에서 밀려나고도 디스크에 그대로 남는다
+    (실측: figures 21개인 논문의 figures/ 폴더에 PNG 41개). 라이브러리 용량이 새고,
+    파일 목록만 보고 그림 수를 세는 곳에서 오해를 만든다.
+
+    참조되는 파일만 남기고 지운다. 디렉터리 안의 .png만 대상으로 하며, 삭제 실패는
+    무시한다 — 청소는 아티팩트 생성을 실패시킬 사유가 아니다.
+    """
+    figures_dir = paper_dir / "figures"
+    if not figures_dir.is_dir():
+        return
+
+    referenced: set[Path] = set()
+    for figure in figures:
+        file_path = figure.get("file_path")
+        if not file_path:
+            continue
+        path = Path(file_path)
+        candidate = path if path.is_absolute() else (paper_dir / path)
+        try:
+            referenced.add(candidate.resolve())
+        except OSError:
+            continue
+
+    for existing in figures_dir.glob("*.png"):
+        try:
+            if existing.resolve() in referenced:
+                continue
+            existing.unlink()
+        except OSError as exc:  # noqa: PERF203 - 개별 실패가 나머지 청소를 막지 않는다
+            logger.debug("고아 크롭 정리 실패 %s: %s", existing, exc)
+
+
 async def _build_resolver_v1_manifest(
     *,
     paper_dir: Path,
@@ -1081,32 +1117,7 @@ async def _build_resolver_v1_manifest(
         resolver_version=RESOLVER_VERSION,
     )
     manifest["figures"] = figure_result["figures"]
-
     low_figure_pages = set(figure_result.get("low_confidence_pages", []))
-    if low_figure_pages:
-        regenerated = build_figure_candidates(
-            manifest,
-            pdf_path=pdf_path,
-            page_numbers=low_figure_pages,
-            aggressive=True,
-        )
-        manifest["figure_candidates"] = _merge_page_scoped_items(
-            manifest.get("figure_candidates", []),
-            regenerated,
-            low_figure_pages,
-        )
-        retried = await resolve_figure_candidates(
-            manifest,
-            paper_dir=paper_dir,
-            pdf_path=pdf_path,
-            resolver_version=RESOLVER_VERSION,
-            page_numbers=low_figure_pages,
-        )
-        manifest["figures"] = _merge_page_scoped_items(
-            manifest.get("figures", []),
-            retried["figures"],
-            low_figure_pages,
-        )
 
     manifest["table_candidates"] = build_table_candidates(
         manifest,
@@ -1119,32 +1130,7 @@ async def _build_resolver_v1_manifest(
         resolver_version=RESOLVER_VERSION,
     )
     manifest["tables"] = table_result["tables"]
-
     low_table_pages = set(table_result.get("low_confidence_pages", []))
-    if low_table_pages:
-        regenerated = build_table_candidates(
-            manifest,
-            pdf_path=pdf_path,
-            paper_dir=paper_dir,
-            page_numbers=low_table_pages,
-            aggressive=True,
-        )
-        manifest["table_candidates"] = _merge_page_scoped_items(
-            manifest.get("table_candidates", []),
-            regenerated,
-            low_table_pages,
-        )
-        retried = await resolve_table_candidates(
-            manifest,
-            paper_dir=paper_dir,
-            resolver_version=RESOLVER_VERSION,
-            page_numbers=low_table_pages,
-        )
-        manifest["tables"] = _merge_page_scoped_items(
-            manifest.get("tables", []),
-            retried["tables"],
-            low_table_pages,
-        )
 
     audit = find_suspect_pages(
         full_text=manifest.get("full_text", ""),
@@ -1156,54 +1142,69 @@ async def _build_resolver_v1_manifest(
     )
     manifest["audit"] = audit
     suspect_pages = set(audit.get("suspect_pages", []))
-    if suspect_pages:
+
+    # 재시도 패스 병합: 예전에는 (1) low_confidence 재시도와 (2) audit suspect 재시도가
+    # 그림·표 각각 따로 돌아 문서당 최대 6번의 resolve 패스가 나갔다. 두 페이지 집합을
+    # 합쳐 한 번만 재시도하면 최대 4패스로 줄고, 커버리지는 합집합이라 이전 이상이다.
+    #
+    # audit은 여전히 표 resolve 이후에 계산한다 — find_suspect_pages가 tables /
+    # table_candidates를 실제로 읽어 판정하므로(document_audit.py) 앞당기면 판정이 달라진다.
+    # 바뀐 점은 audit이 "low_confidence 재시도 이후" 대신 "1차 결과" 기준이라는 것뿐이며,
+    # 그래서 suspect가 더 넓게 잡힐 수는 있어도 좁아지지는 않는다.
+    retry_figure_pages = low_figure_pages | suspect_pages
+    retry_table_pages = low_table_pages | suspect_pages
+
+    if retry_figure_pages:
         regenerated_figures = build_figure_candidates(
             manifest,
             pdf_path=pdf_path,
-            page_numbers=suspect_pages,
+            page_numbers=retry_figure_pages,
             aggressive=True,
         )
         manifest["figure_candidates"] = _merge_page_scoped_items(
             manifest.get("figure_candidates", []),
             regenerated_figures,
-            suspect_pages,
+            retry_figure_pages,
         )
         retried_figures = await resolve_figure_candidates(
             manifest,
             paper_dir=paper_dir,
             pdf_path=pdf_path,
             resolver_version=RESOLVER_VERSION,
-            page_numbers=suspect_pages,
+            page_numbers=retry_figure_pages,
         )
         manifest["figures"] = _merge_page_scoped_items(
             manifest.get("figures", []),
             retried_figures["figures"],
-            suspect_pages,
+            retry_figure_pages,
         )
 
+    if retry_table_pages:
         regenerated_tables = build_table_candidates(
             manifest,
             pdf_path=pdf_path,
             paper_dir=paper_dir,
-            page_numbers=suspect_pages,
+            page_numbers=retry_table_pages,
             aggressive=True,
         )
         manifest["table_candidates"] = _merge_page_scoped_items(
             manifest.get("table_candidates", []),
             regenerated_tables,
-            suspect_pages,
+            retry_table_pages,
         )
         retried_tables = await resolve_table_candidates(
             manifest,
             paper_dir=paper_dir,
             resolver_version=RESOLVER_VERSION,
-            page_numbers=suspect_pages,
+            page_numbers=retry_table_pages,
         )
         manifest["tables"] = _merge_page_scoped_items(
             manifest.get("tables", []),
             retried_tables["tables"],
-            suspect_pages,
+            retry_table_pages,
         )
+
+    _prune_orphan_figure_files(paper_dir, manifest.get("figures", []))
 
     manifest["visual_artifacts_ready"] = True
     return manifest

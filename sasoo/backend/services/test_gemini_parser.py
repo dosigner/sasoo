@@ -286,12 +286,17 @@ class FailFastAndPartialUsageTests(unittest.IsolatedAsyncioTestCase):
     """F5(시스템성 오류 fail-fast) + F2(부분 실패 시 성공 페이지 과금 보전) + F6(문서 재사용)."""
 
     async def test_systemic_error_fails_fast_without_fanning_out(self):
-        # F5: 모든 페이지가 실패하는 시스템성 오류(bad key/쿼터)에서, 페이지 1만 단독 시도(2회)하고
-        # 나머지 페이지는 팬아웃하지 않아야 한다. 5페이지 문서라도 총 호출은 2회(page1 x 재시도).
+        # F5: 모든 페이지가 실패하는 시스템성 오류(bad key/쿼터)에서, 첫 웨이브만 시도하고
+        # 나머지 페이지는 팬아웃하지 않아야 한다.
+        #
+        # 프로브 단위가 "페이지 1 단독" -> "첫 웨이브 전체"로 바뀌었다(happy path에서 페이지
+        # 1을 혼자 기다리던 직렬 구간 제거). fail-fast 성질은 그대로다: 웨이브 전멸이면
+        # 나머지 페이지는 시도조차 하지 않는다. 문서를 웨이브보다 크게 잡아야 이 성질이 보인다.
+        pages = gemini_parser.PAGE_CONCURRENCY * 2 + 4
         with TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
             pdf_path = tmpdir / "sample.pdf"
-            _make_pdf(pdf_path, pages=5)
+            _make_pdf(pdf_path, pages=pages)
 
             failing = AsyncMock(side_effect=RuntimeError("bad api key"))
             with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), patch(
@@ -300,8 +305,9 @@ class FailFastAndPartialUsageTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(GeminiParserError):
                     await run_convert_gemini(pdf_path, tmpdir, tmpdir / "figures")
 
-            # 페이지 1의 최초 시도 + 재시도 1회 = 정확히 2회. 나머지 4페이지는 시도조차 안 함.
-            self.assertEqual(failing.await_count, 2)
+            # 첫 웨이브(PAGE_CONCURRENCY 페이지) × 시도 2회만. 나머지 페이지는 시도조차 안 함.
+            self.assertEqual(failing.await_count, gemini_parser.PAGE_CONCURRENCY * 2)
+            self.assertLess(failing.await_count, pages * 2)
 
     async def test_partial_failure_populates_usage_before_raising(self):
         # F2: 페이지 1 성공(과금됨) + 페이지 2,3 실패 → run_convert_gemini는 raise하되,
@@ -345,12 +351,14 @@ class FailFastAndPartialUsageTests(unittest.IsolatedAsyncioTestCase):
             self.assertGreater(usage.get("cost_usd", 0.0), 0.0)
 
     async def test_document_reused_not_reopened_per_page(self):
-        # F6: 페이지마다 fitz.open(전체 재파싱)하지 않는다. 8페이지 + PAGE_CONCURRENCY=4면
-        # open 횟수 = 메타데이터 1회 + 풀 크기 min(4,8)=4회 = 5회(페이지 수 8보다 적다).
+        # F6: 페이지마다 fitz.open(전체 재파싱)하지 않는다. open 횟수 = 메타데이터 1회 +
+        # 풀 크기 min(PAGE_CONCURRENCY, pages)회 뿐이며, 페이지 수보다 적어야 한다.
+        # 페이지 수를 동시성보다 크게 잡아야 "페이지당 재파싱 아님"이 실제로 검증된다.
+        pages = gemini_parser.PAGE_CONCURRENCY * 2
         with TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
             pdf_path = tmpdir / "sample.pdf"
-            _make_pdf(pdf_path, pages=8)
+            _make_pdf(pdf_path, pages=pages)
 
             with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), patch(
                 "services.gemini_parser.call_interaction", new=_fake_call()
@@ -359,9 +367,9 @@ class FailFastAndPartialUsageTests(unittest.IsolatedAsyncioTestCase):
             ) as open_spy:
                 await run_convert_gemini(pdf_path, tmpdir, tmpdir / "figures")
 
-            pool_size = min(gemini_parser.PAGE_CONCURRENCY, 8)
+            pool_size = min(gemini_parser.PAGE_CONCURRENCY, pages)
             self.assertEqual(open_spy.call_count, pool_size + 1)
-            self.assertLess(open_spy.call_count, 8)  # 페이지당 1회 재파싱이 아님
+            self.assertLess(open_spy.call_count, pages)  # 페이지당 1회 재파싱이 아님
 
     async def test_corrupt_pdf_uses_memory_stream_and_raises_gemini_parser_error(self):
         # F1: fitz.open이 거부하는 파일(비-PDF 바이트)은 raw fitz 예외가 아니라 GeminiParserError로

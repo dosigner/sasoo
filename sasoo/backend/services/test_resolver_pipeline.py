@@ -423,5 +423,115 @@ class ResolverAuditTests(unittest.TestCase):
         self.assertEqual(audit["suspect_pages"], [1])
 
 
+class RetryPassMergeTests(unittest.IsolatedAsyncioTestCase):
+    """_build_resolver_v1_manifest의 재시도 패스 수와 대상 페이지 집합을 고정한다.
+
+    예전 구조는 (1) low_confidence 재시도와 (2) audit suspect 재시도를 그림·표 각각
+    따로 돌려 문서당 최대 6번의 resolve 패스가 나갔다. 두 집합을 합쳐 한 번만
+    재시도하도록 바꿨으므로, 패스 수와 합집합 의미를 회귀 테스트로 못박는다.
+    """
+
+    async def _run(self, *, low_figure_pages, low_table_pages, suspect_pages):
+        from services import odl_parser
+
+        figure_calls: list[set[int] | None] = []
+        table_calls: list[set[int] | None] = []
+
+        async def fake_resolve_figures(manifest, **kwargs):
+            page_numbers = kwargs.get("page_numbers")
+            figure_calls.append(page_numbers)
+            # 1차 패스에서만 low_confidence를 보고한다(재시도 패스는 빈 목록).
+            low = low_figure_pages if page_numbers is None else []
+            return {"figures": [], "low_confidence_pages": sorted(low)}
+
+        async def fake_resolve_tables(manifest, **kwargs):
+            page_numbers = kwargs.get("page_numbers")
+            table_calls.append(page_numbers)
+            low = low_table_pages if page_numbers is None else []
+            return {"tables": [], "low_confidence_pages": sorted(low)}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            paper_dir = Path(tmp)
+            pdf_path = paper_dir / "sample.pdf"
+            doc = fitz.open()
+            doc.new_page()
+            doc.save(str(pdf_path))
+            doc.close()
+
+            with patch.object(odl_parser, "resolve_figure_candidates", fake_resolve_figures), \
+                 patch.object(odl_parser, "resolve_table_candidates", fake_resolve_tables), \
+                 patch.object(odl_parser, "build_figure_candidates", lambda *a, **k: []), \
+                 patch.object(odl_parser, "build_table_candidates", lambda *a, **k: []), \
+                 patch.object(
+                     odl_parser,
+                     "find_suspect_pages",
+                     lambda **k: {"suspect_pages": sorted(suspect_pages), "triggered": bool(suspect_pages)},
+                 ):
+                await odl_parser._build_resolver_v1_manifest(
+                    paper_dir=paper_dir,
+                    pdf_path=pdf_path,
+                    root={"kids": []},
+                    markdown_text="",
+                    actual_engine="gemini",
+                    requested_mode="resolver_v1",
+                )
+
+        return figure_calls, table_calls
+
+    async def test_no_retry_when_everything_resolves(self):
+        figure_calls, table_calls = await self._run(
+            low_figure_pages=[], low_table_pages=[], suspect_pages=[]
+        )
+        self.assertEqual(figure_calls, [None])  # 1차 패스뿐
+        self.assertEqual(table_calls, [None])
+
+    async def test_low_confidence_and_suspect_merge_into_one_retry(self):
+        # 예전엔 그림 3패스(1차 + low_conf + suspect), 표 3패스가 나갔다.
+        figure_calls, table_calls = await self._run(
+            low_figure_pages=[2], low_table_pages=[5], suspect_pages=[7, 9]
+        )
+
+        self.assertEqual(len(figure_calls), 2, "그림 resolve는 1차 + 병합 재시도 2회여야 한다")
+        self.assertEqual(len(table_calls), 2, "표 resolve는 1차 + 병합 재시도 2회여야 한다")
+        self.assertIsNone(figure_calls[0])
+        self.assertIsNone(table_calls[0])
+        # 재시도 대상은 low_confidence ∪ suspect (커버리지가 이전보다 좁아지지 않는다).
+        self.assertEqual(figure_calls[1], {2, 7, 9})
+        self.assertEqual(table_calls[1], {5, 7, 9})
+
+    async def test_suspect_only_still_retries_both(self):
+        figure_calls, table_calls = await self._run(
+            low_figure_pages=[], low_table_pages=[], suspect_pages=[3]
+        )
+        self.assertEqual(figure_calls[1], {3})
+        self.assertEqual(table_calls[1], {3})
+
+
+class OrphanFigureCleanupTests(unittest.TestCase):
+    """반복 resolve 패스가 남긴 고아 크롭 PNG를 정리한다(실측: figures 21개에 PNG 41개)."""
+
+    def test_unreferenced_crops_are_removed_and_referenced_kept(self):
+        from services.odl_parser import _prune_orphan_figure_files
+
+        with tempfile.TemporaryDirectory() as tmp:
+            paper_dir = Path(tmp)
+            figures_dir = paper_dir / "figures"
+            kept = figures_dir / "Fig_1.png"
+            orphan = figures_dir / "Fig_1_oldpass.png"
+            _make_png(kept)
+            _make_png(orphan)
+
+            _prune_orphan_figure_files(paper_dir, [{"file_path": "figures/Fig_1.png"}])
+
+            self.assertTrue(kept.exists())
+            self.assertFalse(orphan.exists())
+
+    def test_missing_figures_dir_is_a_noop(self):
+        from services.odl_parser import _prune_orphan_figure_files
+
+        with tempfile.TemporaryDirectory() as tmp:
+            _prune_orphan_figure_files(Path(tmp), [])  # 예외 없이 조용히 끝나야 한다
+
+
 if __name__ == "__main__":
     unittest.main()

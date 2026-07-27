@@ -22,19 +22,45 @@ from weakref import WeakKeyDictionary
 
 _CPU = os.cpu_count() or 4
 
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
 # Chat only blocks to load the document-context sidecar. Four threads is plenty,
 # and reserving them means pipeline load can never starve a user's question.
 CHAT_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="sasoo-chat")
 
-# Everything the pipeline blocks on: sync SDK calls, image renders, PDF parsing.
-PIPELINE_EXECUTOR = ThreadPoolExecutor(
-    max_workers=max(4, min(16, _CPU)),
-    thread_name_prefix="sasoo-pipeline",
-)
-
 # Caps concurrent Gemini calls made by the pipeline. Chat never takes this
 # semaphore, so a burst of phase work cannot queue a question behind it.
-PIPELINE_LLM_CONCURRENCY = 4
+#
+# 4 -> 8: 페이지 단위 비전 파싱이 이 상한에 그대로 묶여 있었다. 30페이지 논문이면
+# 4장씩 8웨이브(페이지당 5~15초)라 파싱만 60~120초가 나갔다. 이 값을 올리기 전에
+# 재시도 정책 정비(비재시도성 오류 즉시 중단 + 백오프 중 세마포어 반납)가 선행됐다 —
+# 429가 늘어도 제대로 백오프되고 대기가 슬롯을 잠그지 않는다.
+# 429 관측치에 따라 env로 되돌릴 수 있게 열어 둔다.
+PIPELINE_LLM_CONCURRENCY = _env_int("SASOO_PIPELINE_LLM_CONCURRENCY", 8)
+
+# Image renders run up to RENDER_TIMEOUT_S and hold a thread the entire time.
+RENDER_CONCURRENCY = 3
+
+# Everything the pipeline blocks on: sync SDK calls, image renders, PDF parsing.
+#
+# 풀 크기는 CPU가 아니라 "동시에 블로킹될 수 있는 작업 수"로 잡아야 한다. 여기 스레드는
+# 대부분 HTTPS 응답을 기다리며 잠들어 있어 CPU를 먹지 않는다. 예전 max(4, min(16, _CPU))는
+# 4코어 Windows 데스크톱에서 스레드가 4개뿐이라, LLM 동시성만 8로 올려도 풀에서 다시
+# 막혔다. LLM 동시 호출 + 렌더 동시 실행 + 여유 2를 담을 수 있게 바닥을 깐다.
+PIPELINE_EXECUTOR = ThreadPoolExecutor(
+    max_workers=max(_CPU, PIPELINE_LLM_CONCURRENCY + RENDER_CONCURRENCY + 2),
+    thread_name_prefix="sasoo-pipeline",
+)
 
 # 루프별 파이프라인 세마포어 레지스트리.
 #
@@ -76,7 +102,7 @@ def pipeline_llm_sem() -> asyncio.Semaphore:
 
 # Image renders run up to RENDER_TIMEOUT_S and hold a thread the entire time.
 # Keeping this well under the pool size leaves room for the rest of a phase.
-RENDER_SEM = asyncio.Semaphore(3)
+RENDER_SEM = asyncio.Semaphore(RENDER_CONCURRENCY)
 
 
 async def run_pipeline_blocking(fn, *args):
