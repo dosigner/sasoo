@@ -44,6 +44,31 @@ _SUBFIGURE_RESPONSE_SCHEMA = {
 }
 
 
+# 패널 라벨은 관용적으로 한 글자(A/a) 또는 한두 자리 숫자다. 괄호·마침표는 벗겨낸다.
+# 예: "A", "(b)", "c.", "1", "(2)" -> 통과 / "ASD PR CURVES (LEFT)", "TABLE 2" -> 탈락.
+_SUB_LABEL_PATTERN = re.compile(r"^\(?\s*([A-Za-z]|\d{1,2})\s*[).\]]?$")
+
+# 한 그림에서 뽑을 수 있는 패널 수 상한. 이걸 넘기면 패널 분해가 아니라 오검출로 본다.
+MAX_SUBFIGURES = 12
+
+
+def _normalize_sub_label(raw: str | None) -> Optional[str]:
+    """모델이 준 라벨을 패널 라벨로 정규화한다. 패널 라벨이 아니면 None.
+
+    검증이 없던 시절에는 모델이 돌려준 문자열이 그대로 figure_num에 이어붙어
+    "Fig. 8ASD PR CURVES (LEFT)", "Fig. 7TABLE 2" 같은 항목이 갤러리에 쌓였다
+    (실측: 한 논문에서 부모 8개에 서브피겨 25개, 그중 19개가 이런 형태).
+    모델이 패널 라벨 대신 내용을 서술했다는 건 그 그림에 (a)(b)(c) 마커가 없다는
+    뜻이므로, 그런 분해는 받아들이지 않는다.
+    """
+    if not raw:
+        return None
+    match = _SUB_LABEL_PATTERN.match(raw.strip())
+    if not match:
+        return None
+    return match.group(1).upper()
+
+
 @dataclass
 class SubFigureBoundary:
     """Detected sub-figure boundary within a composite figure."""
@@ -186,18 +211,34 @@ If no sub-figures are detected, return:
 
             data = json.loads(json_str)
 
+            raw_subfigures = data.get("subfigures", []) or []
             subfigures = []
-            for sf in data.get("subfigures", []):
+            rejected = 0
+            for sf in raw_subfigures:
+                label = _normalize_sub_label(sf.get("label"))
+                if label is None:
+                    rejected += 1
+                    continue
                 bbox = sf.get("bbox", [0, 0, 1, 1])
                 subfigures.append(SubFigureBoundary(
-                    label=sf.get("label", "?"),
+                    label=label,
                     bbox=tuple(bbox),
                     description=sf.get("description", "")
                 ))
 
+            has_subfigures = bool(data.get("has_subfigures", False)) and bool(subfigures)
+            # 라벨이 하나도 패널 라벨이 아니면(모델이 내용을 서술했다면) 분해를 통째로 버린다.
+            # 부분적으로만 유효하면 유효한 것만 남긴다.
+            # 상한을 넘는 분해는 패널 나누기가 아니라 오검출로 보고 역시 버린다.
+            if rejected and not subfigures:
+                has_subfigures = False
+            if len(subfigures) > MAX_SUBFIGURES:
+                has_subfigures = False
+                subfigures = []
+
             return SubFigureDetectionResult(
                 figure_id=figure_id,
-                has_subfigures=data.get("has_subfigures", False),
+                has_subfigures=has_subfigures,
                 subfigures=subfigures,
                 layout=data.get("layout", "single"),
                 confidence=data.get("confidence", 0.5),
