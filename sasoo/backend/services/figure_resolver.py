@@ -494,6 +494,18 @@ async def resolve_figure_candidates(
     fallback_index = 1
     rasters = _RasterCache(paper_dir)
 
+    # 캡션에 연결되지 않은 후보(로고·아이콘·수식 이미지·장식 등)가 각각 그림으로 승격돼
+    # 목록을 부풀리고 있었다. 이름도 "p9_fig7" 꼴이라 사용자 눈에 바로 노이즈로 보인다.
+    #
+    # 다만 "캡션 없으면 버린다"로는 안 된다 — 파서가 캡션을 아예 못 잡은 문서에서는
+    # 진짜 그림도 전부 캡션이 없어서 그림이 0개가 된다(실측: figure 캡션 0개인 문서).
+    # 그래서 "이 문서에서 캡션 신호가 작동하는가"를 먼저 보고, 작동할 때만 그 신호를 신뢰한다.
+    #
+    # 실측(캡션 8개인 문서): 그림 16개 -> 8개로 원문과 정확히 일치. 다른 11편은 변화 없음.
+    document_has_figure_captions = any(
+        caption.get("kind") == "figure" for caption in manifest.get("captions", [])
+    )
+
     candidates = [
         candidate
         for candidate in manifest.get("figure_candidates", [])
@@ -566,6 +578,10 @@ async def resolve_figure_candidates(
             if decision["low_confidence"]:
                 low_confidence_pages.add(page_number)
             if decision["label"] != "figure" or decision["confidence"] < 0.5:
+                continue
+            # 캡션 신호가 작동하는 문서에서만 적용한다(위 document_has_figure_captions 주석 참조).
+            # 크롭 파일을 쓰기 전에 걸러 디스크에 고아 PNG가 남지 않게 한다.
+            if document_has_figure_captions and not decision["best_caption_id"]:
                 continue
 
             confidence = decision["confidence"]
