@@ -753,3 +753,48 @@ class CaptionFallbackSuppressionTests(unittest.TestCase):
         candidates = self._build(page)
         used = [c.get("best_caption_id") for c in candidates]
         self.assertLessEqual(len(set(used)), 1, f"같은 Figure 1에 후보가 중복 생성됐다: {used}")
+
+
+class CaptionDecorationTests(unittest.TestCase):
+    """캡션 앞 마크다운 서식 때문에 라벨 인식이 통째로 실패하던 문제.
+
+    gemini 파서는 캡션을 마크다운 그대로 내보내므로 "**Fig. 1. ...**"처럼 볼드로 시작한다.
+    라벨 패턴은 전부 문두 매칭이라 "**"가 하나만 붙어도 매칭이 깨지고, 그러면
+    (1) 캡션 종류 판정이 unknown이 되고 (2) 그림 번호가 "p3_fig1" 꼴로 떨어진다.
+    실측: 캡션 6개가 전부 unknown으로 떨어져 그림이 원문 8개 대비 17개까지 부풀었다.
+    """
+
+    def test_strips_markdown_and_decoration_prefixes(self):
+        from services.document_manifest import strip_caption_decoration
+
+        for raw, expected_start in [
+            ("**Fig. 1. Traversing terrains.**", "Fig. 1."),
+            ("__Figure 2.__ Training pipeline", "Figure 2."),
+            ("### Table 3: Results", "Table 3:"),
+            ("• Figure 4. Something", "Figure 4."),
+            ("   Fig. 5. Already clean", "Fig. 5."),
+        ]:
+            with self.subTest(raw=raw):
+                self.assertTrue(strip_caption_decoration(raw).startswith(expected_start))
+
+    def test_bold_caption_is_classified_as_figure(self):
+        from services.document_manifest import _caption_kind
+
+        self.assertEqual(_caption_kind("**Fig. 1. Traversing challenging terrains.**"), "figure")
+        self.assertEqual(_caption_kind("**Table 2.** Ablation results"), "table")
+        self.assertIsNone(_caption_kind("**Discussion**"))
+
+    def test_bold_caption_yields_proper_figure_number(self):
+        """번호 부여도 같은 문두 매칭이라 함께 깨졌다 — "p3_fig1" 대신 "Fig. 1"이 나와야 한다."""
+        from services.figure_resolver import _normalized_figure_num
+
+        seen: set[str] = set()
+        self.assertEqual(
+            _normalized_figure_num("**Fig. 1. Traversing terrains.**", 3, 1, seen), "Fig. 1"
+        )
+
+    def test_bold_caption_yields_proper_table_number(self):
+        from services.table_resolver import _table_num
+
+        seen: set[str] = set()
+        self.assertEqual(_table_num("**Table 2.** Ablation results", 4, 1, seen), "Table 2")

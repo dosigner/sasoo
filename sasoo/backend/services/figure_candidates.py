@@ -11,6 +11,8 @@ from typing import Any
 
 import fitz
 
+from services.document_manifest import strip_caption_decoration
+
 # 캡션 라벨("Figure 3", "Table 2")만 뽑는다. 같은 그림의 캡션이 여러 조각으로 잡혔을 때
 # 라벨로 묶어 중복을 제거하는 용도다.
 CAPTION_LABEL_PATTERN = re.compile(r"^\s*((?:figure|fig\.?|table|tbl\.?)\s*\d+[a-z]?)\b", re.IGNORECASE)
@@ -148,7 +150,7 @@ def _caption_candidates_for_page(
         # 같은 그림의 캡션이 조각나거나 미세하게 다르게 잡히면(합자·줄바꿈·잘림) 전체 텍스트
         # 비교로는 중복이 안 걸러진다. 라벨("Figure 3")이 같으면 같은 그림의 캡션으로 본다 —
         # 안 그러면 그 그림의 후보가 캡션 수만큼 생겨 "Fig. 1"과 "Fig. 1 [2]"가 함께 나온다.
-        label_match = CAPTION_LABEL_PATTERN.match(text)
+        label_match = CAPTION_LABEL_PATTERN.match(strip_caption_decoration(text))
         key = (label_match.group(1) if label_match else text, int(caption.get("page_number") or 0))
         existing = deduped.get(key)
         if existing is None or _bbox_area(caption.get("bbox")) > _bbox_area(existing.get("bbox")):

@@ -532,10 +532,30 @@ def _ensure_page_rasters(pdf_path: Path, paper_dir: Path, page_count: int) -> di
         doc.close()
 
 
+# 캡션 앞에 붙는 마크다운 서식·장식 문자. gemini 파서는 캡션을 마크다운 그대로 내보내므로
+# "**Fig. 1. ...**"처럼 볼드로 시작하는 경우가 흔하다.
+_CAPTION_LEADING_NOISE = re.compile(r"^[\s*_#>`~\-–—•]+")
+
+
+def strip_caption_decoration(text: str | None) -> str:
+    """캡션 앞의 마크다운 서식·장식 문자를 벗긴다.
+
+    라벨 패턴(FIGURE_LABEL_PATTERN 등)은 전부 문두 매칭이라, 앞에 "**"가 하나만 붙어도
+    캡션 판정·그림 번호 부여가 동시에 실패한다. 캡션을 라벨로 해석하는 모든 지점이
+    이 함수를 거치게 해서 한 곳에서만 규칙을 관리한다.
+    """
+    return _CAPTION_LEADING_NOISE.sub("", text or "")
+
+
 def _caption_kind(text: str) -> str | None:
-    if FIGURE_LABEL_PATTERN.match(text):
+    # 라벨 패턴은 문두 매칭이라, 앞에 "**"가 하나만 붙어도 캡션으로 인식되지 않는다.
+    # 그러면 그 문서는 figure 캡션이 0개가 되고, 캡션에 기대는 하류 로직(후보-캡션 연결,
+    # 캡션 폴백, 캡션 없는 후보 억제)이 통째로 무력화된다 — 실측: 캡션 6개가 전부
+    # "unknown"으로 떨어져 그림이 원문 8개 대비 17개까지 부풀었다.
+    normalized = strip_caption_decoration(text)
+    if FIGURE_LABEL_PATTERN.match(normalized):
         return "figure"
-    if TABLE_LABEL_PATTERN.match(text):
+    if TABLE_LABEL_PATTERN.match(normalized):
         return "table"
     return None
 

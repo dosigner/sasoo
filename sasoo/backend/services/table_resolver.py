@@ -16,6 +16,7 @@ from typing import Any
 
 from api.analysis_helpers import _clean_llm_json
 from services.llm.interactions_client import call_interaction
+from services.document_manifest import strip_caption_decoration
 from services.models import MODEL_FLASH_HQ
 
 TABLE_LABEL_PATTERN = re.compile(r"^\s*(?:Table|Tbl\.?)\s*(\d+[A-Za-z]?)\b", re.IGNORECASE)
@@ -113,7 +114,7 @@ def _repair_reasons(
 
 
 def _table_num(caption_text: str | None, page_number: int, fallback_index: int, seen: set[str]) -> str:
-    match = TABLE_LABEL_PATTERN.match(caption_text or "")
+    match = TABLE_LABEL_PATTERN.match(strip_caption_decoration(caption_text))
     if match:
         base = f"Table {match.group(1).upper()}"
     else:
