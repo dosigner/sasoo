@@ -622,3 +622,59 @@ def test_pipeline_sem_survives_separate_event_loops():
     asyncio.run(_contend_shared())
     with pytest.raises(RuntimeError, match="bound to a different event loop"):
         asyncio.run(_contend_shared())
+
+
+# ---------------------------------------------------------------------------
+# SDK 계약 테스트 — 한글 파일명 업로드 수정이 기대는 google-genai 내부 분기를 고정한다.
+#
+# 서드파티 동작을 테스트하는 것이 보통은 범위 밖이지만, 여기서는 우리 수정이 성립하는
+# 근거 그 자체다. SDK가 이 분기를 바꾸면 수정이 조용히 무력화되고 한글 파일명 논문이
+# 다시 텍스트 폴백으로 떨어진다(사용자 눈엔 그냥 느려질 뿐 아무 에러도 안 보인다).
+# 네트워크 없이 SDK의 요청 준비 단계만 호출한다.
+# ---------------------------------------------------------------------------
+
+def test_sdk_path_upload_puts_non_ascii_filename_in_header(tmp_path):
+    """경로를 넘기면 SDK가 파일명을 HTTP 헤더에 싣고, 한글이면 ascii 인코딩이 깨진다."""
+    from google.genai import _extra_utils
+
+    pdf = tmp_path / "2026_참고논문_OAM.pdf"
+    pdf.write_bytes(b"%PDF-1.4 x")
+
+    options, _, _ = _extra_utils.prepare_resumable_upload(
+        str(pdf), user_mime_type="application/pdf"
+    )
+    header = options.headers.get("X-Goog-Upload-File-Name")
+
+    assert header == "2026_참고논문_OAM.pdf"
+    with pytest.raises(UnicodeEncodeError):
+        header.encode("ascii")  # 프로덕션에서 관측된 바로 그 실패
+
+
+def test_sdk_file_object_upload_omits_the_filename_header(tmp_path):
+    """파일 객체를 넘기면 그 헤더 분기를 아예 타지 않아 한글 파일명이 안전하다."""
+    from google.genai import _extra_utils
+
+    pdf = tmp_path / "2026_참고논문_OAM.pdf"
+    pdf.write_bytes(b"%PDF-1.4 x")
+
+    with open(pdf, "rb") as handle:
+        options, size_bytes, mime_type = _extra_utils.prepare_resumable_upload(
+            handle, user_mime_type="application/pdf"
+        )
+
+    assert "X-Goog-Upload-File-Name" not in options.headers
+    assert all(str(value).isascii() for value in options.headers.values())
+    assert size_bytes == len(b"%PDF-1.4 x")
+    assert mime_type == "application/pdf"
+
+
+def test_sdk_file_object_upload_requires_mime_type(tmp_path):
+    """파일 객체 경로에선 mime_type이 필수다 — 빠뜨리면 업로드가 성립하지 않는다."""
+    from google.genai import _extra_utils
+
+    pdf = tmp_path / "sample.pdf"
+    pdf.write_bytes(b"%PDF-1.4 x")
+
+    with open(pdf, "rb") as handle:
+        with pytest.raises(ValueError, match="mime type"):
+            _extra_utils.prepare_resumable_upload(handle)
