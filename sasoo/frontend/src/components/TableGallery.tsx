@@ -2,6 +2,7 @@ import { Markdown } from '@/components/Markdown';
 import { Loader2 } from 'lucide-react';
 import { getLibraryAssetUrl, type Table, type VisualState } from '@/lib/api';
 import { S } from '@/lib/strings';
+import { resolveArtifactPlaceholder } from '@/lib/artifactState';
 import { AppIcon } from '@/components/icons';
 
 interface TableGalleryProps {
@@ -73,15 +74,18 @@ function TableSkeleton() {
 export default function TableGallery({
   tables,
   loading = false,
-  visualState = 'ready',
+  // FigureGallery와 동일한 이유로 'ready'가 아니라 'running'이 기본값이다.
+  // 응답 전/실패로 undefined면 "표가 없다"가 아니라 "준비 중"으로 보여야 한다.
+  visualState = 'running',
   visualError = null,
   artifactsError = null,
   onJumpToTablePage,
 }: TableGalleryProps) {
   const effectiveError = visualError ?? artifactsError;
-  const hasArtifactError = visualState === 'error' && Boolean(effectiveError);
-  const isPreparingArtifacts = visualState === 'running';
-  const isPartialArtifacts = visualState === 'partial';
+  const placeholder = resolveArtifactPlaceholder(visualState, Boolean(effectiveError));
+  const hasArtifactError = placeholder === 'error';
+  const isPreparingArtifacts = placeholder === 'preparing';
+  const isPartialArtifacts = placeholder === 'partial';
 
   if (loading && tables.length === 0) {
     return (
