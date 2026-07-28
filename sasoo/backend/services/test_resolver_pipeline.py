@@ -652,3 +652,104 @@ class TableCaptionFallbackTests(unittest.IsolatedAsyncioTestCase):
         fake.assert_awaited_once()
         self.assertEqual(len(result["tables"]), 1, "폴백 후보가 표로 복원되지 않았다")
         self.assertEqual(result["tables"][0]["table_num"], "Table 1")
+
+
+class CaptionFallbackSuppressionTests(unittest.TestCase):
+    """캡션 폴백이 엉뚱하게 차단되던 문제.
+
+    폴백 생성 여부를 linked_caption_ids로 판정했는데, 그건 후보 주변 캡션 상위 3개일 뿐
+    "이 후보가 그 캡션을 대표한다"는 뜻이 아니다(_best_linked_caption). 그래서:
+      - 한 페이지에 그림이 둘이면 Figure 2의 후보가 Figure 1의 캡션까지 달아 Figure 1이 소실
+      - 약한 후보가 자기 캡션을 달고 있어 aggressive 재시도의 폴백까지 차단
+    실측(41쪽 논문): 원문 13개 중 9개만 추출, Figure 1·3·6이 이 경로로 사라졌다.
+    """
+
+    @staticmethod
+    def _page(captions, image_blocks=(), text_blocks=()):
+        return {
+            "page_number": 1,
+            "page_size": {"width": 612.0, "height": 792.0},
+            "text_blocks": list(text_blocks),
+            "image_blocks": list(image_blocks),
+            "caption_blocks": list(captions),
+            "odl_table_nodes": [],
+        }
+
+    @staticmethod
+    def _caption(cid, text, bbox, order=0):
+        return {"id": cid, "page_number": 1, "kind": "figure", "bbox": bbox,
+                "text": text, "linked_content_id": None, "order": order}
+
+    def _build(self, page, **kwargs):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf = Path(tmp) / "s.pdf"
+            doc = fitz.open(); doc.new_page(width=612, height=792); doc.save(str(pdf)); doc.close()
+            with patch("services.figure_candidates._extract_pymupdf_image_blocks", return_value={}):
+                return build_figure_candidates({"pages": [page]}, pdf_path=pdf, **kwargs)
+
+    def test_second_figure_on_page_still_gets_a_candidate(self):
+        """한 페이지에 그림이 둘일 때, 한쪽 후보가 다른 쪽 캡션을 가로채지 않는다.
+
+        이미지 블록을 두 캡션의 밴드 밖에 두면 blockcandidate 경로가 타면서
+        linked_caption_ids에 두 캡션이 모두 담긴다(_best_linked_caption은 근처 상위 3개).
+        예전 판정은 이걸 "cap:1도 커버됨"으로 읽어 Figure 1의 폴백을 막았다.
+        """
+        page = self._page(
+            captions=[
+                self._caption("cap:1", "Figure 1. Classification.", [72.0, 700.0, 540.0, 720.0], 0),
+                self._caption("cap:2", "Figure 2. Space FSO links.", [72.0, 300.0, 540.0, 320.0], 1),
+            ],
+            image_blocks=[
+                {"id": "i1", "bbox": [100.0, 120.0, 300.0, 270.0], "source_kind": "odl_image"},
+                {"id": "i2", "bbox": [320.0, 120.0, 520.0, 270.0], "source_kind": "odl_image"},
+            ],
+        )
+        candidates = self._build(page)
+        linked_anywhere = {cid for c in candidates for cid in (c.get("linked_caption_ids") or [])}
+        self.assertIn("cap:1", linked_anywhere, "픽스처가 실제 조건(다른 후보가 cap:1을 링크)을 재현하지 못한다")
+
+        represented = {c.get("best_caption_id") for c in candidates}
+        self.assertIn("cap:2", represented)
+        self.assertIn("cap:1", represented, "다른 그림의 후보에 가려 Figure 1이 후보조차 못 얻었다")
+
+    def test_aggressive_retry_adds_fallback_despite_weak_candidate(self):
+        """약한 후보가 있어도 aggressive 재시도에선 폴백을 추가한다.
+
+        aggressive는 1차에서 실패한 페이지를 다시 시도하라는 뜻인데, 실패의 원인인 약한
+        후보(caption_chart_text, weak_image_evidence)가 폴백을 막으면 재시도가 아무것도
+        바꾸지 못한다 — 실측에서 Figure 3·6이 이 경로로 끝내 복구되지 않았다.
+        """
+        page = self._page(
+            captions=[
+                self._caption("cap:1", "Figure 1. Classification.", [72.0, 700.0, 540.0, 720.0], 0),
+                self._caption("cap:2", "Figure 6. Stare/Scan acquisition.", [72.0, 300.0, 540.0, 320.0], 1),
+            ],
+            text_blocks=[{"id": "t1", "bbox": [100.0, 400.0, 500.0, 500.0],
+                          "text": "0 10 nm 20 nm 30 nm", "type": "paragraph"}],
+        )
+        weak = [c for c in self._build(page) if c.get("weak_image_evidence") and c["source_kind"] == "caption_chart_text"]
+        self.assertTrue(weak, "픽스처가 약한 후보(caption_chart_text)를 만들지 못한다")
+
+        aggressive = self._build(page, page_numbers={1}, aggressive=True)
+        fallbacks_for_cap2 = [
+            c for c in aggressive
+            if c["source_kind"] == "caption_fallback_crop" and c.get("best_caption_id") == "cap:2"
+        ]
+        self.assertTrue(
+            fallbacks_for_cap2,
+            "약한 후보에 가려 aggressive 재시도의 폴백이 생성되지 않았다",
+        )
+
+    def test_same_label_captions_are_deduped(self):
+        """같은 라벨의 캡션이 조각나 여러 개 잡혀도 후보는 하나만 만든다.
+
+        안 그러면 "Fig. 1"과 "Fig. 1 [2]"가 함께 나온다(합자·줄바꿈으로 텍스트가
+        미세하게 달라 전체 텍스트 비교로는 안 걸러진다).
+        """
+        page = self._page(captions=[
+            self._caption("cap:1", "Figure 1. Classiﬁcation of the optical links.", [72.0, 700.0, 540.0, 720.0], 0),
+            self._caption("cap:2", "Figure 1. Classification of the optical links", [72.0, 698.0, 538.0, 718.0], 1),
+        ])
+        candidates = self._build(page)
+        used = [c.get("best_caption_id") for c in candidates]
+        self.assertLessEqual(len(set(used)), 1, f"같은 Figure 1에 후보가 중복 생성됐다: {used}")
