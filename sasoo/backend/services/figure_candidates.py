@@ -11,6 +11,10 @@ from typing import Any
 
 import fitz
 
+# 캡션 라벨("Figure 3", "Table 2")만 뽑는다. 같은 그림의 캡션이 여러 조각으로 잡혔을 때
+# 라벨로 묶어 중복을 제거하는 용도다.
+CAPTION_LABEL_PATTERN = re.compile(r"^\s*((?:figure|fig\.?|table|tbl\.?)\s*\d+[a-z]?)\b", re.IGNORECASE)
+
 AXIS_TEXT_PATTERN = re.compile(
     r"(?:^|[\s(])(?:x|y|z)(?:[\s)\-=:]|$)|[%/]|±|\b(?:nm|um|μm|mm|cm|hz|khz|mhz|ghz|db|ev|mev|ma|mv|ms|s)\b",
     re.IGNORECASE,
@@ -141,7 +145,11 @@ def _caption_candidates_for_page(
         if caption.get("kind") != caption_kind:
             continue
         text = re.sub(r"\s+", " ", str(caption.get("text") or "")).strip().lower()
-        key = (text, int(caption.get("page_number") or 0))
+        # 같은 그림의 캡션이 조각나거나 미세하게 다르게 잡히면(합자·줄바꿈·잘림) 전체 텍스트
+        # 비교로는 중복이 안 걸러진다. 라벨("Figure 3")이 같으면 같은 그림의 캡션으로 본다 —
+        # 안 그러면 그 그림의 후보가 캡션 수만큼 생겨 "Fig. 1"과 "Fig. 1 [2]"가 함께 나온다.
+        label_match = CAPTION_LABEL_PATTERN.match(text)
+        key = (label_match.group(1) if label_match else text, int(caption.get("page_number") or 0))
         existing = deduped.get(key)
         if existing is None or _bbox_area(caption.get("bbox")) > _bbox_area(existing.get("bbox")):
             deduped[key] = caption
@@ -506,8 +514,26 @@ def build_figure_candidates(
                 aggressive=True,
             )
 
+        # 이 캡션을 "대표"하는 후보가 이미 있는지 본다.
+        #
+        # 예전에는 linked_caption_ids로 판정했는데, 그건 후보 주변 캡션 상위 3개일 뿐이라
+        # 이 후보가 그 캡션을 대표한다는 뜻이 아니다(_best_linked_caption). 그래서 한 페이지에
+        # 그림이 둘 있으면 Figure 2의 후보가 Figure 1의 캡션까지 목록에 달고, Figure 1은
+        # "이미 커버됨"으로 오인돼 폴백이 생성되지 않았다 — 그림이 통째로 사라진다
+        # (실측: 41쪽 논문에서 Figure 1이 후보 0개로 소실).
+        #
+        # aggressive 모드에서는 약한 후보(weak_image_evidence)를 커버로 치지 않는다.
+        # 그 모드는 1차에서 실패한 페이지를 다시 시도하라는 뜻인데, 실패의 원인이 된 그
+        # 약한 후보가 폴백 생성을 막고 있으면 재시도가 아무것도 바꾸지 못한다
+        # (실측: Figure 3·6이 aggressive 재시도에서도 끝내 복구되지 않았다).
+        represented_caption_ids = {
+            candidate.get("best_caption_id")
+            for candidate in candidates
+            if candidate.get("page_number") == page_number
+            and not (aggressive and candidate.get("weak_image_evidence"))
+        }
         for caption in figure_captions:
-            if any(caption.get("id") in candidate.get("linked_caption_ids", []) for candidate in candidates if candidate.get("page_number") == page_number):
+            if caption.get("id") in represented_caption_ids:
                 continue
             fallback_bbox = _fallback_bbox_from_caption(page, caption, aggressive=aggressive)
             if fallback_bbox is None:
