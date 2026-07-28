@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 import tempfile
 import unittest
@@ -14,7 +15,7 @@ from services.document_audit import find_suspect_pages
 from services.document_manifest import build_document_manifest
 from services.figure_candidates import build_figure_candidates
 from services.table_candidates import build_table_candidates
-from services.table_resolver import _repair_with_vlm, resolve_table_candidates
+from services.table_resolver import _repair_reasons, _repair_with_vlm, resolve_table_candidates
 from services.models import MODEL_FLASH_HQ
 
 
@@ -535,3 +536,119 @@ class OrphanFigureCleanupTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TableCaptionFallbackTests(unittest.IsolatedAsyncioTestCase):
+    """표 캡션은 있는데 구조 검출기가 모두 놓친 경우의 폴백.
+
+    그림 쪽에는 caption_fallback_crop이 있었는데 표에만 없어서, ODL/pdfplumber/래스터
+    괘선이 전부 표를 놓치면 캡션이 멀쩡히 있어도 table_candidates=0이 되고 표가 영구히
+    사라졌다(실측: 표 캡션 1개인 논문의 candidates=0 -> tables=0).
+    """
+
+    @staticmethod
+    def _page_with_table_caption():
+        return {
+            "page_number": 1,
+            "page_size": {"width": 612.0, "height": 792.0},
+            "raster_path": None,
+            "text_blocks": [],
+            "image_blocks": [],
+            "odl_table_nodes": [],          # ODL 미검출
+            "caption_blocks": [
+                {
+                    "id": "cap:p1:n0",
+                    "page_number": 1,
+                    "kind": "table",
+                    # 페이지 위쪽 캡션 -> 표는 그 아래에 있다고 본다.
+                    "bbox": [72.0, 600.0, 540.0, 620.0],
+                    "text": "Table 1: Measured throughput by configuration.",
+                    "order": 0,
+                }
+            ],
+        }
+
+    def _build(self, page, pdf_path, paper_dir):
+        # pdfplumber / 래스터 괘선 검출기는 아무것도 못 찾은 상황을 만든다.
+        with patch("services.table_candidates._pdfplumber_candidates", return_value={}), \
+             patch("services.table_candidates._raster_ruled_table_candidates", return_value=[]):
+            return build_table_candidates(
+                {"pages": [page]}, pdf_path=pdf_path, paper_dir=paper_dir
+            )
+
+    def test_caption_without_detector_hit_still_yields_candidate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paper_dir = Path(tmp)
+            pdf_path = paper_dir / "sample.pdf"
+            doc = fitz.open(); doc.new_page(width=612, height=792); doc.save(str(pdf_path)); doc.close()
+
+            candidates = self._build(self._page_with_table_caption(), pdf_path, paper_dir)
+
+            self.assertEqual(len(candidates), 1, "캡션 폴백 후보가 만들어지지 않았다")
+            candidate = candidates[0]
+            self.assertEqual(candidate["source_kind"], "caption_fallback_crop")
+            self.assertEqual(candidate["best_caption_id"], "cap:p1:n0")
+            self.assertFalse(candidate["has_meaningful_grid"])
+            # 이 후보가 resolver의 VLM 수리 게이트를 열어야 의미가 있다.
+            reasons = _repair_reasons(candidate, page_number=1, suspect_pages=set(), grid=[])
+            self.assertIn("caption_linked_but_grid_weak", reasons)
+
+    def test_no_duplicate_when_detector_already_covers_caption(self):
+        """검출기가 이미 그 캡션의 표를 찾았으면 폴백을 덧붙이지 않는다."""
+        page = self._page_with_table_caption()
+        page["odl_table_nodes"] = [
+            {
+                "id": "odltbl:p1:n0",
+                "page_number": 1,
+                "bbox": [72.0, 380.0, 540.0, 590.0],   # 캡션 바로 아래의 실제 표
+                "rows": [["A", "B"], ["1", "2"], ["3", "4"]],
+            }
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            paper_dir = Path(tmp)
+            pdf_path = paper_dir / "sample.pdf"
+            doc = fitz.open(); doc.new_page(width=612, height=792); doc.save(str(pdf_path)); doc.close()
+
+            candidates = self._build(page, pdf_path, paper_dir)
+
+            kinds = [c["source_kind"] for c in candidates]
+            self.assertNotIn("caption_fallback_crop", kinds, "검출기가 찾았는데도 폴백이 붙었다")
+
+    async def test_fallback_candidate_reaches_vlm_repair(self):
+        """폴백 후보가 조용히 버려지지 않고 실제로 VLM 수리를 태운다."""
+        manifest = {
+            "pages": [dict(self._page_with_table_caption(), raster_path="p1.png")],
+            "captions": [self._page_with_table_caption()["caption_blocks"][0]],
+            "table_candidates": [
+                {
+                    "id": "tblcand:p1:cap0",
+                    "page_number": 1,
+                    "bbox": [30.0, 300.0, 580.0, 590.0],
+                    "source_kind": "caption_fallback_crop",
+                    "text_grid": [],
+                    "linked_caption_ids": ["cap:p1:n0"],
+                    "best_caption_id": "cap:p1:n0",
+                    "has_meaningful_grid": False,
+                    "plausible_ruled_bbox": True,
+                    "had_irregular_rows": False,
+                }
+            ],
+            "audit": {"suspect_pages": []},
+        }
+        repaired = {"rows": [["cfg", "Gbps"], ["A", "1.2"], ["B", "3.4"]], "confidence": 0.9}
+        fake = AsyncMock(return_value={
+            "text": json.dumps(repaired), "model": MODEL_FLASH_HQ, "tokens_in": 1, "tokens_out": 1,
+        })
+
+        with tempfile.TemporaryDirectory() as tmp:
+            paper_dir = Path(tmp)
+            _make_png(paper_dir / "p1.png")
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), \
+                 patch("services.table_resolver.call_interaction", new=fake):
+                result = await resolve_table_candidates(
+                    manifest, paper_dir=paper_dir, resolver_version="resolver-v1"
+                )
+
+        fake.assert_awaited_once()
+        self.assertEqual(len(result["tables"]), 1, "폴백 후보가 표로 복원되지 않았다")
+        self.assertEqual(result["tables"][0]["table_num"], "Table 1")

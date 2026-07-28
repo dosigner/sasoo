@@ -92,6 +92,46 @@ def _caption_candidates(page: dict[str, Any]) -> list[dict[str, Any]]:
     return [caption for caption in page.get("caption_blocks", []) if caption.get("kind") == "table"]
 
 
+def _fallback_bbox_from_caption(
+    page: dict[str, Any], caption: dict[str, Any], *, aggressive: bool
+) -> list[float] | None:
+    """표 캡션 주변을 표 영역으로 추정한다(구조 검출기가 모두 놓쳤을 때의 마지막 수단).
+
+    figure_candidates에는 같은 성격의 폴백(caption_fallback_crop)이 있는데 표에는 없었다.
+    그래서 ODL·pdfplumber·래스터 괘선 셋이 모두 표를 놓치면 캡션이 멀쩡히 있어도 후보가
+    0개가 되고, 표가 영구히 사라졌다(실측: 표 캡션 1개인 논문의 table_candidates=0 -> tables=0).
+
+    좌표계는 ODL 트리 규약([x_left, y_bottom, x_right, y_top], 좌하단 원점, y는 위로 증가).
+    표는 캡션 바로 위 또는 바로 아래에 붙으므로, 캡션이 페이지 위쪽에 있으면 아래 방향을,
+    아래쪽에 있으면 위 방향을 후보 밴드로 잡는다. 밴드는 그림보다 좁게 둔다 — 표는 캡션에
+    바로 붙어 있고, 넓게 잡으면 본문까지 삼켜 VLM 수리 품질이 떨어진다.
+    """
+    bbox = caption.get("bbox")
+    if not bbox:
+        return None
+    page_width, page_height = _page_size_tuple(page)
+    if not page_width or not page_height:
+        return None
+
+    band = page_height * (0.42 if aggressive else 0.3)
+    caption_mid_y = (bbox[1] + bbox[3]) / 2
+    if caption_mid_y > page_height * 0.5:
+        # 캡션이 페이지 위쪽 -> 표는 그 아래.
+        y_top = max(0.0, bbox[1] - page_height * 0.01)
+        y_bottom = max(page_height * 0.02, y_top - band)
+    else:
+        # 캡션이 페이지 아래쪽 -> 표는 그 위.
+        y_bottom = min(page_height, bbox[3] + page_height * 0.01)
+        y_top = min(page_height * 0.98, y_bottom + band)
+        y_bottom, y_top = y_bottom, y_top
+    low, high = sorted((y_bottom, y_top))
+    if high - low < page_height * 0.05:
+        return None
+
+    side = page_width * (0.02 if aggressive else 0.05)
+    return [side, low, page_width - side, high]
+
+
 def _horizontal_overlap_ratio(a: list[float] | None, b: list[float] | None) -> float:
     if not a or not b:
         return 0.0
@@ -288,6 +328,42 @@ def build_table_candidates(
                     "has_meaningful_grid": _is_meaningful_grid(grid),
                     "plausible_ruled_bbox": _is_plausible_table_bbox(candidate.get("bbox"), page),
                     "had_irregular_rows": bool(candidate.get("had_irregular_rows")),
+                }
+            )
+
+        # 캡션은 있는데 어떤 검출기(ODL / pdfplumber / 래스터 괘선)도 그 표를 못 찾은 경우의
+        # 마지막 수단. 그림 쪽에는 이미 같은 성격의 폴백이 있었고 표에만 없었다 — 그래서
+        # 표 캡션이 멀쩡히 있어도 후보가 0개가 되어 표가 영구히 사라졌다.
+        #
+        # 여기서 만든 후보는 grid가 비어 있지만 best_caption_id가 붙으므로, resolver의
+        # _repair_reasons가 caption_linked_but_grid_weak를 올리고 VLM 수리 게이트가 열린다.
+        # 즉 이 폴백은 "VLM에게 볼 기회를 준다"까지가 역할이고, 실제 격자 복원은 resolver 몫이다.
+        linked_caption_ids = {
+            candidate.get("best_caption_id")
+            for candidate in candidates
+            if candidate.get("page_number") == page_number
+        }
+        for fallback_index, caption in enumerate(_caption_candidates(page)):
+            caption_id = caption.get("id")
+            if not caption_id or caption_id in linked_caption_ids:
+                continue
+            fallback_bbox = _fallback_bbox_from_caption(page, caption, aggressive=aggressive)
+            if fallback_bbox is None or not _is_plausible_table_bbox(fallback_bbox, page):
+                continue
+            candidates.append(
+                {
+                    "id": f"tblcand:p{page_number}:cap{fallback_index}",
+                    "page_number": page_number,
+                    "bbox": fallback_bbox,
+                    "source_kind": "caption_fallback_crop",
+                    "source_parsers": ["heuristic"],
+                    "text_grid": [],
+                    "linked_caption_ids": [caption_id],
+                    "best_caption_id": caption_id,
+                    "source_block_ids": [],
+                    "has_meaningful_grid": False,
+                    "plausible_ruled_bbox": True,
+                    "had_irregular_rows": False,
                 }
             )
     return candidates
