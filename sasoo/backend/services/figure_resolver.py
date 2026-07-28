@@ -19,6 +19,7 @@ from PIL import Image
 from api.analysis_helpers import _clean_llm_json
 from models.paper import Figure as ParsedFigure
 from services.llm.interactions_client import call_interaction
+from services.document_manifest import strip_caption_decoration
 from services.models import MODEL_FLASH_HQ
 from services.subfigure_detector import SubFigureDetector
 
@@ -156,7 +157,7 @@ def _normalized_figure_num(
     fallback_index: int,
     seen: set[str],
 ) -> str:
-    match = FIGURE_LABEL_PATTERN.match(caption_text or "")
+    match = FIGURE_LABEL_PATTERN.match(strip_caption_decoration(caption_text))
     if match:
         base = f"Fig. {match.group(1).upper()}"
     else:
