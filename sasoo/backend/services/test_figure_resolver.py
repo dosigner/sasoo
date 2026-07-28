@@ -289,3 +289,73 @@ class ResolveConcurrencyAndOrderingTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertIsNotNone(first)
             self.assertEqual(first, second)
+
+
+class CaptionlessFigureSuppressionTests(unittest.IsolatedAsyncioTestCase):
+    """캡션에 연결되지 않은 후보를 언제 그림으로 인정할지.
+
+    로고·아이콘·수식 이미지 같은 것들이 각각 그림으로 승격돼 목록을 부풀렸다
+    (실측: 캡션 8개인 문서에서 그림 16개, 이름이 "p9_fig7" 꼴). 다만 파서가 캡션을
+    아예 못 잡은 문서에서는 진짜 그림도 전부 캡션이 없으므로 무조건 버리면 안 된다.
+    """
+
+    @staticmethod
+    def _manifest(with_caption: bool):
+        page = {
+            "page_number": 1,
+            "page_size": {"width": 612.0, "height": 792.0},
+            "raster_path": None,
+        }
+        captions = []
+        candidates = [
+            {   # 캡션에 연결되지 않은 후보 — 로고/장식 같은 것
+                "id": "figcand:p1:n0",
+                "page_number": 1,
+                "bbox": [60.0, 400.0, 550.0, 700.0],
+                "source_kind": "pymupdf_image",
+                "linked_caption_ids": [],
+                "best_caption_id": None,
+                "needs_vlm_rerank": False,
+            }
+        ]
+        if with_caption:
+            captions.append({
+                "id": "cap:p1:n0", "page_number": 1, "kind": "figure",
+                "bbox": [72.0, 340.0, 540.0, 360.0],
+                "text": "Figure 1: A real captioned figure.", "linked_content_id": None, "order": 0,
+            })
+            candidates.append({
+                "id": "figcand:p1:n1",
+                "page_number": 1,
+                "bbox": [60.0, 60.0, 550.0, 330.0],
+                "source_kind": "pymupdf_image",
+                "linked_caption_ids": ["cap:p1:n0"],
+                "best_caption_id": "cap:p1:n0",
+                "needs_vlm_rerank": False,
+            })
+        return {"engine": "gemini", "pages": [page], "captions": captions,
+                "figure_candidates": candidates}
+
+    async def _resolve(self, manifest):
+        import fitz
+        with tempfile.TemporaryDirectory() as tmp:
+            paper_dir = Path(tmp)
+            pdf = paper_dir / "s.pdf"
+            doc = fitz.open(); doc.new_page(width=612, height=792); doc.save(str(pdf)); doc.close()
+            with patch("services.figure_resolver._maybe_detect_subfigures",
+                       new=AsyncMock(return_value=[])):
+                result = await figure_resolver.resolve_figure_candidates(
+                    manifest, paper_dir=paper_dir, pdf_path=pdf, resolver_version="resolver-v1"
+                )
+        return result["figures"]
+
+    async def test_captionless_candidate_dropped_when_document_has_captions(self):
+        figures = await self._resolve(self._manifest(with_caption=True))
+        nums = [f["figure_num"] for f in figures]
+        self.assertEqual(nums, ["Fig. 1"], f"캡션 없는 후보가 그림으로 남았다: {nums}")
+
+    async def test_captionless_candidate_kept_when_document_has_no_captions(self):
+        """캡션 신호가 없는 문서에서는 캡션 없는 후보도 살려야 한다 — 안 그러면 그림이 0개가 된다."""
+        figures = await self._resolve(self._manifest(with_caption=False))
+        self.assertEqual(len(figures), 1, "캡션 0개 문서에서 그림이 전부 사라졌다")
+        self.assertTrue(figures[0]["figure_num"].startswith("p1_fig"))
