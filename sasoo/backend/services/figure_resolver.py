@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import logging
 import os
 import re
 from collections import defaultdict
@@ -19,8 +20,11 @@ from PIL import Image
 from api.analysis_helpers import _clean_llm_json
 from models.paper import Figure as ParsedFigure
 from services.llm.interactions_client import call_interaction
+from services.document_manifest import strip_caption_decoration
 from services.models import MODEL_FLASH_HQ
 from services.subfigure_detector import SubFigureDetector
+
+logger = logging.getLogger(__name__)
 
 FIGURE_LABEL_PATTERN = re.compile(r"^\s*(?:Figure|Fig\.?)\s*(\d+[A-Za-z]?)\b", re.IGNORECASE)
 
@@ -156,7 +160,7 @@ def _normalized_figure_num(
     fallback_index: int,
     seen: set[str],
 ) -> str:
-    match = FIGURE_LABEL_PATTERN.match(caption_text or "")
+    match = FIGURE_LABEL_PATTERN.match(strip_caption_decoration(caption_text))
     if match:
         base = f"Fig. {match.group(1).upper()}"
     else:
@@ -494,6 +498,17 @@ async def resolve_figure_candidates(
     fallback_index = 1
     rasters = _RasterCache(paper_dir)
 
+    # 캡션에 연결되지 않은 후보(로고·아이콘·수식 이미지·장식 등)가 각각 그림으로 승격돼
+    # 목록을 부풀리고 있었다. 이름도 "p9_fig7" 꼴이라 사용자 눈에 바로 노이즈로 보인다.
+    # 캡션 없는 후보는 그림으로 인정하지 않는다.
+    #
+    # 한때 "문서에 캡션이 하나라도 있을 때만 적용"하는 안전장치를 뒀는데, 캡션 앞
+    # 마크다운 서식을 벗기는 수정(strip_caption_decoration) 이후로는 전 논문이 캡션을
+    # 충분히 잡아 그 분기가 한 번도 발동하지 않았다 — 결과가 12편 전부 동일해 제거했다.
+    #
+    # 남는 위험: 파서가 캡션을 하나도 못 잡는 문서가 오면 그림이 0개가 된다. 조용히 비면
+    # 원인 파악이 어려우므로 아래에서 경고를 남긴다.
+
     candidates = [
         candidate
         for candidate in manifest.get("figure_candidates", [])
@@ -567,6 +582,9 @@ async def resolve_figure_candidates(
                 low_confidence_pages.add(page_number)
             if decision["label"] != "figure" or decision["confidence"] < 0.5:
                 continue
+            # 크롭 파일을 쓰기 전에 걸러 디스크에 고아 PNG가 남지 않게 한다.
+            if not decision["best_caption_id"]:
+                continue
 
             confidence = decision["confidence"]
             bbox = decision["bbox"]
@@ -630,6 +648,14 @@ async def resolve_figure_candidates(
         ):
             if children:
                 accepted[index + 1 : index + 1] = children
+
+    if candidate_groups and not accepted:
+        # 캡션 연결이 하나도 없어 전멸한 경우. 파서가 캡션을 못 잡은 문서일 가능성이 크다.
+        logger.warning(
+            "figure resolver: 후보 %d그룹이 있었지만 캡션에 연결된 것이 없어 그림 0개 "
+            "(파서가 캡션을 못 잡았을 수 있음) — paper_dir=%s",
+            len(candidate_groups), paper_dir,
+        )
 
     return {
         "figures": accepted,

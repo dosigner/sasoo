@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 import tempfile
 import unittest
@@ -14,7 +15,7 @@ from services.document_audit import find_suspect_pages
 from services.document_manifest import build_document_manifest
 from services.figure_candidates import build_figure_candidates
 from services.table_candidates import build_table_candidates
-from services.table_resolver import _repair_with_vlm, resolve_table_candidates
+from services.table_resolver import _repair_reasons, _repair_with_vlm, resolve_table_candidates
 from services.models import MODEL_FLASH_HQ
 
 
@@ -535,3 +536,265 @@ class OrphanFigureCleanupTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TableCaptionFallbackTests(unittest.IsolatedAsyncioTestCase):
+    """표 캡션은 있는데 구조 검출기가 모두 놓친 경우의 폴백.
+
+    그림 쪽에는 caption_fallback_crop이 있었는데 표에만 없어서, ODL/pdfplumber/래스터
+    괘선이 전부 표를 놓치면 캡션이 멀쩡히 있어도 table_candidates=0이 되고 표가 영구히
+    사라졌다(실측: 표 캡션 1개인 논문의 candidates=0 -> tables=0).
+    """
+
+    @staticmethod
+    def _page_with_table_caption():
+        return {
+            "page_number": 1,
+            "page_size": {"width": 612.0, "height": 792.0},
+            "raster_path": None,
+            "text_blocks": [],
+            "image_blocks": [],
+            "odl_table_nodes": [],          # ODL 미검출
+            "caption_blocks": [
+                {
+                    "id": "cap:p1:n0",
+                    "page_number": 1,
+                    "kind": "table",
+                    # 페이지 위쪽 캡션 -> 표는 그 아래에 있다고 본다.
+                    "bbox": [72.0, 600.0, 540.0, 620.0],
+                    "text": "Table 1: Measured throughput by configuration.",
+                    "order": 0,
+                }
+            ],
+        }
+
+    def _build(self, page, pdf_path, paper_dir):
+        # pdfplumber / 래스터 괘선 검출기는 아무것도 못 찾은 상황을 만든다.
+        with patch("services.table_candidates._pdfplumber_candidates", return_value={}), \
+             patch("services.table_candidates._raster_ruled_table_candidates", return_value=[]):
+            return build_table_candidates(
+                {"pages": [page]}, pdf_path=pdf_path, paper_dir=paper_dir
+            )
+
+    def test_caption_without_detector_hit_still_yields_candidate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paper_dir = Path(tmp)
+            pdf_path = paper_dir / "sample.pdf"
+            doc = fitz.open(); doc.new_page(width=612, height=792); doc.save(str(pdf_path)); doc.close()
+
+            candidates = self._build(self._page_with_table_caption(), pdf_path, paper_dir)
+
+            self.assertEqual(len(candidates), 1, "캡션 폴백 후보가 만들어지지 않았다")
+            candidate = candidates[0]
+            self.assertEqual(candidate["source_kind"], "caption_fallback_crop")
+            self.assertEqual(candidate["best_caption_id"], "cap:p1:n0")
+            self.assertFalse(candidate["has_meaningful_grid"])
+            # 이 후보가 resolver의 VLM 수리 게이트를 열어야 의미가 있다.
+            reasons = _repair_reasons(candidate, page_number=1, suspect_pages=set(), grid=[])
+            self.assertIn("caption_linked_but_grid_weak", reasons)
+
+    def test_no_duplicate_when_detector_already_covers_caption(self):
+        """검출기가 이미 그 캡션의 표를 찾았으면 폴백을 덧붙이지 않는다."""
+        page = self._page_with_table_caption()
+        page["odl_table_nodes"] = [
+            {
+                "id": "odltbl:p1:n0",
+                "page_number": 1,
+                "bbox": [72.0, 380.0, 540.0, 590.0],   # 캡션 바로 아래의 실제 표
+                "rows": [["A", "B"], ["1", "2"], ["3", "4"]],
+            }
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            paper_dir = Path(tmp)
+            pdf_path = paper_dir / "sample.pdf"
+            doc = fitz.open(); doc.new_page(width=612, height=792); doc.save(str(pdf_path)); doc.close()
+
+            candidates = self._build(page, pdf_path, paper_dir)
+
+            kinds = [c["source_kind"] for c in candidates]
+            self.assertNotIn("caption_fallback_crop", kinds, "검출기가 찾았는데도 폴백이 붙었다")
+
+    async def test_fallback_candidate_reaches_vlm_repair(self):
+        """폴백 후보가 조용히 버려지지 않고 실제로 VLM 수리를 태운다."""
+        manifest = {
+            "pages": [dict(self._page_with_table_caption(), raster_path="p1.png")],
+            "captions": [self._page_with_table_caption()["caption_blocks"][0]],
+            "table_candidates": [
+                {
+                    "id": "tblcand:p1:cap0",
+                    "page_number": 1,
+                    "bbox": [30.0, 300.0, 580.0, 590.0],
+                    "source_kind": "caption_fallback_crop",
+                    "text_grid": [],
+                    "linked_caption_ids": ["cap:p1:n0"],
+                    "best_caption_id": "cap:p1:n0",
+                    "has_meaningful_grid": False,
+                    "plausible_ruled_bbox": True,
+                    "had_irregular_rows": False,
+                }
+            ],
+            "audit": {"suspect_pages": []},
+        }
+        repaired = {"rows": [["cfg", "Gbps"], ["A", "1.2"], ["B", "3.4"]], "confidence": 0.9}
+        fake = AsyncMock(return_value={
+            "text": json.dumps(repaired), "model": MODEL_FLASH_HQ, "tokens_in": 1, "tokens_out": 1,
+        })
+
+        with tempfile.TemporaryDirectory() as tmp:
+            paper_dir = Path(tmp)
+            _make_png(paper_dir / "p1.png")
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), \
+                 patch("services.table_resolver.call_interaction", new=fake):
+                result = await resolve_table_candidates(
+                    manifest, paper_dir=paper_dir, resolver_version="resolver-v1"
+                )
+
+        fake.assert_awaited_once()
+        self.assertEqual(len(result["tables"]), 1, "폴백 후보가 표로 복원되지 않았다")
+        self.assertEqual(result["tables"][0]["table_num"], "Table 1")
+
+
+class CaptionFallbackSuppressionTests(unittest.TestCase):
+    """캡션 폴백이 엉뚱하게 차단되던 문제.
+
+    폴백 생성 여부를 linked_caption_ids로 판정했는데, 그건 후보 주변 캡션 상위 3개일 뿐
+    "이 후보가 그 캡션을 대표한다"는 뜻이 아니다(_best_linked_caption). 그래서:
+      - 한 페이지에 그림이 둘이면 Figure 2의 후보가 Figure 1의 캡션까지 달아 Figure 1이 소실
+      - 약한 후보가 자기 캡션을 달고 있어 aggressive 재시도의 폴백까지 차단
+    실측(41쪽 논문): 원문 13개 중 9개만 추출, Figure 1·3·6이 이 경로로 사라졌다.
+    """
+
+    @staticmethod
+    def _page(captions, image_blocks=(), text_blocks=()):
+        return {
+            "page_number": 1,
+            "page_size": {"width": 612.0, "height": 792.0},
+            "text_blocks": list(text_blocks),
+            "image_blocks": list(image_blocks),
+            "caption_blocks": list(captions),
+            "odl_table_nodes": [],
+        }
+
+    @staticmethod
+    def _caption(cid, text, bbox, order=0):
+        return {"id": cid, "page_number": 1, "kind": "figure", "bbox": bbox,
+                "text": text, "linked_content_id": None, "order": order}
+
+    def _build(self, page, **kwargs):
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf = Path(tmp) / "s.pdf"
+            doc = fitz.open(); doc.new_page(width=612, height=792); doc.save(str(pdf)); doc.close()
+            with patch("services.figure_candidates._extract_pymupdf_image_blocks", return_value={}):
+                return build_figure_candidates({"pages": [page]}, pdf_path=pdf, **kwargs)
+
+    def test_second_figure_on_page_still_gets_a_candidate(self):
+        """한 페이지에 그림이 둘일 때, 한쪽 후보가 다른 쪽 캡션을 가로채지 않는다.
+
+        이미지 블록을 두 캡션의 밴드 밖에 두면 blockcandidate 경로가 타면서
+        linked_caption_ids에 두 캡션이 모두 담긴다(_best_linked_caption은 근처 상위 3개).
+        예전 판정은 이걸 "cap:1도 커버됨"으로 읽어 Figure 1의 폴백을 막았다.
+        """
+        page = self._page(
+            captions=[
+                self._caption("cap:1", "Figure 1. Classification.", [72.0, 700.0, 540.0, 720.0], 0),
+                self._caption("cap:2", "Figure 2. Space FSO links.", [72.0, 300.0, 540.0, 320.0], 1),
+            ],
+            image_blocks=[
+                {"id": "i1", "bbox": [100.0, 120.0, 300.0, 270.0], "source_kind": "odl_image"},
+                {"id": "i2", "bbox": [320.0, 120.0, 520.0, 270.0], "source_kind": "odl_image"},
+            ],
+        )
+        candidates = self._build(page)
+        linked_anywhere = {cid for c in candidates for cid in (c.get("linked_caption_ids") or [])}
+        self.assertIn("cap:1", linked_anywhere, "픽스처가 실제 조건(다른 후보가 cap:1을 링크)을 재현하지 못한다")
+
+        represented = {c.get("best_caption_id") for c in candidates}
+        self.assertIn("cap:2", represented)
+        self.assertIn("cap:1", represented, "다른 그림의 후보에 가려 Figure 1이 후보조차 못 얻었다")
+
+    def test_aggressive_retry_adds_fallback_despite_weak_candidate(self):
+        """약한 후보가 있어도 aggressive 재시도에선 폴백을 추가한다.
+
+        aggressive는 1차에서 실패한 페이지를 다시 시도하라는 뜻인데, 실패의 원인인 약한
+        후보(caption_chart_text, weak_image_evidence)가 폴백을 막으면 재시도가 아무것도
+        바꾸지 못한다 — 실측에서 Figure 3·6이 이 경로로 끝내 복구되지 않았다.
+        """
+        page = self._page(
+            captions=[
+                self._caption("cap:1", "Figure 1. Classification.", [72.0, 700.0, 540.0, 720.0], 0),
+                self._caption("cap:2", "Figure 6. Stare/Scan acquisition.", [72.0, 300.0, 540.0, 320.0], 1),
+            ],
+            text_blocks=[{"id": "t1", "bbox": [100.0, 400.0, 500.0, 500.0],
+                          "text": "0 10 nm 20 nm 30 nm", "type": "paragraph"}],
+        )
+        weak = [c for c in self._build(page) if c.get("weak_image_evidence") and c["source_kind"] == "caption_chart_text"]
+        self.assertTrue(weak, "픽스처가 약한 후보(caption_chart_text)를 만들지 못한다")
+
+        aggressive = self._build(page, page_numbers={1}, aggressive=True)
+        fallbacks_for_cap2 = [
+            c for c in aggressive
+            if c["source_kind"] == "caption_fallback_crop" and c.get("best_caption_id") == "cap:2"
+        ]
+        self.assertTrue(
+            fallbacks_for_cap2,
+            "약한 후보에 가려 aggressive 재시도의 폴백이 생성되지 않았다",
+        )
+
+    def test_same_label_captions_are_deduped(self):
+        """같은 라벨의 캡션이 조각나 여러 개 잡혀도 후보는 하나만 만든다.
+
+        안 그러면 "Fig. 1"과 "Fig. 1 [2]"가 함께 나온다(합자·줄바꿈으로 텍스트가
+        미세하게 달라 전체 텍스트 비교로는 안 걸러진다).
+        """
+        page = self._page(captions=[
+            self._caption("cap:1", "Figure 1. Classiﬁcation of the optical links.", [72.0, 700.0, 540.0, 720.0], 0),
+            self._caption("cap:2", "Figure 1. Classification of the optical links", [72.0, 698.0, 538.0, 718.0], 1),
+        ])
+        candidates = self._build(page)
+        used = [c.get("best_caption_id") for c in candidates]
+        self.assertLessEqual(len(set(used)), 1, f"같은 Figure 1에 후보가 중복 생성됐다: {used}")
+
+
+class CaptionDecorationTests(unittest.TestCase):
+    """캡션 앞 마크다운 서식 때문에 라벨 인식이 통째로 실패하던 문제.
+
+    gemini 파서는 캡션을 마크다운 그대로 내보내므로 "**Fig. 1. ...**"처럼 볼드로 시작한다.
+    라벨 패턴은 전부 문두 매칭이라 "**"가 하나만 붙어도 매칭이 깨지고, 그러면
+    (1) 캡션 종류 판정이 unknown이 되고 (2) 그림 번호가 "p3_fig1" 꼴로 떨어진다.
+    실측: 캡션 6개가 전부 unknown으로 떨어져 그림이 원문 8개 대비 17개까지 부풀었다.
+    """
+
+    def test_strips_markdown_and_decoration_prefixes(self):
+        from services.document_manifest import strip_caption_decoration
+
+        for raw, expected_start in [
+            ("**Fig. 1. Traversing terrains.**", "Fig. 1."),
+            ("__Figure 2.__ Training pipeline", "Figure 2."),
+            ("### Table 3: Results", "Table 3:"),
+            ("• Figure 4. Something", "Figure 4."),
+            ("   Fig. 5. Already clean", "Fig. 5."),
+        ]:
+            with self.subTest(raw=raw):
+                self.assertTrue(strip_caption_decoration(raw).startswith(expected_start))
+
+    def test_bold_caption_is_classified_as_figure(self):
+        from services.document_manifest import _caption_kind
+
+        self.assertEqual(_caption_kind("**Fig. 1. Traversing challenging terrains.**"), "figure")
+        self.assertEqual(_caption_kind("**Table 2.** Ablation results"), "table")
+        self.assertIsNone(_caption_kind("**Discussion**"))
+
+    def test_bold_caption_yields_proper_figure_number(self):
+        """번호 부여도 같은 문두 매칭이라 함께 깨졌다 — "p3_fig1" 대신 "Fig. 1"이 나와야 한다."""
+        from services.figure_resolver import _normalized_figure_num
+
+        seen: set[str] = set()
+        self.assertEqual(
+            _normalized_figure_num("**Fig. 1. Traversing terrains.**", 3, 1, seen), "Fig. 1"
+        )
+
+    def test_bold_caption_yields_proper_table_number(self):
+        from services.table_resolver import _table_num
+
+        seen: set[str] = set()
+        self.assertEqual(_table_num("**Table 2.** Ablation results", 4, 1, seen), "Table 2")
