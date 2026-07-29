@@ -3,6 +3,7 @@ import { Markdown } from '@/components/Markdown';
 import { Loader2, Download } from 'lucide-react';
 import { getLibraryAssetUrl, type Figure, type VisualState } from '@/lib/api';
 import { S } from '@/lib/strings';
+import { resolveArtifactPlaceholder } from '@/lib/artifactState';
 import { generateFigureExplanation } from '@/lib/api';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { AppIcon } from '@/components/icons';
@@ -640,7 +641,13 @@ export default function FigureGallery({
   figures,
   paperId,
   loading = false,
-  visualState = 'ready',
+  // 기본값이 'ready'면 "아직 모른다"가 "없다"로 바뀐다.
+  // 부모는 visualState={figures?.visual_state}를 넘기는데, /figures 응답이 도착하기
+  // 전이나 요청이 실패하면 undefined다. 그때 'ready'로 떨어지면 figures.length === 0과
+  // 겹쳐 "이 논문에서 뽑은 그림이 아직 없어요"를 띄운다 — 추출이 멀쩡히 진행 중인데도
+  // 사용자에겐 실패로 보인다(실측: 아티팩트 생성 중이던 논문에서 이 문구가 떴다).
+  // 모를 때는 'running'으로 두어 스피너와 "준비 중"을 보여주는 쪽이 정직하다.
+  visualState = 'running',
   visualError = null,
   artifactsError = null,
   onJumpToFigurePage,
@@ -708,9 +715,10 @@ export default function FigureGallery({
   }, [lightboxIndex, prevFigure, nextFigure]);
 
   const effectiveError = visualError ?? artifactsError;
-  const hasArtifactError = visualState === 'error' && Boolean(effectiveError);
-  const isPreparingArtifacts = visualState === 'running';
-  const isPartialArtifacts = visualState === 'partial';
+  const placeholder = resolveArtifactPlaceholder(visualState, Boolean(effectiveError));
+  const hasArtifactError = placeholder === 'error';
+  const isPreparingArtifacts = placeholder === 'preparing';
+  const isPartialArtifacts = placeholder === 'partial';
 
   if (loading) {
     return (
