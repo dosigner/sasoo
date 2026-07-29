@@ -798,3 +798,202 @@ class CaptionDecorationTests(unittest.TestCase):
 
         seen: set[str] = set()
         self.assertEqual(_table_num("**Table 2.** Ablation results", 4, 1, seen), "Table 2")
+
+
+class InlineMentionCaptionTests(unittest.TestCase):
+    """본문 문장이 캡션으로 오인돼 그림이 중복 생성되던 문제.
+
+    "Fig. N"으로 시작하기만 하면 캡션으로 인정했기 때문에, 본문 첫 문장이
+    "Figure 9 shows time-series data..."처럼 시작하면 그것이 별도 캡션 블록이 되고
+    같은 번호의 그림 후보가 하나 더 생겼다("Fig. 9"와 "Fig. 9 [2]").
+    실측 초과분(2013_IEEETIP +1, 2022_SciRep +1, 2022_ApplOpt +3)이 정확히 이 케이스였다.
+
+    가르는 기준은 라벨 바로 뒤다. 구분자(. : ,)나 대문자로 이어지면 캡션,
+    소문자 단어(=동사)로 이어지면 본문 문장이다. 아래 문자열은 전부 실제 코퍼스에서 뽑았다.
+    """
+
+    # 실제 라이브러리 12편의 캡션 블록에서 뽑은 본문 언급 전량(라벨 뒤 형태별 대표)
+    INLINE_MENTIONS = [
+        "Fig. 8 shows some visual results of saliency detection on image pairs.",
+        "Fig. 12 shows some segmentation results using our co-saliency map.",
+        "Figure 3 shows the comparison of atmospheric turbulence prediction results",
+        "Figure 9 shows time-series data for the 2022/04/21 high speed flight",
+        "Fig. 1 illustrates the co-saliency example, where the single image algorithm",
+        "Figure 6 illustrates the comparison of atmospheric turbulence prediction",
+        "Fig. 2(e) shows the corresponding cue, where the soccer players in red",
+        "Figure 4(a) shows the atmospheric turbulence before the compensation",
+    ]
+
+    # 반대로 캡션으로 남아야 하는 것들. 마지막 두 개가 핵심 —
+    # 구분자 없는 캡션(TurPy Fig. 2)과 공백 없는 표기(2022_ApplOpt p3)가 실제로 존재한다.
+    REAL_CAPTIONS = [
+        "Fig. 1. Given a group of images (first row), the state-of-the-art methods",
+        "Figure 1: Error distribution of TurboQuantprod for Inner Product Estimation",
+        "**Fig. 1. Traversing challenging terrains.**",
+        "Figure\xa01. Schematic of the coherent FSO terminal",
+        "Fig. 2 Subharmonic Phase Screen Generation. (A) An original screen",
+        "Fig.2. Architecture of the prediction network",
+    ]
+
+    def test_fixture_strings_start_with_a_figure_label(self):
+        """픽스처가 조건을 재현하는지 먼저 단언한다 — 라벨 매칭 자체는 전부 성공해야 한다.
+
+        이 단언이 없으면 "라벨이 아예 안 잡혀서" None이 나온 것을 성공으로 오인할 수 있다.
+        """
+        from services.document_manifest import FIGURE_LABEL_PATTERN, strip_caption_decoration
+
+        for text in self.INLINE_MENTIONS + self.REAL_CAPTIONS:
+            with self.subTest(text=text):
+                self.assertIsNotNone(
+                    FIGURE_LABEL_PATTERN.match(strip_caption_decoration(text)),
+                    "픽스처가 조건을 재현하지 못한다: 라벨 패턴에 애초에 안 걸린다",
+                )
+
+    def test_inline_mentions_are_not_captions(self):
+        from services.document_manifest import _caption_kind
+
+        for text in self.INLINE_MENTIONS:
+            with self.subTest(text=text):
+                self.assertIsNone(_caption_kind(text))
+
+    def test_real_captions_survive(self):
+        from services.document_manifest import _caption_kind
+
+        for text in self.REAL_CAPTIONS:
+            with self.subTest(text=text):
+                self.assertEqual(_caption_kind(text), "figure")
+
+    def test_table_inline_mention_is_not_a_caption(self):
+        from services.document_manifest import _caption_kind
+
+        self.assertIsNone(_caption_kind("Table 3 summarizes the ablation results."))
+        self.assertEqual(_caption_kind("Table 3. Ablation results."), "table")
+
+
+class CaptionRecoveryTests(unittest.TestCase):
+    """파서가 페이지 하나의 캡션 요소를 통째로 빠뜨려 그림이 사라지던 문제.
+
+    실측(2026_SR_AgileMultiskill): 원문 Figure 1~8인데 gemini가 p6·p9에서 caption/image
+    요소를 하나도 내지 않아 Fig. 3과 Fig. 5가 없어졌다. markdown에는 두 캡션이 온전히
+    들어 있었으므로 프롬프트가 아니라 elements 방출이 확률적으로 누락된 것이다.
+    캡션 없는 후보는 버리는 규칙(2026-07-29 결정) 때문에 누락이 곧 그림 소실로 이어진다.
+
+    캡션 텍스트는 PDF 안에 결정적으로 존재하므로, LLM이 빠뜨린 페이지는 PyMuPDF 텍스트
+    블록에서 되살린다.
+    """
+
+    @staticmethod
+    def _build_pdf(path, page_texts):
+        import fitz
+
+        doc = fitz.open()
+        for lines in page_texts:
+            page = doc.new_page(width=595, height=842)
+            y = 700
+            for line in lines:
+                page.insert_text((40, y), line, fontsize=9)
+                y += 20
+        doc.save(str(path))
+        doc.close()
+
+    @staticmethod
+    def _page_stub(page_number, caption_blocks=()):
+        return {
+            "page_number": page_number,
+            "page_size": {"width": 595.0, "height": 842.0},
+            "text_blocks": [],
+            "image_blocks": [],
+            "caption_blocks": list(caption_blocks),
+            "odl_table_nodes": [],
+        }
+
+    def _run(self, page_texts, pages):
+        from services.document_manifest import recover_missing_caption_blocks
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "sample.pdf"
+            self._build_pdf(pdf_path, page_texts)
+            return recover_missing_caption_blocks(pdf_path=pdf_path, pages=pages)
+
+    def test_fixture_page_really_has_no_caption_block(self):
+        """픽스처가 조건을 재현하는지 먼저 단언한다 — 2페이지는 정말로 캡션이 비어 있어야 한다."""
+        pages = {1: self._page_stub(1), 2: self._page_stub(2)}
+        self.assertEqual(pages[2]["caption_blocks"], [])
+
+    def test_recovers_caption_the_parser_dropped(self):
+        pages = {
+            1: self._page_stub(
+                1,
+                [
+                    {
+                        "id": "cap:p1:n0",
+                        "page_number": 1,
+                        "bbox": [40.0, 130.0, 500.0, 150.0],
+                        "text": "Fig. 1. Traversing challenging terrains.",
+                        "kind": "figure",
+                        "order": 3,
+                    }
+                ],
+            ),
+            2: self._page_stub(2),
+        }
+        recovered = self._run(
+            [
+                ["Fig. 1. Traversing challenging terrains."],
+                ["Fig. 2. Training pipeline for APT-RL."],
+            ],
+            pages,
+        )
+
+        self.assertEqual(len(recovered), 1, f"복원 결과가 예상과 다르다: {recovered}")
+        block = recovered[0]
+        self.assertEqual(block["page_number"], 2)
+        self.assertEqual(block["kind"], "figure")
+        self.assertTrue(block["text"].startswith("Fig. 2."))
+        self.assertEqual(pages[2]["caption_blocks"], [block])
+        # 1페이지는 이미 캡션이 있으니 건드리면 안 된다 — 중복은 곧 "Fig. 1 [2]"가 된다.
+        self.assertEqual(len(pages[1]["caption_blocks"]), 1)
+
+    def test_does_not_duplicate_a_label_the_parser_already_found(self):
+        """파서 캡션과 PDF 텍스트가 미세하게 달라도(마크다운 서식·합자) 같은 라벨이면 중복 아님."""
+        pages = {
+            1: self._page_stub(
+                1,
+                [
+                    {
+                        "id": "cap:p1:n0",
+                        "page_number": 1,
+                        "bbox": [40.0, 130.0, 500.0, 150.0],
+                        "text": "**Fig. 1. Traversing challenging terrains.**",
+                        "kind": "figure",
+                        "order": 3,
+                    }
+                ],
+            )
+        }
+        self.assertEqual(self._run([["Fig. 1. Traversing challenging terrains."]], pages), [])
+
+    def test_does_not_recover_body_sentences(self):
+        """본문 첫 문장이 라벨로 시작해도 복원 대상이 아니다 — 과추출로 되돌아간다."""
+        pages = {1: self._page_stub(1)}
+        self.assertEqual(
+            self._run([["Fig. 3 shows some segmentation results using our map."]], pages), []
+        )
+
+    def test_recovers_table_captions_too(self):
+        pages = {1: self._page_stub(1)}
+        recovered = self._run([["Table 2. Ablation results."]], pages)
+        self.assertEqual(len(recovered), 1)
+        self.assertEqual(recovered[0]["kind"], "table")
+
+    def test_recovered_bbox_is_bottom_left_origin(self):
+        """매니페스트 bbox 규약은 좌하단 원점이다 — PyMuPDF의 좌상단 좌표를 그대로 쓰면
+        캡션이 페이지 반대편에 있는 것으로 잡혀 그림 영역 폴백이 위아래로 뒤집힌다."""
+        pages = {1: self._page_stub(1)}
+        recovered = self._run([["Fig. 1. A caption near the page bottom."]], pages)
+        self.assertEqual(len(recovered), 1)
+        x0, y_bottom, x1, y_top = recovered[0]["bbox"]
+        self.assertLess(y_bottom, y_top)
+        self.assertLess(x0, x1)
+        # 텍스트를 PyMuPDF y=700(위에서부터)에 넣었으므로 좌하단 기준으로는 842-700 근처다.
+        self.assertLess(y_top, 842.0 * 0.35)

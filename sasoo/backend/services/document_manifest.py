@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -547,17 +548,149 @@ def strip_caption_decoration(text: str | None) -> str:
     return _CAPTION_LEADING_NOISE.sub("", text or "")
 
 
+# "Fig. 2(e) shows ..." 처럼 라벨 뒤에 붙는 서브피겨 지시자. 본문/캡션 판정에서는 건너뛴다.
+_CAPTION_SUBLABEL_PATTERN = re.compile(r"^\s*\([0-9a-z]{1,3}\)", re.IGNORECASE)
+
+# 라벨과 캡션 본문을 잇는 구분자.
+_CAPTION_LABEL_SEPARATORS = ".:,;)]|–—-"
+
+
+def _label_is_followed_by_caption_body(rest: str) -> bool:
+    """라벨 뒤에 오는 텍스트가 캡션 본문인지, 그냥 이어지는 본문 문장인지 판정한다.
+
+    "Fig. N"으로 시작하기만 하면 캡션으로 인정하면 본문 첫 문장이 캡션 블록이 되고,
+    같은 번호의 그림 후보가 하나 더 생겨 "Fig. 9"와 "Fig. 9 [2]"가 함께 나온다.
+    실측 초과분(2013_IEEETIP +1, 2022_SciRep +1, 2022_ApplOpt +3)이 전부 이 케이스였다.
+
+    가르는 신호는 라벨 바로 뒤 한 글자다.
+      캡션 : "Fig. 1. Given a ..."  "Figure 1: Error ..."  "Fig. 2 Subharmonic Phase ..."
+      본문 : "Fig. 1 illustrates ..."  "Figure 9 shows ..."  "Fig. 2(e) shows ..."
+    구분자나 대문자/숫자로 이어지면 캡션, 소문자 단어(= 서술 동사)로 이어지면 본문 문장이다.
+    구분자를 무조건 요구하면 안 된다 — "Fig. 2 Subharmonic ..."처럼 구분자 없는 캡션이
+    실제로 있고(TurPy_OpticTurb), 그런 논문의 그림이 통째로 사라진다.
+    """
+    sublabel = _CAPTION_SUBLABEL_PATTERN.match(rest)
+    if sublabel:
+        rest = rest[sublabel.end() :]
+    stripped = rest.strip()
+    if not stripped:
+        # 라벨만 있는 줄. 캡션 본문이 다음 블록으로 넘어간 형태이므로 캡션으로 본다.
+        return True
+    if stripped[0] in _CAPTION_LABEL_SEPARATORS:
+        return True
+    return not stripped[0].islower()
+
+
 def _caption_kind(text: str) -> str | None:
     # 라벨 패턴은 문두 매칭이라, 앞에 "**"가 하나만 붙어도 캡션으로 인식되지 않는다.
     # 그러면 그 문서는 figure 캡션이 0개가 되고, 캡션에 기대는 하류 로직(후보-캡션 연결,
     # 캡션 폴백, 캡션 없는 후보 억제)이 통째로 무력화된다 — 실측: 캡션 6개가 전부
     # "unknown"으로 떨어져 그림이 원문 8개 대비 17개까지 부풀었다.
-    normalized = strip_caption_decoration(text)
-    if FIGURE_LABEL_PATTERN.match(normalized):
-        return "figure"
-    if TABLE_LABEL_PATTERN.match(normalized):
-        return "table"
+    #
+    # NFKC 정규화는 "Figure\xa01."처럼 non-breaking space가 낀 표기(2022_SciRep) 때문에
+    # 필요하다. 라벨 뒤 구분자 판정이 공백 종류에 흔들리면 안 된다.
+    normalized = unicodedata.normalize("NFKC", strip_caption_decoration(text))
+    figure_match = FIGURE_LABEL_PATTERN.match(normalized)
+    if figure_match:
+        return "figure" if _label_is_followed_by_caption_body(normalized[figure_match.end() :]) else None
+    table_match = TABLE_LABEL_PATTERN.match(normalized)
+    if table_match:
+        return "table" if _label_is_followed_by_caption_body(normalized[table_match.end() :]) else None
     return None
+
+
+def _caption_label_key(text: str) -> str | None:
+    """캡션 텍스트에서 중복 판정용 라벨 키를 뽑는다("**Fig. 3. ...**" -> "figure:3")."""
+    normalized = unicodedata.normalize("NFKC", strip_caption_decoration(text))
+    figure_match = FIGURE_LABEL_PATTERN.match(normalized)
+    if figure_match:
+        return f"figure:{figure_match.group(1).lower()}"
+    table_match = TABLE_LABEL_PATTERN.match(normalized)
+    if table_match:
+        return f"table:{table_match.group(1).lower()}"
+    return None
+
+
+def recover_missing_caption_blocks(
+    *,
+    pdf_path: Path,
+    pages: dict[int, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """파서가 빠뜨린 캡션을 PDF 텍스트에서 되살려 페이지에 채워 넣고, 추가분을 반환한다.
+
+    실측(2026_SR_AgileMultiskill): gemini가 p6·p9에서 caption/image 요소를 하나도 내지
+    않아 Fig. 3과 Fig. 5가 통째로 사라졌다. 두 캡션 모두 같은 응답의 markdown에는 온전히
+    들어 있었으니 프롬프트가 아니라 elements 방출이 확률적으로 누락된 것이고, 프롬프트를
+    더 강하게 써도 재발을 막을 보장이 없다. 캡션 없는 후보는 버리는 규칙(2026-07-29 결정)
+    때문에 캡션 하나가 빠지면 그 그림이 곧바로 소실된다.
+
+    캡션 텍스트 자체는 PDF 안에 결정적으로 존재하므로 PyMuPDF 텍스트 블록에서 되살린다.
+    이미 파서가 같은 라벨을 잡은 페이지는 건드리지 않는다 — 중복 캡션은 같은 그림의 후보를
+    하나 더 만들어 "Fig. 1"과 "Fig. 1 [2]"가 함께 나오게 한다.
+    """
+    recovered: list[dict[str, Any]] = []
+    doc = fitz.open(str(pdf_path))
+    try:
+        for page_number, page_entry in pages.items():
+            page_index = page_number - 1
+            if page_index < 0 or page_index >= len(doc):
+                continue
+            caption_blocks = page_entry.get("caption_blocks")
+            if caption_blocks is None:
+                continue
+            # 라벨 점유는 "진짜 캡션으로 인정된" 블록만 한다. 본문 언급("Fig. 9 shows ...")이
+            # 캡션 블록으로 남아 있는 페이지에서 진짜 캡션 복원이 막히면 안 된다.
+            seen_labels = {
+                key
+                for key in (
+                    _caption_label_key(text)
+                    for text in (str(block.get("text") or "") for block in caption_blocks)
+                    if _caption_kind(text) is not None
+                )
+                if key
+            }
+            page = doc[page_index]
+            page_height = float(page.rect.height)
+            max_order = max(
+                (int(block.get("order") or 0) for block in caption_blocks),
+                default=0,
+            )
+            # get_text("blocks")는 dict 모드와 달리 span 트리를 만들지 않는다. 여기서 필요한
+            # 건 블록 단위 (bbox, 텍스트)뿐이라 문서 파싱 비용이 한 자릿수 ms로 떨어진다.
+            for index, block in enumerate(page.get_text("blocks")):
+                if len(block) < 7 or block[6] != 0:  # block_type 0 == 텍스트
+                    continue
+                # 블록 텍스트는 줄바꿈을 품고 있다. 캡션은 한 줄로 다뤄지므로 공백을 정규화한다.
+                text = re.sub(r"\s+", " ", str(block[4] or "")).strip()
+                if not text:
+                    continue
+                kind = _caption_kind(text)
+                if kind is None:
+                    continue
+                label_key = _caption_label_key(text)
+                if label_key is None or label_key in seen_labels:
+                    continue
+                x0, y0, x1, y1 = (float(value) for value in block[:4])
+                seen_labels.add(label_key)
+                max_order += 1
+                caption_block = {
+                    # 파서가 낸 캡션(cap:pN:nM)과 구분되게 r 접두를 쓴다.
+                    "id": f"cap:p{page_number}:r{index}",
+                    "page_number": page_number,
+                    # 매니페스트 bbox 규약은 좌하단 원점 — PyMuPDF의 좌상단 y를 뒤집는다.
+                    "bbox": [x0, page_height - y1, x1, page_height - y0],
+                    "text": text,
+                    "kind": kind,
+                    "linked_content_id": None,
+                    "source_id": None,
+                    "order": max_order,
+                    "recovered_from": "pymupdf_text",
+                }
+                caption_blocks.append(caption_block)
+                recovered.append(caption_block)
+    finally:
+        doc.close()
+    return recovered
 
 
 def _table_rows_from_element(element: dict[str, Any]) -> list[list[str]]:
@@ -715,6 +848,10 @@ def build_document_manifest(
                     "order": flat.order,
                 }
             )
+
+    # 파서가 캡션 요소를 통째로 빠뜨린 페이지를 PDF 텍스트로 메운다. 캡션 없는 후보는
+    # 버리는 규칙 때문에, 캡션 하나가 빠지면 그 그림이 그대로 소실된다.
+    captions.extend(recover_missing_caption_blocks(pdf_path=pdf_path, pages=pages))
 
     pdf_signature = get_pdf_signature(pdf_path)
     return {
