@@ -4,6 +4,7 @@ Figure resolver for resolver_v1.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import os
@@ -83,17 +84,62 @@ def _odl_bbox_to_fitz_rect(page_height: float, bbox: list[float]) -> fitz.Rect:
     return fitz.Rect(left, page_height - top, right, page_height - bottom)
 
 
-def _crop_candidate(pdf_path: Path, page_number: int, bbox: list[float], output_path: Path) -> tuple[int, int]:
+def _crop_candidate(
+    pdf_path: Path,
+    page_number: int,
+    bbox: list[float],
+    output_path: Path,
+    *,
+    doc: "fitz.Document | None" = None,
+) -> tuple[int, int]:
+    """후보 bbox를 크롭해 PNG로 저장하고 (width, height)를 반환한다.
+
+    doc을 주면 그걸 재사용한다 — 예전에는 후보마다 fitz.open/close를 반복해 그림 수만큼
+    PDF 전체를 다시 파싱했다(21그림 = 21회 재파싱). fitz.Document는 스레드 안전이 아니므로
+    호출부가 단일 스레드에서 순차로 쓸 때만 공유해야 한다.
+    """
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    doc = fitz.open(str(pdf_path))
+    owned = doc is None
+    document = fitz.open(str(pdf_path)) if owned else doc
     try:
-        page = doc[page_number - 1]
+        page = document[page_number - 1]
         clip = _odl_bbox_to_fitz_rect(page.rect.height, bbox)
         pix = page.get_pixmap(matrix=fitz.Matrix(200 / 72, 200 / 72), clip=clip, alpha=False)
         pix.save(str(output_path))
         return (pix.width, pix.height)
     finally:
-        doc.close()
+        if owned:
+            document.close()
+
+
+class _RasterCache:
+    """페이지 래스터 PNG의 base64를 페이지당 1회만 읽어 재사용한다.
+
+    예전에는 VLM 호출마다 (paper_dir / raster_path).read_bytes()를 다시 돌려, 같은 페이지에
+    그림이 3개면 같은 450KB PNG를 3번 읽고 3번 base64로 인코딩했다(실측 페이지당 358~457KB).
+
+    get()은 await가 없는 동기 함수다 — 같은 이벤트 루프의 코루틴들이 중간에 끼어들 수 없어
+    별도 락 없이도 캐시 갱신이 안전하다.
+    """
+
+    def __init__(self, paper_dir: Path) -> None:
+        self._paper_dir = paper_dir
+        self._cache: dict[int, str | None] = {}
+
+    def get(self, page: dict[str, Any]) -> str | None:
+        page_number = page.get("page_number")
+        if page_number in self._cache:
+            return self._cache[page_number]
+        raster_path = page.get("raster_path")
+        encoded: str | None = None
+        if raster_path:
+            try:
+                data = (self._paper_dir / raster_path).resolve().read_bytes()
+                encoded = base64.b64encode(data).decode("ascii")
+            except OSError:
+                encoded = None
+        self._cache[page_number] = encoded
+        return encoded
 
 
 def _quality_from_dims(width: int, height: int) -> str:
@@ -228,7 +274,7 @@ async def _maybe_select_candidate(
     group: list[dict[str, Any]],
     page: dict[str, Any],
     captions_by_id: dict[str, dict[str, Any]],
-    paper_dir: Path,
+    rasters: _RasterCache,
     resolver_version: str,
 ) -> tuple[dict[str, Any], float, str]:
     scored = sorted(
@@ -247,8 +293,8 @@ async def _maybe_select_candidate(
     if len(scored) == 1 or not os.environ.get("GEMINI_API_KEY"):
         return (chosen, 0.0, "heuristic")
 
-    raster_path = page.get("raster_path")
-    if not raster_path:
+    image_b64 = rasters.get(page)
+    if not image_b64:
         return (chosen, 0.0, "heuristic")
 
     caption_id = chosen.get("best_caption_id") or next(iter(chosen.get("linked_caption_ids") or []), None)
@@ -277,10 +323,9 @@ async def _maybe_select_candidate(
     }
 
     try:
-        image_bytes = (paper_dir / raster_path).resolve().read_bytes()
         result = await call_interaction(
             [
-                {"type": "image", "data": base64.b64encode(image_bytes).decode("ascii"), "mime_type": "image/png"},
+                {"type": "image", "data": image_b64, "mime_type": "image/png"},
                 {"type": "text", "text": json.dumps(prompt, ensure_ascii=False)},
             ],
             lane="pipeline",
@@ -304,7 +349,7 @@ async def _maybe_rerank_caption(
     candidate: dict[str, Any],
     page: dict[str, Any],
     captions_by_id: dict[str, dict[str, Any]],
-    paper_dir: Path,
+    rasters: _RasterCache,
     resolver_version: str,
 ) -> tuple[str | None, float, str]:
     option_ids = candidate.get("linked_caption_ids", [])[:3]
@@ -315,8 +360,8 @@ async def _maybe_rerank_caption(
     ):
         return (candidate.get("best_caption_id"), 0.0, "heuristic")
 
-    raster_path = page.get("raster_path")
-    if not raster_path:
+    image_b64 = rasters.get(page)
+    if not image_b64:
         return (candidate.get("best_caption_id"), 0.0, "heuristic")
 
     captions = [captions_by_id[caption_id] for caption_id in option_ids if caption_id in captions_by_id]
@@ -342,10 +387,9 @@ async def _maybe_rerank_caption(
     }
 
     try:
-        image_bytes = (paper_dir / raster_path).resolve().read_bytes()
         result = await call_interaction(
             [
-                {"type": "image", "data": base64.b64encode(image_bytes).decode("ascii"), "mime_type": "image/png"},
+                {"type": "image", "data": image_b64, "mime_type": "image/png"},
                 {"type": "text", "text": json.dumps(prompt, ensure_ascii=False)},
             ],
             lane="pipeline",
@@ -448,6 +492,7 @@ async def resolve_figure_candidates(
     accepted: list[dict[str, Any]] = []
     low_confidence_pages: set[int] = set()
     fallback_index = 1
+    rasters = _RasterCache(paper_dir)
 
     candidates = [
         candidate
@@ -456,82 +501,135 @@ async def resolve_figure_candidates(
     ]
     candidate_groups = _group_candidates(candidates)
 
-    for group in candidate_groups:
-        candidate = group[0]
-        page_number = candidate.get("page_number")
+    # ── 1단계(병렬): 그룹별 VLM 판정. 후보 그룹끼리는 완전히 독립이라 동시에 돌려도 된다.
+    # 예전에는 이 루프가 순차라 그림 N개면 VLM 호출이 일렬로 최대 2N번 나갔다.
+    # 파일 쓰기·번호 부여는 여기서 하지 않는다 — 순서에 의존하므로 2단계로 미룬다.
+    async def _decide(group: list[dict[str, Any]]) -> dict[str, Any] | None:
+        page_number = group[0].get("page_number")
         page = pages_by_number.get(page_number)
         if page is None:
-            continue
+            return None
 
         selected_candidate, selection_delta, selection_model = await _maybe_select_candidate(
             group,
             page,
             captions_by_id,
-            paper_dir,
+            rasters,
             resolver_version,
         )
         bbox = selected_candidate.get("bbox")
         if not bbox:
-            continue
+            return None
 
-        label, confidence, rejection_reason, is_composite, best_caption_id = _score_candidate(selected_candidate, page, captions_by_id)
+        label, confidence, rejection_reason, is_composite, best_caption_id = _score_candidate(
+            selected_candidate, page, captions_by_id
+        )
         confidence = min(0.99, confidence + selection_delta)
         classifier_model = selection_model
+        low_confidence = False
         if 0.5 <= confidence < 0.85:
             best_caption_id, delta, classifier_model = await _maybe_rerank_caption(
                 selected_candidate,
                 page,
                 captions_by_id,
-                paper_dir,
+                rasters,
                 resolver_version,
             )
             confidence = min(0.99, confidence + delta)
         elif confidence < 0.5:
-            low_confidence_pages.add(page_number)
+            low_confidence = True
 
-        if label != "figure" or confidence < 0.5:
-            continue
-
-        caption = captions_by_id.get(best_caption_id or "", {})
-        caption_text = caption.get("text")
-        figure_num = _normalized_figure_num(caption_text, page_number, fallback_index, seen_figure_nums)
-        fallback_index += 1
-        safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", figure_num).strip("_") or f"p{page_number}_figure"
-        output_path = figures_dir / f"{safe_name}.png"
-        width, height = _crop_candidate(pdf_path, page_number, bbox, output_path)
-
-        entry = {
-            "figure_num": figure_num,
-            "caption": caption_text,
-            "file_path": str(output_path.resolve().relative_to(paper_dir.resolve())),
+        return {
             "page_number": page_number,
             "bbox": bbox,
-            "quality": _quality_from_dims(width, height),
-            "extraction_engine": manifest.get("engine"),
+            "label": label,
             "confidence": confidence,
-            "classifier_label": label,
-            "classifier_model": classifier_model,
-            "parent_figure_num": None,
-            "is_composite": is_composite,
-            "resolver_version": resolver_version,
-            "extraction_status": _status_from_confidence(confidence),
             "rejection_reason": rejection_reason,
+            "is_composite": is_composite,
             "best_caption_id": best_caption_id,
+            "classifier_model": classifier_model,
+            "low_confidence": low_confidence,
         }
-        accepted.append(entry)
 
-        if is_composite:
-            accepted.extend(
-                await _maybe_detect_subfigures(
-                    figure_num=figure_num,
-                    figure_path=output_path,
-                    paper_dir=paper_dir,
-                    bbox=bbox,
-                    page_number=page_number,
-                    caption_text=caption_text,
-                    confidence=confidence,
-                )
+    decisions = await asyncio.gather(*[_decide(group) for group in candidate_groups])
+
+    # ── 2단계(순차): 그림 번호 부여와 크롭 파일 쓰기. 반드시 후보 그룹 원래 순서를 지켜야
+    # 번호(_normalized_figure_num의 seen 집합·fallback_index)와 파일명이 예전과 동일하게 나온다.
+    # LLM 호출이 없어 순차여도 빠르다. PDF는 한 번만 열어 전 후보가 공유한다.
+    pending_subfigures: list[tuple[int, dict[str, Any], Path]] = []
+    crop_doc = fitz.open(str(pdf_path))
+    try:
+        for decision in decisions:
+            if decision is None:
+                continue
+            page_number = decision["page_number"]
+            if decision["low_confidence"]:
+                low_confidence_pages.add(page_number)
+            if decision["label"] != "figure" or decision["confidence"] < 0.5:
+                continue
+
+            confidence = decision["confidence"]
+            bbox = decision["bbox"]
+            caption = captions_by_id.get(decision["best_caption_id"] or "", {})
+            caption_text = caption.get("text")
+            figure_num = _normalized_figure_num(
+                caption_text, page_number, fallback_index, seen_figure_nums
             )
+            fallback_index += 1
+            safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", figure_num).strip("_") or f"p{page_number}_figure"
+            output_path = figures_dir / f"{safe_name}.png"
+            width, height = _crop_candidate(
+                pdf_path, page_number, bbox, output_path, doc=crop_doc
+            )
+
+            entry = {
+                "figure_num": figure_num,
+                "caption": caption_text,
+                "file_path": str(output_path.resolve().relative_to(paper_dir.resolve())),
+                "page_number": page_number,
+                "bbox": bbox,
+                "quality": _quality_from_dims(width, height),
+                "extraction_engine": manifest.get("engine"),
+                "confidence": confidence,
+                "classifier_label": decision["label"],
+                "classifier_model": decision["classifier_model"],
+                "parent_figure_num": None,
+                "is_composite": decision["is_composite"],
+                "resolver_version": resolver_version,
+                "extraction_status": _status_from_confidence(confidence),
+                "rejection_reason": decision["rejection_reason"],
+                "best_caption_id": decision["best_caption_id"],
+            }
+            accepted.append(entry)
+            if decision["is_composite"]:
+                pending_subfigures.append((len(accepted) - 1, entry, output_path))
+    finally:
+        crop_doc.close()
+
+    # ── 3단계(병렬): composite 그림의 서브피겨 검출. 그림마다 VLM 호출이 1회씩 붙으므로
+    # 여기가 순차면 composite 개수만큼 지연이 쌓인다. 부모 entry는 이미 확정돼 있어
+    # 병렬로 돌려도 번호·파일명이 흔들리지 않는다.
+    if pending_subfigures:
+        children_lists = await asyncio.gather(
+            *[
+                _maybe_detect_subfigures(
+                    figure_num=entry["figure_num"],
+                    figure_path=path,
+                    paper_dir=paper_dir,
+                    bbox=entry["bbox"],
+                    page_number=entry["page_number"],
+                    caption_text=entry["caption"],
+                    confidence=entry["confidence"],
+                )
+                for _, entry, path in pending_subfigures
+            ]
+        )
+        # 부모 바로 뒤에 자식이 오도록 뒤에서부터 삽입한다(앞 인덱스가 밀리지 않게).
+        for (index, _, _), children in sorted(
+            zip(pending_subfigures, children_lists), key=lambda item: item[0][0], reverse=True
+        ):
+            if children:
+                accepted[index + 1 : index + 1] = children
 
     return {
         "figures": accepted,

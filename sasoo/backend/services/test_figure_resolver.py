@@ -45,7 +45,7 @@ class MaybeSelectCandidateCallInteractionTests(unittest.IsolatedAsyncioTestCase)
             with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), \
                  patch("services.figure_resolver.call_interaction", new=fake_call):
                 chosen, delta, model_used = await figure_resolver._maybe_select_candidate(
-                    group, page, {}, paper_dir, "resolver-v1",
+                    group, page, {}, figure_resolver._RasterCache(paper_dir), "resolver-v1",
                 )
 
             fake_call.assert_awaited_once()
@@ -79,7 +79,7 @@ class MaybeSelectCandidateCallInteractionTests(unittest.IsolatedAsyncioTestCase)
             with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), \
                  patch("services.figure_resolver.call_interaction", new=fake_call):
                 chosen, delta, model_used = await figure_resolver._maybe_select_candidate(
-                    group, page, {}, paper_dir, "resolver-v1",
+                    group, page, {}, figure_resolver._RasterCache(paper_dir), "resolver-v1",
                 )
 
             self.assertEqual(delta, 0.0)
@@ -103,7 +103,7 @@ class MaybeSelectCandidateCallInteractionTests(unittest.IsolatedAsyncioTestCase)
                 os.environ.pop("GEMINI_API_KEY", None)
                 with patch("services.figure_resolver.call_interaction", new=fake_call):
                     chosen, delta, model_used = await figure_resolver._maybe_select_candidate(
-                        group, page, {}, paper_dir, "resolver-v1",
+                        group, page, {}, figure_resolver._RasterCache(paper_dir), "resolver-v1",
                     )
 
             fake_call.assert_not_awaited()
@@ -141,7 +141,7 @@ class MaybeRerankCaptionCallInteractionTests(unittest.IsolatedAsyncioTestCase):
             with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), \
                  patch("services.figure_resolver.call_interaction", new=fake_call):
                 selected, delta, model_used = await figure_resolver._maybe_rerank_caption(
-                    candidate, page, captions_by_id, paper_dir, "resolver-v1",
+                    candidate, page, captions_by_id, figure_resolver._RasterCache(paper_dir), "resolver-v1",
                 )
 
             fake_call.assert_awaited_once()
@@ -162,3 +162,130 @@ class MaybeRerankCaptionCallInteractionTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ResolveConcurrencyAndOrderingTests(unittest.IsolatedAsyncioTestCase):
+    """resolve_figure_candidates 병렬화의 두 계약을 고정한다.
+
+    (1) 그룹별 VLM 판정이 실제로 동시에 나간다(순차 루프였다면 최대 동시 1).
+    (2) 그림 번호·파일명·출력 순서는 후보 그룹 원래 순서를 그대로 따른다 —
+        병렬화가 순서를 흔들면 같은 논문을 다시 분석할 때 그림 번호가 바뀐다.
+    """
+
+    def _manifest(self, paper_dir: Path, pages: int):
+        import fitz
+
+        pdf_path = paper_dir / "sample.pdf"
+        doc = fitz.open()
+        for _ in range(pages):
+            doc.new_page(width=300, height=400)
+        doc.save(str(pdf_path))
+        doc.close()
+
+        manifest_pages = []
+        captions = []
+        candidates = []
+        for page_number in range(1, pages + 1):
+            raster_rel = f".page_rasters/page_{page_number}.png"
+            _make_png(paper_dir / raster_rel, size=(300, 400))
+            manifest_pages.append(
+                {
+                    "page_number": page_number,
+                    "page_size": {"width": 300.0, "height": 400.0},
+                    "raster_path": raster_rel,
+                }
+            )
+            caption_id = f"cap:{page_number}"
+            captions.append(
+                {
+                    "id": caption_id,
+                    "text": f"Figure {page_number}: sample caption",
+                    "bbox": [20.0, 20.0, 280.0, 40.0],
+                    "linked_content_id": None,
+                }
+            )
+            # 그룹당 후보 2개 -> _needs_candidate_recheck가 True -> VLM 판정이 걸린다.
+            for n in range(2):
+                candidates.append(
+                    {
+                        "id": f"figcand:p{page_number}:n{n}",
+                        "page_number": page_number,
+                        "bbox": [30.0 + n, 60.0, 270.0, 340.0],
+                        "source_kind": "pymupdf_image",
+                        "linked_caption_ids": [caption_id],
+                        "best_caption_id": caption_id,
+                        "needs_vlm_rerank": False,
+                    }
+                )
+        return pdf_path, {
+            "engine": "gemini",
+            "pages": manifest_pages,
+            "captions": captions,
+            "figure_candidates": candidates,
+        }
+
+    async def test_vlm_decisions_run_concurrently_and_order_is_preserved(self) -> None:
+        import asyncio
+
+        pages = 6
+        inflight = {"now": 0, "max": 0}
+
+        async def fake_call(contents, **kwargs):
+            inflight["now"] += 1
+            inflight["max"] = max(inflight["max"], inflight["now"])
+            try:
+                await asyncio.sleep(0.02)
+            finally:
+                inflight["now"] -= 1
+            return {
+                "text": '{"selected_candidate_id": "none", "confidence": 0.05}',
+                "model": MODEL_FLASH_HQ,
+                "tokens_in": 1,
+                "tokens_out": 1,
+            }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            paper_dir = Path(tmp_dir)
+            pdf_path, manifest = self._manifest(paper_dir, pages)
+
+            with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), \
+                 patch("services.figure_resolver.call_interaction", new=fake_call), \
+                 patch("services.figure_resolver._maybe_detect_subfigures", new=AsyncMock(return_value=[])):
+                result = await figure_resolver.resolve_figure_candidates(
+                    manifest,
+                    paper_dir=paper_dir,
+                    pdf_path=pdf_path,
+                    resolver_version="resolver-v1",
+                )
+
+            self.assertGreater(inflight["max"], 1, "VLM 판정이 여전히 순차로 나가고 있다")
+
+            figures = result["figures"]
+            self.assertEqual(len(figures), pages)
+            # 출력 순서 = 후보 그룹 순서(페이지 오름차순)
+            self.assertEqual([f["page_number"] for f in figures], list(range(1, pages + 1)))
+            # 캡션에서 뽑은 그림 번호가 페이지 순서대로 부여된다
+            self.assertEqual(
+                [f["figure_num"] for f in figures],
+                [f"Fig. {n}" for n in range(1, pages + 1)],
+            )
+            # 크롭 파일이 실제로 그림 번호대로 쓰였다
+            for figure in figures:
+                self.assertTrue((paper_dir / figure["file_path"]).exists())
+
+    async def test_page_raster_read_once_per_page(self) -> None:
+        """같은 페이지에 VLM 호출이 여러 번 걸려도 래스터는 페이지당 1회만 읽는다."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            paper_dir = Path(tmp_dir)
+            raster_rel = "pages/page_1.png"
+            _make_png(paper_dir / raster_rel)
+            page = {"page_number": 1, "page_size": {"width": 300.0, "height": 400.0},
+                    "raster_path": raster_rel}
+
+            cache = figure_resolver._RasterCache(paper_dir)
+            first = cache.get(page)
+            (paper_dir / raster_rel).unlink()  # 파일을 지워도 캐시가 살아 있어야 한다
+            second = cache.get(page)
+
+            self.assertIsNotNone(first)
+            self.assertEqual(first, second)

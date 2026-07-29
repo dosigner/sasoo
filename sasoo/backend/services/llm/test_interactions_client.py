@@ -1,4 +1,5 @@
 import asyncio
+import os
 import threading
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -83,6 +84,76 @@ def test_call_interaction_retries_on_error():
         result = asyncio.run(call_interaction("재시도", lane="pipeline"))
     assert result["text"] == "결과"
     assert fake_client.interactions.create.call_count == 3
+
+
+class _FakeApiError(Exception):
+    """google-genai의 ClientError/ServerError를 흉내낸다 — 판정 근거는 int인 .code."""
+
+    def __init__(self, code):
+        super().__init__(f"{code} error")
+        self.code = code
+
+
+def test_call_interaction_does_not_retry_non_retryable_status():
+    """400(저작권 필터 등)은 몇 번 보내도 같은 응답이다 — 1회로 끝내야 한다.
+
+    기존에는 400도 3회 시도 + 10초 대기를 했고, 상위 gemini_parser의 페이지 재시도까지
+    곱해져 실패 페이지 하나당 API 6회 + 순수 대기 20초를 버렸다.
+    """
+    fake_client = MagicMock()
+    fake_client.interactions.create.side_effect = _FakeApiError(400)
+
+    with patch("services.llm.interactions_client._get_client", return_value=fake_client), \
+         patch("services.llm.interactions_client._RETRY_DELAYS", [0, 0]):
+        with pytest.raises(RuntimeError, match="non-retryable"):
+            asyncio.run(call_interaction("필터", lane="pipeline"))
+
+    assert fake_client.interactions.create.call_count == 1
+
+
+@pytest.mark.parametrize("code", [429, 500, 503, 408])
+def test_call_interaction_retries_transient_status(code):
+    """쿼터(429)·서버(5xx)·타임아웃(408)은 시간이 지나면 풀리므로 계속 재시도한다."""
+    fake_client = MagicMock()
+    fake_client.interactions.create.side_effect = [
+        _FakeApiError(code), _FakeApiError(code), _fake_interaction(),
+    ]
+
+    with patch("services.llm.interactions_client._get_client", return_value=fake_client), \
+         patch("services.llm.interactions_client._RETRY_DELAYS", [0, 0]):
+        result = asyncio.run(call_interaction("일시 오류", lane="pipeline"))
+
+    assert result["text"] == "결과"
+    assert fake_client.interactions.create.call_count == 3
+
+
+def test_call_interaction_releases_pipeline_sem_while_backing_off():
+    """백오프 대기 중에는 pipeline 세마포어 슬롯을 반납해야 한다.
+
+    예전에는 _sync_call 안의 time.sleep이 슬롯을 쥔 채 잠들어, 4개뿐인 동시 호출
+    슬롯 하나가 대기 시간 내내 놀았다. 재시도 루프가 코루틴 레벨로 올라왔으므로
+    대기 중 세마포어 값이 원상 복구돼 있어야 한다.
+    """
+    from services.concurrency import PIPELINE_LLM_CONCURRENCY, pipeline_llm_sem
+
+    observed: list[int] = []
+
+    async def _probe(delay):
+        # 백오프 대기 시점에 세마포어가 비어 있는지(=슬롯이 반납됐는지) 관찰한다.
+        observed.append(pipeline_llm_sem()._value)
+
+    fake_client = MagicMock()
+    fake_client.interactions.create.side_effect = [_FakeApiError(503), _fake_interaction()]
+
+    async def _run():
+        with patch("services.llm.interactions_client._get_client", return_value=fake_client), \
+             patch("services.llm.interactions_client.asyncio.sleep", _probe):
+            return await call_interaction("백오프", lane="pipeline")
+
+    result = asyncio.run(_run())
+
+    assert result["text"] == "결과"
+    assert observed == [PIPELINE_LLM_CONCURRENCY], "백오프 중 세마포어 슬롯이 반납되지 않았다"
 
 
 def test_call_interaction_store_false_with_previous_id_raises():
@@ -306,7 +377,15 @@ def test_upload_pdf_for_paper_cache_hit_skips_upload():
     fake_execute_update.assert_not_called()
 
 
-def test_upload_pdf_for_paper_expired_reuploads_and_updates():
+def _write_pdf(tmp_path, name="fake.pdf"):
+    """실제 파일을 만든다 — 업로드가 경로가 아니라 열린 파일 객체를 넘기므로 존재해야 한다."""
+    path = tmp_path / name
+    path.write_bytes(b"%PDF-1.4 fake")
+    return str(path)
+
+
+def test_upload_pdf_for_paper_expired_reuploads_and_updates(tmp_path):
+    pdf_path = _write_pdf(tmp_path)
     past_expiry = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
     fake_fetch_one = AsyncMock(return_value=_paper_row(uri="uri-expired", expires_at=past_expiry))
     fake_execute_update = AsyncMock()
@@ -316,17 +395,20 @@ def test_upload_pdf_for_paper_expired_reuploads_and_updates():
     with patch("models.database.fetch_one", fake_fetch_one), \
          patch("models.database.execute_update", fake_execute_update), \
          patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        uri = asyncio.run(upload_pdf_for_paper(2, "/tmp/fake.pdf"))
+        uri = asyncio.run(upload_pdf_for_paper(2, pdf_path))
 
     assert uri == "uri-new"
-    fake_client.files.upload.assert_called_once_with(file="/tmp/fake.pdf")
+    fake_client.files.upload.assert_called_once()
+    kwargs = fake_client.files.upload.call_args.kwargs
+    assert kwargs["config"]["mime_type"] == "application/pdf"
     fake_execute_update.assert_called_once()
     update_args = fake_execute_update.call_args.args[1]
     assert update_args[0] == "uri-new"
     assert update_args[2] == 2
 
 
-def test_upload_pdf_for_paper_no_cache_uploads_and_updates():
+def test_upload_pdf_for_paper_no_cache_uploads_and_updates(tmp_path):
+    pdf_path = _write_pdf(tmp_path)
     fake_fetch_one = AsyncMock(return_value=None)
     fake_execute_update = AsyncMock()
     fake_client = MagicMock()
@@ -335,11 +417,39 @@ def test_upload_pdf_for_paper_no_cache_uploads_and_updates():
     with patch("models.database.fetch_one", fake_fetch_one), \
          patch("models.database.execute_update", fake_execute_update), \
          patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        uri = asyncio.run(upload_pdf_for_paper(3, "/tmp/fake.pdf"))
+        uri = asyncio.run(upload_pdf_for_paper(3, pdf_path))
 
     assert uri == "uri-fresh"
-    fake_client.files.upload.assert_called_once_with(file="/tmp/fake.pdf")
+    fake_client.files.upload.assert_called_once()
     fake_execute_update.assert_called_once()
+
+
+def test_upload_pdf_for_paper_non_ascii_filename_passes_file_object(tmp_path):
+    """한글 파일명 회귀 방지.
+
+    경로를 넘기면 SDK가 os.path.basename을 X-Goog-Upload-File-Name 헤더에 싣고
+    (google/genai/_extra_utils.py), HTTP 헤더는 ASCII만 담을 수 있어 한글이면
+    'ascii' codec can't encode로 죽는다 → pdf_uri=None → 분석 5단계가 논문 전문을
+    매번 재전송한다. 열린 파일 객체를 넘겨 그 헤더 분기 자체를 타지 않아야 한다.
+    """
+    pdf_path = _write_pdf(tmp_path, "2026-06-06_참고논문_OAM.pdf")
+    fake_fetch_one = AsyncMock(return_value=None)
+    fake_execute_update = AsyncMock()
+    fake_client = MagicMock()
+    fake_client.files.upload.return_value = SimpleNamespace(uri="uri-korean")
+
+    with patch("models.database.fetch_one", fake_fetch_one), \
+         patch("models.database.execute_update", fake_execute_update), \
+         patch("services.llm.interactions_client._get_client", return_value=fake_client):
+        uri = asyncio.run(upload_pdf_for_paper(7, pdf_path))
+
+    assert uri == "uri-korean"
+    kwargs = fake_client.files.upload.call_args.kwargs
+    # 경로가 아니라 읽기 가능한 파일 객체여야 한다(헤더 분기 회피의 핵심).
+    assert not isinstance(kwargs["file"], (str, os.PathLike))
+    assert hasattr(kwargs["file"], "read")
+    # 원본 한글 이름은 JSON 본문으로 가는 display_name에 보존된다.
+    assert kwargs["config"]["display_name"] == "2026-06-06_참고논문_OAM.pdf"
 
 
 class _FakePapersTable:
@@ -366,7 +476,7 @@ class _FakePapersTable:
         return 1
 
 
-def test_upload_pdf_for_paper_concurrent_calls_upload_once():
+def test_upload_pdf_for_paper_concurrent_calls_upload_once(tmp_path):
     """동시 호출 시 두 번째 호출은 락 대기 후 캐시를 재확인하고 업로드를 건너뛰어야 한다.
 
     파일 업로드(스레드풀에서 실행)를 threading.Event로 실제 블로킹시켜, 두 번째
@@ -374,12 +484,13 @@ def test_upload_pdf_for_paper_concurrent_calls_upload_once():
     (타이밍에 의존하는 레이스 대신 결정적으로 동시성을 재현).
     """
     interactions_client._upload_locks.clear()
+    pdf_path = _write_pdf(tmp_path)
 
     started = threading.Event()
     proceed = threading.Event()
     table = _FakePapersTable()
 
-    def fake_upload(file):
+    def fake_upload(file, config=None):
         started.set()
         assert proceed.wait(timeout=2), "두 번째 호출이 락 대기에 들어가지 않았다"
         return SimpleNamespace(uri="uri-concurrent")
@@ -388,14 +499,14 @@ def test_upload_pdf_for_paper_concurrent_calls_upload_once():
     fake_client.files.upload.side_effect = fake_upload
 
     async def _run_concurrently():
-        t1 = asyncio.create_task(upload_pdf_for_paper(4, "/tmp/fake.pdf"))
+        t1 = asyncio.create_task(upload_pdf_for_paper(4, pdf_path))
         for _ in range(200):
             if started.is_set():
                 break
             await asyncio.sleep(0.01)
         assert started.is_set(), "첫 번째 호출이 업로드를 시작하지 않았다"
 
-        t2 = asyncio.create_task(upload_pdf_for_paper(4, "/tmp/fake.pdf"))
+        t2 = asyncio.create_task(upload_pdf_for_paper(4, pdf_path))
         # t2가 락 획득을 시도하고 대기 상태로 들어갈 시간을 준다.
         await asyncio.sleep(0.1)
         proceed.set()
@@ -407,7 +518,7 @@ def test_upload_pdf_for_paper_concurrent_calls_upload_once():
         results = asyncio.run(_run_concurrently())
 
     assert results == ["uri-concurrent", "uri-concurrent"]
-    fake_client.files.upload.assert_called_once_with(file="/tmp/fake.pdf")
+    fake_client.files.upload.assert_called_once()
     assert table.update_calls == 1
 
 

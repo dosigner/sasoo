@@ -59,7 +59,9 @@ def _env_str(name: str, default: str) -> str:
 #   SASOO_GEMINI_PARSER_DPI=180 SASOO_GEMINI_PARSER_THINKING=low \
 #   SASOO_GEMINI_PARSER_MEDIA_RESOLUTION= SASOO_GEMINI_PARSER_ELEMENTS=full
 RENDER_DPI = _env_int("SASOO_GEMINI_PARSER_DPI", 150)  # 페이지 래스터화 해상도(하향: 150)
-PAGE_CONCURRENCY = _env_int("SASOO_GEMINI_PARSER_PAGE_CONCURRENCY", 4)
+# 4 -> 8. 실효 동시성은 이 값과 services.concurrency.PIPELINE_LLM_CONCURRENCY 중 작은 쪽이라
+# 둘을 같이 올려야 의미가 있다(한쪽만 올리면 다른 쪽 세마포어에서 그대로 막힌다).
+PAGE_CONCURRENCY = _env_int("SASOO_GEMINI_PARSER_PAGE_CONCURRENCY", 8)
 _PAGE_RETRIES = 1              # 페이지 호출 실패 시 추가 재시도 횟수(총 2회 시도)
 # thinking 토큰은 출력 단가로 과금됨. ThinkingLevel 허용값 minimal<low<medium<high 중 최저치.
 _THINKING_LEVEL = _env_str("SASOO_GEMINI_PARSER_THINKING", "minimal")
@@ -354,6 +356,46 @@ async def _process_page(
         raise GeminiParserError(f"page {page_index + 1} failed after retry: {last_err}")
 
 
+def _partial_failure_budget(page_count: int) -> int:
+    """부분 실패를 감내할 페이지 수 상한(문서 길이의 20%, 최소 1).
+
+    소수 페이지(저작권 필터 등)는 보충하고 넘어가되, 이 상한을 넘으면 시스템성 문제로 보고
+    예전처럼 문서 전체를 다른 엔진으로 폴백한다. 비율로만 잡으면 짧은 문서에서 절반이
+    깨져도 통과하므로(3페이지 중 2페이지 등) 바닥을 1로 고정한다.
+
+    예: 3p -> 1, 9p -> 1, 20p -> 4, 30p -> 6. 1페이지 문서는 0(전멸이므로 항상 폴백).
+    """
+    if page_count <= 1:
+        return 0
+    return max(1, page_count // 5)
+
+
+def _fallback_page_texts(pdf_path: Path, page_numbers: list[int]) -> list[tuple[int, str]]:
+    """실패 페이지를 PyMuPDF 축자 텍스트로 메운다. (page_number, markdown) 목록 반환.
+
+    구조(표/수식/읽기순서)는 복원되지 않는다 — 목적은 본문에 구멍을 내지 않는 것이다.
+    추출 자체가 실패하면 그 페이지는 조용히 건너뛴다(보충 실패가 문서를 죽이면 안 된다).
+    """
+    if not page_numbers:
+        return []
+    filled: list[tuple[int, str]] = []
+    try:
+        doc = fitz.open(str(pdf_path))
+    except Exception:  # noqa: BLE001 - 보충은 best-effort
+        return []
+    try:
+        for page_number in page_numbers:
+            try:
+                text = doc[page_number - 1].get_text() or ""
+            except Exception:  # noqa: BLE001
+                continue
+            if text.strip():
+                filled.append((page_number, text.strip()))
+    finally:
+        doc.close()
+    return filled
+
+
 def _open_metadata(pdf_path: Path) -> tuple[int, str | None, str | None]:
     # F1: fitz.open이 손상/암호화 PDF를 거부하면 raw fitz/RuntimeError가 새어나가
     # ensure_visual_artifacts의 폴백(except OdlParserError)을 우회한다. 엔진 계약대로
@@ -404,16 +446,37 @@ async def run_convert_gemini(
         doc_pool.put_nowait(_doc)
 
     try:
-        # F5: 시스템성 오류(bad key/쿼터 소진 등) fail-fast. 페이지 1을 먼저 단독 시도하고,
-        # 실패하면 나머지 페이지를 팬아웃하지 않고 즉시 중단한다(28p 논문에서 N×2회 헛호출을
-        # 페이지 1의 2회로 축소). 페이지 1이 성공해야만 나머지를 병렬 fan-out한다.
-        first = await _process_page(doc_pool, 0, page_sem, MODEL_VISUAL)  # 실패 시 GeminiParserError 전파
-        results: list[Any] = [first]
-        if page_count > 1:
+        # F5: 시스템성 오류(bad key/쿼터 소진 등) fail-fast. 단, 프로브를 "페이지 1 단독"이
+        # 아니라 "첫 웨이브 전체"로 잡는다.
+        #
+        # 예전에는 페이지 1이 끝날 때까지 나머지가 전부 대기해, 정상 케이스에서 항상 한 페이지
+        # 분량(5~15초)이 직렬로 낭비됐다. 첫 웨이브를 통째로 프로브로 쓰면 그 시간에 8페이지가
+        # 실제 작업을 하므로 happy path의 직렬 구간이 사라진다.
+        #
+        # fail-fast 성질은 유지된다: bad key/쿼터 소진이면 웨이브가 전멸하므로 나머지 페이지를
+        # 팬아웃하지 않는다. 대신 시스템성 실패 시 헛호출이 2회 -> 웨이브 크기만큼 늘어난다.
+        # 이는 감수한다 — 재시도 정책 정비 이후 401/403/400은 재시도 없이 1회로 끝나므로
+        # 그 헛호출들이 백오프 없이 즉시 떨어진다.
+        probe_size = max(1, min(PAGE_CONCURRENCY, page_count))
+        probe = await asyncio.gather(
+            *[
+                _process_page(doc_pool, page_index, page_sem, MODEL_VISUAL)
+                for page_index in range(probe_size)
+            ],
+            return_exceptions=True,
+        )
+        if all(isinstance(item, BaseException) for item in probe):
+            first_error = probe[0]
+            raise GeminiParserError(
+                f"first {probe_size} page(s) all failed (systemic); "
+                f"aborting before fan-out: {first_error}"
+            ) from first_error
+        results: list[Any] = list(probe)
+        if page_count > probe_size:
             rest = await asyncio.gather(
                 *[
                     _process_page(doc_pool, page_index, page_sem, MODEL_VISUAL)
-                    for page_index in range(1, page_count)
+                    for page_index in range(probe_size, page_count)
                 ],
                 return_exceptions=True,
             )
@@ -424,15 +487,21 @@ async def run_convert_gemini(
     # F2: 성공 페이지는 이미 API에 과금됐다. 부분 실패로 문서를 중단(raise)하더라도 그 시점까지의
     # 실제 지출이 원장에 남도록, totals를 raise 이전에 계산해 usage_out에 반영한다.
     kids: list[dict[str, Any]] = []
-    page_markdowns: list[str] = []
+    # (page_number, markdown) 쌍으로 들고 다닌다. 예전에는 성공분만 리스트에 담고
+    # 아래에서 enumerate로 번호를 다시 매겨서, 중간 페이지가 빠지면 "--- Page N ---"
+    # 마커가 통째로 밀렸다(실패=raise라 가려져 있던 잠복 버그). 부분 성공을 허용하는
+    # 순간 실제 문제가 되므로 실제 페이지 번호를 끝까지 유지한다.
+    page_markdowns: list[tuple[int, str]] = []
     totals = {"tokens_in": 0, "tokens_out": 0, "tokens_thought": 0, "cost_usd": 0.0}
     element_id = 0
     success_pages = 0
     errors: list[BaseException] = []
+    failed_pages: list[int] = []
     for page_index in range(page_count):
         item = results[page_index]
         if isinstance(item, BaseException):
             errors.append(item)
+            failed_pages.append(page_index + 1)
             continue
         nodes, page_markdown, usage = item
         success_pages += 1
@@ -440,7 +509,7 @@ async def run_convert_gemini(
             node["id"] = element_id
             element_id += 1
             kids.append(node)
-        page_markdowns.append(page_markdown)
+        page_markdowns.append((page_index + 1, page_markdown))
         totals["tokens_in"] += int(usage.get("tokens_in", 0) or 0)
         totals["tokens_out"] += int(usage.get("tokens_out", 0) or 0)
         totals["tokens_thought"] += int(usage.get("tokens_thought", 0) or 0)
@@ -458,28 +527,63 @@ async def run_convert_gemini(
                 "tokens_thought": totals["tokens_thought"],
                 "cost_usd": round(totals["cost_usd"], 8),
                 "partial": bool(errors),
+                "failed_pages": list(failed_pages),
             }
         )
 
-    if errors:
+    # 부분 실패 허용: 소수 페이지가 실패했다고 이미 성공(=과금)한 나머지를 통째로 버리고
+    # 다른 엔진으로 문서를 처음부터 다시 파싱하는 것은 낭비가 크다. 실측 로그에서
+    # 9페이지 중 1페이지가 저작권 필터 400에 걸려 9페이지 전부가 재파싱됐다.
+    # 저작권/recitation 400은 논문 PDF에서 상시 발생하는 정상 오류다.
+    #
+    # 임계값을 넘으면(=시스템성 문제로 보이면) 예전처럼 raise해서 엔진 폴백을 태운다.
+    if errors and (success_pages == 0 or len(errors) > _partial_failure_budget(page_count)):
         raise GeminiParserError(
             f"{len(errors)}/{page_count} page(s) failed; first error: {errors[0]}"
         )
+
+    if errors:
+        # 실패 페이지는 PyMuPDF 축자 텍스트로 메운다.
+        #
+        # 설계 노트: ODL로 메우지 않는다 — ODL은 페이지 단위 요청을 받지 못해 문서 전체를
+        # 다시 파싱해야 하고(JVM 기동 포함), 그러면 이 변경의 속도 이득이 통째로 사라진다.
+        # PyMuPDF는 이미 의존성이고 페이지 단위 추출이 즉시 끝난다.
+        #
+        # 메우는 목적은 "본문에 구멍을 내지 않는 것"이다. visual 단계가 gemini로 승격되면
+        # 이 markdown이 full_text가 되므로(_promote_text_from_visual), 페이지가 통째로
+        # 비면 인용 분석·심층 분석이 그 페이지를 아예 못 본다.
+        #
+        # 한계: 마크다운 구조(표/수식/읽기순서)와 캡션·이미지 요소는 복원되지 않는다.
+        # 그래서 실패 페이지를 root에 기록해 하류가 aggressive 재시도로 커버하게 한다.
+        filled = await loop.run_in_executor(
+            None, _fallback_page_texts, pdf_path, failed_pages
+        )
+        page_markdowns.extend(filled)
+        logger.warning(
+            "Gemini parser: %d/%d page(s) failed; PyMuPDF 텍스트로 보충 (pages=%s)",
+            len(errors), page_count, failed_pages,
+        )
+
+    page_markdowns.sort(key=lambda item: item[0])
 
     root: dict[str, Any] = {
         "title": meta_title,
         "author": meta_author,
         "number of pages": page_count,
         "kids": kids,
+        # 하류(build_document_manifest -> _build_resolver_v1_manifest)가 이 페이지들을
+        # suspect로 올려 aggressive 후보 재생성을 태운다. _flatten_elements는 "kids"만
+        # 훑으므로 이 키가 추가돼도 트리 조립에는 영향이 없다.
+        "parser_failed_pages": list(failed_pages),
     }
     # 페이지 경계에 "--- Page N ---" 마커를 넣는다(ODL _build_plain_text full_text 포맷과 정합).
     # slim 모드에서 이 markdown이 manifest full_text로 채택되면(document_manifest의 gemini 분기)
     # document_audit._page_text_map의 페이지별 텍스트 분리가 그대로 동작한다.
     markdown_parts: list[str] = []
-    for page_index, md in enumerate(page_markdowns):
+    for page_number, md in page_markdowns:
         if not md:
             continue
-        markdown_parts.append(f"--- Page {page_index + 1} ---\n\n{md}")
+        markdown_parts.append(f"--- Page {page_number} ---\n\n{md}")
     markdown_text = "\n\n".join(markdown_parts).strip()
 
     # usage_out은 위(raise 이전)에서 이미 성공 페이지 기준으로 채워졌다(F2). 여기서 다시

@@ -4,6 +4,7 @@ Table resolver for resolver_v1.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import csv
 import json
@@ -227,23 +228,23 @@ async def resolve_table_candidates(
         if isinstance(page, int)
     }
 
-    for candidate in sorted(
+    ordered_candidates = sorted(
         [
             item
             for item in manifest.get("table_candidates", [])
             if not page_numbers or item.get("page_number") in page_numbers
         ],
         key=lambda item: (item.get("page_number", 9999), (item.get("bbox") or [0, 0, 0, 0])[1], (item.get("bbox") or [0, 0, 0, 0])[0]),
-    ):
+    )
+
+    # ── 1단계(순수 계산): 후보별로 grid·신뢰도·VLM 수리 필요 여부를 먼저 확정한다.
+    # 이 판정에는 LLM이 필요 없다 — 그래서 수리 호출만 따로 떼어 병렬로 돌릴 수 있다.
+    prepared: list[dict[str, Any]] = []
+    for candidate in ordered_candidates:
         page_number = candidate.get("page_number")
         grid, preprocessing_notes = _preprocess_grid(_normalize_grid(candidate.get("text_grid")))
         parse_method = candidate.get("source_kind") or "hybrid"
         confidence = 0.6 if _has_meaningful_grid(grid) else 0.38
-        classifier_model = "heuristic"
-        plausible_ruled_bbox = bool(candidate.get("plausible_ruled_bbox"))
-        repair_attempted = False
-        repair_reason: str | None = None
-        repair_confidence: float | None = None
 
         if parse_method == "hybrid":
             confidence += 0.18
@@ -260,14 +261,51 @@ async def resolve_table_candidates(
             suspect_pages=suspect_pages,
             grid=grid,
         )
-
         needs_vlm_repair = bool(unresolved_reasons) and (
-            plausible_ruled_bbox
+            bool(candidate.get("plausible_ruled_bbox"))
             or bool(candidate.get("best_caption_id"))
             or (isinstance(page_number, int) and page_number in suspect_pages)
         )
+        prepared.append(
+            {
+                "candidate": candidate,
+                "page_number": page_number,
+                "grid": grid,
+                "preprocessing_notes": preprocessing_notes,
+                "parse_method": parse_method,
+                "confidence": confidence,
+                "unresolved_reasons": unresolved_reasons,
+                "needs_vlm_repair": needs_vlm_repair,
+                "skip": not _has_meaningful_grid(grid) and not needs_vlm_repair,
+            }
+        )
 
-        if not _has_meaningful_grid(grid) and not needs_vlm_repair:
+    # ── 2단계(병렬): VLM 수리. 후보끼리 독립이라 동시에 돌린다. 예전에는 이 호출이
+    # 메인 루프 안에서 순차로 await돼, 수리가 필요한 표 수만큼 지연이 그대로 쌓였다.
+    repair_targets = [item for item in prepared if item["needs_vlm_repair"] and not item["skip"]]
+    if repair_targets:
+        repair_results = await asyncio.gather(
+            *[_repair_with_vlm(item["candidate"], manifest, paper_dir) for item in repair_targets]
+        )
+        for item, result in zip(repair_targets, repair_results):
+            item["repair_result"] = result
+
+    # ── 3단계(순차): 표 번호 부여와 파일 쓰기. 원래 순서를 지켜야 번호·파일명이 이전과 같다.
+    for item in prepared:
+        candidate = item["candidate"]
+        page_number = item["page_number"]
+        grid = item["grid"]
+        preprocessing_notes = item["preprocessing_notes"]
+        parse_method = item["parse_method"]
+        confidence = item["confidence"]
+        unresolved_reasons = item["unresolved_reasons"]
+        needs_vlm_repair = item["needs_vlm_repair"]
+        classifier_model = "heuristic"
+        repair_attempted = False
+        repair_reason: str | None = None
+        repair_confidence: float | None = None
+
+        if item["skip"]:
             if isinstance(page_number, int):
                 low_confidence_pages.add(page_number)
             continue
@@ -275,7 +313,7 @@ async def resolve_table_candidates(
         if needs_vlm_repair:
             repair_attempted = True
             repair_reason = " | ".join(dict.fromkeys(preprocessing_notes + unresolved_reasons)) or None
-            repaired_grid, model_used, repair_confidence_value = await _repair_with_vlm(candidate, manifest, paper_dir)
+            repaired_grid, model_used, repair_confidence_value = item["repair_result"]
             repair_confidence = repair_confidence_value
             if _has_meaningful_grid(repaired_grid):
                 grid = repaired_grid

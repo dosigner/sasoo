@@ -712,6 +712,11 @@ def build_document_manifest(
         "json_file": f"{pdf_path.stem}.json",
         "metadata": metadata,
         "full_text": full_text,
+        # gemini 파서가 일부 페이지를 못 읽고 PyMuPDF 텍스트로 메운 경우 그 페이지 번호들.
+        # 해당 페이지엔 caption/image 요소가 없으므로 하류가 aggressive 후보 재생성으로 덮는다.
+        "parser_failed_pages": [
+            page for page in (root.get("parser_failed_pages") or []) if isinstance(page, int)
+        ],
         "pages": [pages[page_number] for page_number in sorted(pages)],
         "captions": captions,
         "figure_candidates": [],

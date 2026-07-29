@@ -6,7 +6,9 @@ generate_content을 대체한다. types.* 래퍼 없이 plain dict만 사용.
 import asyncio
 import logging
 import os
+import threading
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Literal
 
 from services.concurrency import CHAT_EXECUTOR, PIPELINE_EXECUTOR, pipeline_llm_sem
@@ -51,7 +53,39 @@ _SYSTEM_INSTRUCTION_KO = (
 _RETRY_DELAYS = [2, 8]  # 3회 시도, 지수 백오프
 _FILE_TTL = timedelta(hours=47)  # Files API 48h에서 1h 여유
 
+# 4xx 중 시간이 지나면 풀리는 것들. 나머지 4xx(400 잘못된 요청·저작권 필터, 401/403 인증,
+# 404 없음 등)는 같은 입력을 몇 번 보내도 같은 응답이 온다 — 재시도는 지연만 만든다.
+_RETRYABLE_CLIENT_STATUS = frozenset({408, 429})
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """재시도로 풀릴 수 있는 오류인지 판정한다.
+
+    google-genai는 4xx를 ClientError, 5xx를 ServerError로 올리며 둘 다 int인 .code를 갖는다
+    (google/genai/errors.py). 상태 코드가 없는 예외(네트워크 끊김, SDK 내부 오류 등)는
+    판단 근거가 없으므로 기존 동작 그대로 재시도한다 — 보수적으로 간다.
+
+    실사용 근거: 논문 PDF를 비전 모델에 넣으면 400 "copyright/recitation" 필터가 상시
+    발생하는데, 기존 코드는 이를 6회(페이지 재시도 2 × 내부 재시도 3) 반복하며 20초를
+    순수 대기로 버렸다.
+    """
+    code = getattr(exc, "code", None)
+    if isinstance(code, bool) or not isinstance(code, int):
+        return True
+    if code in _RETRYABLE_CLIENT_STATUS:
+        return True
+    return not (400 <= code < 500)
+
 _upload_locks: dict[int, asyncio.Lock] = {}
+
+
+# genai.Client(내부 httpx.Client)를 호출마다 새로 만들면 요청마다 TLS 핸드셰이크가 붙는다.
+# 논문 1편에 40~80회 호출이 나가므로 그 누적이 실측 가능한 수준이다(호출당 100~300ms).
+# SDK는 자격증명 접근을 threading.Lock으로 보호하며 여러 스레드 공유를 전제로 설계돼 있고
+# (google/genai/_api_client.py의 _sync_auth_lock), 하부 httpx.Client도 스레드 안전이다.
+# 키가 런타임에 바뀔 수 있으므로(설정 화면) api_key를 캐시 키로 둔다.
+_clients: dict[str, object] = {}
+_clients_lock = threading.Lock()
 
 
 def _get_client():
@@ -59,7 +93,15 @@ def _get_client():
     api_key = os.getenv("GEMINI_API_KEY", "")
     if not api_key:
         raise ValueError("GEMINI_API_KEY not set")
-    return genai.Client(api_key=api_key)
+    client = _clients.get(api_key)
+    if client is None:
+        # double-checked locking: 여러 실행기 스레드가 동시에 첫 접근할 수 있다.
+        with _clients_lock:
+            client = _clients.get(api_key)
+            if client is None:
+                client = genai.Client(api_key=api_key)
+                _clients[api_key] = client
+    return client
 
 
 def _apply_media_resolution(prompt, media_resolution: str | None):
@@ -97,7 +139,7 @@ async def call_interaction(
     if not store and previous_interaction_id:
         raise ValueError("previous_interaction_id requires store=True")
 
-    def _sync_call():
+    def _sync_call_once():
         client = _get_client()
         kwargs: dict = {
             "model": model,
@@ -117,33 +159,39 @@ async def call_interaction(
                 "schema": response_schema,
             }
 
-        last_err: Exception | None = None
-        for attempt in range(len(_RETRY_DELAYS) + 1):
-            try:
-                interaction = client.interactions.create(**kwargs)
-                usage = getattr(interaction, "usage", None)
-                # VERIFY(확인됨): interactions.md.txt 기준 usage.total_input_tokens / total_output_tokens.
-                tokens_in = getattr(usage, "total_input_tokens", 0) or 0
-                # 라이브 실측: total_output_tokens는 thinking 미포함, 과금은
-                # 출력 단가 — 합산해 청구 기준으로 반환한다.
-                tokens_thought = getattr(usage, "total_thought_tokens", 0) or 0
-                tokens_out = (getattr(usage, "total_output_tokens", 0) or 0) + tokens_thought
-                return {
-                    "text": interaction.output_text or "",
-                    "model": model,
-                    "tokens_in": tokens_in,
-                    "tokens_out": tokens_out,
-                    "tokens_thought": tokens_thought,
-                    "interaction_id": getattr(interaction, "id", None),
-                }
-            except Exception as exc:  # noqa: BLE001 - 재시도 후 재던짐
-                last_err = exc
-                if attempt < len(_RETRY_DELAYS):
-                    import time
-                    time.sleep(_RETRY_DELAYS[attempt])
-        raise RuntimeError(f"Interactions API call failed after retries: {last_err}")
+        interaction = client.interactions.create(**kwargs)
+        usage = getattr(interaction, "usage", None)
+        # VERIFY(확인됨): interactions.md.txt 기준 usage.total_input_tokens / total_output_tokens.
+        tokens_in = getattr(usage, "total_input_tokens", 0) or 0
+        # 라이브 실측: total_output_tokens는 thinking 미포함, 과금은
+        # 출력 단가 — 합산해 청구 기준으로 반환한다.
+        tokens_thought = getattr(usage, "total_thought_tokens", 0) or 0
+        tokens_out = (getattr(usage, "total_output_tokens", 0) or 0) + tokens_thought
+        return {
+            "text": interaction.output_text or "",
+            "model": model,
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+            "tokens_thought": tokens_thought,
+            "interaction_id": getattr(interaction, "id", None),
+        }
 
-    return await _run_on_lane(lane, _sync_call)
+    # 재시도 루프는 코루틴 레벨에 둔다 — 백오프 대기가 asyncio.sleep이라 그동안
+    # pipeline_llm_sem 슬롯을 반납한다. 예전처럼 _sync_call 안에서 time.sleep을 돌면
+    # 잠자는 10초 내내 4개뿐인 동시 호출 슬롯 하나가 잠긴 채 놀았다.
+    last_err: BaseException | None = None
+    for attempt in range(len(_RETRY_DELAYS) + 1):
+        try:
+            return await _run_on_lane(lane, _sync_call_once)
+        except Exception as exc:  # noqa: BLE001 - 아래에서 분류 후 재던짐
+            last_err = exc
+            if not _is_retryable(exc):
+                raise RuntimeError(
+                    f"Interactions API call failed (non-retryable): {exc}"
+                ) from exc
+            if attempt < len(_RETRY_DELAYS):
+                await asyncio.sleep(_RETRY_DELAYS[attempt])
+    raise RuntimeError(f"Interactions API call failed after retries: {last_err}")
 
 
 async def stream_interaction(
@@ -300,7 +348,23 @@ async def upload_pdf_for_paper(paper_id: int, pdf_path: str) -> str:
 
         def _sync_upload():
             client = _get_client()
-            uploaded = client.files.upload(file=pdf_path)
+            # 경로(str/PathLike)를 넘기면 SDK가 파일명을 HTTP 헤더에 그대로 싣는다:
+            #   _extra_utils.prepare_resumable_upload:
+            #       http_options.headers['X-Goog-Upload-File-Name'] = os.path.basename(file)
+            # HTTP 헤더 값은 ASCII만 담을 수 있어 한글 파일명이면 무조건 죽는다
+            # ("'ascii' codec can't encode characters..."). 그러면 pdf_uri=None이 되어
+            # 분석 5단계가 PDF 참조 대신 논문 전문을 매번 재전송한다.
+            # 열린 파일 객체를 주면 SDK가 그 헤더 분기(isinstance(file, (str, os.PathLike)))를
+            # 아예 타지 않는다. 대신 파일 객체 경로에선 mime_type이 필수다.
+            # 원본 이름은 display_name으로 넘긴다 — 이건 JSON 본문(UTF-8)이라 한글이 안전하다.
+            with open(pdf_path, "rb") as handle:
+                uploaded = client.files.upload(
+                    file=handle,
+                    config={
+                        "mime_type": "application/pdf",
+                        "display_name": Path(pdf_path).name,
+                    },
+                )
             return uploaded.uri
 
         uri = await asyncio.get_running_loop().run_in_executor(PIPELINE_EXECUTOR, _sync_upload)
