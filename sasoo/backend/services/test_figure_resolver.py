@@ -349,13 +349,20 @@ class CaptionlessFigureSuppressionTests(unittest.IsolatedAsyncioTestCase):
                 )
         return result["figures"]
 
-    async def test_captionless_candidate_dropped_when_document_has_captions(self):
+    async def test_captionless_candidate_is_dropped(self):
         figures = await self._resolve(self._manifest(with_caption=True))
         nums = [f["figure_num"] for f in figures]
         self.assertEqual(nums, ["Fig. 1"], f"캡션 없는 후보가 그림으로 남았다: {nums}")
 
-    async def test_captionless_candidate_kept_when_document_has_no_captions(self):
-        """캡션 신호가 없는 문서에서는 캡션 없는 후보도 살려야 한다 — 안 그러면 그림이 0개가 된다."""
-        figures = await self._resolve(self._manifest(with_caption=False))
-        self.assertEqual(len(figures), 1, "캡션 0개 문서에서 그림이 전부 사라졌다")
-        self.assertTrue(figures[0]["figure_num"].startswith("p1_fig"))
+    async def test_captionless_candidate_dropped_even_without_any_caption(self):
+        """캡션이 하나도 없는 문서에서도 버린다 — 사용자 결정(2026-07-29).
+
+        예전에는 "문서에 캡션이 있을 때만 억제"하는 안전장치가 있었으나, 캡션 서식
+        정규화 이후 전 논문이 캡션을 충분히 잡아 그 분기가 한 번도 발동하지 않았다
+        (12편 결과가 전부 동일). 대신 전멸 시 경고 로그를 남긴다.
+        """
+        with self.assertLogs("services.figure_resolver", level="WARNING") as captured:
+            figures = await self._resolve(self._manifest(with_caption=False))
+        self.assertEqual(figures, [])
+        self.assertTrue(any("그림 0개" in line for line in captured.output),
+                        "전멸했는데 진단용 경고가 없다")
