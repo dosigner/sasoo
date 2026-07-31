@@ -10,16 +10,19 @@ import csv
 import json
 import os
 import re
+import unicodedata
 from io import StringIO
 from pathlib import Path
 from typing import Any
 
 from api.analysis_helpers import _clean_llm_json
 from services.llm.interactions_client import call_interaction
-from services.document_manifest import strip_caption_decoration
+from services.document_manifest import (
+    parse_table_label,
+    strip_caption_decoration,
+    table_int_to_roman,
+)
 from services.models import MODEL_FLASH_HQ
-
-TABLE_LABEL_PATTERN = re.compile(r"^\s*(?:Table|Tbl\.?)\s*(\d+[A-Za-z]?)\b", re.IGNORECASE)
 
 
 def _normalize_grid(grid: list[list[Any]] | None) -> list[list[str]]:
@@ -114,9 +117,15 @@ def _repair_reasons(
 
 
 def _table_num(caption_text: str | None, page_number: int, fallback_index: int, seen: set[str]) -> str:
-    match = TABLE_LABEL_PATTERN.match(strip_caption_decoration(caption_text))
-    if match:
-        base = f"Table {match.group(1).upper()}"
+    # 계약 6: 캡션 라벨 규칙만 넓히고 여기를 놔두면 캡션은 인정하면서 번호를 못 읽어
+    # "Table {index}"라는 가짜 이름이 붙는다. NFKC는 "Table\xa0I" 표기 때문에 필요하다.
+    normalized = unicodedata.normalize("NFKC", strip_caption_decoration(caption_text))
+    label = parse_table_label(normalized)
+    if label:
+        notation, number, suffix, _ = label
+        # 표기법은 원문을 따른다 — IEEE 논문에서 "Table VIII"이 "Table 8"로 바뀌면
+        # 사용자가 본문에서 그 표를 찾을 수 없다.
+        base = f"Table {table_int_to_roman(number)}" if notation == "roman" else f"Table {number}{suffix.upper()}"
     else:
         base = f"Table {fallback_index}"
     if base not in seen:

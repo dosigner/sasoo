@@ -15,7 +15,10 @@ from typing import Any, Iterable
 import fitz
 
 FIGURE_LABEL_PATTERN = re.compile(r"^\s*(?:Figure|Fig\.?)\s*(\d+[A-Za-z]?)\b", re.IGNORECASE)
-TABLE_LABEL_PATTERN = re.compile(r"^\s*(?:Table|Tbl\.?)\s*(\d+[A-Za-z]?)\b", re.IGNORECASE)
+# 표 라벨은 IEEE 계열이 로마 숫자를 쓴다(`Table I`~`Table VIII`). 아라비아·로마를 정규식
+# 하나로 안전하게 가르려 하면 빈 매칭이나 오탐이 생기므로, 라벨 토큰을 통째로 잡고
+# 형태 검증은 parse_table_label()에서 한다.
+TABLE_LABEL_PATTERN = re.compile(r"^\s*(?:Table|Tbl\.?)\s*([A-Za-z0-9]{1,7})\b", re.IGNORECASE)
 DOI_PATTERN = re.compile(r"10\.\d{4,}/[^\s]+")
 YEAR_PATTERN = re.compile(r"\b((?:19|20)\d{2})\b")
 PAGE_MARKER_PATTERN = re.compile(r"^\s*---\s*Page\s+\d+\s*---\s*$", re.IGNORECASE)
@@ -581,6 +584,53 @@ def _label_is_followed_by_caption_body(rest: str) -> bool:
     return not stripped[0].islower()
 
 
+# 표 번호로 실제 쓰이는 범위(I~XXXIX)만 인정한다. `[IVXLC]{1,6}`처럼 느슨하게 잡으면
+# "Table ILL-CONDITIONED ..."의 ILL이 로마 숫자로 통과한다.
+_ROMAN_TABLE_NUMERAL = re.compile(r"^X{0,3}(?:IX|IV|V?I{0,3})$")
+_ARABIC_TABLE_NUMERAL = re.compile(r"^(\d{1,2})([A-Za-z]?)$")
+_ROMAN_VALUES = {"I": 1, "V": 5, "X": 10}
+
+
+def _roman_to_int(token: str) -> int:
+    total = 0
+    highest = 0
+    for char in reversed(token):
+        value = _ROMAN_VALUES[char]
+        total += -value if value < highest else value
+        highest = max(highest, value)
+    return total
+
+
+def table_int_to_roman(value: int) -> str:
+    out: list[str] = []
+    for amount, numeral in ((10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")):
+        while value >= amount:
+            out.append(numeral)
+            value -= amount
+    return "".join(out)
+
+
+def parse_table_label(normalized_text: str) -> tuple[str, int, str, int] | None:
+    """문두의 표 라벨을 (표기법, 번호, 접미사, 매치 끝 오프셋)으로 판다.
+
+    입력은 `strip_caption_decoration` + NFKC를 **끝낸** 텍스트여야 한다. 오프셋을
+    돌려주므로 여기서 정규화를 하면 호출자의 문자열과 위치가 어긋난다.
+
+    로마 숫자는 **대문자만** 인정한다. 소문자까지 받으면 "Table iv shows ..." 같은
+    본문 언급뿐 아니라 "Table ill-conditioned ..."류가 라벨로 통과한다.
+    """
+    match = TABLE_LABEL_PATTERN.match(normalized_text)
+    if not match:
+        return None
+    token = match.group(1)
+    arabic = _ARABIC_TABLE_NUMERAL.match(token)
+    if arabic:
+        return ("arabic", int(arabic.group(1)), arabic.group(2), match.end())
+    if token and token == token.upper() and _ROMAN_TABLE_NUMERAL.match(token):
+        return ("roman", _roman_to_int(token), "", match.end())
+    return None
+
+
 def _caption_kind(text: str) -> str | None:
     # 라벨 패턴은 문두 매칭이라, 앞에 "**"가 하나만 붙어도 캡션으로 인식되지 않는다.
     # 그러면 그 문서는 figure 캡션이 0개가 되고, 캡션에 기대는 하류 로직(후보-캡션 연결,
@@ -593,9 +643,9 @@ def _caption_kind(text: str) -> str | None:
     figure_match = FIGURE_LABEL_PATTERN.match(normalized)
     if figure_match:
         return "figure" if _label_is_followed_by_caption_body(normalized[figure_match.end() :]) else None
-    table_match = TABLE_LABEL_PATTERN.match(normalized)
-    if table_match:
-        return "table" if _label_is_followed_by_caption_body(normalized[table_match.end() :]) else None
+    table_label = parse_table_label(normalized)
+    if table_label:
+        return "table" if _label_is_followed_by_caption_body(normalized[table_label[3] :]) else None
     return None
 
 
@@ -605,9 +655,12 @@ def _caption_label_key(text: str) -> str | None:
     figure_match = FIGURE_LABEL_PATTERN.match(normalized)
     if figure_match:
         return f"figure:{figure_match.group(1).lower()}"
-    table_match = TABLE_LABEL_PATTERN.match(normalized)
-    if table_match:
-        return f"table:{table_match.group(1).lower()}"
+    # 표는 표기법이 아니라 **번호**로 중복을 판정한다. 파서가 "Table 1"로, PDF 텍스트가
+    # "Table I"로 같은 표를 가리키면 캡션이 둘이 되어 "Table 1 [2]"가 나온다.
+    table_label = parse_table_label(normalized)
+    if table_label:
+        _, number, suffix, _ = table_label
+        return f"table:{number}{suffix.lower()}"
     return None
 
 

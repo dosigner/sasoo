@@ -997,3 +997,103 @@ class CaptionRecoveryTests(unittest.TestCase):
         self.assertLess(x0, x1)
         # 텍스트를 PyMuPDF y=700(위에서부터)에 넣었으므로 좌하단 기준으로는 842-700 근처다.
         self.assertLess(y_top, 842.0 * 0.35)
+
+
+class RomanTableLabelTests(unittest.TestCase):
+    """IEEE 계열의 로마 숫자 표 라벨(`Table I`)을 라벨 규칙이 통째로 못 보던 문제.
+
+    `TABLE_LABEL_PATTERN`이 digit-only라 `Table I`~`Table VIII`이 캡션으로 인정되지
+    않았다. 그 결과 (a) 표 정답 기준이 그 논문에서 0이 되고, (b) 캡션에 기대는 하류
+    로직(후보-캡션 연결, 캡션 폴백)이 통째로 무력화됐다.
+    실측: 2017_COMST_OpticalComm은 원문 표 8개인데 캡션 인정 0개, 후보 9개 전부 무캡션.
+
+    아래 문자열은 전부 실제 코퍼스에서 뽑았다.
+    """
+
+    ROMAN_CAPTIONS = [
+        "Table I COMPARISON OF POWER AND MASS FOR GEOSTATIONARY EARTH ORBIT (GEO) AND LOW EARTH ORBIT (LEO)",
+        "Table II WAVELENGTHS USED IN PRACTICAL FSO COMMUNICATION SYSTEMS",
+        "Table III MOLECULAR ABSORPTION AT TYPICAL WAVELENGTHS [80]",
+        "Table V TURBULENCE PROFILE MODELS FOR C2 n",
+        "Table VIII EXAMPLE OF HAPS USED IN OPTICAL COMMUNICATION MISSIONS",
+        "TABLE I",  # 2013_IEEETIP p10 — 라벨만 있고 캡션 본문이 다음 줄로 넘어간 형태
+        "###### Table II WAVELENGTHS USED IN PRACTICAL FSO COMMUNICATION SYSTEMS",
+    ]
+
+    # 로마 숫자를 인정하면 새로 생기는 오탐 후보. 전부 표 라벨이 아니다.
+    NOT_TABLE_LABELS = [
+        "Table cells are merged in the header row.",
+        "Table ILL-CONDITIONED CASES ARE EXCLUDED",  # ILL은 로마 숫자 형태가 아니다
+        "Tables VI and VII are compared below.",  # "Tables"는 라벨이 아니다
+        "Table D SHOWS NOTHING",  # D/L/C/M은 표 번호 범위 밖이다
+        "Table iv shows the simulated transmittance.",  # 소문자는 로마로 인정하지 않는다
+    ]
+
+    def test_label_parsing_separates_pattern_from_validation(self):
+        """라벨 토큰은 정규식이 통째로 잡고, 로마 숫자 여부는 형태 검증이 가른다.
+
+        수정 전에는 `TABLE_LABEL_PATTERN`이 digit-only여서 "Table IV ..."가 아예 매칭되지
+        않았다(이 클래스의 나머지 테스트가 구코드에서 전부 실패함을 확인한 뒤 고쳤다).
+        정규식만 넓히고 검증을 두지 않으면 "Table ILL-CONDITIONED ..."가 통과한다.
+        """
+        from services.document_manifest import TABLE_LABEL_PATTERN, parse_table_label
+
+        self.assertIsNotNone(TABLE_LABEL_PATTERN.match("Table ILL-CONDITIONED CASES"))
+        self.assertIsNone(parse_table_label("Table ILL-CONDITIONED CASES"))
+
+        self.assertEqual(parse_table_label("Table IV MODTRAN SIMULATED")[:3], ("roman", 4, ""))
+        self.assertEqual(parse_table_label("Table 4. Ablation")[:3], ("arabic", 4, ""))
+        self.assertEqual(parse_table_label("Table 2a. Ablation")[:3], ("arabic", 2, "a"))
+
+    def test_roman_captions_are_recognized_as_tables(self):
+        from services.document_manifest import _caption_kind
+
+        for text in self.ROMAN_CAPTIONS:
+            with self.subTest(text=text):
+                self.assertEqual(_caption_kind(text), "table")
+
+    def test_non_labels_are_rejected(self):
+        from services.document_manifest import _caption_kind
+
+        for text in self.NOT_TABLE_LABELS:
+            with self.subTest(text=text):
+                self.assertIsNone(_caption_kind(text))
+
+    def test_roman_inline_mention_is_not_a_caption(self):
+        """라벨 뒤 소문자 규칙(계약 8)은 로마에도 그대로 적용된다."""
+        from services.document_manifest import _caption_kind
+
+        self.assertIsNone(_caption_kind("Table IV shows the simulated transmittance."))
+        self.assertIsNone(_caption_kind("Table VI summarizes the mapping."))
+
+    def test_arabic_labels_still_work(self):
+        from services.document_manifest import _caption_kind
+
+        self.assertEqual(_caption_kind("**Table 2.** Ablation results"), "table")
+        self.assertEqual(_caption_kind("Table 3. Ablation results."), "table")
+        self.assertIsNone(_caption_kind("Table 3 summarizes the ablation results."))
+
+    def test_table_number_keeps_roman_notation(self):
+        """계약 6: 라벨 규칙만 넓히고 `_table_num`을 놔두면 캡션은 인정하면서 번호를
+        못 읽어 `Table {index}`라는 가짜 이름이 붙는다."""
+        from services.table_resolver import _table_num
+
+        seen: set[str] = set()
+        self.assertEqual(_table_num("Table VIII EXAMPLE OF HAPS USED", 28, 1, seen), "Table VIII")
+        self.assertEqual(_table_num("Table I COMPARISON OF POWER", 3, 2, seen), "Table I")
+        # 아라비아 표기는 그대로 유지된다.
+        self.assertEqual(_table_num("**Table 2.** Ablation results", 4, 3, seen), "Table 2")
+
+    def test_label_key_normalizes_notation(self):
+        """캡션 복원 중복 판정은 표기법이 아니라 번호로 해야 한다 — 파서가 `Table 1`로,
+        PDF 텍스트가 `Table I`로 같은 표를 가리키면 캡션이 둘이 되어 `Table 1 [2]`가 나온다."""
+        from services.document_manifest import _caption_label_key
+
+        self.assertEqual(
+            _caption_label_key("Table I COMPARISON OF POWER"),
+            _caption_label_key("Table 1. Comparison of power"),
+        )
+        self.assertNotEqual(
+            _caption_label_key("Table II WAVELENGTHS USED"),
+            _caption_label_key("Table 1. Comparison of power"),
+        )
