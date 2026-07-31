@@ -1,0 +1,389 @@
+{
+  "_comment": "표 추출 정확도의 정답 대장. 라벨을 가진 표만 센다. 생성: tools/extraction_audit/{collect_table_gold,build_table_gold}.py, 육안 검수 2026-07-31.",
+  "papers": {
+    "2012_ICSOS_SpaceOpticalNetworks_optics": {
+      "labels": [],
+      "numbers": [],
+      "evidence": [],
+      "sources_agree": true,
+      "visual_review": {
+        "p2": "표 없음. 2단 조판 텍스트 + 그림 1개. table_candidate 1건은 오탐."
+      }
+    },
+    "2013_IEEETIP_ClusterCoSaliency_Quantum": {
+      "labels": [
+        "Table I"
+      ],
+      "numbers": [
+        1
+      ],
+      "evidence": [
+        {
+          "label": "Table I",
+          "notation": "roman",
+          "number": 1,
+          "page": 10,
+          "caption": "TABLE I",
+          "evidence_source": "pdf_blocks"
+        }
+      ],
+      "sources_agree": false,
+      "visual_review": {
+        "p10": "TABLE I (SEGMENTATION ACCURACY) 실재. 캡션이 표 위. 이 논문의 유일한 표."
+      }
+    },
+    "2014_Saliency_Optimization_from_Robust_Backgr_706a9f8d": {
+      "labels": [
+        "Table 1",
+        "Table 2"
+      ],
+      "numbers": [
+        1,
+        2
+      ],
+      "evidence": [
+        {
+          "label": "Table 1",
+          "notation": "arabic",
+          "number": 1,
+          "page": 4,
+          "caption": "Table 1. Background precision/recall for superpixels with boundary connectivity > 2 on four benchmarks. For comparison, we treat geodesic saliency [26] as a bac",
+          "evidence_source": "manifest"
+        },
+        {
+          "label": "Table 2",
+          "notation": "arabic",
+          "number": 2,
+          "page": 6,
+          "caption": "Table 2. Comparison of running time (seconds per image)",
+          "evidence_source": "manifest"
+        }
+      ],
+      "sources_agree": false,
+      "visual_review": {
+        "p4": "Table 1 실재. 캡션이 표 아래이고 표 본문 블록과 병합돼 소스 A가 못 봤다.",
+        "p6": "Table 2 실재. 동일."
+      }
+    },
+    "2017_COMST_OpticalComm_optical_communications": {
+      "labels": [
+        "Table I",
+        "Table II",
+        "Table III",
+        "Table IV",
+        "Table V",
+        "Table VI",
+        "Table VII",
+        "Table VIII"
+      ],
+      "numbers": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "evidence": [
+        {
+          "label": "Table I",
+          "notation": "roman",
+          "number": 1,
+          "page": 3,
+          "caption": "Table I COMPARISON OF POWER AND MASS FOR GEOSTATIONARY EARTH ORBIT (GEO) AND LOW EARTH ORBIT (LEO) LINKS USING OPTICAL AND RF COMMUNICATION SYSTEMS (VALUES IN P",
+          "evidence_source": "pdf_blocks"
+        },
+        {
+          "label": "Table II",
+          "notation": "roman",
+          "number": 2,
+          "page": 5,
+          "caption": "Table II WAVELENGTHS USED IN PRACTICAL FSO COMMUNICATION SYSTEMS",
+          "evidence_source": "pdf_blocks"
+        },
+        {
+          "label": "Table III",
+          "notation": "roman",
+          "number": 3,
+          "page": 7,
+          "caption": "Table III MOLECULAR ABSORPTION AT TYPICAL WAVELENGTHS [80]",
+          "evidence_source": "pdf_blocks"
+        },
+        {
+          "label": "Table IV",
+          "notation": "roman",
+          "number": 4,
+          "page": 7,
+          "caption": "Table IV MODTRAN SIMULATED ATMOSPHERIC TRANSMITTANCE FOR VARIOUS WAVELENGTH AT 5 KM OF VISUAL RANGE [84]",
+          "evidence_source": "pdf_blocks"
+        },
+        {
+          "label": "Table V",
+          "notation": "roman",
+          "number": 5,
+          "page": 9,
+          "caption": "Table V TURBULENCE PROFILE MODELS FOR C2 n",
+          "evidence_source": "pdf_blocks"
+        },
+        {
+          "label": "Table VI",
+          "notation": "roman",
+          "number": 6,
+          "page": 20,
+          "caption": "Table VI MAPPING BETWEEN 4-PPM AND 4-DPIM CHIPS",
+          "evidence_source": "pdf_blocks"
+        },
+        {
+          "label": "Table VII",
+          "notation": "roman",
+          "number": 7,
+          "page": 20,
+          "caption": "Table VII COMPARISON OF VARIANTS OF PPM MODULATION SCHEME (A: PULSE AMPLITUDE, Rb: DATA RATE AND α: INTEGER)",
+          "evidence_source": "pdf_blocks"
+        },
+        {
+          "label": "Table VIII",
+          "notation": "roman",
+          "number": 8,
+          "page": 28,
+          "caption": "Table VIII EXAMPLE OF HAPS USED IN OPTICAL COMMUNICATION MISSIONS",
+          "evidence_source": "pdf_blocks"
+        }
+      ],
+      "sources_agree": false,
+      "visual_review": {
+        "p5": "Table II 실재(캡션이 표 아래). 매니페스트(C)만 이 캡션을 빠뜨렸다 → gold는 8."
+      }
+    },
+    "2019_FourierSpaceDNN_optics": {
+      "labels": [],
+      "numbers": [],
+      "evidence": [],
+      "sources_agree": true,
+      "visual_review": {}
+    },
+    "2022_ApplOpt_PredictionNet_optics": {
+      "labels": [
+        "Table 1"
+      ],
+      "numbers": [
+        1
+      ],
+      "evidence": [
+        {
+          "label": "Table 1",
+          "notation": "arabic",
+          "number": 1,
+          "page": 4,
+          "caption": "Table 1. Simulation Parameters of the Atmospheric Turbulence",
+          "evidence_source": "pdf_blocks"
+        }
+      ],
+      "sources_agree": true,
+      "visual_review": {}
+    },
+    "2022_SciRep_CoherentFsoLeo_optics": {
+      "labels": [
+        "Table 1",
+        "Table 2",
+        "Table 3"
+      ],
+      "numbers": [
+        1,
+        2,
+        3
+      ],
+      "evidence": [
+        {
+          "label": "Table 1",
+          "notation": "arabic",
+          "number": 1,
+          "page": 4,
+          "caption": "Table 1. Mount parameters.",
+          "evidence_source": "pdf_blocks"
+        },
+        {
+          "label": "Table 2",
+          "notation": "arabic",
+          "number": 2,
+          "page": 6,
+          "caption": "Table 2. Demonstration link budget.",
+          "evidence_source": "pdf_blocks"
+        },
+        {
+          "label": "Table 3",
+          "notation": "arabic",
+          "number": 3,
+          "page": 7,
+          "caption": "Table 3. Atmospheric conditions in Perth for flight dates.",
+          "evidence_source": "pdf_blocks"
+        }
+      ],
+      "sources_agree": true,
+      "visual_review": {}
+    },
+    "2025_OptExpress_UplinkPrecomp_optics": {
+      "labels": [
+        "Table 1",
+        "Table 2",
+        "Table 3"
+      ],
+      "numbers": [
+        1,
+        2,
+        3
+      ],
+      "evidence": [
+        {
+          "label": "Table 1",
+          "notation": "arabic",
+          "number": 1,
+          "page": 4,
+          "caption": "Table 1. Fixed simulation parameters",
+          "evidence_source": "pdf_blocks"
+        },
+        {
+          "label": "Table 2",
+          "notation": "arabic",
+          "number": 2,
+          "page": 5,
+          "caption": "Table 2. Variable simulation parameters",
+          "evidence_source": "pdf_blocks"
+        },
+        {
+          "label": "Table 3",
+          "notation": "arabic",
+          "number": 3,
+          "page": 10,
+          "caption": "Table 3. Injected error in LITEUP’s input parameters. All sign combinations of each error pair are simulated, i.e., 4 combinations per pair.",
+          "evidence_source": "pdf_blocks"
+        }
+      ],
+      "sources_agree": true,
+      "visual_review": {}
+    },
+    "2025_TurboQuant_general": {
+      "labels": [
+        "Table 1",
+        "Table 2"
+      ],
+      "numbers": [
+        1,
+        2
+      ],
+      "evidence": [
+        {
+          "label": "Table 1",
+          "notation": "arabic",
+          "number": 1,
+          "page": 20,
+          "caption": "Table 1: LongBench-V1 [10] results of various KV cache compression methods on Llama-3.1-8B- Instruct.",
+          "evidence_source": "pdf_blocks"
+        },
+        {
+          "label": "Table 2",
+          "notation": "arabic",
+          "number": 2,
+          "page": 20,
+          "caption": "Table 2: Quantization time (in seconds) for different approaches across various dimensions using 4-bit quantization.",
+          "evidence_source": "pdf_blocks"
+        }
+      ],
+      "sources_agree": true,
+      "visual_review": {}
+    },
+    "2026_SR_AgileMultiskill_ai_ml": {
+      "labels": [],
+      "numbers": [],
+      "evidence": [],
+      "sources_agree": true,
+      "visual_review": {
+        "p4": "표 없음(전부 그림 패널).",
+        "p6": "표 없음(전부 그림 패널).",
+        "p10": "격자는 있으나 Fig. 6 (C)ii 안의 패널이고 표 라벨이 없다 → gold 제외."
+      }
+    },
+    "OptFor_RefractiveMCAO_optics": {
+      "labels": [
+        "Table 1",
+        "Table 2",
+        "Table 3",
+        "Table 4",
+        "Table 5"
+      ],
+      "numbers": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "evidence": [
+        {
+          "label": "Table 1",
+          "notation": "arabic",
+          "number": 1,
+          "page": 3,
+          "caption": "Table 1: simulation parameters.",
+          "evidence_source": "pdf_blocks"
+        },
+        {
+          "label": "Table 2",
+          "notation": "arabic",
+          "number": 2,
+          "page": 4,
+          "caption": "Table 2: Turbulence parameters for low (A “9e-15), mid (A “5e-14) and high (A “2e-13) turbulence conditions.",
+          "evidence_source": "pdf_blocks"
+        },
+        {
+          "label": "Table 3",
+          "notation": "arabic",
+          "number": 3,
+          "page": 5,
+          "caption": "Table 3: RMS wavefront average over the entire FoV (λ = 633nm)",
+          "evidence_source": "pdf_blocks"
+        },
+        {
+          "label": "Table 4",
+          "notation": "arabic",
+          "number": 4,
+          "page": 6,
+          "caption": "Table 4: RMS wavefront average over the corrected Field (λ = 633nm)",
+          "evidence_source": "pdf_blocks"
+        },
+        {
+          "label": "Table 5",
+          "notation": "arabic",
+          "number": 5,
+          "page": 19,
+          "caption": "Table 5.1: Power measurement before and after the fiber injection without turbulence.",
+          "evidence_source": "pdf_blocks"
+        }
+      ],
+      "sources_agree": true,
+      "visual_review": {}
+    },
+    "TurPy_OpticTurb_optics": {
+      "labels": [
+        "Table 1"
+      ],
+      "numbers": [
+        1
+      ],
+      "evidence": [
+        {
+          "label": "Table 1",
+          "notation": "arabic",
+          "number": 1,
+          "page": 14,
+          "caption": "Table 1. Comparison of open-source python wave optics simulators extendible to turbulence. For partial functionality, ~ indicates:",
+          "evidence_source": "pdf_blocks"
+        }
+      ],
+      "sources_agree": true,
+      "visual_review": {}
+    }
+  }
+}
