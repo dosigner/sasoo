@@ -3,13 +3,18 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
+  Atom,
   Bot,
   BookOpen,
+  Brain,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CircuitBoard,
   Clock3,
+  Code,
+  Dna,
   Download,
   Eye,
   EyeOff,
@@ -38,6 +43,7 @@ import {
   Save,
   Search,
   Settings,
+  Shapes,
   Sparkles,
   Square,
   Sun,
@@ -45,6 +51,7 @@ import {
   Trash2,
   AlertTriangle,
   Upload,
+  Waves,
   X,
   DollarSign,
 } from 'lucide-react';
@@ -98,7 +105,15 @@ export type AppIconName =
   | 'restore'
   | 'play'
   | 'stop'
-  | 'spinner';
+  | 'spinner'
+  | 'area-optics'
+  | 'area-ai'
+  | 'area-robotics'
+  | 'area-electrical'
+  | 'area-cs'
+  | 'area-physics'
+  | 'area-bio'
+  | 'area-other';
 
 export interface AppIconProps extends Omit<LucideProps, 'ref'> {
   name: AppIconName;
@@ -154,6 +169,15 @@ const ICON_MAP = {
   play: Play,
   stop: Square,
   spinner: Loader2,
+  // 연구 분야 아이콘. Profile.tsx의 RESEARCH_AREA_OPTIONS와 1:1 대응한다.
+  'area-optics': Waves,
+  'area-ai': Brain,
+  'area-robotics': Bot,
+  'area-electrical': CircuitBoard,
+  'area-cs': Code,
+  'area-physics': Atom,
+  'area-bio': Dna,
+  'area-other': Shapes,
 } satisfies Record<AppIconName, React.ComponentType<LucideProps>>;
 
 export default function AppIcon({ name, className, ...props }: AppIconProps) {
