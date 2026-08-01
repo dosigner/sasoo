@@ -1771,8 +1771,13 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         }]
         tables = []
 
+        sys_instruction_calls = []
+
         analysis_context_stub = types.ModuleType("api.analysis_context")
-        analysis_context_stub.build_chain_system_instruction = lambda **kw: "SYS-INSTRUCTION"
+        analysis_context_stub.build_chain_system_instruction = (
+            lambda **kw: (sys_instruction_calls.append(kw), "SYS-INSTRUCTION")[1]
+        )
+        analysis_context_stub.build_reader_profile_block = lambda *a, **k: "PROFILE-BLOCK"
 
         async def _upload_stub(paper_id, path):
             return "files/uri-abc"
@@ -1788,6 +1793,7 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
 
         settings_stub = types.ModuleType("api.settings")
         settings_stub.get_raw_settings = _settings_stub
+        settings_stub.parse_research_areas = lambda raw: []
 
         screening_mock = AsyncMock(return_value={
             "text": self._SCREENING_TEXT, "model": "g", "tokens_in": 1,
@@ -1830,7 +1836,7 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
             stack.enter_context(patch("api.analysis_routes._run_visual",
                                       new=AsyncMock(return_value=visual_result)))
         with stack:
-            yield
+            yield sys_instruction_calls
 
     async def test_chain_forwards_previous_interaction_id_linearly(self):
         calls = []
@@ -1839,12 +1845,17 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         async def _cache_none(*a, **k):
             return None
 
-        with self._orchestration_patches(cache_fake=_cache_none, call_fake=call_fake):
+        with self._orchestration_patches(cache_fake=_cache_none, call_fake=call_fake) as sys_instruction_calls:
             await analysis_routes._run_full_analysis(7)
 
         # 체인 스테이지(store=True) 호출만 추출: visual→recipe→deep_dive→viz
         chain_calls = [c for c in calls if c["store"] is True]
         self.assertEqual(len(chain_calls), 4)
+
+        # 독자 프로필이 실제로 시스템 지시문 조립에 전달되는지 (배선 회귀 방어)
+        self.assertTrue(sys_instruction_calls)
+        for kw in sys_instruction_calls:
+            self.assertEqual(kw.get("reader_profile"), "PROFILE-BLOCK")
         # 첫 스테이지(visual)는 PDF 문서를 포함하고 previous=None
         self.assertIsNone(chain_calls[0]["previous_interaction_id"])
         self.assertIsInstance(chain_calls[0]["contents"], list)

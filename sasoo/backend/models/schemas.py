@@ -312,6 +312,14 @@ class SettingsModel(BaseModel):
     gemini_key_unreadable: bool = False
     openai_api_key: Optional[str] = None
     openai_key_unreadable: bool = False
+    # ai_provider가 공급사 선택의 단일 소스다. image_provider는 이 값을 따라
+    # 함께 갱신되는 미러이며, 읽기 권위는 ai_provider에 있다.
+    ai_provider: Literal["openai", "gemini"] = "openai"
+    # 저장된 선택을 API 키 가용성으로 보정한 값. 키가 하나도 없으면 None이다.
+    # 서버가 계산해 내려주며 클라이언트는 읽기만 한다.
+    active_provider: Optional[Literal["openai", "gemini"]] = None
+    # 키가 사라져 다른 공급사로 자동 전환됐다면 그 대상. 알림용이다.
+    switched_to: Optional[Literal["openai", "gemini"]] = None
     image_provider: Literal["openai", "gemini"] = "openai"
     image_quality: Literal["low", "medium", "high"] = "high"
     library_path: str = "./library"
@@ -345,6 +353,7 @@ class SettingsUpdate(BaseModel):
     """Partial settings update."""
     gemini_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
+    ai_provider: Optional[Literal["openai", "gemini"]] = None
     image_provider: Optional[Literal["openai", "gemini"]] = None
     image_quality: Optional[Literal["low", "medium", "high"]] = None
     library_path: Optional[str] = None

@@ -30,6 +30,50 @@ export const S = {
     sectionDesc: '여기서 정한 값이 새 논문 분석의 기본값으로 쓰여요.',
   },
 
+  // ── Levels (설명 수준) ──
+  // 같은 개념(빛의 간섭)을 수준별 문체로 보여주는 프리뷰 문장. LevelSlider와
+  // LevelCards가 이 값을 공유한다 - 단일 출처.
+  levels: {
+    elementary: {
+      label: '초등학생',
+      preview: '빛 두 줄기가 만나면 물결처럼 겹쳐서 더 밝아지거나 어두워져요.',
+    },
+    middle: {
+      label: '중학생',
+      preview: '두 빛의 파동이 겹치면 마루끼리 만나 밝아지고, 마루와 골이 만나 어두워집니다.',
+    },
+    high: {
+      label: '고등학생',
+      preview: '두 파동의 위상차가 0이면 보강간섭, π이면 상쇄간섭이 일어나 간섭무늬가 생깁니다.',
+    },
+    undergrad: {
+      label: '학부생',
+      preview: '두 간섭 광의 세기는 I = I₁ + I₂ + 2√(I₁I₂)cosΔφ로 위상차에 의해 결정됩니다.',
+    },
+    masters: {
+      label: '석사생',
+      preview: '가시도(visibility)는 광원의 시간·공간 결맞음에 의해 제한되며 상호결맞음 함수로 기술됩니다.',
+    },
+    phd: {
+      label: '박사생',
+      preview:
+        '부분결맞음 조건에서 간섭항은 상호결맞음 함수 γ₁₂(τ)의 크기와 인수로 완전히 결정되며, van Cittert–Zernike 정리로 광원 분포와 연결됩니다.',
+    },
+  },
+
+  // 연구 분야 아이콘 칩 라벨. 백엔드 analysis_context.py의 AREA_LABELS와
+  // 글자 그대로 같아야 한다 - 키도 값도. 임의로 바꾸지 말 것.
+  areas: {
+    optics_photonics: '광학·포토닉스',
+    ai_ml: 'AI·머신러닝',
+    robotics_control: '로보틱스·제어',
+    electrical_electronics: '전기·전자',
+    computer_science: '컴퓨터과학',
+    physics_math: '물리·수학',
+    bio_medical: '바이오·의생명',
+    other: '기타',
+  } as Record<string, string>,
+
   // ── Home ──
   home: {
     greeting: '안녕하세요',
@@ -246,13 +290,26 @@ export const S = {
     saving: '저장 중...',
     saved: '저장 완료',
     discard: '되돌리기',
-    unsavedChanges: '아직 저장하지 않은 변경이 있어요',
     loadingSettings: '제어판을 불러오고 있어요...',
     loadFailed: '설정을 불러오지 못했어요',
     saveFailed: '변경을 저장하지 못했어요',
     browseFolder: '폴더 선택',
     browseFolderFailed: '폴더 선택 창을 열지 못했어요',
     browseFolderUnavailable: '이 환경에서는 경로를 직접 입력하면 바꿀 수 있어요',
+    // AI provider
+    aiProvider: 'AI 공급사',
+    aiProviderDesc: '분석·그림 판독·도해 생성에 모두 적용돼요.',
+    aiProviderOpenAI: 'OpenAI',
+    aiProviderOpenAIModel: 'GPT-5.6 Luna',
+    aiProviderGemini: 'Google',
+    aiProviderGeminiModel: 'Gemini 3.6 Flash',
+    aiProviderKeyReady: '키 등록됨',
+    aiProviderKeyMissing: '키 없음',
+    aiProviderSwitched: (to: string) => `${to}로 전환했습니다`,
+    aiProviderLocked: 'API 키를 등록하면 분석을 시작할 수 있어요',
+    // Save bar
+    saveBarLabel: '변경사항',
+    changeCount: (n: number) => `변경 ${n}개`,
     // API Keys
     apiKeys: '모델 키',
     geminiKey: 'Google Gemini API 키',
@@ -273,11 +330,7 @@ export const S = {
     // Structured profile fields
     researchAreas: '주요 연구 분야',
     researchAreasHelper: '최대 3개까지 고를 수 있어요.',
-    researchAreasPlaceholder: '분야를 선택하세요',
-    researchAreasSearchPlaceholder: '분야 검색...',
-    researchAreasNoMatch: '일치하는 분야가 없어요',
     researchAreasMaxReached: '최대 3개까지 선택할 수 있어요',
-    removeAreaLabel: (label: string) => `${label} 삭제`,
     fieldExpertise: '분야 숙련도',
     readingExperience: '논문 읽기 경험',
     researchRole: '연구 역할',
@@ -296,10 +349,13 @@ export const S = {
     extractionPipeline: 'Figure/Table 추출 경로',
     extractionPipelineHelp: '기본값은 resolver_v1이에요.',
     extractionPipelineResolverV1: 'resolver_v1 (candidate-resolver)',
-    pdfVisualEngine: 'Figure 추출 엔진',
-    pdfVisualEngineHelp: 'Gemini는 figure·수식 품질이 높지만 논문당 API 비용이 들어요. ODL은 무료지만 수식·표 추출이 제한적이에요.',
-    pdfVisualEngineGemini: 'Gemini (고품질, 유료)',
-    pdfVisualEngineOdl: 'ODL (무료)',
+    // 저장 값은 'gemini' | 'odl' 그대로다. 'gemini'는 공급사 이름이 아니라
+    // "LLM 비전으로 판독" 경로를 가리키는 레거시 이름이라, 공급사 선택과
+    // 혼동되지 않도록 표시 문구만 바꿨다.
+    pdfVisualEngine: '그림 판독 방식',
+    pdfVisualEngineHelp: 'AI 판독은 그림·수식을 정확히 읽지만 논문당 API 비용이 들어요. 빠른 추출은 무료지만 수식·표를 놓칠 수 있어요.',
+    pdfVisualEngineGemini: 'AI 판독 (정확, 유료)',
+    pdfVisualEngineOdl: '빠른 추출 (무료)',
     profileFast: '빠름',
     profileBalanced: '균형',
     profileQuality: '고품질',
