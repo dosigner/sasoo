@@ -122,5 +122,34 @@ class TestReaderProfileBlock(unittest.TestCase):
         self.assertNotIn("–", block)
 
 
+class TestChainInstructionAssembly(unittest.TestCase):
+    def test_reader_profile_is_included(self):
+        from api.analysis_context import build_chain_system_instruction
+
+        out = build_chain_system_instruction(
+            "", "", None, "masters", reader_profile="독자 전공: 광학·포토닉스."
+        )
+        self.assertIn("광학·포토닉스", out)
+
+    def test_omitting_reader_profile_keeps_old_output(self):
+        """기존 호출부가 안 바뀌어도 결과가 같아야 한다."""
+        from api.analysis_context import build_chain_system_instruction
+
+        without = build_chain_system_instruction("", "", None, "masters")
+        with_empty = build_chain_system_instruction(
+            "", "", None, "masters", reader_profile=""
+        )
+        self.assertEqual(without, with_empty)
+
+    def test_explanation_level_comes_last(self):
+        """어휘 수준이 1차 기준이므로 마지막에 와야 덮어쓰기 순서가 맞다."""
+        from api.analysis_context import build_chain_system_instruction
+
+        out = build_chain_system_instruction(
+            "", "", None, "phd", reader_profile="독자 전공: 광학·포토닉스."
+        )
+        self.assertLess(out.index("광학·포토닉스"), out.index("설명 수준: 박사생"))
+
+
 if __name__ == "__main__":
     unittest.main()
