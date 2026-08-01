@@ -35,7 +35,7 @@ def main() -> None:
         if pdf_path is None:
             continue
         manifest = prepare_manifest(paper_dir, pdf_path)
-        scratch = make_scratch_dir(paper_dir)
+        scratch = make_scratch_dir(paper_dir, manifest, pdf_path)
         candidates = build_table_candidates(manifest, pdf_path=pdf_path, paper_dir=scratch)
         out_dir = OUT / paper_dir.name[:24]
         out_dir.mkdir(parents=True, exist_ok=True)

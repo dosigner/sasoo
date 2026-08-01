@@ -110,13 +110,32 @@ def prepare_manifest(paper_dir: Path, pdf_path: Path) -> dict[str, Any]:
     return manifest
 
 
-def make_scratch_dir(paper_dir: Path) -> Path:
-    """산출물을 라이브러리에 쓰지 않도록 래스터만 심볼릭 링크한 작업 디렉터리를 만든다."""
+def make_scratch_dir(paper_dir: Path, manifest: dict[str, Any] | None = None, pdf_path: Path | None = None) -> Path:
+    """산출물을 라이브러리에 쓰지 않도록 래스터만 심볼릭 링크한 작업 디렉터리를 만든다.
+
+    저장된 매니페스트에 `raster_path`가 없는 논문이 있다(2013_IEEETIP은 13페이지 전부).
+    표의 격자 복원은 페이지 래스터가 있어야 VLM을 호출조차 하므로, 그대로 재면
+    "제품이 표를 못 잡는다"가 아니라 "옛 산출물에 래스터가 없다"를 재게 된다
+    (인수인계 §6-3: 저장된 매니페스트는 옛 코드 산출물이다).
+    현재 코드와 같게 래스터를 만들되, **스크래치에** 만들어 사용자 라이브러리는 건드리지 않는다.
+    """
     scratch = Path(tempfile.mkdtemp(prefix="tblaudit_"))
+    pages = (manifest or {}).get("pages") or []
+    needs_raster = bool(pages) and not any(page.get("raster_path") for page in pages)
+
     for name in (".page_rasters", ".odl_raw_images"):
         source = paper_dir / name
+        if name == ".page_rasters" and needs_raster:
+            continue  # 아래에서 스크래치에 직접 만든다
         if source.exists():
             (scratch / name).symlink_to(source.resolve(), target_is_directory=True)
+
+    if needs_raster and pdf_path is not None:
+        from services.document_manifest import _ensure_page_rasters
+
+        raster_paths = _ensure_page_rasters(pdf_path, scratch, len(pages))
+        for page in pages:
+            page["raster_path"] = raster_paths.get(page["page_number"])
     return scratch
 
 
@@ -433,7 +452,7 @@ async def run_lane(lane: str, papers: list[Path], gold: dict, *, use_cache: bool
         paper_gold = gold.get(paper_dir.name, {"labels": [], "numbers": [], "evidence": []})
 
         manifest = prepare_manifest(paper_dir, pdf_path)
-        scratch = make_scratch_dir(paper_dir)
+        scratch = make_scratch_dir(paper_dir, manifest, pdf_path)
         cache.install(hashlib.sha1(pdf_path.read_bytes()).hexdigest()[:16])
         try:
             outcome = await run_pipeline(manifest, pdf_path=pdf_path, scratch=scratch)
