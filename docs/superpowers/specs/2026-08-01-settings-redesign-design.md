@@ -79,25 +79,51 @@ OpenAI 키가 "이미지 생성" 섹션에 있다. gpt-image-2를 쓰던 시절�
 | 1 | **AI 공급사** | 공급사 선택 (OpenAI / Google) | 신규 — 이 페이지의 최상위 결정 |
 | | | OpenAI API 키 | "이미지 생성"에서 이동 |
 | | | Google Gemini API 키 | "모델 키"에서 이동 |
-| 2 | **분석** | 도해 품질 (high/medium/low) | 유지 |
+| 2 | **분석** | 그림 판독 방식 (AI 판독 / 빠른 추출) | 유지 + 라벨 개선 |
+| | | 도해 품질 (high/medium/low) | 유지 |
 | | | 업로드 후 자동 분석 | 유지 |
 | 3 | **보관함** | 논문 저장 경로 | 유지, 인라인 저장 버튼 제거 |
 | 4 | **화면** | 테마 | 유지 |
 | 5 | **사용량과 비용** | CostDashboard | 유지 |
 
-**제거되는 컨트롤 4개**
+**제거되는 컨트롤 3개**
 
 | 컨트롤 | 사유 |
 |---|---|
 | 도해 생성 모델 (`image_provider`) | `ai_provider`의 파생값 |
-| Figure 추출 엔진 (`pdf_visual_engine`) | `ai_provider`의 파생값 |
 | PDF 파서 엔진 (`pdf_parser_mode`) | 선택지 1개 |
 | Figure/Table 추출 경로 (`extraction_pipeline_version`) | 선택지 1개 |
 
 설정 키 자체는 DB에 남는다. **UI에서만 사라진다.** 뒤 둘은 나중에 선택지가 늘면
 다시 노출하면 된다.
 
-컨트롤 10개 → 7개. 그중 셋이 "고를 수 없거나 자동으로 정해지는" 것이었다.
+컨트롤 10개 → 8개.
+
+#### 교정: `pdf_visual_engine`은 파생값이 아니다
+
+이 문서의 초안은 `pdf_visual_engine`을 `image_provider`와 함께 `ai_provider`의
+미러로 분류했다. **틀렸다.** 코드를 확인한 결과:
+
+- 값 도메인이 `{gemini, odl}`이다 — `{openai, gemini}`가 아니다
+- `api/settings.py:344`가 그 둘 외의 값을 400으로 거부한다. `openai`를 미러링하면
+  저장이 실패한다
+- `main.py:138`에서 `SASOO_PDF_VISUAL_ENGINE` 환경변수로 심겨 `odl_parser`가 읽는다
+
+즉 이건 공급사 선택이 아니라 **"LLM 비전으로 판독할까, 로컬 Java 파서로 빠르게
+뽑을까"** 라는 독립된 선택이다. `gemini`는 공급사 이름이 아니라 "LLM 비전 경로"를
+가리키는 레거시 이름이다.
+
+따라서 **미러링 대상은 `image_provider` 하나뿐이고**, `pdf_visual_engine`은 UI에
+남긴다. 다만 "Figure 추출 엔진 / gemini·odl"이라는 현재 표기로는 사용자가 무엇을
+고르는지 알 수 없으므로 라벨을 바꾼다.
+
+| | 현재 | 변경 |
+|---|---|---|
+| 라벨 | Figure 추출 엔진 | 그림 판독 방식 |
+| 옵션 `gemini` | `gemini` | AI 판독 (정확) |
+| 옵션 `odl` | `odl` | 빠른 추출 (로컬) |
+
+저장되는 값은 그대로 `gemini` / `odl`이다. 백엔드는 건드리지 않는다.
 
 ### B. 시그니처 — 공급사 카드
 
