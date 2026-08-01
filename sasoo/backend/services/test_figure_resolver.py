@@ -366,3 +366,38 @@ class CaptionlessFigureSuppressionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(figures, [])
         self.assertTrue(any("그림 0개" in line for line in captured.output),
                         "전멸했는데 진단용 경고가 없다")
+
+
+class SubFigureNumberingTests(unittest.TestCase):
+    """숫자 패널 라벨이 부모 번호와 붙어 구분되지 않던 문제.
+
+    `_normalize_sub_label`은 알파벳뿐 아니라 숫자도 패널 라벨로 인정한다.
+    그대로 이어붙이면 실측(2013_IEEETIP)처럼 Fig. 12의 패널 7개가
+    `Fig. 121`~`Fig. 127`이 되어 존재하지 않는 121번 그림처럼 읽힌다.
+    """
+
+    def test_numeric_label_gets_a_separator(self):
+        from services.figure_resolver import _subfigure_num
+
+        self.assertEqual(_subfigure_num("Fig. 12", "1"), "Fig. 12-1")
+        self.assertEqual(_subfigure_num("Fig. 12", "7"), "Fig. 12-7")
+        self.assertEqual(_subfigure_num("Fig. 3", "10"), "Fig. 3-10")
+
+    def test_alphabetic_label_keeps_existing_form(self):
+        """알파벳 표기는 바꾸지 않는다 — 기존 산출물·기준선과 어긋나면 안 된다."""
+        from services.figure_resolver import _subfigure_num
+
+        self.assertEqual(_subfigure_num("Fig. 11", "C"), "Fig. 11C")
+        self.assertEqual(_subfigure_num("Fig. 11", "c"), "Fig. 11C")
+
+    def test_missing_label_falls_back_to_parent(self):
+        from services.figure_resolver import _subfigure_num
+
+        self.assertEqual(_subfigure_num("Fig. 4", None), "Fig. 4")
+        self.assertEqual(_subfigure_num("Fig. 4", ""), "Fig. 4")
+
+    def test_numeric_subfigure_is_distinguishable_from_a_real_figure(self):
+        """이 단언이 회귀의 본질이다 — 라벨만 보고 부모 번호를 되찾을 수 있어야 한다."""
+        from services.figure_resolver import _subfigure_num
+
+        self.assertNotEqual(_subfigure_num("Fig. 12", "1"), "Fig. 121")

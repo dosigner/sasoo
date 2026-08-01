@@ -412,6 +412,20 @@ async def _maybe_rerank_caption(
     return (candidate.get("best_caption_id"), 0.0, "heuristic")
 
 
+def _subfigure_num(figure_num: str, sub_label: str | None) -> str:
+    """부모 그림 번호와 패널 라벨을 합쳐 서브피겨 이름을 만든다.
+
+    패널 라벨은 알파벳뿐 아니라 숫자도 온다(`_normalize_sub_label`이 둘 다 인정한다).
+    숫자를 그냥 이어붙이면 부모와 구분되지 않는다 — 실측(2013_IEEETIP): Fig. 12의
+    패널 7개가 `Fig. 121`~`Fig. 127`이 되어, 존재하지 않는 121번 그림처럼 읽혔다.
+    숫자일 때만 구분자를 넣는다. 알파벳은 기존 표기(`Fig. 12A`)를 그대로 둔다.
+    """
+    label = (sub_label or "").upper()
+    if not label:
+        return figure_num
+    return f"{figure_num}-{label}" if label[0].isdigit() else f"{figure_num}{label}"
+
+
 async def _maybe_detect_subfigures(
     *,
     figure_num: str,
@@ -451,7 +465,7 @@ async def _maybe_detect_subfigures(
             width, height = image.size
         children.append(
             {
-                "figure_num": f"{figure_num}{(child.sub_label or '').upper()}",
+                "figure_num": _subfigure_num(figure_num, child.sub_label),
                 "caption": caption_text,
                 "file_path": str(child_path.resolve().relative_to(paper_dir.resolve())),
                 "page_number": child.page_number,
