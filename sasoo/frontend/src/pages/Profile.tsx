@@ -18,8 +18,8 @@ import { Select } from '@/components/ui';
 // analysis_focus(분석 초점)는 논문마다 다르므로 여기 두지 않고 업로드 화면에서만 받는다.
 // ---------------------------------------------------------------------------
 
-// 주요 연구 분야 — 최대 3개. key는 백엔드 research_areas로 그대로 저장된다.
-// AreaPicker의 max prop으로 넘긴다 — 상한 값을 두 곳에 따로 박지 않는다.
+// 주요 연구 분야 - 최대 3개. key는 백엔드 research_areas로 그대로 저장된다.
+// AreaPicker의 max prop으로 넘긴다 - 상한 값을 두 곳에 따로 박지 않는다.
 const MAX_RESEARCH_AREAS = 3;
 
 // 분야 숙련도 — 5단계 세그먼트
@@ -197,7 +197,7 @@ export default function Profile() {
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-      toast.success(S.toast.settingsSaved);
+      // 성공 피드백은 SaveBar가 사라지는 것 자체다 - 토스트를 겹치지 않는다(SaveBar.tsx 참고).
     } catch (err) {
       setError(err instanceof Error ? err.message : S.settings.saveFailed);
       if (err instanceof Error) console.warn('[profile] save error:', err.message);
