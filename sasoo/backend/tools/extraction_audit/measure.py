@@ -305,6 +305,10 @@ def figure_metrics(figures: list[dict[str, Any]], markdown_text: str) -> dict[st
     truth = {int(n) for n in FIGURE_MENTION.findall(markdown_text) if 1 <= int(n) <= 30}
     parents: set[int] = set()
     for figure in figures:
+        # 서브피겨는 `parent_figure_num`으로 식별한다. 라벨 문자열에서 숫자를 뽑으면
+        # 서브 접미사가 숫자인 경우("Fig. 12"의 자식이 "Fig. 121")를 부모 121로 오인한다.
+        if figure.get("parent_figure_num"):
+            continue
         match = re.search(r"(\d+)", str(figure.get("figure_num") or ""))
         if match:
             parents.add(int(match.group(1)))

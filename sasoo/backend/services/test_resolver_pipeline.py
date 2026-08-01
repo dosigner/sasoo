@@ -1097,3 +1097,134 @@ class RomanTableLabelTests(unittest.TestCase):
             _caption_label_key("Table II WAVELENGTHS USED"),
             _caption_label_key("Table 1. Comparison of power"),
         )
+
+
+class TableCaptionGateTests(unittest.IsolatedAsyncioTestCase):
+    """캡션 없는 표 후보가 그대로 산출물이 되던 문제.
+
+    그림에는 "캡션 없는 후보는 버린다"(계약 7)가 있는데 표에는 대칭 규칙이 없었다.
+    캡션이 없으면 `Table {fallback_index}`라는 가짜 번호가 붙어 그대로 나갔다.
+    실측: 산출된 표 38개 중 28개가 무캡션이고, 크롭을 눈으로 보니 정체는 대부분
+    **그래프의 범례 박스**였다 — 범례는 격자 구조라 pdfplumber가 표로 보지만
+    캡션이 붙지 않는다(2014_Saliency p7의 PR 곡선 범례 9개, 2013_IEEETIP p8).
+
+    라벨 중복제거도 함께 넣는다. 같은 표에 후보가 둘 붙으면 "Table 1"과 "Table 1 [2]"가
+    함께 나오는데, 원인이 (a) 한 캡션에 후보 여럿(2022_SciRep 3건), (b) 같은 라벨의 캡션
+    자체가 중복(2025_TurboQuant p20)으로 둘이라 라벨 기준이어야 함께 잡힌다.
+    """
+
+    GRID = [["cfg", "Gbps"], ["A", "1.2"], ["B", "3.4"]]
+
+    def _candidate(self, index: int, caption_id: str | None, *, page: int = 1) -> dict:
+        return {
+            "id": f"tblcand:p{page}:n{index}",
+            "page_number": page,
+            "bbox": [30.0 + index, 300.0, 580.0, 590.0],
+            "source_kind": "pdfplumber",
+            "text_grid": self.GRID,
+            "linked_caption_ids": [caption_id] if caption_id else [],
+            "best_caption_id": caption_id,
+            "has_meaningful_grid": True,
+            "plausible_ruled_bbox": True,
+            "had_irregular_rows": False,
+        }
+
+    def _manifest(self, candidates: list[dict], captions: list[dict]) -> dict:
+        return {
+            "pages": [{"page_number": 1, "page_size": {"width": 612.0, "height": 792.0}, "raster_path": None}],
+            "captions": captions,
+            "table_candidates": candidates,
+            "audit": {"suspect_pages": []},
+        }
+
+    @staticmethod
+    def _caption(caption_id: str, text: str) -> dict:
+        return {"id": caption_id, "page_number": 1, "kind": "table", "bbox": [72.0, 600.0, 540.0, 620.0], "text": text}
+
+    async def _resolve(self, manifest: dict) -> list[dict]:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = await resolve_table_candidates(
+                manifest, paper_dir=Path(tmp), resolver_version="resolver-v1"
+            )
+            return result["tables"]
+
+    async def test_fixture_grid_would_otherwise_be_emitted(self):
+        """픽스처가 조건을 재현하는지 먼저 단언한다 — 캡션만 붙이면 이 후보는 표가 된다.
+
+        이 단언이 없으면 격자가 부실해서 안 나온 것을 "게이트가 걸렀다"로 오인할 수 있다.
+        """
+        tables = await self._resolve(
+            self._manifest([self._candidate(0, "cap:p1:n0")], [self._caption("cap:p1:n0", "Table 1. Throughput.")])
+        )
+        self.assertEqual([table["table_num"] for table in tables], ["Table 1"])
+
+    async def test_candidate_without_caption_is_dropped(self):
+        tables = await self._resolve(self._manifest([self._candidate(0, None)], []))
+        self.assertEqual(tables, [], "캡션 없는 후보가 표로 나갔다")
+
+    async def test_no_table_files_are_written_for_dropped_candidates(self):
+        """게이트는 파일 쓰기 앞에 있어야 한다 — 뒤에 있으면 고아 csv/html이 남는다."""
+        manifest = self._manifest([self._candidate(0, None)], [])
+        with tempfile.TemporaryDirectory() as tmp:
+            paper_dir = Path(tmp)
+            await resolve_table_candidates(manifest, paper_dir=paper_dir, resolver_version="resolver-v1")
+            self.assertEqual(sorted((paper_dir / "tables").glob("*")), [])
+
+    async def test_captioned_candidate_survives_alongside_uncaptioned(self):
+        """무캡션 후보를 버려도 캡션 있는 진짜 표는 남아야 한다."""
+        manifest = self._manifest(
+            [self._candidate(0, None), self._candidate(1, "cap:p1:n0")],
+            [self._caption("cap:p1:n0", "Table 2. Measured throughput.")],
+        )
+        tables = await self._resolve(manifest)
+        self.assertEqual([table["table_num"] for table in tables], ["Table 2"])
+
+    async def test_two_candidates_on_one_caption_yield_one_table(self):
+        manifest = self._manifest(
+            [self._candidate(0, "cap:p1:n0"), self._candidate(1, "cap:p1:n0")],
+            [self._caption("cap:p1:n0", "Table 1. Mount parameters.")],
+        )
+        tables = await self._resolve(manifest)
+        self.assertEqual([table["table_num"] for table in tables], ["Table 1"])
+
+    async def test_duplicate_captions_with_same_label_yield_one_table(self):
+        """2025_TurboQuant p20 — 같은 "Table 1" 캡션이 2개라 캡션 id 기준으로는 못 잡는다."""
+        manifest = self._manifest(
+            [self._candidate(0, "cap:p1:n0"), self._candidate(1, "cap:p1:n1")],
+            [
+                self._caption("cap:p1:n0", "Table 1: LongBench-V1 results."),
+                self._caption("cap:p1:n1", "Table 1: LongBench-V1 results."),
+            ],
+        )
+        tables = await self._resolve(manifest)
+        self.assertEqual([table["table_num"] for table in tables], ["Table 1"])
+
+    async def test_roman_and_arabic_labels_are_deduplicated_together(self):
+        manifest = self._manifest(
+            [self._candidate(0, "cap:p1:n0"), self._candidate(1, "cap:p1:n1")],
+            [
+                self._caption("cap:p1:n0", "Table I COMPARISON OF POWER"),
+                self._caption("cap:p1:n1", "Table 1. Comparison of power"),
+            ],
+        )
+        tables = await self._resolve(manifest)
+        self.assertEqual(len(tables), 1)
+
+    async def test_distinct_labels_are_kept(self):
+        manifest = self._manifest(
+            [self._candidate(0, "cap:p1:n0"), self._candidate(1, "cap:p1:n1")],
+            [
+                self._caption("cap:p1:n0", "Table 1. Mount parameters."),
+                self._caption("cap:p1:n1", "Table 2. Link budget."),
+            ],
+        )
+        tables = await self._resolve(manifest)
+        self.assertEqual([table["table_num"] for table in tables], ["Table 1", "Table 2"])
+
+    async def test_wipeout_is_logged(self):
+        """전멸 시 경고를 남긴다(figure_resolver의 같은 경고와 동형, 계약 7)."""
+        manifest = self._manifest([self._candidate(0, None)], [])
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertLogs("services.table_resolver", level="WARNING") as captured:
+                await resolve_table_candidates(manifest, paper_dir=Path(tmp), resolver_version="resolver-v1")
+        self.assertTrue(any("표 0개" in message for message in captured.output))
