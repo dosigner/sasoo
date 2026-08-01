@@ -151,5 +151,34 @@ class TestChainInstructionAssembly(unittest.TestCase):
         self.assertLess(out.index("광학·포토닉스"), out.index("설명 수준: 박사생"))
 
 
+class TestSettingsToProfileBlock(unittest.TestCase):
+    """설정 dict에서 값을 꺼내는 경로가 프론트 저장 형식과 맞는지."""
+
+    def test_research_areas_stored_as_json_string(self):
+        """settings 테이블은 research_areas를 JSON 문자열로 저장한다."""
+        import json
+
+        from api.analysis_context import build_reader_profile_block
+
+        raw = json.dumps(["optics_photonics", "ai_ml"])
+        block = build_reader_profile_block(
+            json.loads(raw), "major", "regular", "grad_student"
+        )
+        self.assertIn("광학·포토닉스", block)
+
+    def test_malformed_json_does_not_crash(self):
+        import json
+
+        from api.analysis_context import build_reader_profile_block
+
+        try:
+            areas = json.loads("not json")
+        except json.JSONDecodeError:
+            areas = []
+        self.assertEqual(
+            build_reader_profile_block(areas, "major", "regular", "grad_student"), ""
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

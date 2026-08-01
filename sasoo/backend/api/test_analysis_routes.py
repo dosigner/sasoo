@@ -1773,6 +1773,7 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
 
         analysis_context_stub = types.ModuleType("api.analysis_context")
         analysis_context_stub.build_chain_system_instruction = lambda **kw: "SYS-INSTRUCTION"
+        analysis_context_stub.build_reader_profile_block = lambda *a, **k: ""
 
         async def _upload_stub(paper_id, path):
             return "files/uri-abc"
