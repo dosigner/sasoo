@@ -30,6 +30,37 @@ export const S = {
     sectionDesc: '여기서 정한 값이 새 논문 분석의 기본값으로 쓰여요.',
   },
 
+  // ── Levels (설명 수준) ──
+  // 같은 개념(빛의 간섭)을 수준별 문체로 보여주는 프리뷰 문장. LevelSlider와
+  // LevelCards가 이 값을 공유한다 — 단일 출처.
+  levels: {
+    elementary: {
+      label: '초등학생',
+      preview: '빛 두 줄기가 만나면 물결처럼 겹쳐서 더 밝아지거나 어두워져요.',
+    },
+    middle: {
+      label: '중학생',
+      preview: '두 빛의 파동이 겹치면 마루끼리 만나 밝아지고, 마루와 골이 만나 어두워집니다.',
+    },
+    high: {
+      label: '고등학생',
+      preview: '두 파동의 위상차가 0이면 보강간섭, π이면 상쇄간섭이 일어나 간섭무늬가 생깁니다.',
+    },
+    undergrad: {
+      label: '학부생',
+      preview: '두 간섭 광의 세기는 I = I₁ + I₂ + 2√(I₁I₂)cosΔφ로 위상차에 의해 결정됩니다.',
+    },
+    masters: {
+      label: '석사생',
+      preview: '가시도(visibility)는 광원의 시간·공간 결맞음에 의해 제한되며 상호결맞음 함수로 기술됩니다.',
+    },
+    phd: {
+      label: '박사생',
+      preview:
+        '부분결맞음 조건에서 간섭항은 상호결맞음 함수 γ₁₂(τ)의 크기와 인수로 완전히 결정되며, van Cittert–Zernike 정리로 광원 분포와 연결됩니다.',
+    },
+  },
+
   // ── Home ──
   home: {
     greeting: '안녕하세요',

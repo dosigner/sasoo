@@ -321,6 +321,21 @@
     @apply cursor-not-allowed border-border bg-surface opacity-50;
   }
 
+  /* 설명 수준 단계 카드. provider-card와 같은 형태 체계(테두리·radius 토큰·
+     transition)를 쓴다 — 프로필 페이지에서 프리뷰 문장을 주인공으로 올린다. */
+  .level-card {
+    @apply flex w-full flex-col gap-1 border p-3 text-left transition-[border-color,background-color] duration-150;
+    border-radius: var(--radius-surface);
+  }
+
+  .level-card-active {
+    @apply border-accent bg-accent/5;
+  }
+
+  .level-card-inactive {
+    @apply border-border bg-surface hover:border-border hover:bg-surface-hover;
+  }
+
   /* 변경이 있을 때만 나타나는 저장바.
      fixed가 아니라 sticky인 이유: 스크롤 주체가 .page-scaffold이고 콘텐츠가
      44rem 컬럼이라, sticky면 사이드바 폭(--sidebar-width, 접히면
