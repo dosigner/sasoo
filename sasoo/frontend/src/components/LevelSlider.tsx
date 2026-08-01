@@ -4,7 +4,7 @@ import { S } from '@/lib/strings';
 export const LEVEL_ORDER = ['elementary', 'middle', 'high', 'undergrad', 'masters', 'phd'] as const;
 export type LevelKey = (typeof LEVEL_ORDER)[number];
 
-// S.levels(strings.ts)가 단일 출처다 — 라벨/프리뷰 문장은 거기서 파생한다.
+// S.levels(strings.ts)가 단일 출처다 - 라벨/프리뷰 문장은 거기서 파생한다.
 export const LEVEL_LABELS: Record<LevelKey, string> = {
   elementary: S.levels.elementary.label,
   middle: S.levels.middle.label,

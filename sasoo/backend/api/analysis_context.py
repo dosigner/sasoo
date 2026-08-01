@@ -19,8 +19,8 @@ _FOCUS_LABELS = {
     "related_work": "선행연구 대비",
 }
 
-# 프론트 Profile.tsx의 RESEARCH_AREA_OPTIONS와 값이 1:1 대응해야 한다.
-# 한쪽만 바꾸면 test_area_labels_cover_frontend_options가 잡는다.
+# 프론트 AreaPicker.tsx의 AREAS(키)와 strings.ts의 S.areas(라벨)와 값이
+# 1:1 대응해야 한다. 한쪽만 바꾸면 test_area_labels_cover_frontend_options가 잡는다.
 AREA_LABELS: dict[str, str] = {
     "optics_photonics": "광학·포토닉스",
     "ai_ml": "AI·머신러닝",
@@ -40,6 +40,16 @@ _EXPERTISE_HINT: dict[str, str] = {
     "major": "",  # 기본값. 지시문을 늘리지 않는다.
     "research": "직접 연구하는 사람이니 배경 설명은 생략하고 방법론 차이에 집중해.",
     "expert": "전문가니 배경 설명 없이 바로 본론으로 가고, 논쟁적인 지점을 짚어줘.",
+}
+
+# explanation_level이 낮으면 위 research/expert 힌트의 "배경 설명 생략/없이"
+# 문구가 그 수준의 지시("짧게 배경을 설명해" 등)와 정면으로 충돌한다.
+# 이 수준들에서는 배경 관련 지시를 뺀 강조점만 남긴 변형을 대신 쓴다.
+_LOW_EXPLANATION_LEVELS = {"elementary", "middle", "high", "undergrad"}
+
+_EXPERTISE_HINT_NO_BACKGROUND: dict[str, str] = {
+    "research": "직접 연구하는 사람이니 방법론 차이에 집중해.",
+    "expert": "전문가니 논쟁적인 지점도 짚어줘.",
 }
 
 _READING_HINT: dict[str, str] = {
@@ -67,6 +77,8 @@ def build_reader_profile_block(
     field_expertise: str,
     reading_experience: str,
     research_role: str,
+    *,
+    level_key: str = "",
 ) -> str:
     """프로필 선택값을 시스템 지시문 한 조각으로 만든다.
 
@@ -75,6 +87,11 @@ def build_reader_profile_block(
 
     기본값(major/regular/grad_student, 분야 미선택)만 있으면 빈 문자열을
     돌려준다. 매 호출에 실리는 지시문을 기본 상태에서 늘리지 않기 위해서다.
+
+    level_key(explanation_level)가 낮은 수준이면 field_expertise의
+    research/expert 힌트에서 "배경 설명 생략" 지시를 빼고 강조점만 남긴다.
+    그 수준 자체가 "배경을 짧게 설명해"를 요구해 두 지시가 충돌하기 때문이다.
+    level_key를 넘기지 않으면(기본값 "") 기존 동작과 동일하다.
     """
     lines: list[str] = []
 
@@ -85,8 +102,12 @@ def build_reader_profile_block(
             "이 분야 용어는 그대로 쓰고, 벗어난 분야 용어는 한 줄로 풀어줘."
         )
 
+    expertise_table = _EXPERTISE_HINT
+    if level_key in _LOW_EXPLANATION_LEVELS and field_expertise in _EXPERTISE_HINT_NO_BACKGROUND:
+        expertise_table = _EXPERTISE_HINT_NO_BACKGROUND
+
     for table, key in (
-        (_EXPERTISE_HINT, field_expertise),
+        (expertise_table, field_expertise),
         (_READING_HINT, reading_experience),
         (ROLE_EMPHASIS, research_role),
     ):

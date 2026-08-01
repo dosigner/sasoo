@@ -17,7 +17,7 @@ interface Props {
  * 값이 순서를 갖긴 하지만(초등 -> 박사) 사용자가 하는 일은 "내 눈높이 하나
  * 고르기"이지 "정도를 조절하기"가 아니다.
  *
- * LEVEL_ORDER/LevelKey는 LevelSlider.tsx의 export를 재사용한다 — 같은 6개
+ * LEVEL_ORDER/LevelKey는 LevelSlider.tsx의 export를 재사용한다 - 같은 6개
  * 값을 두 번 선언하지 않기 위해서다. LevelSlider는 UploadPanel(compact 모드)과
  * Library가 여전히 쓰고 있어 삭제하지 않았다.
  *

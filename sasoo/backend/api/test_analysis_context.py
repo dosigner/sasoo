@@ -4,6 +4,8 @@ from api.analysis_context import build_chain_system_instruction, EXPLANATION_LEV
 from api.analysis_context import (
     AREA_LABELS,
     ROLE_EMPHASIS,
+    _EXPERTISE_HINT,
+    _READING_HINT,
     build_reader_profile_block,
 )
 
@@ -34,7 +36,7 @@ def test_instruction_defaults():
 
 class TestVocabularyTables(unittest.TestCase):
     def test_area_labels_cover_frontend_options(self):
-        """Profile.tsx의 RESEARCH_AREA_OPTIONS와 값이 일치해야 한다."""
+        """AreaPicker.tsx의 AREAS와 strings.ts의 S.areas와 값이 일치해야 한다."""
         expected = {
             "optics_photonics",
             "ai_ml",
@@ -58,6 +60,27 @@ class TestVocabularyTables(unittest.TestCase):
             "other",
         }
         self.assertEqual(set(ROLE_EMPHASIS), expected)
+
+    def test_expertise_hint_covers_frontend_options(self):
+        """Profile.tsx의 FIELD_EXPERTISE_OPTIONS와 값이 일치해야 한다."""
+        expected = {
+            "novice",
+            "basic",
+            "major",
+            "research",
+            "expert",
+        }
+        self.assertEqual(set(_EXPERTISE_HINT), expected)
+
+    def test_reading_hint_covers_frontend_options(self):
+        """Profile.tsx의 READING_EXPERIENCE_OPTIONS와 값이 일치해야 한다."""
+        expected = {
+            "rare",
+            "occasional",
+            "regular",
+            "author",
+        }
+        self.assertEqual(set(_READING_HINT), expected)
 
 
 class TestReaderProfileBlock(unittest.TestCase):
@@ -120,6 +143,39 @@ class TestReaderProfileBlock(unittest.TestCase):
         )
         self.assertNotIn("—", block)
         self.assertNotIn("–", block)
+
+    def test_low_level_expert_drops_background_phrase(self):
+        """낮은 설명 수준 + expert 조합에서는 '배경' 관련 지시를 빼야 한다.
+
+        기본 _EXPERTISE_HINT["expert"]는 "배경 설명 없이 바로 본론으로"라는
+        문구를 담고 있는데, 이는 undergrad 같은 낮은 explanation_level의
+        "짧게 배경을 설명해"와 정면 충돌한다.
+        """
+        block = build_reader_profile_block(
+            [], "expert", "regular", "grad_student", level_key="undergrad"
+        )
+        self.assertNotIn("배경", block)
+
+    def test_high_level_expert_keeps_background_phrase(self):
+        """높은 설명 수준(phd/masters)에서는 기존 expert 문장이 그대로 나온다."""
+        block_phd = build_reader_profile_block(
+            [], "expert", "regular", "grad_student", level_key="phd"
+        )
+        self.assertEqual(block_phd, _EXPERTISE_HINT["expert"])
+
+        block_masters = build_reader_profile_block(
+            [], "research", "regular", "grad_student", level_key="masters"
+        )
+        self.assertEqual(block_masters, _EXPERTISE_HINT["research"])
+
+    def test_omitting_level_key_keeps_old_behavior(self):
+        """level_key를 생략하면 기존 동작과 동일해야 한다."""
+        with_default = build_reader_profile_block([], "expert", "regular", "grad_student")
+        with_empty = build_reader_profile_block(
+            [], "expert", "regular", "grad_student", level_key=""
+        )
+        self.assertEqual(with_default, with_empty)
+        self.assertEqual(with_default, _EXPERTISE_HINT["expert"])
 
 
 class TestChainInstructionAssembly(unittest.TestCase):

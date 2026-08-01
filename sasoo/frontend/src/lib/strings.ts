@@ -32,7 +32,7 @@ export const S = {
 
   // ── Levels (설명 수준) ──
   // 같은 개념(빛의 간섭)을 수준별 문체로 보여주는 프리뷰 문장. LevelSlider와
-  // LevelCards가 이 값을 공유한다 — 단일 출처.
+  // LevelCards가 이 값을 공유한다 - 단일 출처.
   levels: {
     elementary: {
       label: '초등학생',
@@ -62,7 +62,7 @@ export const S = {
   },
 
   // 연구 분야 아이콘 칩 라벨. 백엔드 analysis_context.py의 AREA_LABELS와
-  // 글자 그대로 같아야 한다 — 키도 값도. 임의로 바꾸지 말 것.
+  // 글자 그대로 같아야 한다 - 키도 값도. 임의로 바꾸지 말 것.
   areas: {
     optics_photonics: '광학·포토닉스',
     ai_ml: 'AI·머신러닝',

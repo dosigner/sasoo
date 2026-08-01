@@ -30,7 +30,7 @@ interface Props {
  * 해제할 수 있어야 한다.
  *
  * 잠긴 칩은 disabled라 포커스를 받지 못해 스크린리더가 상한 도달 사유를
- * 읽을 수 없다 — disabled 요소는 접근성 트리에서 아예 제외되기 때문이다.
+ * 읽을 수 없다 - disabled 요소는 접근성 트리에서 아예 제외되기 때문이다.
  * 그래서 도움말 문구(researchAreasMaxReached)에 aria-live="polite"를 달아
  * 상한에 도달하는 순간 스크린리더가 그 문구 변화를 능동적으로 읽게 한다.
  * 브리프의 버튼 구조(role/aria-checked/disabled)는 그대로 두고 문구

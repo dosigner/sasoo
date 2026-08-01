@@ -169,7 +169,7 @@ const ICON_MAP = {
   play: Play,
   stop: Square,
   spinner: Loader2,
-  // 연구 분야 아이콘. Profile.tsx의 RESEARCH_AREA_OPTIONS와 1:1 대응한다.
+  // 연구 분야 아이콘. AreaPicker.tsx의 AREAS와 1:1 대응한다.
   'area-optics': Waves,
   'area-ai': Brain,
   'area-robotics': Bot,

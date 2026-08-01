@@ -2217,6 +2217,7 @@ async def _run_full_analysis(paper_id: int):
             settings_raw.get("field_expertise") or "major",
             settings_raw.get("reading_experience") or "regular",
             settings_raw.get("research_role") or "grad_student",
+            level_key=level_key,
         )
 
         def _stage_system_instruction(stage: Optional[str]) -> str:
