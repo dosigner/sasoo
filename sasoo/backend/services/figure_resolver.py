@@ -274,6 +274,21 @@ def _needs_candidate_recheck(group: list[dict[str, Any]], page: dict[str, Any]) 
     )
 
 
+def _survives_acceptance(
+    candidate: dict[str, Any],
+    page: dict[str, Any],
+    captions_by_id: dict[str, dict[str, Any]],
+    confidence_delta: float,
+) -> bool:
+    """이 후보가 `resolve_figure_candidates`의 수용 조건을 통과하는지 미리 본다.
+
+    조건은 2단계 루프의 것과 같아야 한다 — label이 figure이고, confidence가 0.5 이상이며,
+    캡션이 연결돼 있어야 한다(계약 7).
+    """
+    label, confidence, _, _, best_caption_id = _score_candidate(candidate, page, captions_by_id)
+    return label == "figure" and min(0.99, confidence + confidence_delta) >= 0.5 and bool(best_caption_id)
+
+
 async def _maybe_select_candidate(
     group: list[dict[str, Any]],
     page: dict[str, Any],
@@ -341,8 +356,14 @@ async def _maybe_select_candidate(
         selected = str(payload.get("selected_candidate_id") or "")
         confidence_delta = min(max(float(payload.get("confidence") or 0.0), 0.0), 0.16)
         matched = next((candidate for candidate in scored if str(candidate.get("id")) == selected), None)
-        if matched is not None:
+        if matched is not None and _survives_acceptance(matched, page, captions_by_id, confidence_delta):
             return (matched, confidence_delta, result["model"])
+        # VLM이 고른 크롭이 수용 게이트를 통과하지 못하면 휴리스틱 선택을 유지한다.
+        # 이 단계의 역할은 "여럿 중 최선 고르기"이지 수용 여부를 뒤집는 것이 아닌데,
+        # 고른 결과가 그대로 게이트로 넘어가 그림이 통째로 사라졌다.
+        # 실측(2022_SciRep p9): 휴리스틱은 figcand:p9:n1(figure, 0.60)을 고르는데 VLM이
+        # figcand:p9:n0(reject, 0.43, low_visual_signal)을 골라 Fig. 9가 매번 없어졌다.
+        # 2025_TurboQuant에서는 같은 경로로 실행마다 다른 그림이 1~3개씩 사라졌다.
     except Exception:
         pass
 

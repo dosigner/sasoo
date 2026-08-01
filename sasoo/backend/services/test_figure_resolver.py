@@ -27,10 +27,16 @@ class MaybeSelectCandidateCallInteractionTests(unittest.IsolatedAsyncioTestCase)
             raster_rel = "pages/page_1.png"
             image_bytes = _make_png(paper_dir / raster_rel)
 
+            # 두 후보 모두 캡션이 연결되고 수용 게이트를 통과하는 크기여야 한다 —
+            # 캡션 없는 후보는 계약 7상 어차피 버려지므로 선택 계약을 검증할 수 없다.
             group = [
-                {"id": "cand:1", "bbox": [10.0, 10.0, 50.0, 50.0], "source_kind": "pymupdf_image"},
-                {"id": "cand:2", "bbox": [60.0, 10.0, 120.0, 60.0], "source_kind": "pymupdf_image"},
+                {"id": "cand:1", "bbox": [40.0, 40.0, 260.0, 300.0], "source_kind": "pymupdf_image",
+                 "best_caption_id": "cap:1", "linked_caption_ids": ["cap:1"]},
+                {"id": "cand:2", "bbox": [60.0, 10.0, 240.0, 220.0], "source_kind": "pymupdf_image",
+                 "best_caption_id": "cap:1", "linked_caption_ids": ["cap:1"]},
             ]
+            captions = {"cap:1": {"id": "cap:1", "text": "Figure 1. Example.",
+                                  "bbox": [10.0, 60.0, 120.0, 70.0], "linked_content_id": 7}}
             page = {"page_size": {"width": 300.0, "height": 400.0}, "raster_path": raster_rel}
 
             fake_call = AsyncMock(
@@ -45,7 +51,7 @@ class MaybeSelectCandidateCallInteractionTests(unittest.IsolatedAsyncioTestCase)
             with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), \
                  patch("services.figure_resolver.call_interaction", new=fake_call):
                 chosen, delta, model_used = await figure_resolver._maybe_select_candidate(
-                    group, page, {}, figure_resolver._RasterCache(paper_dir), "resolver-v1",
+                    group, page, captions, figure_resolver._RasterCache(paper_dir), "resolver-v1",
                 )
 
             fake_call.assert_awaited_once()
@@ -68,10 +74,16 @@ class MaybeSelectCandidateCallInteractionTests(unittest.IsolatedAsyncioTestCase)
             raster_rel = "pages/page_1.png"
             _make_png(paper_dir / raster_rel)
 
+            # 두 후보 모두 캡션이 연결되고 수용 게이트를 통과하는 크기여야 한다 —
+            # 캡션 없는 후보는 계약 7상 어차피 버려지므로 선택 계약을 검증할 수 없다.
             group = [
-                {"id": "cand:1", "bbox": [10.0, 10.0, 50.0, 50.0], "source_kind": "pymupdf_image"},
-                {"id": "cand:2", "bbox": [60.0, 10.0, 120.0, 60.0], "source_kind": "pymupdf_image"},
+                {"id": "cand:1", "bbox": [40.0, 40.0, 260.0, 300.0], "source_kind": "pymupdf_image",
+                 "best_caption_id": "cap:1", "linked_caption_ids": ["cap:1"]},
+                {"id": "cand:2", "bbox": [60.0, 10.0, 240.0, 220.0], "source_kind": "pymupdf_image",
+                 "best_caption_id": "cap:1", "linked_caption_ids": ["cap:1"]},
             ]
+            captions = {"cap:1": {"id": "cap:1", "text": "Figure 1. Example.",
+                                  "bbox": [10.0, 60.0, 120.0, 70.0], "linked_content_id": 7}}
             page = {"page_size": {"width": 300.0, "height": 400.0}, "raster_path": raster_rel}
 
             fake_call = AsyncMock(side_effect=RuntimeError("boom"))
@@ -79,7 +91,7 @@ class MaybeSelectCandidateCallInteractionTests(unittest.IsolatedAsyncioTestCase)
             with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}), \
                  patch("services.figure_resolver.call_interaction", new=fake_call):
                 chosen, delta, model_used = await figure_resolver._maybe_select_candidate(
-                    group, page, {}, figure_resolver._RasterCache(paper_dir), "resolver-v1",
+                    group, page, captions, figure_resolver._RasterCache(paper_dir), "resolver-v1",
                 )
 
             self.assertEqual(delta, 0.0)
@@ -91,10 +103,16 @@ class MaybeSelectCandidateCallInteractionTests(unittest.IsolatedAsyncioTestCase)
             raster_rel = "pages/page_1.png"
             _make_png(paper_dir / raster_rel)
 
+            # 두 후보 모두 캡션이 연결되고 수용 게이트를 통과하는 크기여야 한다 —
+            # 캡션 없는 후보는 계약 7상 어차피 버려지므로 선택 계약을 검증할 수 없다.
             group = [
-                {"id": "cand:1", "bbox": [10.0, 10.0, 50.0, 50.0], "source_kind": "pymupdf_image"},
-                {"id": "cand:2", "bbox": [60.0, 10.0, 120.0, 60.0], "source_kind": "pymupdf_image"},
+                {"id": "cand:1", "bbox": [40.0, 40.0, 260.0, 300.0], "source_kind": "pymupdf_image",
+                 "best_caption_id": "cap:1", "linked_caption_ids": ["cap:1"]},
+                {"id": "cand:2", "bbox": [60.0, 10.0, 240.0, 220.0], "source_kind": "pymupdf_image",
+                 "best_caption_id": "cap:1", "linked_caption_ids": ["cap:1"]},
             ]
+            captions = {"cap:1": {"id": "cap:1", "text": "Figure 1. Example.",
+                                  "bbox": [10.0, 60.0, 120.0, 70.0], "linked_content_id": 7}}
             page = {"page_size": {"width": 300.0, "height": 400.0}, "raster_path": raster_rel}
 
             fake_call = AsyncMock(side_effect=AssertionError("call_interaction should not run"))
@@ -103,7 +121,7 @@ class MaybeSelectCandidateCallInteractionTests(unittest.IsolatedAsyncioTestCase)
                 os.environ.pop("GEMINI_API_KEY", None)
                 with patch("services.figure_resolver.call_interaction", new=fake_call):
                     chosen, delta, model_used = await figure_resolver._maybe_select_candidate(
-                        group, page, {}, figure_resolver._RasterCache(paper_dir), "resolver-v1",
+                        group, page, captions, figure_resolver._RasterCache(paper_dir), "resolver-v1",
                     )
 
             fake_call.assert_not_awaited()
@@ -401,3 +419,35 @@ class SubFigureNumberingTests(unittest.TestCase):
         from services.figure_resolver import _subfigure_num
 
         self.assertNotEqual(_subfigure_num("Fig. 12", "1"), "Fig. 121")
+
+
+class VlmSelectionDoesNotDropFiguresTests(unittest.IsolatedAsyncioTestCase):
+    """VLM이 고른 크롭이 수용 게이트에 걸려 그림이 통째로 사라지던 문제.
+
+    `_maybe_select_candidate`의 역할은 "여럿 중 최선 고르기"이지 수용 여부를 뒤집는 것이
+    아닌데, 고른 결과가 그대로 게이트로 넘어갔다. 실측(2022_SciRep p9): 휴리스틱은
+    figcand:p9:n1(figure, 0.60)을 고르는데 VLM이 figcand:p9:n0(reject, 0.43,
+    low_visual_signal)을 골라 **Fig. 9가 매번 없어졌다**. 2025_TurboQuant에서는 같은
+    경로로 실행마다 다른 그림이 1~3개씩 사라져 그림 정확도가 실행마다 흔들렸다.
+    """
+
+    def test_acceptance_check_mirrors_the_emit_conditions(self):
+        """게이트 조건이 2단계 루프와 어긋나면 이 보호 장치가 무의미해진다."""
+        from services.figure_resolver import _survives_acceptance
+
+        page = {"page_number": 1, "page_size": {"width": 612.0, "height": 792.0}}
+        with patch("services.figure_resolver._score_candidate") as scored:
+            scored.return_value = ("figure", 0.6, None, False, "cap:1")
+            self.assertTrue(_survives_acceptance({}, page, {}, 0.0))
+
+            scored.return_value = ("reject", 0.6, "low_visual_signal", False, "cap:1")
+            self.assertFalse(_survives_acceptance({}, page, {}, 0.0), "reject 판정이 통과했다")
+
+            scored.return_value = ("figure", 0.43, None, False, "cap:1")
+            self.assertFalse(_survives_acceptance({}, page, {}, 0.0), "0.5 미만이 통과했다")
+
+            # selection_delta가 더해져 0.5를 넘으면 통과해야 한다(실제 계산과 같게).
+            self.assertTrue(_survives_acceptance({}, page, {}, 0.16))
+
+            scored.return_value = ("figure", 0.9, None, False, None)
+            self.assertFalse(_survives_acceptance({}, page, {}, 0.0), "캡션 없는 후보가 통과했다(계약 7)")
