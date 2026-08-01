@@ -264,6 +264,12 @@ export interface Settings {
   gemini_key_unreadable: boolean;
   openai_api_key: string;
   openai_key_unreadable: boolean;
+  /** 공급사 선택의 단일 소스. image_provider는 백엔드가 갱신하는 미러다. */
+  ai_provider?: 'openai' | 'gemini';
+  /** 저장된 선택을 키 가용성으로 보정한 실사용 값. 키가 없으면 null. 읽기 전용. */
+  active_provider?: 'openai' | 'gemini' | null;
+  /** 키가 사라져 자동 전환됐다면 그 대상. 알림용. 읽기 전용. */
+  switched_to?: 'openai' | 'gemini' | null;
   image_provider: 'openai' | 'gemini';
   image_quality: 'low' | 'medium' | 'high';
   library_path: string;

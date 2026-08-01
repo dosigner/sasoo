@@ -302,8 +302,46 @@
     @apply border-border bg-surface text-fg-muted hover:border-border hover:bg-surface-hover hover:text-fg;
   }
 
+  /* 공급사 선택 카드. 이 페이지에서 가장 중요한 결정이라 시각적 비중을
+     여기 한 곳에만 준다. */
+  .provider-card {
+    @apply flex flex-col gap-1 border p-4 text-left transition-[border-color,background-color] duration-150;
+    border-radius: var(--radius-surface);
+  }
+
+  .provider-card-active {
+    @apply border-accent bg-accent/5;
+  }
+
+  .provider-card-inactive {
+    @apply border-border bg-surface hover:border-border hover:bg-surface-hover;
+  }
+
+  .provider-card-disabled {
+    @apply cursor-not-allowed border-border bg-surface opacity-50;
+  }
+
+  /* 변경이 있을 때만 나타나는 저장바.
+     fixed가 아니라 sticky인 이유: 스크롤 주체가 .page-scaffold이고 콘텐츠가
+     44rem 컬럼이라, sticky면 사이드바 폭(--sidebar-width, 접히면
+     --sidebar-collapsed-width)을 알 필요가 없고 폭도 저절로 맞는다.
+     z-20은 패널 내부 sticky 대역이다 — 토스트(z-50)가 덮어야 맞다. */
   .settings-savebar {
-    @apply border-t border-border/80 bg-surface/95;
+    @apply sticky bottom-0 z-20 mt-4 flex flex-wrap items-center justify-between gap-3
+           border-t border-border/80 bg-surface/95 px-4 py-3 backdrop-blur-lg;
+    border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+    animation: savebar-in 120ms var(--ease-out-strong);
+  }
+
+  @keyframes savebar-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   .toast-surface {
@@ -1315,6 +1353,7 @@
   .animate-slide-in-left,
   .animate-pop-in,
   .fade-in-up,
+  .settings-savebar,
   .home-stagger > * {
     animation: fadeIn 0.15s ease-out both !important;
     animation-delay: 0s !important;

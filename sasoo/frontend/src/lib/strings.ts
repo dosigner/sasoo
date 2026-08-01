@@ -253,6 +253,20 @@ export const S = {
     browseFolder: '폴더 선택',
     browseFolderFailed: '폴더 선택 창을 열지 못했어요',
     browseFolderUnavailable: '이 환경에서는 경로를 직접 입력하면 바꿀 수 있어요',
+    // AI provider
+    aiProvider: 'AI 공급사',
+    aiProviderDesc: '분석·그림 판독·도해 생성에 모두 적용돼요.',
+    aiProviderOpenAI: 'OpenAI',
+    aiProviderOpenAIModel: 'GPT-5.6 Luna',
+    aiProviderGemini: 'Google',
+    aiProviderGeminiModel: 'Gemini 3.6 Flash',
+    aiProviderKeyReady: '키 등록됨',
+    aiProviderKeyMissing: '키 없음',
+    aiProviderSwitched: (to: string) => `${to}로 전환했습니다`,
+    aiProviderLocked: 'API 키를 등록하면 분석을 시작할 수 있어요',
+    // Save bar
+    saveBarLabel: '변경사항',
+    changeCount: (n: number) => `변경 ${n}개`,
     // API Keys
     apiKeys: '모델 키',
     geminiKey: 'Google Gemini API 키',
@@ -296,10 +310,13 @@ export const S = {
     extractionPipeline: 'Figure/Table 추출 경로',
     extractionPipelineHelp: '기본값은 resolver_v1이에요.',
     extractionPipelineResolverV1: 'resolver_v1 (candidate-resolver)',
-    pdfVisualEngine: 'Figure 추출 엔진',
-    pdfVisualEngineHelp: 'Gemini는 figure·수식 품질이 높지만 논문당 API 비용이 들어요. ODL은 무료지만 수식·표 추출이 제한적이에요.',
-    pdfVisualEngineGemini: 'Gemini (고품질, 유료)',
-    pdfVisualEngineOdl: 'ODL (무료)',
+    // 저장 값은 'gemini' | 'odl' 그대로다. 'gemini'는 공급사 이름이 아니라
+    // "LLM 비전으로 판독" 경로를 가리키는 레거시 이름이라, 공급사 선택과
+    // 혼동되지 않도록 표시 문구만 바꿨다.
+    pdfVisualEngine: '그림 판독 방식',
+    pdfVisualEngineHelp: 'AI 판독은 그림·수식을 정확히 읽지만 논문당 API 비용이 들어요. 빠른 추출은 무료지만 수식·표를 놓칠 수 있어요.',
+    pdfVisualEngineGemini: 'AI 판독 (정확, 유료)',
+    pdfVisualEngineOdl: '빠른 추출 (무료)',
     profileFast: '빠름',
     profileBalanced: '균형',
     profileQuality: '고품질',
