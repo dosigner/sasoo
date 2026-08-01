@@ -4,32 +4,23 @@ import {
   getSettings,
   updateSettings,
 } from '@/lib/api';
-import LevelSlider, { type LevelKey } from '@/components/LevelSlider';
+import { type LevelKey } from '@/components/LevelSlider';
+import { LevelCards } from '@/components/profile/LevelCards';
+import { AreaPicker } from '@/components/profile/AreaPicker';
+import { SaveBar } from '@/components/settings/SaveBar';
 import { useToast } from '@/components/Toast';
 import { S } from '@/lib/strings';
 import { AppIcon } from '@/components/icons';
-import { Select, Popover } from '@/components/ui';
+import { Select } from '@/components/ui';
 
 // ---------------------------------------------------------------------------
 // 연구자 프로필 — 연구 배경과 기본 설명 수준을 관리하는 전용 페이지.
 // analysis_focus(분석 초점)는 논문마다 다르므로 여기 두지 않고 업로드 화면에서만 받는다.
 // ---------------------------------------------------------------------------
 
-// 주요 연구 분야 — 검색형 멀티셀렉트, 최대 3개. key는 백엔드 research_areas로 그대로 저장된다.
+// 주요 연구 분야 — 최대 3개. key는 백엔드 research_areas로 그대로 저장된다.
+// AreaPicker의 max prop으로 넘긴다 — 상한 값을 두 곳에 따로 박지 않는다.
 const MAX_RESEARCH_AREAS = 3;
-const RESEARCH_AREA_OPTIONS = [
-  { key: 'optics_photonics', label: '광학·포토닉스' },
-  { key: 'ai_ml', label: 'AI·머신러닝' },
-  { key: 'robotics_control', label: '로보틱스·제어' },
-  { key: 'electrical_electronics', label: '전기·전자' },
-  { key: 'computer_science', label: '컴퓨터과학' },
-  { key: 'physics_math', label: '물리·수학' },
-  { key: 'bio_medical', label: '바이오·의생명' },
-  { key: 'other', label: '기타' },
-] as const;
-const RESEARCH_AREA_LABELS: Record<string, string> = Object.fromEntries(
-  RESEARCH_AREA_OPTIONS.map((opt) => [opt.key, opt.label])
-);
 
 // 분야 숙련도 — 5단계 세그먼트
 const FIELD_EXPERTISE_OPTIONS = [
@@ -104,122 +95,6 @@ function SegmentGroup({
   );
 }
 
-// 주요 연구 분야 — 검색형 멀티셀렉트 드롭다운 + 선택 칩(개별 삭제 가능)
-function ResearchAreaSelect({
-  value,
-  onChange,
-}: {
-  value: string[];
-  onChange: (next: string[]) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const atMax = value.length >= MAX_RESEARCH_AREAS;
-  const filtered = RESEARCH_AREA_OPTIONS.filter((opt) => opt.label.includes(search.trim()));
-
-  const toggle = (key: string) => {
-    if (value.includes(key)) {
-      onChange(value.filter((k) => k !== key));
-    } else if (!atMax) {
-      onChange([...value, key]);
-    }
-  };
-
-  return (
-    <div>
-      <Popover.Root
-        open={open}
-        onOpenChange={(next) => {
-          setOpen(next);
-          if (!next) setSearch('');
-        }}
-      >
-        <Popover.Trigger asChild>
-          <button
-            type="button"
-            className="input flex w-full items-center justify-between gap-2 text-left text-fg-muted"
-          >
-            <span>{S.settings.researchAreasPlaceholder}</span>
-            <AppIcon name="chevron-down" className="h-4 w-4 shrink-0 text-fg-muted" />
-          </button>
-        </Popover.Trigger>
-        <Popover.Content align="start" className="w-[20rem] max-w-[90vw] p-2">
-          <div className="relative mb-2">
-            <AppIcon
-              name="search"
-              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-muted"
-            />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={S.settings.researchAreasSearchPlaceholder}
-              className="input pl-8 text-sm"
-              autoFocus
-            />
-          </div>
-          <div className="max-h-56 space-y-0.5 overflow-y-auto">
-            {filtered.map((opt) => {
-              const selected = value.includes(opt.key);
-              const disabled = !selected && atMax;
-              return (
-                <button
-                  key={opt.key}
-                  type="button"
-                  disabled={disabled}
-                  aria-pressed={selected}
-                  onClick={() => toggle(opt.key)}
-                  className={`flex w-full items-center justify-between rounded-control px-2.5 py-1.5 text-left text-sm transition-colors ${
-                    selected
-                      ? 'bg-accent/10 text-accent'
-                      : disabled
-                        ? 'cursor-not-allowed text-fg-muted opacity-40'
-                        : 'text-fg hover:bg-surface-hover'
-                  }`}
-                >
-                  {opt.label}
-                  {selected && <AppIcon name="success" className="h-3.5 w-3.5" />}
-                </button>
-              );
-            })}
-            {filtered.length === 0 && (
-              <p className="px-2.5 py-2 text-xs text-fg-muted">{S.settings.researchAreasNoMatch}</p>
-            )}
-          </div>
-          {atMax && (
-            <p className="mt-2 px-1 text-2xs text-fg-muted">{S.settings.researchAreasMaxReached}</p>
-          )}
-        </Popover.Content>
-      </Popover.Root>
-
-      {value.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {value.map((key) => {
-            const label = RESEARCH_AREA_LABELS[key] ?? key;
-            return (
-              <span
-                key={key}
-                className="inline-flex items-center gap-1.5 rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs text-accent"
-              >
-                {label}
-                <button
-                  type="button"
-                  onClick={() => onChange(value.filter((k) => k !== key))}
-                  aria-label={S.settings.removeAreaLabel(label)}
-                  className="text-accent/70 transition-colors hover:text-accent"
-                >
-                  <AppIcon name="close" className="h-3 w-3" />
-                </button>
-              </span>
-            );
-          })}
-        </div>
-      )}
-      <p className="mt-1.5 text-2xs text-fg-muted">{S.settings.researchAreasHelper}</p>
-    </div>
-  );
-}
-
 export default function Profile() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -283,13 +158,15 @@ export default function Profile() {
     };
   }, []);
 
-  const hasChanges =
-    researchContext !== baseline.research_context ||
-    defaultLevel !== baseline.default_explanation_level ||
-    JSON.stringify(researchAreas) !== JSON.stringify(baseline.research_areas) ||
-    fieldExpertise !== baseline.field_expertise ||
-    readingExperience !== baseline.reading_experience ||
-    researchRole !== baseline.research_role;
+  // 저장바가 "변경 N개"를 보여주므로 불리언이 아니라 개수를 센다. Settings.tsx와 같은 형태다.
+  const changedFields = [
+    researchContext !== baseline.research_context,
+    JSON.stringify(researchAreas) !== JSON.stringify(baseline.research_areas),
+    researchRole !== baseline.research_role,
+    defaultLevel !== baseline.default_explanation_level,
+    fieldExpertise !== baseline.field_expertise,
+    readingExperience !== baseline.reading_experience,
+  ].filter(Boolean).length;
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -330,6 +207,16 @@ export default function Profile() {
     }
   }, [researchContext, defaultLevel, researchAreas, fieldExpertise, readingExperience, researchRole, toast]);
 
+  const handleDiscard = useCallback(() => {
+    setResearchContext(baseline.research_context);
+    setDefaultLevel(baseline.default_explanation_level as LevelKey);
+    setResearchAreas(baseline.research_areas);
+    setFieldExpertise(baseline.field_expertise);
+    setReadingExperience(baseline.reading_experience);
+    setResearchRole(baseline.research_role);
+    setSaved(false);
+  }, [baseline]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -354,30 +241,13 @@ export default function Profile() {
               {S.settings.researcherProfileDesc}
             </p>
           </div>
-          <div className="flex shrink-0 flex-col items-stretch gap-2 lg:min-w-[14rem]">
-            {(hasChanges || saved) && (
-              <div className={saved ? 'archive-inline-status archive-inline-status-success' : 'archive-inline-status archive-inline-status-muted'}>
-                {saved ? (
-                  <AppIcon name="success" className="w-4 h-4" />
-                ) : (
-                  <AppIcon name="info" className="w-4 h-4" />
-                )}
-                {saved ? S.settings.saved : S.settings.unsavedChanges}
-              </div>
-            )}
-            <button
-              onClick={handleSave}
-              disabled={saving || !hasChanges}
-              className="btn-primary text-sm"
-            >
-              {saving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <AppIcon name="save" className="w-4 h-4" />
-              )}
-              {saving ? S.settings.saving : S.settings.save}
-            </button>
-          </div>
+          {/* 저장·되돌리기 버튼은 하단 저장바(SaveBar)로 옮겼다. */}
+          {saved && (
+            <div className="archive-inline-status archive-inline-status-success shrink-0">
+              <AppIcon name="success" className="w-4 h-4" />
+              {S.settings.saved}
+            </div>
+          )}
         </div>
       </section>
 
@@ -428,7 +298,7 @@ export default function Profile() {
               <label className="mb-2 block text-sm font-medium text-fg-secondary">
                 {S.settings.researchAreas}
               </label>
-              <ResearchAreaSelect value={researchAreas} onChange={setResearchAreas} />
+              <AreaPicker value={researchAreas} onChange={setResearchAreas} max={MAX_RESEARCH_AREAS} />
             </div>
 
             <div>
@@ -458,7 +328,7 @@ export default function Profile() {
               <label className="mb-2 block text-sm font-medium text-fg-secondary">
                 {S.settings.defaultLevel}
               </label>
-              <LevelSlider value={defaultLevel} onChange={setDefaultLevel} />
+              <LevelCards value={defaultLevel} onChange={setDefaultLevel} />
             </div>
 
             <div>
@@ -487,6 +357,14 @@ export default function Profile() {
           </div>
         </div>
       </section>
+
+      <SaveBar
+        changeCount={changedFields}
+        saving={saving}
+        error={error}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
+      />
     </div>
   );
 }
