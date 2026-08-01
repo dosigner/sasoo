@@ -1,4 +1,11 @@
+import unittest
+
 from api.analysis_context import build_chain_system_instruction, EXPLANATION_LEVELS
+from api.analysis_context import (
+    AREA_LABELS,
+    ROLE_EMPHASIS,
+    build_reader_profile_block,
+)
 
 
 def test_level_keys_complete():
@@ -23,3 +30,97 @@ def test_instruction_composition():
 def test_instruction_defaults():
     si = build_chain_system_instruction("", "", None, "masters")
     assert EXPLANATION_LEVELS["masters"][:20] in si
+
+
+class TestVocabularyTables(unittest.TestCase):
+    def test_area_labels_cover_frontend_options(self):
+        """Profile.tsx의 RESEARCH_AREA_OPTIONS와 값이 일치해야 한다."""
+        expected = {
+            "optics_photonics",
+            "ai_ml",
+            "robotics_control",
+            "electrical_electronics",
+            "computer_science",
+            "physics_math",
+            "bio_medical",
+            "other",
+        }
+        self.assertEqual(set(AREA_LABELS), expected)
+
+    def test_role_emphasis_covers_frontend_options(self):
+        expected = {
+            "student",
+            "grad_student",
+            "postdoc",
+            "professor",
+            "engineer",
+            "manager",
+            "other",
+        }
+        self.assertEqual(set(ROLE_EMPHASIS), expected)
+
+
+class TestReaderProfileBlock(unittest.TestCase):
+    def test_empty_when_nothing_meaningful(self):
+        """기본값만 있으면 지시문을 늘리지 않는다."""
+        self.assertEqual(
+            build_reader_profile_block([], "major", "regular", "grad_student"), ""
+        )
+
+    def test_areas_are_rendered_as_korean_labels(self):
+        block = build_reader_profile_block(
+            ["optics_photonics", "ai_ml"], "major", "regular", "grad_student"
+        )
+        self.assertIn("광학·포토닉스", block)
+        self.assertIn("AI·머신러닝", block)
+        self.assertNotIn("optics_photonics", block)
+
+    def test_unknown_area_is_dropped_not_rendered_raw(self):
+        block = build_reader_profile_block(
+            ["optics_photonics", "no_such_area"], "major", "regular", "grad_student"
+        )
+        self.assertNotIn("no_such_area", block)
+        self.assertIn("광학·포토닉스", block)
+
+    def test_areas_are_capped_at_three(self):
+        block = build_reader_profile_block(
+            ["optics_photonics", "ai_ml", "bio_medical", "physics_math"],
+            "major", "regular", "grad_student",
+        )
+        self.assertNotIn("물리·수학", block)
+
+    def test_novice_expertise_asks_for_more_background(self):
+        block = build_reader_profile_block([], "novice", "regular", "grad_student")
+        self.assertNotEqual(block, "")
+        self.assertIn("배경", block)
+
+    def test_expert_expertise_allows_terse_terms(self):
+        block = build_reader_profile_block([], "expert", "regular", "grad_student")
+        self.assertNotEqual(block, "")
+
+    def test_author_experience_mentions_review_perspective(self):
+        block = build_reader_profile_block([], "major", "author", "grad_student")
+        self.assertNotEqual(block, "")
+
+    def test_role_changes_emphasis(self):
+        engineer = build_reader_profile_block([], "major", "regular", "engineer")
+        professor = build_reader_profile_block([], "major", "regular", "professor")
+        self.assertNotEqual(engineer, professor)
+
+    def test_block_is_terse(self):
+        """시스템 지시문은 매 호출에 실린다. 항목당 한 줄을 넘기지 않는다."""
+        block = build_reader_profile_block(
+            ["optics_photonics", "ai_ml", "bio_medical"], "novice", "author", "engineer"
+        )
+        self.assertLessEqual(len(block.splitlines()), 5)
+
+    def test_no_em_dash(self):
+        block = build_reader_profile_block(
+            ["optics_photonics"], "novice", "author", "engineer"
+        )
+        self.assertNotIn("—", block)
+        self.assertNotIn("–", block)
+
+
+if __name__ == "__main__":
+    unittest.main()
