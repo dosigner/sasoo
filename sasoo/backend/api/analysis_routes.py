@@ -2180,7 +2180,7 @@ async def _run_full_analysis(paper_id: int):
         from api.analysis_context import build_chain_system_instruction, build_reader_profile_block
         from services.llm.interactions_client import upload_pdf_for_paper
         from services.agents import get_agent_for_domain
-        from api.settings import get_raw_settings
+        from api.settings import get_raw_settings, parse_research_areas
 
         try:
             screening_data = _json.loads(_clean_llm_json(r1.get("text") or "{}"))
@@ -2210,12 +2210,7 @@ async def _run_full_analysis(paper_id: int):
                 "UPDATE papers SET explanation_level = ? WHERE id = ?",
                 (level_key, paper_id),
             )
-        try:
-            _areas = _json.loads(settings_raw.get("research_areas") or "[]")
-            if not isinstance(_areas, list):
-                _areas = []
-        except (_json.JSONDecodeError, TypeError):
-            _areas = []
+        _areas = parse_research_areas(settings_raw.get("research_areas") or "[]")
 
         reader_profile = build_reader_profile_block(
             _areas,

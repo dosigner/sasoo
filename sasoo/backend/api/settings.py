@@ -270,7 +270,7 @@ def resolve_library_path_update(raw_path: object) -> Path:
     return resolved
 
 
-def _parse_research_areas(raw: str) -> list[str]:
+def parse_research_areas(raw: str) -> list[str]:
     """Decode the JSON-encoded research_areas setting, tolerating bad/legacy values."""
     try:
         parsed = json.loads(raw) if raw else []
@@ -324,7 +324,7 @@ async def get_settings():
         pdf_visual_engine=raw.get("pdf_visual_engine", "gemini"),
         research_context=raw.get("research_context", ""),
         default_explanation_level=raw.get("default_explanation_level", "masters"),
-        research_areas=_parse_research_areas(raw.get("research_areas", "[]")),
+        research_areas=parse_research_areas(raw.get("research_areas", "[]")),
         field_expertise=raw.get("field_expertise", "major"),
         reading_experience=raw.get("reading_experience", "regular"),
         research_role=raw.get("research_role", "grad_student"),
