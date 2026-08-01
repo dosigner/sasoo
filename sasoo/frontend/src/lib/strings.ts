@@ -61,6 +61,19 @@ export const S = {
     },
   },
 
+  // 연구 분야 아이콘 칩 라벨. 백엔드 analysis_context.py의 AREA_LABELS와
+  // 글자 그대로 같아야 한다 — 키도 값도. 임의로 바꾸지 말 것.
+  areas: {
+    optics_photonics: '광학·포토닉스',
+    ai_ml: 'AI·머신러닝',
+    robotics_control: '로보틱스·제어',
+    electrical_electronics: '전기·전자',
+    computer_science: '컴퓨터과학',
+    physics_math: '물리·수학',
+    bio_medical: '바이오·의생명',
+    other: '기타',
+  } as Record<string, string>,
+
   // ── Home ──
   home: {
     greeting: '안녕하세요',

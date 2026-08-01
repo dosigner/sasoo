@@ -336,6 +336,26 @@
     @apply border-border bg-surface hover:border-border hover:bg-surface-hover;
   }
 
+  /* 연구 분야 아이콘 칩. 8개뿐이라 검색 팝오버 없이 전부 펼친다.
+     provider-card/level-card와 같은 형태 체계지만 칩 크기라 radius는
+     --radius-control을 쓴다. */
+  .area-chip {
+    @apply flex items-center gap-2 border px-3 py-2 text-sm transition-[border-color,background-color] duration-150;
+    border-radius: var(--radius-control);
+  }
+
+  .area-chip-active {
+    @apply border-accent bg-accent/5 text-fg;
+  }
+
+  .area-chip-inactive {
+    @apply border-border bg-surface text-fg-secondary hover:border-border hover:bg-surface-hover;
+  }
+
+  .area-chip-disabled {
+    @apply cursor-not-allowed border-border bg-surface text-fg-muted opacity-50;
+  }
+
   /* 변경이 있을 때만 나타나는 저장바.
      fixed가 아니라 sticky인 이유: 스크롤 주체가 .page-scaffold이고 콘텐츠가
      44rem 컬럼이라, sticky면 사이드바 폭(--sidebar-width, 접히면
