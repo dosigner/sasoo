@@ -16,7 +16,8 @@
 - `services/models.py`의 모든 모델 ID는 `services/pricing.py`에 대응 항목을 가져야 한다.
 - 기존 상수(`MODEL_FLASH_HQ`, `MODEL_SCREENING` 등)는 삭제하지 않는다. 유지+추가.
 - 테스트는 `unittest` 스타일로 작성하고 `pytest`로 실행한다. 실행 위치는 `sasoo/backend`.
-- Luna의 effort 값은 `low` / `medium` / `xhigh` 셋만 쓴다. `max`는 쓰지 않는다.
+- Luna의 effort 값은 `low` / `medium` / `high` 셋만 쓴다. `xhigh`와 `max`는 쓰지 않는다 —
+  2026-08-01 실측에서 xhigh는 지연 5.4배 대비 이득이 없었다.
 - 사용자가 OpenAI를 선택하면 vision 단계도 OpenAI로 돌린다. Gemini로 되돌리는 폴백을 넣지 않는다.
 
 ---
@@ -41,7 +42,8 @@
 ## 단계 구분
 
 - **1단계 (Task 1~5)** — provider 추상화. Gemini 동작을 100% 유지하는 순수 리팩터. 기존 테스트로 회귀 검증.
-- **2단계 (Task 6~11)** — OpenAI 경로 추가. 1단계가 안전망.
+- **2단계 (Task 6~10c)** — OpenAI 경로 추가. 1단계가 안전망.
+- **3단계 (Task 11~13)** — 설정 페이지 리디자인. 백엔드와 독립이라 병행 가능.
 
 Task 10b가 배선을 완성하는 지점이다. 그 전까지는 새 코드가 만들어져 있어도
 파이프라인은 계속 Gemini로 돈다 — 중간에 멈춰도 앱이 깨지지 않는다.
@@ -429,7 +431,7 @@ phase가 어떤 모델을 어느 사고량으로 돌릴지 한곳에서 정한�
 services/models.py가 "무엇이 있는가"라면 여기는 "언제 무엇을 쓰는가"다.
 
 effort는 provider 중립 인자다. Gemini 경로는 thinking_level(low/medium/high)로,
-OpenAI 경로는 reasoning.effort(low/medium/xhigh)로 전달된다.
+OpenAI 경로는 reasoning.effort(low/medium/high)로 전달된다.
 """
 
 from dataclasses import dataclass
@@ -816,8 +818,9 @@ Expected: FAIL — `KeyError: 'gpt-5.6-luna'`
 
 ```python
 # OpenAI text
-# gpt-5.6-luna: 2026-07-30 80% 인하 후 $0.20/$1.20. effort는 low/medium/xhigh만
-# 쓴다 — xhigh(Index 49) -> max(51)는 +2점에 비용 +50%, 속도는 오히려 8% 느리다.
+# gpt-5.6-luna: 2026-07-30 80% 인하 후 $0.20/$1.20. effort는 low/medium/high만
+# 쓴다 — 2026-08-01 실측에서 xhigh는 deep_dive 78.8초(Gemini 14.6초의 5.4배)에
+# 분량만 4.3배로 늘고 통찰은 4~5건에 그쳤다. max는 xhigh보다도 비효율이다.
 MODEL_LUNA = "gpt-5.6-luna"
 ```
 
@@ -866,21 +869,18 @@ models.py <-> pricing.py 계약을 먼저 만족시킨다."
 
 ```python
 class TestOpenAIColumn(unittest.TestCase):
-    def test_deep_dive_is_the_only_xhigh_stage(self):
-        xhigh_roles = [
-            role
-            for role in ("screening", "visual", "citation", "recipe",
-                         "deep_dive", "viz_planning", "mermaid", "chat", "figure_explain")
-            if resolve(role, "openai").effort == "xhigh"
-        ]
-        self.assertEqual(xhigh_roles, ["deep_dive"])
+    def test_xhigh_is_not_used_anywhere(self):
+        """2026-08-01 실측에서 xhigh는 지연 5.4배 대비 이득이 없었다."""
+        for role in ROLES:
+            with self.subTest(role=role):
+                self.assertNotEqual(resolve(role, "openai").effort, "xhigh")
 
     def test_effort_ladder_mirrors_gemini(self):
         expected = {
             "screening": "low",
             "visual": "low",
             "recipe": "medium",
-            "deep_dive": "xhigh",
+            "deep_dive": "high",
             "viz_planning": "medium",
         }
         for role, effort in expected.items():
@@ -940,8 +940,13 @@ from services.models import (
 `_REGISTRY`에 openai 열을 추가한다 (`"gemini": {...}` 블록 뒤):
 
 ```python
-    # OpenAI 열은 Gemini의 low/medium/high 사다리를 그대로 옮긴 것이다.
-    # deep_dive만 xhigh로 올린다 — 쉬운 단계에 xhigh를 태우면 비용과 지연만 커진다.
+    # OpenAI 열은 Gemini의 low/medium/high 사다리를 옮기되, 2026-08-01 실측
+    # (논문 43번, tools/provider_compare.py)을 반영해 deep_dive만 high로 낮췄다.
+    #
+    # deep_dive를 xhigh로 돌린 실측 결과: 78.8초(Gemini 14.6초의 5.4배), 가시 출력
+    # 7,316자(Gemini 1,718자의 4.3배). 분량 중 논문 특정 통찰은 4~5건이고 나머지는
+    # 재진술·중복이었다("경계 간선 가중치 미명시"가 한 실행에 4회). 지연 5.4배를
+    # 정당화하지 못한다고 보고 high로 내린다. xhigh 승격은 A/B 후 결정한다.
     #
     # 주의: citation/mermaid/chat/figure_explain의 medium은 기존 _STAGE_THINKING에
     # 대응 값이 없어 이 설계에서 새로 정한 값이다. 실제 출력을 보고 조정할 수 있다.
@@ -950,7 +955,7 @@ from services.models import (
         "visual": ModelChoice(MODEL_LUNA, "low"),
         "citation": ModelChoice(MODEL_LUNA, "medium"),
         "recipe": ModelChoice(MODEL_LUNA, "medium"),
-        "deep_dive": ModelChoice(MODEL_LUNA, "xhigh"),
+        "deep_dive": ModelChoice(MODEL_LUNA, "high"),
         "viz_planning": ModelChoice(MODEL_LUNA, "medium"),
         "mermaid": ModelChoice(MODEL_LUNA, "medium"),
         "chat": ModelChoice(MODEL_LUNA, "medium"),
@@ -974,8 +979,8 @@ Expected: 전부 PASS. Task 6에서 남겨둔 `TestRegistryPricingContract`도 �
 git add backend/services/model_registry.py backend/services/test_model_registry.py
 git commit -m "feat(models): 레지스트리 OpenAI 열 추가
 
-Gemini의 low/medium/high 사다리를 그대로 이식하고 deep_dive만 xhigh로
-올린다. max는 쓰지 않는다."
+Gemini의 low/medium/high 사다리를 그대로 이식한다. deep_dive를 xhigh로
+올리지 않는 근거는 2026-08-01 실측이다 — 지연 5.4배에 통찰은 4~5건."
 ```
 
 ---
@@ -1814,7 +1819,7 @@ class TestPipelineUsesActiveProvider(unittest.TestCase):
         from api.analysis_routes import _stage_choice
 
         self.assertEqual(_stage_choice("deep_dive", "openai").model, "gpt-5.6-luna")
-        self.assertEqual(_stage_choice("deep_dive", "openai").effort, "xhigh")
+        self.assertEqual(_stage_choice("deep_dive", "openai").effort, "high")
 
 
 if __name__ == "__main__":
@@ -1940,91 +1945,611 @@ resolve_active_provider()가 정한 값을 파이프라인 스테이지마다 �
 
 ---
 
-## Task 11: Settings UI — 공급사 셀렉트
+## Task 10c: 모델별 출력 차이 흡수
+
+2026-08-01 실측(`tools/provider_compare.py`, 논문 43번)에서 드러난 두 모델의 출력
+차이를 코드로 흡수한다. 프롬프트를 바꾸는 게 아니라 **출력을 받는 쪽**을 고친다.
 
 **Files:**
-- Modify: `frontend/src/pages/Settings.tsx`
-- Modify: `frontend/src/lib/strings.ts`
+- Create: `backend/services/result_sanitizer.py`
+- Test: `backend/services/test_result_sanitizer.py`
 
 **Interfaces:**
-- Consumes: Task 10의 `ai_provider` 설정, 409 응답
-- Produces: 없음 (최종 소비자)
+- Consumes: 없음
+- Produces:
+  - `strip_markdown_emphasis(text: str) -> str` — JSON 값 안의 백틱 제거
+  - `partition_parameters(params: list[dict]) -> tuple[list[dict], list[str]]` —
+    수치 파라미터와 비수치 항목을 분리. 반환 `(파라미터, 노트로 옮길 문자열)`
 
-- [ ] **Step 1: Read the current settings page structure**
+- [ ] **Step 1: Write the failing test**
 
-```bash
-cd sasoo && grep -n "image_provider\|api_key\|Select\|select" frontend/src/pages/Settings.tsx | head -30
+`backend/services/test_result_sanitizer.py`:
+
+```python
+import unittest
+
+from services.result_sanitizer import partition_parameters, strip_markdown_emphasis
+
+
+class TestStripMarkdown(unittest.TestCase):
+    """OpenAI는 JSON 문자열 값 안에 마크다운 백틱을 넣는다(실측 확인)."""
+
+    def test_removes_backticks_around_terms(self):
+        got = strip_markdown_emphasis("논문은 `boundary connectivity`를 제안한다")
+        self.assertEqual(got, "논문은 boundary connectivity를 제안한다")
+
+    def test_removes_multiple_backtick_pairs(self):
+        got = strip_markdown_emphasis("`a`와 `b`를 쓴다")
+        self.assertEqual(got, "a와 b를 쓴다")
+
+    def test_leaves_plain_text_untouched(self):
+        text = "백틱이 없는 평범한 문장이다"
+        self.assertEqual(strip_markdown_emphasis(text), text)
+
+    def test_leaves_unpaired_backtick(self):
+        """짝이 안 맞으면 건드리지 않는다 — 원문일 수 있다."""
+        text = "가격은 `100원"
+        self.assertEqual(strip_markdown_emphasis(text), text)
+
+    def test_handles_empty_string(self):
+        self.assertEqual(strip_markdown_emphasis(""), "")
+
+
+class TestPartitionParameters(unittest.TestCase):
+    """OpenAI는 parameters에 비수치 항목을 섞는다(실측: 18개 중 8개)."""
+
+    def test_keeps_numeric_parameters(self):
+        params, notes = partition_parameters([
+            {"name": "N", "value": "200", "unit": "superpixels"},
+            {"name": "sigma_clr", "value": "10"},
+            {"name": "mu", "value": "0.1"},
+        ])
+        self.assertEqual(len(params), 3)
+        self.assertEqual(notes, [])
+
+    def test_moves_non_numeric_to_notes(self):
+        params, notes = partition_parameters([
+            {"name": "N", "value": "200", "unit": "superpixels"},
+            {"name": "최단경로 알고리즘", "value": "Johnson's algorithm", "unit": "알고리즘"},
+            {"name": "인접 그래프", "value": "인접한 모든 superpixel 연결", "unit": "그래프 구성"},
+        ])
+        self.assertEqual(len(params), 1)
+        self.assertEqual(params[0]["name"], "N")
+        self.assertEqual(len(notes), 2)
+        self.assertIn("Johnson's algorithm", notes[0])
+
+    def test_keeps_range_values(self):
+        params, _ = partition_parameters([{"name": "범위", "value": "[5, 15]"}])
+        self.assertEqual(len(params), 1)
+
+    def test_keeps_scientific_notation(self):
+        params, _ = partition_parameters([{"name": "tol", "value": "1e-6"}])
+        self.assertEqual(len(params), 1)
+
+    def test_handles_empty_list(self):
+        self.assertEqual(partition_parameters([]), ([], []))
+
+    def test_tolerates_missing_value_key(self):
+        params, notes = partition_parameters([{"name": "이름만"}])
+        self.assertEqual(params, [])
+        self.assertEqual(len(notes), 1)
+
+
+if __name__ == "__main__":
+    unittest.main()
 ```
 
-기존 셀렉트 컴포넌트와 폼 패턴을 확인한다. 아래 코드는 그 패턴에 맞춰 조정한다.
+- [ ] **Step 2: Run test to verify it fails**
 
-- [ ] **Step 2: Add the strings**
+```bash
+cd sasoo/backend && .venv/bin/python -m pytest services/test_result_sanitizer.py -v
+```
+
+Expected: FAIL — `ModuleNotFoundError: No module named 'services.result_sanitizer'`
+
+- [ ] **Step 3: Write minimal implementation**
+
+`backend/services/result_sanitizer.py`:
+
+```python
+"""Sasoo - 모델 출력 정규화.
+
+2026-08-01 실측(tools/provider_compare.py, 논문 43번)에서 확인된 공급사별
+출력 습관을 흡수한다. 프롬프트로 막는 대신 받는 쪽에서 처리한다 — 프롬프트
+지시는 모델이 무시할 수 있지만 후처리는 확정적이다.
+
+확인된 차이:
+  OpenAI  JSON 문자열 값 안에 마크다운 백틱을 쓴다.
+          parameters 배열에 비수치 항목을 섞는다(18개 중 8개).
+  Gemini  "판독 불가"를 쓰지 않는다(6개 파일 0회). 이건 후처리로 고칠 수
+          없어 UI에서 신뢰도 표시로 다룬다 — 설정 리디자인 스펙 참조.
+"""
+
+import re
+
+_BACKTICK_PAIR = re.compile(r"`([^`\n]+)`")
+
+# 수치·범위·과학표기·비율을 값으로 인정한다. "Johnson's algorithm" 같은
+# 서술형은 파라미터가 아니라 노트다.
+_NUMERIC_VALUE = re.compile(
+    r"^\s*[\[\(]?\s*[-+]?\d+(\.\d+)?([eE][-+]?\d+)?"
+    r"(\s*[,~\-–]\s*[-+]?\d+(\.\d+)?([eE][-+]?\d+)?)?\s*[\]\)]?\s*%?\s*$"
+)
+
+
+def strip_markdown_emphasis(text: str) -> str:
+    """JSON 값 안의 마크다운 백틱을 제거한다.
+
+    짝이 맞는 백틱만 벗긴다. 짝이 없으면 원문의 일부일 수 있으니 두 손 뗀다.
+    """
+    if not text:
+        return text
+    return _BACKTICK_PAIR.sub(r"\1", text)
+
+
+def partition_parameters(params: list[dict]) -> tuple[list[dict], list[str]]:
+    """수치 파라미터와 서술형 항목을 분리한다.
+
+    파라미터 테이블은 name/value/unit이 수치일 때만 의미가 있다. unit에
+    "알고리즘"이나 "그래프 구성"이 들어가면 렌더링이 깨진다.
+
+    Returns:
+        (수치 파라미터 목록, 노트로 옮길 문자열 목록)
+    """
+    kept: list[dict] = []
+    notes: list[str] = []
+    for item in params:
+        value = str(item.get("value", "")).strip()
+        if value and _NUMERIC_VALUE.match(value):
+            kept.append(item)
+            continue
+        name = str(item.get("name", "")).strip() or "(이름 없음)"
+        notes.append(f"{name}: {value}" if value else name)
+    return kept, notes
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+```bash
+cd sasoo/backend && .venv/bin/python -m pytest services/test_result_sanitizer.py -v
+```
+
+Expected: PASS (11 tests)
+
+- [ ] **Step 5: Wire it into the recipe phase**
+
+`backend/api/analysis_routes.py`의 recipe 결과 저장 직전에 적용한다. 공급사와
+무관하게 항상 통과시킨다 — Gemini 출력은 이미 깨끗해서 통과해도 값이 안 변한다.
+
+```python
+    from services.result_sanitizer import partition_parameters, strip_markdown_emphasis
+
+    if isinstance(parsed, dict) and "parameters" in parsed:
+        kept, moved = partition_parameters(parsed.get("parameters") or [])
+        parsed["parameters"] = kept
+        if moved:
+            parsed["critical_notes"] = (parsed.get("critical_notes") or []) + moved
+    for key in ("objective", "expected_results", "safety_notes"):
+        if isinstance(parsed.get(key), str):
+            parsed[key] = strip_markdown_emphasis(parsed[key])
+```
+
+- [ ] **Step 6: Run the analysis suite**
+
+```bash
+cd sasoo/backend && .venv/bin/python -m pytest api/ services/ -q
+```
+
+Expected: 전부 PASS
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add backend/services/result_sanitizer.py backend/services/test_result_sanitizer.py backend/api/analysis_routes.py
+git commit -m "feat(analysis): 모델별 출력 습관 흡수
+
+2026-08-01 실측에서 확인한 OpenAI 출력 특성 둘을 후처리한다:
+JSON 값 안의 마크다운 백틱, parameters에 섞인 비수치 항목(18개 중 8개).
+프롬프트 지시는 무시될 수 있지만 후처리는 확정적이다."
+```
+
+---
+
+## Task 11: 공급사 카드 컴포넌트
+
+설계: `docs/superpowers/specs/2026-08-01-settings-redesign-design.md` B절.
+
+평범한 select 대신 2단 카드로 만든다. 이 페이지에서 가장 중요한 결정이므로
+시각적 비중을 여기 한 곳에만 준다.
+
+**Files:**
+- Create: `frontend/src/components/settings/ProviderCards.tsx`
+- Modify: `frontend/src/lib/strings.ts`
+- Modify: `frontend/src/index.css`
+
+**Interfaces:**
+- Consumes: Task 10의 `ai_provider` 설정
+- Produces: `<ProviderCards value onChange hasOpenAIKey hasGeminiKey />`
+
+- [ ] **Step 1: Add the strings**
 
 `frontend/src/lib/strings.ts`의 settings 섹션에 추가한다:
 
 ```typescript
   aiProvider: 'AI 공급사',
-  aiProviderOpenAI: 'OpenAI (GPT-5.6 Luna)',
-  aiProviderGemini: 'Google (Gemini 3.6 Flash)',
-  aiProviderHint: '분석·PDF 파싱·그림 생성에 모두 적용됩니다.',
-  aiProviderNoKey: 'API 키를 먼저 등록해주세요',
-  aiProviderSwitched: (to: string) => `${to}로 전환되었습니다.`,
-  aiProviderLocked: 'API 키를 등록하면 분석을 시작할 수 있습니다.',
+  aiProviderHint: '분석·PDF 파싱·그림 생성에 모두 적용돼요.',
+  aiProviderOpenAI: 'OpenAI',
+  aiProviderOpenAIModel: 'GPT-5.6 Luna',
+  aiProviderGemini: 'Google',
+  aiProviderGeminiModel: 'Gemini 3.6 Flash',
+  aiProviderKeyReady: '키 등록됨',
+  aiProviderKeyMissing: '키 없음',
+  aiProviderSwitched: (to: string) => `${to}로 전환했습니다`,
+  aiProviderLocked: 'API 키를 등록하면 분석을 시작할 수 있어요',
 ```
 
-- [ ] **Step 3: Add the select**
+- [ ] **Step 2: Add the card styles**
 
-`Settings.tsx`의 API 키 입력 두 칸 **바로 아래**에 넣는다. 키가 없는 공급사는 고를 수 없다:
+`frontend/src/index.css`의 `.settings-appearance-option` 아래에 추가한다.
+기존 토큰만 쓴다 — 새 색을 만들지 않는다.
 
-```tsx
-<label className="setting-row">
-  <span>{strings.settings.aiProvider}</span>
-  <select
-    value={settings.ai_provider}
-    onChange={(e) => updateSetting('ai_provider', e.target.value)}
-  >
-    <option value="openai" disabled={!settings.openai_api_key}>
-      {strings.settings.aiProviderOpenAI}
-      {!settings.openai_api_key && ` — ${strings.settings.aiProviderNoKey}`}
-    </option>
-    <option value="gemini" disabled={!settings.gemini_api_key}>
-      {strings.settings.aiProviderGemini}
-      {!settings.gemini_api_key && ` — ${strings.settings.aiProviderNoKey}`}
-    </option>
-  </select>
-  <small>{strings.settings.aiProviderHint}</small>
-</label>
+```css
+  .provider-card {
+    @apply flex flex-col gap-1 border p-4 text-left transition-[border-color,background-color] duration-150;
+    border-radius: var(--radius-surface);
+  }
+
+  .provider-card-active {
+    @apply border-accent bg-accent/5;
+  }
+
+  .provider-card-inactive {
+    @apply border-border bg-surface hover:border-border hover:bg-surface-hover;
+  }
+
+  .provider-card-disabled {
+    @apply cursor-not-allowed border-border bg-surface opacity-50;
+  }
 ```
 
-- [ ] **Step 4: Show the auto-switch toast**
+- [ ] **Step 3: Write the component**
 
-설정 저장 응답에 `switched_to`가 있으면 토스트를 띄운다. 저장 핸들러에 추가한다:
+`frontend/src/components/settings/ProviderCards.tsx`:
 
 ```tsx
-if (response.switched_to) {
-  showToast(strings.settings.aiProviderSwitched(response.switched_to));
+import { S } from '@/lib/strings';
+
+type Provider = 'openai' | 'gemini';
+
+interface Props {
+  value: Provider;
+  onChange: (next: Provider) => void;
+  hasOpenAIKey: boolean;
+  hasGeminiKey: boolean;
+}
+
+/**
+ * 공급사 선택 카드.
+ *
+ * 모델명을 카드에 노출한다 — 사용자가 "OpenAI"만 보고는 무엇이 도는지 모른다.
+ * 이름이 적혀 있으면 그 이름으로 벤치마크와 가격을 직접 확인할 수 있다.
+ *
+ * 키 상태는 저장된 값 기준이다. 타이핑 중인 값으로 판정하면 카드가 깜빡인다.
+ */
+export function ProviderCards({ value, onChange, hasOpenAIKey, hasGeminiKey }: Props) {
+  const options = [
+    {
+      id: 'openai' as const,
+      name: S.settings.aiProviderOpenAI,
+      model: S.settings.aiProviderOpenAIModel,
+      hasKey: hasOpenAIKey,
+    },
+    {
+      id: 'gemini' as const,
+      name: S.settings.aiProviderGemini,
+      model: S.settings.aiProviderGeminiModel,
+      hasKey: hasGeminiKey,
+    },
+  ];
+
+  return (
+    <div role="radiogroup" aria-label={S.settings.aiProvider} className="grid gap-3 sm:grid-cols-2">
+      {options.map((opt) => {
+        const selected = value === opt.id;
+        const cls = !opt.hasKey
+          ? 'provider-card provider-card-disabled'
+          : selected
+            ? 'provider-card provider-card-active'
+            : 'provider-card provider-card-inactive';
+
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            aria-disabled={!opt.hasKey}
+            disabled={!opt.hasKey}
+            className={cls}
+            onClick={() => opt.hasKey && onChange(opt.id)}
+          >
+            <span className="text-sm font-semibold text-fg">{opt.name}</span>
+            <span className="text-xs text-fg-secondary">{opt.model}</span>
+            <span className="mt-2 text-xs text-fg-muted">
+              {opt.hasKey ? S.settings.aiProviderKeyReady : S.settings.aiProviderKeyMissing}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 ```
 
-- [ ] **Step 5: Verify in the running app**
+- [ ] **Step 4: Verify in the running app**
 
 ```bash
 cd sasoo && npm run dev
 ```
 
 확인할 것:
-1. 키 둘 다 입력 → 셀렉트 두 항목 모두 선택 가능
-2. OpenAI 키 삭제 → OpenAI 항목 비활성, 자동으로 Gemini 전환 + 토스트
-3. 키 둘 다 삭제 → 분석 버튼 비활성 + 안내 문구
+1. 키 둘 다 있음 → 카드 두 개 다 선택 가능, 선택된 쪽만 accent 테두리
+2. OpenAI 키 없음 → OpenAI 카드 흐림 + "키 없음" + 클릭 불가
+3. 좌우 화살표로 카드 이동 (radiogroup 동작)
+4. 다크 모드에서 accent 테두리와 배경이 읽히는지
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
+
+```bash
+git add frontend/src/components/settings/ProviderCards.tsx frontend/src/lib/strings.ts frontend/src/index.css
+git commit -m "feat(ui): 공급사 선택 카드
+
+select 대신 카드로 공급사·모델명·키 상태를 함께 보여준다. 모델명을
+노출해 사용자가 무엇이 도는지 알 수 있게 한다."
+```
+
+---
+
+## Task 12: Floating 저장바
+
+설계: `docs/superpowers/specs/2026-08-01-settings-redesign-design.md` C절.
+
+저장 버튼이 헤더에 있어 아래쪽 항목을 편집하는 동안 화면 밖이다(페이지 약 1,400~1,700px,
+뷰포트 800~900px). 변경이 있을 때만 나타나는 sticky 저장바로 옮긴다.
+
+**Files:**
+- Create: `frontend/src/components/settings/SaveBar.tsx`
+- Modify: `frontend/src/index.css`
+- Modify: `frontend/src/pages/Settings.tsx:392-409` (헤더 버튼 제거), `:624-636` (인라인 저장 버튼 제거)
+
+**Interfaces:**
+- Consumes: `Settings.tsx`의 `hasChanges`, `handleSave`, `handleDiscard`, `saving`
+- Produces: `<SaveBar changeCount saving error onSave onDiscard />`
+
+- [ ] **Step 1: Extend the existing savebar style**
+
+`index.css:305-307`에 이미 `.settings-savebar`가 있으나 아무도 안 쓴다. 여기를 채운다.
+`fixed`가 아니라 `sticky`인 이유는 설계 C절 참조 — 사이드바 폭 계산이 필요 없다.
+
+```css
+  .settings-savebar {
+    @apply sticky bottom-0 z-20 flex items-center justify-between gap-3
+           border-t border-border/80 bg-surface/95 px-4 py-3 backdrop-blur-lg;
+    border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+    animation: savebar-in 120ms var(--ease-out-strong);
+  }
+
+  @keyframes savebar-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .settings-savebar {
+      animation: none;
+    }
+  }
+```
+
+z-index 20을 쓰는 근거: 이 앱은 `z-50`을 오버레이(토스트·모달·라이트박스),
+`z-20`을 패널 내부 sticky(`AnalysisPanel.tsx:1092`)에 쓴다. 토스트가 저장바를
+덮어야 맞다.
+
+- [ ] **Step 2: Write the component**
+
+`frontend/src/components/settings/SaveBar.tsx`:
+
+```tsx
+import { S } from '@/lib/strings';
+
+interface Props {
+  changeCount: number;
+  saving: boolean;
+  error: string | null;
+  onSave: () => void;
+  onDiscard: () => void;
+}
+
+/**
+ * 변경이 있을 때만 나타나는 저장바.
+ *
+ * 저장 성공의 피드백은 "바가 사라지는 것" 자체다 — 토스트를 겹치지 않는다.
+ * 실패하면 바가 남고 그 안에 사유를 적는다. 재시도할 위치와 오류를 읽는
+ * 위치가 같아야 한다.
+ */
+export function SaveBar({ changeCount, saving, error, onSave, onDiscard }: Props) {
+  if (changeCount === 0) return null;
+
+  return (
+    <div className="settings-savebar" role="region" aria-label={S.settings.saveBarLabel}>
+      <span className="text-xs text-fg-muted" aria-live="polite">
+        {error ?? S.settings.changeCount(changeCount)}
+      </span>
+      <div className="flex gap-2">
+        <button type="button" className="btn btn-ghost" onClick={onDiscard} disabled={saving}>
+          {S.settings.discard}
+        </button>
+        <button type="button" className="btn btn-primary" onClick={onSave} disabled={saving}>
+          {saving ? S.settings.saving : S.settings.save}
+        </button>
+      </div>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 3: Add the strings**
+
+`frontend/src/lib/strings.ts`:
+
+```typescript
+  saveBarLabel: '변경사항',
+  changeCount: (n: number) => `변경 ${n}개`,
+  save: '저장',
+  saving: '저장 중',
+  discard: '되돌리기',
+```
+
+- [ ] **Step 4: Count the changes**
+
+`Settings.tsx`의 `hasChanges`(`:332-342`)는 불리언이다. 개수로 바꾼다.
+비교 대상은 기존과 동일하다.
+
+```tsx
+  // 기존 hasChanges의 비교 항목을 그대로 쓰되 개수를 센다.
+  const changedFields = [
+    geminiKey !== baselineSettings.gemini_api_key,
+    openaiKey !== baselineSettings.openai_api_key,
+    aiProvider !== baselineSettings.ai_provider,
+    libraryPath !== baselineSettings.library_path,
+    theme !== baselineSettings.theme,
+    autoAnalyze !== baselineSettings.auto_analyze,
+    imageQuality !== baselineSettings.image_quality,
+  ].filter(Boolean).length;
+```
+
+- [ ] **Step 5: Mount it and remove the duplicates**
+
+`Settings.tsx`의 마지막 섹션 **뒤**, `page-container-settings` 안에 넣는다.
+sticky가 동작하려면 스크롤 컨테이너의 자식이어야 한다.
+
+```tsx
+      <SaveBar
+        changeCount={changedFields}
+        saving={saving}
+        error={saveError}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
+      />
+```
+
+같은 커밋에서 제거한다:
+- 헤더의 저장·되돌리기 버튼 (`:392-409`)
+- 보관함 경로 행 안의 인라인 저장 버튼 (`:624-636`) — 같은 `handleSave`를 부르면서
+  "이 항목만 저장"처럼 보여 위치가 거짓말을 하고 있다
+
+- [ ] **Step 6: Verify in the running app**
+
+```bash
+cd sasoo && npm run dev
+```
+
+확인할 것:
+1. 변경 없음 → 저장바 안 보임
+2. 한 항목 수정 → 저장바 등장, "변경 1개"
+3. 두 항목 수정 → "변경 2개"
+4. **맨 아래로 스크롤해도 저장바가 화면에 남아 있다** (이번 작업의 목표)
+5. 저장 성공 → 바가 사라짐, 토스트 없음
+6. 되돌리기 → 바가 사라지고 값이 원복
+7. 시스템 설정에서 "동작 줄이기"를 켜면 등장 애니메이션 없음
+8. 사이드바를 접었다 펴도 저장바 폭이 콘텐츠와 맞는지
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add frontend/src/components/settings/SaveBar.tsx frontend/src/index.css frontend/src/lib/strings.ts frontend/src/pages/Settings.tsx
+git commit -m "feat(ui): 스크롤을 따라오는 저장바
+
+저장 버튼이 헤더에 있어 아래쪽 항목을 편집하는 동안 화면 밖이었다.
+변경이 있을 때만 나타나는 sticky 저장바로 옮기고 변경 개수를 표시한다.
+중복이던 헤더·인라인 저장 버튼을 함께 제거한다.
+
+미사용으로 남아 있던 .settings-savebar 클래스를 채웠다."
+```
+
+---
+
+## Task 13: 설정 페이지 정보구조 재편
+
+설계: `docs/superpowers/specs/2026-08-01-settings-redesign-design.md` A절.
+
+OpenAI 키가 "이미지 생성" 섹션에 있어 공급사 선택과 따로 논다. 섹션을 다시 묶고,
+사용자가 정할 수 없는 컨트롤 4개를 화면에서 뺀다.
+
+**Files:**
+- Modify: `frontend/src/pages/Settings.tsx`
+- Modify: `frontend/src/lib/strings.ts`
+
+**Interfaces:**
+- Consumes: Task 11의 `ProviderCards`, Task 12의 `SaveBar`
+- Produces: 없음 (최종 소비자)
+
+- [ ] **Step 1: Restructure the sections**
+
+새 순서로 바꾼다. 결정 기준 하나 — **사용자가 이 값을 직접 정하는가.**
+
+| # | 섹션 | 항목 |
+|---|---|---|
+| 1 | AI 공급사 | `<ProviderCards />`, OpenAI 키, Gemini 키 |
+| 2 | 분석 | 도해 품질, 업로드 후 자동 분석 |
+| 3 | 보관함 | 논문 저장 경로 |
+| 4 | 화면 | 테마 |
+| 5 | 사용량과 비용 | `<CostDashboard />` |
+
+- [ ] **Step 2: Remove the four controls**
+
+| 제거 | 사유 |
+|---|---|
+| 도해 생성 모델 (`image_provider`) | `ai_provider`의 파생값 (Task 10b가 자동 갱신) |
+| Figure 추출 엔진 (`pdf_visual_engine`) | `ai_provider`의 파생값 |
+| PDF 파서 엔진 (`pdf_parser_mode`) | 선택지가 `java` 하나뿐 |
+| Figure/Table 추출 경로 (`extraction_pipeline_version`) | 선택지가 `resolver_v1` 하나뿐 |
+
+**설정 키는 DB에 그대로 둔다. UI에서만 제거한다.** 뒤 둘은 선택지가 늘면 다시
+노출하면 된다. `DEFAULT_SETTINGS`나 백엔드는 건드리지 않는다.
+
+- [ ] **Step 3: Unify the theme save model**
+
+테마만 즉시 적용 + 지연 저장이라 다른 항목과 규칙이 다르다(`:214-223`).
+저장바가 생겼으니 다른 항목과 같게 맞춘다 — 미리보기는 즉시, 저장은 저장바로.
+localStorage 쓰기는 저장 성공 후로 옮긴다.
+
+- [ ] **Step 4: Verify in the running app**
+
+```bash
+cd sasoo && npm run dev
+```
+
+확인할 것:
+1. 섹션이 5개, 순서가 위 표와 같다
+2. OpenAI 키와 Gemini 키가 같은 섹션(AI 공급사)에 있다
+3. 제거한 컨트롤 4개가 화면에 없다
+4. 제거한 뒤에도 분석이 정상 동작한다 (파생값이 백엔드에서 갱신되므로)
+5. 페이지 높이가 눈에 띄게 줄었다
+6. 모바일 폭(375px)에서 카드가 세로로 쌓인다
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add frontend/src/pages/Settings.tsx frontend/src/lib/strings.ts
-git commit -m "feat(ui): AI 공급사 선택 UI
+git commit -m "refactor(ui): 설정 페이지 정보구조 재편
 
-키가 없는 공급사는 사유와 함께 비활성으로 표시하고, 자동 전환이
-일어나면 토스트로 알린다."
+OpenAI 키를 '이미지 생성'에서 'AI 공급사'로 옮겨 Gemini 키와 나란히 둔다.
+사용자가 정할 수 없는 컨트롤 4개를 화면에서 뺀다 — 파생값 2개
+(image_provider, pdf_visual_engine)와 선택지가 하나뿐인 select 2개.
+설정 키 자체는 DB에 남는다.
+
+컨트롤 10개 -> 7개."
 ```
 
 ---
@@ -2059,3 +2584,16 @@ Gemini 경로와 OpenAI 경로를 각각 돌려 그림·표 추출 오차를 기
 - [ ] **체인 연속성**
 
 논문 1편을 OpenAI 경로로 전체 분석하고, `deep_dive`가 `recipe` 결과를 문맥으로 갖는지 확인한다(`previous_response_id`가 실제로 이어지는지).
+
+- [ ] **설정 페이지 회귀**
+
+| 확인 | 기대 |
+|---|---|
+| 섹션 수 | 5개 (AI 공급사 / 분석 / 보관함 / 화면 / 사용량과 비용) |
+| 저장 버튼 | 저장바 안에만 1벌. 헤더·인라인 중복 없음 |
+| 스크롤 | 맨 아래에서도 저장바가 보인다 |
+| 변경 없음 | 저장바 미표시 |
+| 제거된 컨트롤 | 화면에 없고, 분석은 정상 동작 |
+| 다크 모드 | 카드 accent 테두리·저장바 backdrop-blur 정상 |
+| 375px 폭 | 카드 세로 스택, 저장바 버튼 겹침 없음 |
+| 동작 줄이기 | 저장바 등장 애니메이션 없음 |
