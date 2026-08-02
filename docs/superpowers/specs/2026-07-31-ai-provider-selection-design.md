@@ -1,6 +1,7 @@
 # AI 공급사 선택 (OpenAI / Gemini) 설계
 
 - 작성일: 2026-07-31
+- 개정: 2026-08-03 (하단 "개정 1" 섹션 — 이중 자문 감사 반영)
 - 상태: 설계 확정, 구현 대기
 - 관련: `services/models.py`, `api/settings.py`, `services/llm/`, `services/viz/figure_gen.py`
 
@@ -269,3 +270,118 @@ Gemini 동작을 100% 그대로 유지하는 순수 리팩터. 기존 테스트�
 - phase별 개별 모델 선택 UI
 - effort를 사용자에게 노출하는 슬라이더
 - OpenRouter 등 중계 provider 지원
+
+---
+
+## 개정 1 (2026-08-03) — 이중 자문 감사 반영
+
+원안 확정 후 독립 자문 2건(Opus deep-reasoner, Codex)으로 원안과 구현 플랜
+(`docs/superpowers/plans/2026-08-01-ai-provider-selection.md`)을 감사했다.
+아키텍처(§C gateway + 어댑터)는 양쪽 만장일치로 유지. 아래는 원안을 수정·보강하는
+결정이며, 원안과 충돌하는 항목은 이 섹션이 우선한다.
+
+### R1. OpenAI 체인의 문서 입력: PDF 업로드 → 로컬 추출 텍스트 (원안 §C 수정)
+
+OpenAI 경로는 Files API에 PDF를 업로드하지 않는다. 첫 호출에 로컬 추출 텍스트
+(기존 stateless 폴백이 쓰는 text artifacts)를 1회 주입하고 `previous_response_id`로
+후속 스테이지를 잇는다. visual 스테이지는 추출된 그림 이미지 파트를 별도 첨부한다.
+
+근거: OpenAI의 PDF 입력은 페이지 이미지를 함께 과금·입력하므로 (a) 비용 증가,
+(b) "LLM 비전 PDF 파싱 제외" 범위와 충돌, (c) 50MB 한도·체인 내 파일 유지가 미검증.
+부수 효과로 OpenAI 쪽 업로드 캐시·락·TTL 관리가 전부 불필요해지고,
+`papers.pdf_file_uri`의 provider 오염 문제가 소멸한다. **`pdf_file_uri`는 Gemini
+전용 컬럼으로 주석에 명시한다.**
+
+### R2. 범위 명확화 (원안 결정 1 재해석)
+
+"vision 포함 통짜 전환"은 **그림 단위 판독**(이미지 파트 입력: figure_explain,
+figure/table_resolver, subfigure_detector)까지를 뜻한다. **PDF 전체 비전 파싱**
+(`pdf_visual_engine=gemini`, `gemini_parser.py`)은 범위 밖이다 — OpenAI 키 단독
+사용자는 로컬 ODL 파서 경로를 쓴다. (병합된 `provider_state.py`의 실동작과 일치)
+
+### R3. deep_dive effort: xhigh → high (원안 §B 수정)
+
+Gemini 사다리(deep_dive=high)와 대칭을 유지하고 플랜 전역 제약("low/medium/high만")
+과 정합시킨다. xhigh 승격은 확장된 측정 도구에서 high 대비 품질 우위가 확인될 때만.
+
+### R4. 레지스트리 role 전체 커버 (원안 §B 보강)
+
+원안 표에 빠져 있던 role을 추가한다: `figure_resolver` / `table_resolver` /
+`subfigure` / `naming`. 이들과 screening은 Gemini에서 `thinking_level="minimal"`을
+쓰므로 OpenAI도 최저 effort로 매핑한다 — **`minimal` 지원 여부는 검증 스파이크
+(R8-2) 결과에 따라 `minimal` 또는 `low`로 확정.**
+
+### R5. OpenAI 클라이언트 필수 구현 범위 (플랜 Task 9 보강)
+
+플랜 스케치에서 빠진 세 가지를 필수로 명시한다.
+
+1. **파트 번역기**: `prompt: str | list[dict]`를 받아 `{"type":"image"}` →
+   `input_image`(base64 data URL), `{"type":"text"}` → `input_text`로 변환.
+   이미지 파트를 넘기는 프로덕션 호출부가 7곳이다(플랜의 `prompt: str` 가정은 오류).
+2. **`stream_interaction` 등가**: `response.output_text.delta`/`response.completed`
+   이벤트를 기존 `{"type":"token"}`/`{"type":"done"}` SSE 계약으로 정규화.
+   재시도 정책은 현행 유지(첫 토큰 전 실패만 재시도, 토큰 후 실패는 terminal).
+3. **클라이언트 캐싱**: `interactions_client.py:82-104`와 동일한 키별 캐시+락.
+   재시도 예외는 `except Exception`으로 좁힌다(`BaseException`은
+   `asyncio.CancelledError`까지 잡아 취소된 태스크를 재시도하는 버그).
+
+또한 shim(`services/llm/__init__.py`)은 `stream_interaction`과 `media_resolution`
+을 포함해 기존 시그니처 전체를 유지한다 — 리졸버·네이밍 등 9곳 호출부는 무수정.
+
+### R6. 캐시 키와 스테이지 컨텍스트 (원안 §D 보강)
+
+`compute_input_hash(input_text, *, provider, model, effort)`로 확장하되, model/effort
+를 호출부마다 흩뿌리지 않는다 — **스테이지 진입 시 `(provider, model, effort)`를
+한 번 확정해 컨텍스트로 내려** 읽기(`_get_cached_phase_result`)와
+쓰기(`_insert_analysis_result`), 체크포인트 UPDATE(`_update_visualization_checkpoint`)
+가 반드시 같은 키를 쓰게 한다(어긋나면 체크포인트 중복 INSERT).
+`odl_parser.py:1907`의 파서 사용량 기록은 provider 무관 — 기본값으로 흡수.
+
+### R7. 비용 정확성 (원안 §F 보강)
+
+1. `pricing.py`의 `_FALLBACK`을 provider 접두사로 분리 — 미지의 `gpt-*` 모델을
+   Gemini 단가로 조용히 계산하지 않는다.
+2. OpenAI `usage.output_tokens`는 reasoning 토큰을 **이미 포함**한다.
+   `reasoning_tokens`는 정보용으로만 기록하고 합산에 더하지 않는다(이중 계상 금지).
+   (Gemini는 반대로 `output + thought` 합산이 맞다 — 현행 유지.)
+3. 재시도는 attempt별로 `calc_cost`를 계산한 뒤 USD를 합산한다(토큰 합산 후 일괄
+   계산 금지 — 모델·장문 임계값이 어긋난다).
+4. `cached_tokens` 할인은 프로덕션 합산에 넣지 않는다(보수적 과다 보고 유지).
+   측정 도구에서만 별도 계산.
+5. **단가 게이트**: 원안의 Luna $0.20/$1.20와 자문 제시값 $1/$6이 5배 어긋난다.
+   구현 1단계 착수 전 공식 가격 페이지에서 재확인해 `PRICING`에 반영하는 것을
+   선행 태스크로 둔다.
+6. 기존 버그(이 설계와 독립, 선행 수정 가능): 캐시 히트 시 과거 비용을 현재 실행
+   `status.total_cost_usd`에 재합산(`analysis_routes.py:136` 인근).
+
+### R8. 구현 전 검증 스파이크 (플랜 선행 태스크로 추가)
+
+소형 스크립트로 실측 후 결과를 플랜에 기록한다. 실패 시 해당 설계 항목을 재검토.
+
+1. `previous_response_id` 체인: `store=True` 연쇄, `resp.id` 재사용, 첫 턴 텍스트가
+   후속 턴에 유지되는지, 보존 기간.
+2. `reasoning.effort` 지원 값 집합 — 특히 `minimal` 유무 (R4 확정 조건).
+3. `text.format=json_schema` + `strict:false` 동작: sasoo 스키마 4종을 그대로 보내
+   준수율과 `_stage_result_defect` 재시도 발화율 측정. (strict:true는 현행 스키마
+   구조상 불가 — 일부 required·minimum/maximum 사용.)
+4. 스트리밍 이벤트명·usage 수신(`response.output_text.delta` /
+   `response.completed`), 정상 완료·첫 토큰 전 실패·토큰 후 실패·연결 종료 4경로.
+5. 429 응답의 `Retry-After` 헤더 유무 (현행 고정 백오프 `[2, 8]` 조정 판단).
+6. refusal / `incomplete(max_output_tokens)` / 빈 output이 일반 JSON 결함과
+   구분 가능한 형태로 오는지.
+7. 이미지 파트(base64) 입력 1회 실측 (리졸버 경로 등가 확인).
+
+### R9. 측정 도구 확장 (`tools/provider_compare.py`)
+
+extraction_audit 관례(프로덕션 코드 무수정, JSON 산출) 유지. 확장: (a) 3개 스테이지
+→ 5단계 전체, (b) `cached_tokens`·`reasoning_tokens`·재시도 발화율 기록,
+(c) high vs xhigh 등 effort 승격 판단용 비교 실행. 앱 내 A/B 기능은 만들지 않는다.
+
+### R10. 플랜 재작성 지침
+
+`2026-08-01-ai-provider-selection.md`는 폐기하지 않되, 이 개정을 반영한 새 플랜을
+writing-plans로 재작성한다. 순서 조정: 검증 스파이크(R8) → 1단계(게이트웨이,
+동작 무변경) → OpenAI 클라이언트(Task 9 상당, R5 포함) → 캐시 키(R6) → stateless
+경로 배선(screening·citation·Mermaid·naming·리졸버·그림설명) → 채팅 스트리밍 →
+서버측 체인 4스테이지 → 키 상태 머신·UI. 캐시 키 확정에 R8-2(effort 값 집합)가
+필요하므로 OpenAI 클라이언트 실측이 캐시 키 작업보다 앞선다.
