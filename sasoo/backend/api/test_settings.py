@@ -417,3 +417,39 @@ class PdfVisualEngineSettingTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAiProviderMirror(unittest.TestCase):
+    """ai_provider 저장 시 레거시 미러가 함께 갱신되는지."""
+
+    def test_mirror_adds_image_provider_only(self):
+        from services.provider_state import mirror_legacy_settings
+
+        mirror = mirror_legacy_settings("openai")
+        self.assertEqual(mirror, {"image_provider": "openai"})
+
+    def test_mirror_never_touches_pdf_visual_engine(self):
+        """pdf_visual_engine 도메인은 {gemini, odl} — 공급사 값을 넣으면 400이다."""
+        from services.provider_state import mirror_legacy_settings
+
+        for provider in ("openai", "gemini"):
+            with self.subTest(provider=provider):
+                self.assertNotIn("pdf_visual_engine", mirror_legacy_settings(provider))
+
+    def test_active_provider_falls_back_when_key_missing(self):
+        from api.settings import _resolve_active_provider
+
+        raw = {"openai_api_key": "", "gemini_api_key": "enc:abc"}
+        self.assertEqual(_resolve_active_provider(raw, "openai"), "gemini")
+
+    def test_active_provider_is_none_without_any_key(self):
+        from api.settings import _resolve_active_provider
+
+        raw = {"openai_api_key": "", "gemini_api_key": ""}
+        self.assertIsNone(_resolve_active_provider(raw, "openai"))
+
+    def test_active_provider_honours_stored_choice(self):
+        from api.settings import _resolve_active_provider
+
+        raw = {"openai_api_key": "enc:a", "gemini_api_key": "enc:b"}
+        self.assertEqual(_resolve_active_provider(raw, "gemini"), "gemini")

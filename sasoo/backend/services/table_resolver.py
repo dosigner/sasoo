@@ -8,18 +8,25 @@ import asyncio
 import base64
 import csv
 import json
+import logging
 import os
 import re
+import unicodedata
 from io import StringIO
 from pathlib import Path
 from typing import Any
 
 from api.analysis_helpers import _clean_llm_json
 from services.llm.interactions_client import call_interaction
-from services.document_manifest import strip_caption_decoration
+from services.document_manifest import (
+    _caption_label_key,
+    parse_table_label,
+    strip_caption_decoration,
+    table_int_to_roman,
+)
 from services.models import MODEL_FLASH_HQ
 
-TABLE_LABEL_PATTERN = re.compile(r"^\s*(?:Table|Tbl\.?)\s*(\d+[A-Za-z]?)\b", re.IGNORECASE)
+logger = logging.getLogger(__name__)
 
 
 def _normalize_grid(grid: list[list[Any]] | None) -> list[list[str]]:
@@ -114,9 +121,15 @@ def _repair_reasons(
 
 
 def _table_num(caption_text: str | None, page_number: int, fallback_index: int, seen: set[str]) -> str:
-    match = TABLE_LABEL_PATTERN.match(strip_caption_decoration(caption_text))
-    if match:
-        base = f"Table {match.group(1).upper()}"
+    # 계약 6: 캡션 라벨 규칙만 넓히고 여기를 놔두면 캡션은 인정하면서 번호를 못 읽어
+    # "Table {index}"라는 가짜 이름이 붙는다. NFKC는 "Table\xa0I" 표기 때문에 필요하다.
+    normalized = unicodedata.normalize("NFKC", strip_caption_decoration(caption_text))
+    label = parse_table_label(normalized)
+    if label:
+        notation, number, suffix, _ = label
+        # 표기법은 원문을 따른다 — IEEE 논문에서 "Table VIII"이 "Table 8"로 바뀌면
+        # 사용자가 본문에서 그 표를 찾을 수 없다.
+        base = f"Table {table_int_to_roman(number)}" if notation == "roman" else f"Table {number}{suffix.upper()}"
     else:
         base = f"Table {fallback_index}"
     if base not in seen:
@@ -170,7 +183,17 @@ def _grid_to_markdown(grid: list[list[str]]) -> str:
 
 
 async def _repair_with_vlm(candidate: dict[str, Any], manifest: dict[str, Any], paper_dir: Path) -> tuple[list[list[str]], str, float]:
+    # 표의 격자 복원은 본질적으로 VLM에 의존한다 — `caption_fallback_crop` 후보는 text_grid가
+    # 비어 있고, 그 상태로 돌아가면 최종 필터(_has_meaningful_grid)에서 100% 탈락한다.
+    # 키가 없거나 호출이 실패했을 때 그 사실이 어디에도 남지 않아, 표가 통째로 사라져도
+    # 원인을 알 수 없었다. 429·JSON 파싱 실패·타임아웃이 전부 같은 결과(빈 grid)로 보인다.
     if not os.environ.get("GEMINI_API_KEY"):
+        if not _has_meaningful_grid(_normalize_grid(candidate.get("text_grid"))):
+            logger.warning(
+                "table resolver: GEMINI_API_KEY가 없어 격자 복원을 건너뛴다 — "
+                "이 후보는 격자가 비어 있어 표로 산출되지 못한다 (page=%s, id=%s)",
+                candidate.get("page_number"), candidate.get("id"),
+            )
         return (_normalize_grid(candidate.get("text_grid")), "heuristic", 0.0)
 
     page = next(
@@ -200,7 +223,13 @@ async def _repair_with_vlm(candidate: dict[str, Any], manifest: dict[str, Any], 
         )
         payload = json.loads(_clean_llm_json(result["text"]))
         return (_normalize_grid(payload.get("rows")), result["model"], float(payload.get("confidence") or 0.0))
-    except Exception:
+    except Exception as exc:
+        # 예외를 삼키는 것 자체는 유지한다(한 표의 실패가 문서 전체를 깨면 안 된다).
+        # 다만 조용히 빈 grid로 둔갑시키지는 않는다 — 실패 원인이 로그에 남아야 한다.
+        logger.warning(
+            "table resolver: 격자 복원 실패 (page=%s, id=%s): %s: %s",
+            candidate.get("page_number"), candidate.get("id"), type(exc).__name__, exc,
+        )
         return (_normalize_grid(candidate.get("text_grid")), "heuristic", 0.0)
 
 
@@ -220,6 +249,9 @@ async def resolve_table_candidates(
     tables_dir.mkdir(parents=True, exist_ok=True)
 
     seen_nums: set[str] = set()
+    emitted_labels: set[str] = set()
+    dropped_without_caption = 0
+    dropped_duplicate_label = 0
     resolved: list[dict[str, Any]] = []
     low_confidence_pages: set[int] = set()
     fallback_index = 1
@@ -344,6 +376,30 @@ async def resolve_table_candidates(
 
         caption = captions_by_id.get(candidate.get("best_caption_id") or "", {})
         caption_text = caption.get("text")
+
+        # ── 캡션 필수 게이트 (그림 계약 7의 대칭 규칙).
+        # 캡션이 없으면 `Table {fallback_index}`라는 가짜 번호가 붙어 그대로 산출물이 됐다.
+        # 실측: 산출된 표 38개 중 28개가 무캡션이었고, 크롭을 눈으로 보니 정체는 대부분
+        # **그래프의 범례 박스**였다(2014_Saliency p7의 PR 곡선 범례 9개, 2013 p8 등).
+        # 범례는 격자 구조를 가져 pdfplumber가 표로 인식하지만 캡션이 붙지 않는다.
+        if not caption_text:
+            dropped_without_caption += 1
+            if isinstance(page_number, int):
+                low_confidence_pages.add(page_number)
+            continue
+
+        # ── 라벨 단위 중복제거.
+        # 같은 표에 후보가 둘 붙으면 "Table 1"과 "Table 1 [2]"가 함께 나온다. 원인은 두 가지고
+        # 둘 다 실측된다: (a) 한 캡션에 후보가 여럿 연결(2022_SciRep 3건), (b) 같은 라벨의
+        # 캡션 자체가 중복(2025_TurboQuant p20의 "Table 1"이 2개). 라벨 기준으로 걸러야
+        # 두 경우가 함께 잡힌다.
+        label_key = _caption_label_key(caption_text)
+        if label_key:
+            if label_key in emitted_labels:
+                dropped_duplicate_label += 1
+                continue
+            emitted_labels.add(label_key)
+
         table_num = _table_num(caption_text, page_number, fallback_index, seen_nums)
         fallback_index += 1
 
@@ -382,6 +438,19 @@ async def resolve_table_candidates(
                 "repair_confidence": repair_confidence,
                 "review_required": review_required,
             }
+        )
+
+    if ordered_candidates and not resolved:
+        # 캡션 연결이 하나도 없어 전멸한 경우. figure_resolver의 같은 경고와 동형이다.
+        logger.warning(
+            "table resolver: 후보 %d개가 있었지만 캡션에 연결된 것이 없어 표 0개 "
+            "(파서가 캡션을 못 잡았거나 후보가 전부 오탐) — paper_dir=%s",
+            len(ordered_candidates), paper_dir,
+        )
+    if dropped_without_caption or dropped_duplicate_label:
+        logger.info(
+            "table resolver: 캡션 없는 후보 %d개, 라벨 중복 %d개를 버렸다 (표 %d개 산출)",
+            dropped_without_caption, dropped_duplicate_label, len(resolved),
         )
 
     return {

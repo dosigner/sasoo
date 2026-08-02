@@ -274,6 +274,21 @@ def _needs_candidate_recheck(group: list[dict[str, Any]], page: dict[str, Any]) 
     )
 
 
+def _survives_acceptance(
+    candidate: dict[str, Any],
+    page: dict[str, Any],
+    captions_by_id: dict[str, dict[str, Any]],
+    confidence_delta: float,
+) -> bool:
+    """이 후보가 `resolve_figure_candidates`의 수용 조건을 통과하는지 미리 본다.
+
+    조건은 2단계 루프의 것과 같아야 한다 — label이 figure이고, confidence가 0.5 이상이며,
+    캡션이 연결돼 있어야 한다(계약 7).
+    """
+    label, confidence, _, _, best_caption_id = _score_candidate(candidate, page, captions_by_id)
+    return label == "figure" and min(0.99, confidence + confidence_delta) >= 0.5 and bool(best_caption_id)
+
+
 async def _maybe_select_candidate(
     group: list[dict[str, Any]],
     page: dict[str, Any],
@@ -341,8 +356,14 @@ async def _maybe_select_candidate(
         selected = str(payload.get("selected_candidate_id") or "")
         confidence_delta = min(max(float(payload.get("confidence") or 0.0), 0.0), 0.16)
         matched = next((candidate for candidate in scored if str(candidate.get("id")) == selected), None)
-        if matched is not None:
+        if matched is not None and _survives_acceptance(matched, page, captions_by_id, confidence_delta):
             return (matched, confidence_delta, result["model"])
+        # VLM이 고른 크롭이 수용 게이트를 통과하지 못하면 휴리스틱 선택을 유지한다.
+        # 이 단계의 역할은 "여럿 중 최선 고르기"이지 수용 여부를 뒤집는 것이 아닌데,
+        # 고른 결과가 그대로 게이트로 넘어가 그림이 통째로 사라졌다.
+        # 실측(2022_SciRep p9): 휴리스틱은 figcand:p9:n1(figure, 0.60)을 고르는데 VLM이
+        # figcand:p9:n0(reject, 0.43, low_visual_signal)을 골라 Fig. 9가 매번 없어졌다.
+        # 2025_TurboQuant에서는 같은 경로로 실행마다 다른 그림이 1~3개씩 사라졌다.
     except Exception:
         pass
 
@@ -412,6 +433,20 @@ async def _maybe_rerank_caption(
     return (candidate.get("best_caption_id"), 0.0, "heuristic")
 
 
+def _subfigure_num(figure_num: str, sub_label: str | None) -> str:
+    """부모 그림 번호와 패널 라벨을 합쳐 서브피겨 이름을 만든다.
+
+    패널 라벨은 알파벳뿐 아니라 숫자도 온다(`_normalize_sub_label`이 둘 다 인정한다).
+    숫자를 그냥 이어붙이면 부모와 구분되지 않는다 — 실측(2013_IEEETIP): Fig. 12의
+    패널 7개가 `Fig. 121`~`Fig. 127`이 되어, 존재하지 않는 121번 그림처럼 읽혔다.
+    숫자일 때만 구분자를 넣는다. 알파벳은 기존 표기(`Fig. 12A`)를 그대로 둔다.
+    """
+    label = (sub_label or "").upper()
+    if not label:
+        return figure_num
+    return f"{figure_num}-{label}" if label[0].isdigit() else f"{figure_num}{label}"
+
+
 async def _maybe_detect_subfigures(
     *,
     figure_num: str,
@@ -451,7 +486,7 @@ async def _maybe_detect_subfigures(
             width, height = image.size
         children.append(
             {
-                "figure_num": f"{figure_num}{(child.sub_label or '').upper()}",
+                "figure_num": _subfigure_num(figure_num, child.sub_label),
                 "caption": caption_text,
                 "file_path": str(child_path.resolve().relative_to(paper_dir.resolve())),
                 "page_number": child.page_number,

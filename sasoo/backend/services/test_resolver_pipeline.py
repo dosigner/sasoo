@@ -798,3 +798,433 @@ class CaptionDecorationTests(unittest.TestCase):
 
         seen: set[str] = set()
         self.assertEqual(_table_num("**Table 2.** Ablation results", 4, 1, seen), "Table 2")
+
+
+class InlineMentionCaptionTests(unittest.TestCase):
+    """본문 문장이 캡션으로 오인돼 그림이 중복 생성되던 문제.
+
+    "Fig. N"으로 시작하기만 하면 캡션으로 인정했기 때문에, 본문 첫 문장이
+    "Figure 9 shows time-series data..."처럼 시작하면 그것이 별도 캡션 블록이 되고
+    같은 번호의 그림 후보가 하나 더 생겼다("Fig. 9"와 "Fig. 9 [2]").
+    실측 초과분(2013_IEEETIP +1, 2022_SciRep +1, 2022_ApplOpt +3)이 정확히 이 케이스였다.
+
+    가르는 기준은 라벨 바로 뒤다. 구분자(. : ,)나 대문자로 이어지면 캡션,
+    소문자 단어(=동사)로 이어지면 본문 문장이다. 아래 문자열은 전부 실제 코퍼스에서 뽑았다.
+    """
+
+    # 실제 라이브러리 12편의 캡션 블록에서 뽑은 본문 언급 전량(라벨 뒤 형태별 대표)
+    INLINE_MENTIONS = [
+        "Fig. 8 shows some visual results of saliency detection on image pairs.",
+        "Fig. 12 shows some segmentation results using our co-saliency map.",
+        "Figure 3 shows the comparison of atmospheric turbulence prediction results",
+        "Figure 9 shows time-series data for the 2022/04/21 high speed flight",
+        "Fig. 1 illustrates the co-saliency example, where the single image algorithm",
+        "Figure 6 illustrates the comparison of atmospheric turbulence prediction",
+        "Fig. 2(e) shows the corresponding cue, where the soccer players in red",
+        "Figure 4(a) shows the atmospheric turbulence before the compensation",
+    ]
+
+    # 반대로 캡션으로 남아야 하는 것들. 마지막 두 개가 핵심 —
+    # 구분자 없는 캡션(TurPy Fig. 2)과 공백 없는 표기(2022_ApplOpt p3)가 실제로 존재한다.
+    REAL_CAPTIONS = [
+        "Fig. 1. Given a group of images (first row), the state-of-the-art methods",
+        "Figure 1: Error distribution of TurboQuantprod for Inner Product Estimation",
+        "**Fig. 1. Traversing challenging terrains.**",
+        "Figure\xa01. Schematic of the coherent FSO terminal",
+        "Fig. 2 Subharmonic Phase Screen Generation. (A) An original screen",
+        "Fig.2. Architecture of the prediction network",
+    ]
+
+    def test_fixture_strings_start_with_a_figure_label(self):
+        """픽스처가 조건을 재현하는지 먼저 단언한다 — 라벨 매칭 자체는 전부 성공해야 한다.
+
+        이 단언이 없으면 "라벨이 아예 안 잡혀서" None이 나온 것을 성공으로 오인할 수 있다.
+        """
+        from services.document_manifest import FIGURE_LABEL_PATTERN, strip_caption_decoration
+
+        for text in self.INLINE_MENTIONS + self.REAL_CAPTIONS:
+            with self.subTest(text=text):
+                self.assertIsNotNone(
+                    FIGURE_LABEL_PATTERN.match(strip_caption_decoration(text)),
+                    "픽스처가 조건을 재현하지 못한다: 라벨 패턴에 애초에 안 걸린다",
+                )
+
+    def test_inline_mentions_are_not_captions(self):
+        from services.document_manifest import _caption_kind
+
+        for text in self.INLINE_MENTIONS:
+            with self.subTest(text=text):
+                self.assertIsNone(_caption_kind(text))
+
+    def test_real_captions_survive(self):
+        from services.document_manifest import _caption_kind
+
+        for text in self.REAL_CAPTIONS:
+            with self.subTest(text=text):
+                self.assertEqual(_caption_kind(text), "figure")
+
+    def test_table_inline_mention_is_not_a_caption(self):
+        from services.document_manifest import _caption_kind
+
+        self.assertIsNone(_caption_kind("Table 3 summarizes the ablation results."))
+        self.assertEqual(_caption_kind("Table 3. Ablation results."), "table")
+
+
+class CaptionRecoveryTests(unittest.TestCase):
+    """파서가 페이지 하나의 캡션 요소를 통째로 빠뜨려 그림이 사라지던 문제.
+
+    실측(2026_SR_AgileMultiskill): 원문 Figure 1~8인데 gemini가 p6·p9에서 caption/image
+    요소를 하나도 내지 않아 Fig. 3과 Fig. 5가 없어졌다. markdown에는 두 캡션이 온전히
+    들어 있었으므로 프롬프트가 아니라 elements 방출이 확률적으로 누락된 것이다.
+    캡션 없는 후보는 버리는 규칙(2026-07-29 결정) 때문에 누락이 곧 그림 소실로 이어진다.
+
+    캡션 텍스트는 PDF 안에 결정적으로 존재하므로, LLM이 빠뜨린 페이지는 PyMuPDF 텍스트
+    블록에서 되살린다.
+    """
+
+    @staticmethod
+    def _build_pdf(path, page_texts):
+        import fitz
+
+        doc = fitz.open()
+        for lines in page_texts:
+            page = doc.new_page(width=595, height=842)
+            y = 700
+            for line in lines:
+                page.insert_text((40, y), line, fontsize=9)
+                y += 20
+        doc.save(str(path))
+        doc.close()
+
+    @staticmethod
+    def _page_stub(page_number, caption_blocks=()):
+        return {
+            "page_number": page_number,
+            "page_size": {"width": 595.0, "height": 842.0},
+            "text_blocks": [],
+            "image_blocks": [],
+            "caption_blocks": list(caption_blocks),
+            "odl_table_nodes": [],
+        }
+
+    def _run(self, page_texts, pages):
+        from services.document_manifest import recover_missing_caption_blocks
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "sample.pdf"
+            self._build_pdf(pdf_path, page_texts)
+            return recover_missing_caption_blocks(pdf_path=pdf_path, pages=pages)
+
+    def test_fixture_page_really_has_no_caption_block(self):
+        """픽스처가 조건을 재현하는지 먼저 단언한다 — 2페이지는 정말로 캡션이 비어 있어야 한다."""
+        pages = {1: self._page_stub(1), 2: self._page_stub(2)}
+        self.assertEqual(pages[2]["caption_blocks"], [])
+
+    def test_recovers_caption_the_parser_dropped(self):
+        pages = {
+            1: self._page_stub(
+                1,
+                [
+                    {
+                        "id": "cap:p1:n0",
+                        "page_number": 1,
+                        "bbox": [40.0, 130.0, 500.0, 150.0],
+                        "text": "Fig. 1. Traversing challenging terrains.",
+                        "kind": "figure",
+                        "order": 3,
+                    }
+                ],
+            ),
+            2: self._page_stub(2),
+        }
+        recovered = self._run(
+            [
+                ["Fig. 1. Traversing challenging terrains."],
+                ["Fig. 2. Training pipeline for APT-RL."],
+            ],
+            pages,
+        )
+
+        self.assertEqual(len(recovered), 1, f"복원 결과가 예상과 다르다: {recovered}")
+        block = recovered[0]
+        self.assertEqual(block["page_number"], 2)
+        self.assertEqual(block["kind"], "figure")
+        self.assertTrue(block["text"].startswith("Fig. 2."))
+        self.assertEqual(pages[2]["caption_blocks"], [block])
+        # 1페이지는 이미 캡션이 있으니 건드리면 안 된다 — 중복은 곧 "Fig. 1 [2]"가 된다.
+        self.assertEqual(len(pages[1]["caption_blocks"]), 1)
+
+    def test_does_not_duplicate_a_label_the_parser_already_found(self):
+        """파서 캡션과 PDF 텍스트가 미세하게 달라도(마크다운 서식·합자) 같은 라벨이면 중복 아님."""
+        pages = {
+            1: self._page_stub(
+                1,
+                [
+                    {
+                        "id": "cap:p1:n0",
+                        "page_number": 1,
+                        "bbox": [40.0, 130.0, 500.0, 150.0],
+                        "text": "**Fig. 1. Traversing challenging terrains.**",
+                        "kind": "figure",
+                        "order": 3,
+                    }
+                ],
+            )
+        }
+        self.assertEqual(self._run([["Fig. 1. Traversing challenging terrains."]], pages), [])
+
+    def test_does_not_recover_body_sentences(self):
+        """본문 첫 문장이 라벨로 시작해도 복원 대상이 아니다 — 과추출로 되돌아간다."""
+        pages = {1: self._page_stub(1)}
+        self.assertEqual(
+            self._run([["Fig. 3 shows some segmentation results using our map."]], pages), []
+        )
+
+    def test_recovers_table_captions_too(self):
+        pages = {1: self._page_stub(1)}
+        recovered = self._run([["Table 2. Ablation results."]], pages)
+        self.assertEqual(len(recovered), 1)
+        self.assertEqual(recovered[0]["kind"], "table")
+
+    def test_recovered_bbox_is_bottom_left_origin(self):
+        """매니페스트 bbox 규약은 좌하단 원점이다 — PyMuPDF의 좌상단 좌표를 그대로 쓰면
+        캡션이 페이지 반대편에 있는 것으로 잡혀 그림 영역 폴백이 위아래로 뒤집힌다."""
+        pages = {1: self._page_stub(1)}
+        recovered = self._run([["Fig. 1. A caption near the page bottom."]], pages)
+        self.assertEqual(len(recovered), 1)
+        x0, y_bottom, x1, y_top = recovered[0]["bbox"]
+        self.assertLess(y_bottom, y_top)
+        self.assertLess(x0, x1)
+        # 텍스트를 PyMuPDF y=700(위에서부터)에 넣었으므로 좌하단 기준으로는 842-700 근처다.
+        self.assertLess(y_top, 842.0 * 0.35)
+
+
+class RomanTableLabelTests(unittest.TestCase):
+    """IEEE 계열의 로마 숫자 표 라벨(`Table I`)을 라벨 규칙이 통째로 못 보던 문제.
+
+    `TABLE_LABEL_PATTERN`이 digit-only라 `Table I`~`Table VIII`이 캡션으로 인정되지
+    않았다. 그 결과 (a) 표 정답 기준이 그 논문에서 0이 되고, (b) 캡션에 기대는 하류
+    로직(후보-캡션 연결, 캡션 폴백)이 통째로 무력화됐다.
+    실측: 2017_COMST_OpticalComm은 원문 표 8개인데 캡션 인정 0개, 후보 9개 전부 무캡션.
+
+    아래 문자열은 전부 실제 코퍼스에서 뽑았다.
+    """
+
+    ROMAN_CAPTIONS = [
+        "Table I COMPARISON OF POWER AND MASS FOR GEOSTATIONARY EARTH ORBIT (GEO) AND LOW EARTH ORBIT (LEO)",
+        "Table II WAVELENGTHS USED IN PRACTICAL FSO COMMUNICATION SYSTEMS",
+        "Table III MOLECULAR ABSORPTION AT TYPICAL WAVELENGTHS [80]",
+        "Table V TURBULENCE PROFILE MODELS FOR C2 n",
+        "Table VIII EXAMPLE OF HAPS USED IN OPTICAL COMMUNICATION MISSIONS",
+        "TABLE I",  # 2013_IEEETIP p10 — 라벨만 있고 캡션 본문이 다음 줄로 넘어간 형태
+        "###### Table II WAVELENGTHS USED IN PRACTICAL FSO COMMUNICATION SYSTEMS",
+    ]
+
+    # 로마 숫자를 인정하면 새로 생기는 오탐 후보. 전부 표 라벨이 아니다.
+    NOT_TABLE_LABELS = [
+        "Table cells are merged in the header row.",
+        "Table ILL-CONDITIONED CASES ARE EXCLUDED",  # ILL은 로마 숫자 형태가 아니다
+        "Tables VI and VII are compared below.",  # "Tables"는 라벨이 아니다
+        "Table D SHOWS NOTHING",  # D/L/C/M은 표 번호 범위 밖이다
+        "Table iv shows the simulated transmittance.",  # 소문자는 로마로 인정하지 않는다
+    ]
+
+    def test_label_parsing_separates_pattern_from_validation(self):
+        """라벨 토큰은 정규식이 통째로 잡고, 로마 숫자 여부는 형태 검증이 가른다.
+
+        수정 전에는 `TABLE_LABEL_PATTERN`이 digit-only여서 "Table IV ..."가 아예 매칭되지
+        않았다(이 클래스의 나머지 테스트가 구코드에서 전부 실패함을 확인한 뒤 고쳤다).
+        정규식만 넓히고 검증을 두지 않으면 "Table ILL-CONDITIONED ..."가 통과한다.
+        """
+        from services.document_manifest import TABLE_LABEL_PATTERN, parse_table_label
+
+        self.assertIsNotNone(TABLE_LABEL_PATTERN.match("Table ILL-CONDITIONED CASES"))
+        self.assertIsNone(parse_table_label("Table ILL-CONDITIONED CASES"))
+
+        self.assertEqual(parse_table_label("Table IV MODTRAN SIMULATED")[:3], ("roman", 4, ""))
+        self.assertEqual(parse_table_label("Table 4. Ablation")[:3], ("arabic", 4, ""))
+        self.assertEqual(parse_table_label("Table 2a. Ablation")[:3], ("arabic", 2, "a"))
+
+    def test_roman_captions_are_recognized_as_tables(self):
+        from services.document_manifest import _caption_kind
+
+        for text in self.ROMAN_CAPTIONS:
+            with self.subTest(text=text):
+                self.assertEqual(_caption_kind(text), "table")
+
+    def test_non_labels_are_rejected(self):
+        from services.document_manifest import _caption_kind
+
+        for text in self.NOT_TABLE_LABELS:
+            with self.subTest(text=text):
+                self.assertIsNone(_caption_kind(text))
+
+    def test_roman_inline_mention_is_not_a_caption(self):
+        """라벨 뒤 소문자 규칙(계약 8)은 로마에도 그대로 적용된다."""
+        from services.document_manifest import _caption_kind
+
+        self.assertIsNone(_caption_kind("Table IV shows the simulated transmittance."))
+        self.assertIsNone(_caption_kind("Table VI summarizes the mapping."))
+
+    def test_arabic_labels_still_work(self):
+        from services.document_manifest import _caption_kind
+
+        self.assertEqual(_caption_kind("**Table 2.** Ablation results"), "table")
+        self.assertEqual(_caption_kind("Table 3. Ablation results."), "table")
+        self.assertIsNone(_caption_kind("Table 3 summarizes the ablation results."))
+
+    def test_table_number_keeps_roman_notation(self):
+        """계약 6: 라벨 규칙만 넓히고 `_table_num`을 놔두면 캡션은 인정하면서 번호를
+        못 읽어 `Table {index}`라는 가짜 이름이 붙는다."""
+        from services.table_resolver import _table_num
+
+        seen: set[str] = set()
+        self.assertEqual(_table_num("Table VIII EXAMPLE OF HAPS USED", 28, 1, seen), "Table VIII")
+        self.assertEqual(_table_num("Table I COMPARISON OF POWER", 3, 2, seen), "Table I")
+        # 아라비아 표기는 그대로 유지된다.
+        self.assertEqual(_table_num("**Table 2.** Ablation results", 4, 3, seen), "Table 2")
+
+    def test_label_key_normalizes_notation(self):
+        """캡션 복원 중복 판정은 표기법이 아니라 번호로 해야 한다 — 파서가 `Table 1`로,
+        PDF 텍스트가 `Table I`로 같은 표를 가리키면 캡션이 둘이 되어 `Table 1 [2]`가 나온다."""
+        from services.document_manifest import _caption_label_key
+
+        self.assertEqual(
+            _caption_label_key("Table I COMPARISON OF POWER"),
+            _caption_label_key("Table 1. Comparison of power"),
+        )
+        self.assertNotEqual(
+            _caption_label_key("Table II WAVELENGTHS USED"),
+            _caption_label_key("Table 1. Comparison of power"),
+        )
+
+
+class TableCaptionGateTests(unittest.IsolatedAsyncioTestCase):
+    """캡션 없는 표 후보가 그대로 산출물이 되던 문제.
+
+    그림에는 "캡션 없는 후보는 버린다"(계약 7)가 있는데 표에는 대칭 규칙이 없었다.
+    캡션이 없으면 `Table {fallback_index}`라는 가짜 번호가 붙어 그대로 나갔다.
+    실측: 산출된 표 38개 중 28개가 무캡션이고, 크롭을 눈으로 보니 정체는 대부분
+    **그래프의 범례 박스**였다 — 범례는 격자 구조라 pdfplumber가 표로 보지만
+    캡션이 붙지 않는다(2014_Saliency p7의 PR 곡선 범례 9개, 2013_IEEETIP p8).
+
+    라벨 중복제거도 함께 넣는다. 같은 표에 후보가 둘 붙으면 "Table 1"과 "Table 1 [2]"가
+    함께 나오는데, 원인이 (a) 한 캡션에 후보 여럿(2022_SciRep 3건), (b) 같은 라벨의 캡션
+    자체가 중복(2025_TurboQuant p20)으로 둘이라 라벨 기준이어야 함께 잡힌다.
+    """
+
+    GRID = [["cfg", "Gbps"], ["A", "1.2"], ["B", "3.4"]]
+
+    def _candidate(self, index: int, caption_id: str | None, *, page: int = 1) -> dict:
+        return {
+            "id": f"tblcand:p{page}:n{index}",
+            "page_number": page,
+            "bbox": [30.0 + index, 300.0, 580.0, 590.0],
+            "source_kind": "pdfplumber",
+            "text_grid": self.GRID,
+            "linked_caption_ids": [caption_id] if caption_id else [],
+            "best_caption_id": caption_id,
+            "has_meaningful_grid": True,
+            "plausible_ruled_bbox": True,
+            "had_irregular_rows": False,
+        }
+
+    def _manifest(self, candidates: list[dict], captions: list[dict]) -> dict:
+        return {
+            "pages": [{"page_number": 1, "page_size": {"width": 612.0, "height": 792.0}, "raster_path": None}],
+            "captions": captions,
+            "table_candidates": candidates,
+            "audit": {"suspect_pages": []},
+        }
+
+    @staticmethod
+    def _caption(caption_id: str, text: str) -> dict:
+        return {"id": caption_id, "page_number": 1, "kind": "table", "bbox": [72.0, 600.0, 540.0, 620.0], "text": text}
+
+    async def _resolve(self, manifest: dict) -> list[dict]:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = await resolve_table_candidates(
+                manifest, paper_dir=Path(tmp), resolver_version="resolver-v1"
+            )
+            return result["tables"]
+
+    async def test_fixture_grid_would_otherwise_be_emitted(self):
+        """픽스처가 조건을 재현하는지 먼저 단언한다 — 캡션만 붙이면 이 후보는 표가 된다.
+
+        이 단언이 없으면 격자가 부실해서 안 나온 것을 "게이트가 걸렀다"로 오인할 수 있다.
+        """
+        tables = await self._resolve(
+            self._manifest([self._candidate(0, "cap:p1:n0")], [self._caption("cap:p1:n0", "Table 1. Throughput.")])
+        )
+        self.assertEqual([table["table_num"] for table in tables], ["Table 1"])
+
+    async def test_candidate_without_caption_is_dropped(self):
+        tables = await self._resolve(self._manifest([self._candidate(0, None)], []))
+        self.assertEqual(tables, [], "캡션 없는 후보가 표로 나갔다")
+
+    async def test_no_table_files_are_written_for_dropped_candidates(self):
+        """게이트는 파일 쓰기 앞에 있어야 한다 — 뒤에 있으면 고아 csv/html이 남는다."""
+        manifest = self._manifest([self._candidate(0, None)], [])
+        with tempfile.TemporaryDirectory() as tmp:
+            paper_dir = Path(tmp)
+            await resolve_table_candidates(manifest, paper_dir=paper_dir, resolver_version="resolver-v1")
+            self.assertEqual(sorted((paper_dir / "tables").glob("*")), [])
+
+    async def test_captioned_candidate_survives_alongside_uncaptioned(self):
+        """무캡션 후보를 버려도 캡션 있는 진짜 표는 남아야 한다."""
+        manifest = self._manifest(
+            [self._candidate(0, None), self._candidate(1, "cap:p1:n0")],
+            [self._caption("cap:p1:n0", "Table 2. Measured throughput.")],
+        )
+        tables = await self._resolve(manifest)
+        self.assertEqual([table["table_num"] for table in tables], ["Table 2"])
+
+    async def test_two_candidates_on_one_caption_yield_one_table(self):
+        manifest = self._manifest(
+            [self._candidate(0, "cap:p1:n0"), self._candidate(1, "cap:p1:n0")],
+            [self._caption("cap:p1:n0", "Table 1. Mount parameters.")],
+        )
+        tables = await self._resolve(manifest)
+        self.assertEqual([table["table_num"] for table in tables], ["Table 1"])
+
+    async def test_duplicate_captions_with_same_label_yield_one_table(self):
+        """2025_TurboQuant p20 — 같은 "Table 1" 캡션이 2개라 캡션 id 기준으로는 못 잡는다."""
+        manifest = self._manifest(
+            [self._candidate(0, "cap:p1:n0"), self._candidate(1, "cap:p1:n1")],
+            [
+                self._caption("cap:p1:n0", "Table 1: LongBench-V1 results."),
+                self._caption("cap:p1:n1", "Table 1: LongBench-V1 results."),
+            ],
+        )
+        tables = await self._resolve(manifest)
+        self.assertEqual([table["table_num"] for table in tables], ["Table 1"])
+
+    async def test_roman_and_arabic_labels_are_deduplicated_together(self):
+        manifest = self._manifest(
+            [self._candidate(0, "cap:p1:n0"), self._candidate(1, "cap:p1:n1")],
+            [
+                self._caption("cap:p1:n0", "Table I COMPARISON OF POWER"),
+                self._caption("cap:p1:n1", "Table 1. Comparison of power"),
+            ],
+        )
+        tables = await self._resolve(manifest)
+        self.assertEqual(len(tables), 1)
+
+    async def test_distinct_labels_are_kept(self):
+        manifest = self._manifest(
+            [self._candidate(0, "cap:p1:n0"), self._candidate(1, "cap:p1:n1")],
+            [
+                self._caption("cap:p1:n0", "Table 1. Mount parameters."),
+                self._caption("cap:p1:n1", "Table 2. Link budget."),
+            ],
+        )
+        tables = await self._resolve(manifest)
+        self.assertEqual([table["table_num"] for table in tables], ["Table 1", "Table 2"])
+
+    async def test_wipeout_is_logged(self):
+        """전멸 시 경고를 남긴다(figure_resolver의 같은 경고와 동형, 계약 7)."""
+        manifest = self._manifest([self._candidate(0, None)], [])
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertLogs("services.table_resolver", level="WARNING") as captured:
+                await resolve_table_candidates(manifest, paper_dir=Path(tmp), resolver_version="resolver-v1")
+        self.assertTrue(any("표 0개" in message for message in captured.output))

@@ -1,0 +1,271 @@
+# AI 공급사 선택 (OpenAI / Gemini) 설계
+
+- 작성일: 2026-07-31
+- 상태: 설계 확정, 구현 대기
+- 관련: `services/models.py`, `api/settings.py`, `services/llm/`, `services/viz/figure_gen.py`
+
+## 배경
+
+sasoo는 현재 Gemini 전용 스택이다. `services/models.py`가 phase→model 매핑의 단일
+소스이고, 텍스트 경로는 `gemini-3.6-flash`로 하드코딩되어 있다.
+
+한편 설정에는 provider 관련 값이 이미 셋 존재하며 기본값이 서로 엇갈려 있다.
+
+| 설정 | 현재 기본값 | 실제 의미 |
+|---|---|---|
+| `image_provider` | `openai` | 그림 생성 → gpt-image-2 |
+| `pdf_visual_engine` | `gemini` | PDF 시각 파싱 |
+| (설정 없음) | — | 텍스트 분석은 코드에 하드코딩 |
+
+즉 현재 상태는 "텍스트는 Gemini, 그림 생성은 OpenAI"라는 혼합이다. 사용자는 이를
+공급사 단위의 일관된 선택으로 바꾸기를 원한다.
+
+### 모델 선정 근거
+
+2026-07-30 OpenAI가 Luna 80%, Terra 20% 인하를 발표했다. 조사 결과 선택지는
+`gpt-5.6-luna`와 `gemini-3.6-flash`로 좁혀졌다.
+
+| 지표 | GPT-5.6 Luna | Gemini 3.6 Flash | 출처 |
+|---|---|---|---|
+| Intelligence Index (max) | 51 | 50 | Artificial Analysis |
+| Intelligence Index (xhigh) | 49 | — | Artificial Analysis |
+| 블렌디드 $/1M | $0.17 | $1.16 | Artificial Analysis |
+| 입력 / 출력 $/1M | $0.20 / $1.20 | $1.50 / $7.50 | 각 공식 문서 |
+| MMMU-Pro (vision) | 78.4% | 미공개 (전작 83.6%) | OpenAI 공식 / llm-stats |
+| 출력 속도 | 175 tok/s | 215 tok/s | Artificial Analysis |
+| TTFT (max) | 117.0초 | 14.7초 | Artificial Analysis |
+
+effort는 `xhigh`를 기준으로 한다. `xhigh`(49) → `max`(51)는 +2점에 비용 +50%,
+속도는 오히려 8% 느리다. OpenAI 문서도 `max`를 "xhigh를 쓰고 있다면 max가 더 나은지
+평가하라"는 특수 설정으로 안내한다.
+
+롱컨텍스트(MRCR)는 판단 기준에서 제외한다. sasoo 실행 기록 204건 실측 결과 논문 1편
+분석의 입력 토큰 최대치가 80,882로, MRCR 측정 구간(256K~)에 도달하지 않는다.
+
+## 확정된 결정
+
+| # | 결정 사항 | 선택 |
+|---|---|---|
+| 1 | 분기 범위 | provider 통짜 전환 (vision 포함 전 단계) |
+| 2 | 기존 provider 설정 통합 | 하나(`ai_provider`)로 통합 |
+| 3 | 전환 시 캐시 | 캐시 키에 모델 포함 + 재분석은 수동 |
+| 4 | effort 매핑 | 기존 단계별 사다리를 그대로 이식 |
+| 5 | 키 삭제 시 | 남은 키로 자동 전환 + 알림 |
+| 6 | 기존 설치본 마이그레이션 | 신규·기존 구분 없이 키 규칙 그대로 |
+
+### 결정 1에 대한 명시적 판단
+
+Luna는 vision이 Gemini 3.6 Flash보다 5.2%p 낮다(MMMU-Pro 78.4% vs 83.6%). 직전
+커밋 `c22548a`에서 그림 추출 12편 전편 오차 0을 달성했으므로 OpenAI 경로가 이를
+깨뜨릴 위험이 있다.
+
+**그럼에도 vision만 Gemini로 고정하는 폴백은 넣지 않는다.** 사용자가 OpenAI를
+선택하면 그림 판독도 OpenAI로 돌린다. 12편 정답셋 검증은 완료 게이트가 아니라
+품질 차이를 측정·기록하는 용도로만 수행한다.
+
+## 설계
+
+### A. 설정 스키마
+
+`DEFAULT_SETTINGS`에 `ai_provider`를 추가하고 이를 단일 소스로 삼는다.
+
+```python
+"ai_provider": "openai",   # "openai" | "gemini"
+```
+
+`image_provider`와 `pdf_visual_engine`은 **삭제하지 않는다.** 이미 이 값을 읽는
+코드가 있어 한 번에 걷어내면 회귀 위험이 크다. `ai_provider`가 바뀔 때 두 값을
+lockstep으로 함께 갱신하면 기존 코드는 수정 없이 동작한다.
+
+읽기는 `ai_provider`가 권위를 갖는다. 두 레거시 키는 쓰기 전용 미러다.
+
+#### 마이그레이션
+
+신규·기존 설치를 구분하지 않는다. 코드에 예외 분기를 남기지 않기 위해서다.
+
+```
+키가 하나만 있으면      → 그 provider
+키가 둘 다 있으면       → openai
+키가 하나도 없으면      → openai (기본값, 단 동작은 잠김)
+```
+
+기존 사용자에게 실제로 바뀌는 것은 텍스트 분석이 `gemini-3.6-flash` → `gpt-5.6-luna`로
+가는 것 하나다. 그림 생성은 이미 `gpt-image-2`라 그대로 유지되고, 기존 분석 결과는
+결정 3의 배지 방식으로 보존된다.
+
+### B. 모델 레지스트리
+
+`services/models.py`를 provider × role 표로 확장한다. OpenAI 쪽은 모델이
+`gpt-5.6-luna` 하나로 고정되고 effort만 변주된다.
+
+| role | Gemini 모델 / thinking | OpenAI 모델 / effort |
+|---|---|---|
+| screening | `gemini-3.5-flash-lite` | `gpt-5.6-luna` / `low` |
+| visual | `gemini-3.6-flash` / low | `gpt-5.6-luna` / `low` |
+| citation | `gemini-3.6-flash` | `gpt-5.6-luna` / `medium` |
+| recipe | `gemini-3.6-flash` / medium | `gpt-5.6-luna` / `medium` |
+| deep_dive | `gemini-3.6-flash` / high | `gpt-5.6-luna` / **`xhigh`** |
+| viz_planning | `gemini-3.6-flash` / medium | `gpt-5.6-luna` / `medium` |
+| mermaid | `gemini-3.6-flash` | `gpt-5.6-luna` / `medium` |
+| chat | `gemini-3.6-flash` | `gpt-5.6-luna` / `medium` |
+| figure_explain | `gemini-3.6-flash` | `gpt-5.6-luna` / `medium` |
+| image | `gemini-3.1-flash-image` | `gpt-image-2` |
+
+기존 `_STAGE_THINKING`(analysis_routes.py)의 low/medium/high 배분을 그대로 이식한
+것이다. 검증된 배분을 재사용하고, 쉬운 단계에 `xhigh`를 태우지 않아 비용과 지연을
+함께 아낀다.
+
+단 `_STAGE_THINKING`이 다루는 것은 `visual` / `recipe` / `deep_dive` /
+`visualization` 넷뿐이다. `citation` · `mermaid` · `chat` · `figure_explain`의
+effort는 이 스펙에서 새로 정한 값이며(`medium`), 기존 배분에서 유도한 것이
+아니다. 근거가 약한 쪽이므로 2단계에서 실제 출력을 보고 조정할 수 있다.
+
+`MODEL_SCREENING` 등 기존 상수는 Gemini 값을 그대로 유지한 채 남긴다(유지+추가).
+새 코드는 레지스트리를 조회한다.
+
+### C. LLM 클라이언트 추상화
+
+가장 큰 작업이다. 현재 `services/llm/interactions_client.py`는 google-genai
+전용이다 — Files API 업로드, `previous_interaction_id` 서버측 체인, `store=True`가
+모두 Gemini 개념이다.
+
+```
+services/llm/
+  base.py            신규 — 공통 인터페이스 (generate / chain / upload)
+  gemini_client.py   기존 interactions_client.py 개명
+  openai_client.py   신규 — Responses API
+  __init__.py        ai_provider 보고 라우팅
+```
+
+체인 개념은 1:1로 대응된다.
+
+| 개념 | Gemini | OpenAI |
+|---|---|---|
+| 서버측 체인 | `previous_interaction_id` | `previous_response_id` |
+| 상태 저장 | `store=True` | `store=True` |
+| 파일 업로드 | Files API (48h TTL) | Files API |
+| 사고량 조절 | `thinking_level` | `reasoning.effort` |
+
+lane 분리(`chat` / `pipeline`), 세마포어, 재시도 정책은 provider 무관이므로 공통
+계층에 남긴다. `_RETRYABLE_CLIENT_STATUS = {408, 429}` 판정은 HTTP 상태 기반이라
+그대로 재사용 가능하다.
+
+#### 깨면 안 되는 계약
+
+- lane을 명시하지 않는 호출을 만들지 않는다. 기본값을 두면 2026-07-11 채팅 SSE
+  무한 대기 사고가 재발한다.
+- `store=False`인데 체인 ID를 넘기면 `ValueError`를 올리는 현재 방어를 유지한다.
+- 파이프라인 세마포어는 루프별로 생성한다(크로스루프 바인딩 방지).
+
+### D. 캐시
+
+`compute_input_hash`를 확장한다.
+
+```python
+# services/document_context.py
+def compute_input_hash(input_text: str, *, model: str, effort: str | None = None) -> str
+```
+
+`effort`는 provider 중립 인자다. Gemini 경로는 `thinking_level`
+(low/medium/high)을, OpenAI 경로는 `reasoning.effort`(low/medium/xhigh)를
+넘긴다. 같은 모델이라도 사고량이 다르면 다른 결과가 나오므로 둘 다 키에 들어가야
+한다.
+
+조회는 2단계가 된다.
+
+1. 현재 모델·effort 해시로 조회 → 히트하면 그대로 사용
+2. 미스면 해당 phase의 최신 행을 조회해 "`gemini-3.6-flash`로 분석됨" 배지와 함께
+   표시하고, 재분석 버튼을 노출한다
+
+기존 행은 옛 해시를 갖고 있어 자동으로 2번 경로를 탄다. 별도 데이터 마이그레이션이
+필요 없고, 되돌리기도 공짜다(원래 provider로 돌아가면 1번에서 히트).
+
+인덱스 `idx_analysis_cache(paper_id, phase, input_hash)`는 그대로 쓴다.
+
+### E. 키 상태 머신
+
+```python
+def effective_provider(settings) -> str | None:
+    """저장된 선택을 키 가용성으로 보정한다."""
+    # 저장된 ai_provider의 키가 있으면        -> 그대로
+    # 없고 다른 쪽 키가 있으면                -> 자동 전환 (알림)
+    # 둘 다 없으면                            -> None
+```
+
+`figure_gen.py`의 기존 `available()` 패턴(`os.environ.get("OPENAI_API_KEY")`)과
+동일한 방식이다.
+
+`None`이면 분석 라우트가 409를 반환하고 프론트는 분석 버튼을 비활성화한 뒤 설정으로
+안내한다. 자동 전환이 일어나면 토스트로 알린다.
+
+### F. 비용 추적
+
+`services/pricing.py`에 추가한다.
+
+```python
+"gpt-5.6-luna": {"input": 0.20, "output": 1.20},   # 2026-07-30 인하 후
+```
+
+`gpt-image-2`는 quality별로 이미 존재한다(`low` 0.005 / `medium` 0.041 / `high` 0.165).
+
+`services/models.py` 상단 주석의 계약("여기 있는 모든 ID는 PRICING 항목을 가져야
+한다")을 지킨다.
+
+### G. UI
+
+**설정 화면 (`frontend/src/pages/Settings.tsx`)**
+
+- AI 공급사 셀렉트 1개 (`OpenAI (GPT-5.6 Luna)` / `Google (Gemini 3.6 Flash)`)
+- API 키 입력 2칸 (기존 유지)
+- 키가 없는 공급사는 셀렉트에서 비활성 + 사유 표기
+- 키 삭제로 자동 전환이 일어나면 토스트
+
+**분석 화면**
+
+- 현재 설정과 다른 모델로 분석된 결과에 배지 표시
+- 배지 옆 재분석 버튼
+
+## 구현 순서
+
+두 단계로 나눈다. 1단계가 2단계의 안전망이 된다.
+
+### 1단계 — provider 추상화 (동작 변경 없음)
+
+Gemini 동작을 100% 그대로 유지하는 순수 리팩터. 기존 테스트로 회귀를 검증할 수 있다.
+
+1. `services/llm/base.py` 인터페이스 정의
+2. `interactions_client.py` → `gemini_client.py` 개명 + 인터페이스 준수
+3. `services/models.py`에 provider × role 레지스트리 추가 (Gemini만 채움)
+4. `ai_provider` 설정 추가, 값은 항상 `gemini`로 고정한 채 배선
+5. `compute_input_hash`에 model/effort 인자 추가 (Gemini 값으로만 호출)
+
+**완료 조건:** 기존 테스트 전부 통과. 12편 정답셋 오차 0 유지.
+
+### 2단계 — OpenAI 경로 추가
+
+6. `services/llm/openai_client.py` 구현 (Responses API + 체인 + 파일 업로드)
+7. 레지스트리 OpenAI 열 채우기
+8. `pricing.py`에 `gpt-5.6-luna` 추가
+9. `effective_provider()` + 409 처리 + 자동 전환
+10. `ai_provider` 마이그레이션 (키 규칙)
+11. Settings UI + 분석 화면 배지·재분석 버튼
+
+**완료 조건:** OpenAI 경로로 전체 파이프라인 완주. 키 상태 전이 4가지 시나리오
+(OpenAI만 / Gemini만 / 둘 다 / 없음) 동작 확인. 12편 정답셋을 OpenAI 경로로 돌려
+**결과를 기록**(게이트 아님).
+
+## 리스크
+
+| 리스크 | 영향 | 대응 |
+|---|---|---|
+| Luna vision 78.4% → 추출 정확도 하락 | 그림·표 오차 발생 가능 | 폴백 없음(결정). 12편 결과를 측정·기록해 사용자에게 고지 |
+| `previous_response_id` 체인 의미 차이 | 다단계 분석 문맥 유실 | 1단계에서 인터페이스로 차이를 흡수, 2단계에서 체인 연속성 테스트 |
+| OpenAI 파일 업로드 TTL·용량 제약 | 긴 PDF 실패 | Gemini의 47h TTL 방식을 참고해 provider별 TTL 상수 분리 |
+| 레거시 설정 2개와 `ai_provider` 불일치 | 예측 불가 동작 | lockstep 갱신을 단일 함수로 강제, 직접 write 금지 |
+
+## 범위 밖
+
+- Terra·Sol 등 상위 티어 노출 (선별 승격은 별도 과제)
+- phase별 개별 모델 선택 UI
+- effort를 사용자에게 노출하는 슬라이더
+- OpenRouter 등 중계 provider 지원

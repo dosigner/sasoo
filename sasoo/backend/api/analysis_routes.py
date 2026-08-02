@@ -2177,10 +2177,10 @@ async def _run_full_analysis(paper_id: int):
 
         # --- 본 분석 체인 준비 (스크리닝 결과 기반 도메인/페르소나 자동 선택) ---
         import json as _json
-        from api.analysis_context import build_chain_system_instruction
+        from api.analysis_context import build_chain_system_instruction, build_reader_profile_block
         from services.llm.interactions_client import upload_pdf_for_paper
         from services.agents import get_agent_for_domain
-        from api.settings import get_raw_settings
+        from api.settings import get_raw_settings, parse_research_areas
 
         try:
             screening_data = _json.loads(_clean_llm_json(r1.get("text") or "{}"))
@@ -2210,12 +2210,23 @@ async def _run_full_analysis(paper_id: int):
                 "UPDATE papers SET explanation_level = ? WHERE id = ?",
                 (level_key, paper_id),
             )
+        _areas = parse_research_areas(settings_raw.get("research_areas") or "[]")
+
+        reader_profile = build_reader_profile_block(
+            _areas,
+            settings_raw.get("field_expertise") or "major",
+            settings_raw.get("reading_experience") or "regular",
+            settings_raw.get("research_role") or "grad_student",
+            level_key=level_key,
+        )
+
         def _stage_system_instruction(stage: Optional[str]) -> str:
             return build_chain_system_instruction(
                 persona_prompt=_build_persona_prompt(agent, stage),
                 research_context=settings_raw.get("research_context", ""),
                 focus=focus,
                 level_key=level_key,
+                reader_profile=reader_profile,
             )
 
         visual_system_instruction = _stage_system_instruction("visual")

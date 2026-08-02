@@ -30,6 +30,11 @@ from services.crypto import (
     is_encrypted,
     is_unreadable,
 )
+from services.provider_state import (
+    effective_provider,
+    mirror_legacy_settings,
+    provider_switched,
+)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -42,6 +47,13 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 DEFAULT_SETTINGS: dict[str, str] = {
     "gemini_api_key": "",
     "openai_api_key": "",
+    # 공급사 선택의 단일 소스. 아래 image_provider는 이 값을 따라 함께
+    # 갱신되는 미러이므로 직접 write 하지 말 것 — provider_state.
+    # mirror_legacy_settings()를 거쳐야 한다.
+    #
+    # 실제 사용 값은 _resolve_active_provider()가 키 가용성으로 보정한다.
+    # 신규·기존 설치를 구분하지 않는다: 키가 하나면 그쪽, 둘 다면 openai.
+    "ai_provider": "openai",
     "image_provider": "openai",
     "image_quality": "high",
     "library_path": str(get_library_root()),
@@ -65,6 +77,20 @@ DEFAULT_SETTINGS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+def _resolve_active_provider(raw: dict, stored: str | None) -> str | None:
+    """저장된 공급사 선택을 API 키 가용성으로 보정한다.
+
+    키 존재 판정은 DB에 저장된(암호화된) 값이 비어 있지 않은지로 한다.
+    복호화까지 하지 않는 이유는, 여기서 알아야 할 것이 "키를 등록했는가"이지
+    "그 키가 유효한가"가 아니기 때문이다. 유효성은 실제 호출에서 드러난다.
+    """
+    return effective_provider(
+        stored,
+        has_openai=bool(str(raw.get("openai_api_key") or "").strip()),
+        has_gemini=bool(str(raw.get("gemini_api_key") or "").strip()),
+    )
+
 
 async def _ensure_library_path(db) -> None:
     """
@@ -244,7 +270,7 @@ def resolve_library_path_update(raw_path: object) -> Path:
     return resolved
 
 
-def _parse_research_areas(raw: str) -> list[str]:
+def parse_research_areas(raw: str) -> list[str]:
     """Decode the JSON-encoded research_areas setting, tolerating bad/legacy values."""
     try:
         parsed = json.loads(raw) if raw else []
@@ -274,11 +300,17 @@ async def get_settings():
         ) from exc
     unreadable = await _unreadable_api_keys()
 
+    stored_provider = raw.get("ai_provider", "openai")
+    active = _resolve_active_provider(raw, stored_provider)
+
     return SettingsModel(
         gemini_api_key=_mask_api_key(raw.get("gemini_api_key", "")),
         gemini_key_unreadable="gemini_api_key" in unreadable,
         openai_api_key=_mask_api_key(raw.get("openai_api_key", "")),
         openai_key_unreadable="openai_api_key" in unreadable,
+        ai_provider=stored_provider if stored_provider in ("openai", "gemini") else "openai",
+        active_provider=active,
+        switched_to=active if provider_switched(stored_provider, active) else None,
         image_provider=raw.get("image_provider", "openai"),
         image_quality=raw.get("image_quality", "high"),
         library_path=raw.get("library_path", str(get_library_root())),
@@ -292,7 +324,7 @@ async def get_settings():
         pdf_visual_engine=raw.get("pdf_visual_engine", "gemini"),
         research_context=raw.get("research_context", ""),
         default_explanation_level=raw.get("default_explanation_level", "masters"),
-        research_areas=_parse_research_areas(raw.get("research_areas", "[]")),
+        research_areas=parse_research_areas(raw.get("research_areas", "[]")),
         field_expertise=raw.get("field_expertise", "major"),
         reading_experience=raw.get("reading_experience", "regular"),
         research_role=raw.get("research_role", "grad_student"),
@@ -344,6 +376,14 @@ async def update_settings(update: SettingsUpdate):
         if key == "pdf_visual_engine" and str_value not in {"gemini", "odl"}:
             raise HTTPException(status_code=400, detail="pdf_visual_engine must be 'gemini' or 'odl'.")
         stored_updates[key] = str_value
+
+    # ai_provider가 바뀌면 레거시 미러를 같은 트랜잭션에서 함께 갱신한다.
+    # 여기를 거치지 않고 image_provider에 직접 write 하면 두 값이 어긋난다.
+    if "ai_provider" in stored_updates:
+        try:
+            stored_updates.update(mirror_legacy_settings(stored_updates["ai_provider"]))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     try:
         for key, value in api_key_updates.items():

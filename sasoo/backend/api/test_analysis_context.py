@@ -1,4 +1,13 @@
+import unittest
+
 from api.analysis_context import build_chain_system_instruction, EXPLANATION_LEVELS
+from api.analysis_context import (
+    AREA_LABELS,
+    ROLE_EMPHASIS,
+    _EXPERTISE_HINT,
+    _READING_HINT,
+    build_reader_profile_block,
+)
 
 
 def test_level_keys_complete():
@@ -23,3 +32,209 @@ def test_instruction_composition():
 def test_instruction_defaults():
     si = build_chain_system_instruction("", "", None, "masters")
     assert EXPLANATION_LEVELS["masters"][:20] in si
+
+
+class TestVocabularyTables(unittest.TestCase):
+    def test_area_labels_cover_frontend_options(self):
+        """AreaPicker.tsx의 AREAS와 strings.ts의 S.areas와 값이 일치해야 한다."""
+        expected = {
+            "optics_photonics",
+            "ai_ml",
+            "robotics_control",
+            "electrical_electronics",
+            "computer_science",
+            "physics_math",
+            "bio_medical",
+            "other",
+        }
+        self.assertEqual(set(AREA_LABELS), expected)
+
+    def test_role_emphasis_covers_frontend_options(self):
+        expected = {
+            "student",
+            "grad_student",
+            "postdoc",
+            "professor",
+            "engineer",
+            "manager",
+            "other",
+        }
+        self.assertEqual(set(ROLE_EMPHASIS), expected)
+
+    def test_expertise_hint_covers_frontend_options(self):
+        """Profile.tsx의 FIELD_EXPERTISE_OPTIONS와 값이 일치해야 한다."""
+        expected = {
+            "novice",
+            "basic",
+            "major",
+            "research",
+            "expert",
+        }
+        self.assertEqual(set(_EXPERTISE_HINT), expected)
+
+    def test_reading_hint_covers_frontend_options(self):
+        """Profile.tsx의 READING_EXPERIENCE_OPTIONS와 값이 일치해야 한다."""
+        expected = {
+            "rare",
+            "occasional",
+            "regular",
+            "author",
+        }
+        self.assertEqual(set(_READING_HINT), expected)
+
+
+class TestReaderProfileBlock(unittest.TestCase):
+    def test_empty_when_nothing_meaningful(self):
+        """기본값만 있으면 지시문을 늘리지 않는다."""
+        self.assertEqual(
+            build_reader_profile_block([], "major", "regular", "grad_student"), ""
+        )
+
+    def test_areas_are_rendered_as_korean_labels(self):
+        block = build_reader_profile_block(
+            ["optics_photonics", "ai_ml"], "major", "regular", "grad_student"
+        )
+        self.assertIn("광학·포토닉스", block)
+        self.assertIn("AI·머신러닝", block)
+        self.assertNotIn("optics_photonics", block)
+
+    def test_unknown_area_is_dropped_not_rendered_raw(self):
+        block = build_reader_profile_block(
+            ["optics_photonics", "no_such_area"], "major", "regular", "grad_student"
+        )
+        self.assertNotIn("no_such_area", block)
+        self.assertIn("광학·포토닉스", block)
+
+    def test_areas_are_capped_at_three(self):
+        block = build_reader_profile_block(
+            ["optics_photonics", "ai_ml", "bio_medical", "physics_math"],
+            "major", "regular", "grad_student",
+        )
+        self.assertNotIn("물리·수학", block)
+
+    def test_novice_expertise_asks_for_more_background(self):
+        block = build_reader_profile_block([], "novice", "regular", "grad_student")
+        self.assertNotEqual(block, "")
+        self.assertIn("배경", block)
+
+    def test_expert_expertise_allows_terse_terms(self):
+        block = build_reader_profile_block([], "expert", "regular", "grad_student")
+        self.assertNotEqual(block, "")
+
+    def test_author_experience_mentions_review_perspective(self):
+        block = build_reader_profile_block([], "major", "author", "grad_student")
+        self.assertNotEqual(block, "")
+
+    def test_role_changes_emphasis(self):
+        engineer = build_reader_profile_block([], "major", "regular", "engineer")
+        professor = build_reader_profile_block([], "major", "regular", "professor")
+        self.assertNotEqual(engineer, professor)
+
+    def test_block_is_terse(self):
+        """시스템 지시문은 매 호출에 실린다. 항목당 한 줄을 넘기지 않는다."""
+        block = build_reader_profile_block(
+            ["optics_photonics", "ai_ml", "bio_medical"], "novice", "author", "engineer"
+        )
+        self.assertLessEqual(len(block.splitlines()), 5)
+
+    def test_no_em_dash(self):
+        block = build_reader_profile_block(
+            ["optics_photonics"], "novice", "author", "engineer"
+        )
+        self.assertNotIn("—", block)
+        self.assertNotIn("–", block)
+
+    def test_low_level_expert_drops_background_phrase(self):
+        """낮은 설명 수준 + expert 조합에서는 '배경' 관련 지시를 빼야 한다.
+
+        기본 _EXPERTISE_HINT["expert"]는 "배경 설명 없이 바로 본론으로"라는
+        문구를 담고 있는데, 이는 undergrad 같은 낮은 explanation_level의
+        "짧게 배경을 설명해"와 정면 충돌한다.
+        """
+        block = build_reader_profile_block(
+            [], "expert", "regular", "grad_student", level_key="undergrad"
+        )
+        self.assertNotIn("배경", block)
+
+    def test_high_level_expert_keeps_background_phrase(self):
+        """높은 설명 수준(phd/masters)에서는 기존 expert 문장이 그대로 나온다."""
+        block_phd = build_reader_profile_block(
+            [], "expert", "regular", "grad_student", level_key="phd"
+        )
+        self.assertEqual(block_phd, _EXPERTISE_HINT["expert"])
+
+        block_masters = build_reader_profile_block(
+            [], "research", "regular", "grad_student", level_key="masters"
+        )
+        self.assertEqual(block_masters, _EXPERTISE_HINT["research"])
+
+    def test_omitting_level_key_keeps_old_behavior(self):
+        """level_key를 생략하면 기존 동작과 동일해야 한다."""
+        with_default = build_reader_profile_block([], "expert", "regular", "grad_student")
+        with_empty = build_reader_profile_block(
+            [], "expert", "regular", "grad_student", level_key=""
+        )
+        self.assertEqual(with_default, with_empty)
+        self.assertEqual(with_default, _EXPERTISE_HINT["expert"])
+
+
+class TestChainInstructionAssembly(unittest.TestCase):
+    def test_reader_profile_is_included(self):
+        from api.analysis_context import build_chain_system_instruction
+
+        out = build_chain_system_instruction(
+            "", "", None, "masters", reader_profile="독자 전공: 광학·포토닉스."
+        )
+        self.assertIn("광학·포토닉스", out)
+
+    def test_omitting_reader_profile_keeps_old_output(self):
+        """기존 호출부가 안 바뀌어도 결과가 같아야 한다."""
+        from api.analysis_context import build_chain_system_instruction
+
+        without = build_chain_system_instruction("", "", None, "masters")
+        with_empty = build_chain_system_instruction(
+            "", "", None, "masters", reader_profile=""
+        )
+        self.assertEqual(without, with_empty)
+
+    def test_explanation_level_comes_last(self):
+        """어휘 수준이 1차 기준이므로 마지막에 와야 덮어쓰기 순서가 맞다."""
+        from api.analysis_context import build_chain_system_instruction
+
+        out = build_chain_system_instruction(
+            "", "", None, "phd", reader_profile="독자 전공: 광학·포토닉스."
+        )
+        self.assertLess(out.index("광학·포토닉스"), out.index("설명 수준: 박사생"))
+
+
+class TestSettingsToProfileBlock(unittest.TestCase):
+    """설정 dict에서 값을 꺼내는 경로가 프론트 저장 형식과 맞는지."""
+
+    def test_research_areas_stored_as_json_string(self):
+        """settings 테이블은 research_areas를 JSON 문자열로 저장한다."""
+        import json
+
+        from api.analysis_context import build_reader_profile_block
+
+        raw = json.dumps(["optics_photonics", "ai_ml"])
+        block = build_reader_profile_block(
+            json.loads(raw), "major", "regular", "grad_student"
+        )
+        self.assertIn("광학·포토닉스", block)
+
+    def test_malformed_json_does_not_crash(self):
+        import json
+
+        from api.analysis_context import build_reader_profile_block
+
+        try:
+            areas = json.loads("not json")
+        except json.JSONDecodeError:
+            areas = []
+        self.assertEqual(
+            build_reader_profile_block(areas, "major", "regular", "grad_student"), ""
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
