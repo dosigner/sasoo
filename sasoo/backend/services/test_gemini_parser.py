@@ -29,7 +29,7 @@ from services.gemini_parser import (
 )
 from services.document_manifest import build_document_manifest
 from services.figure_candidates import build_figure_candidates
-from services.llm.interactions_client import _apply_media_resolution
+from services.llm.gemini_client import _apply_media_resolution
 
 PAGE_WIDTH = 612.0
 PAGE_HEIGHT = 792.0

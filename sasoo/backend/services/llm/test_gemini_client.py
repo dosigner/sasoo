@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from services.llm.interactions_client import call_interaction, upload_pdf_for_paper
-import services.llm.interactions_client as interactions_client
+from services.llm.gemini_client import call_interaction, upload_pdf_for_paper
+import services.llm.gemini_client as gemini_client
 from services.models import MODEL_FLASH_HQ
 
 
@@ -28,7 +28,7 @@ def _fake_interaction(text="결과", interaction_id="int_1", total_thought_token
 def test_call_interaction_basic():
     fake_client = MagicMock()
     fake_client.interactions.create.return_value = _fake_interaction(total_thought_tokens=50)
-    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+    with patch("services.llm.gemini_client._get_client", return_value=fake_client):
         result = asyncio.run(call_interaction("안녕", lane="pipeline"))
     assert result["text"] == "결과"
     assert result["interaction_id"] == "int_1"
@@ -48,7 +48,7 @@ def test_call_interaction_tokens_out_sums_output_and_thought_tokens():
     Gemini는 thinking 토큰도 출력 단가로 과금한다)."""
     fake_client = MagicMock()
     fake_client.interactions.create.return_value = _fake_interaction(total_thought_tokens=762)
-    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+    with patch("services.llm.gemini_client._get_client", return_value=fake_client):
         result = asyncio.run(call_interaction("안녕", lane="pipeline"))
     assert result["tokens_out"] == 50 + 762
     assert result["tokens_thought"] == 762
@@ -57,7 +57,7 @@ def test_call_interaction_tokens_out_sums_output_and_thought_tokens():
 def test_call_interaction_no_disallowed_params_with_thinking_level():
     fake_client = MagicMock()
     fake_client.interactions.create.return_value = _fake_interaction()
-    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+    with patch("services.llm.gemini_client._get_client", return_value=fake_client):
         asyncio.run(call_interaction("안녕", lane="pipeline", thinking_level="high"))
     kwargs = fake_client.interactions.create.call_args.kwargs
     assert set(kwargs.keys()) == {"model", "input", "system_instruction", "store", "generation_config"}
@@ -69,7 +69,7 @@ def test_call_interaction_no_disallowed_params_with_thinking_level():
 def test_call_interaction_chains_previous_id():
     fake_client = MagicMock()
     fake_client.interactions.create.return_value = _fake_interaction(interaction_id="int_2")
-    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+    with patch("services.llm.gemini_client._get_client", return_value=fake_client):
         asyncio.run(call_interaction("후속", lane="pipeline", previous_interaction_id="int_1"))
     assert fake_client.interactions.create.call_args.kwargs["previous_interaction_id"] == "int_1"
 
@@ -79,8 +79,8 @@ def test_call_interaction_retries_on_error():
     fake_client.interactions.create.side_effect = [
         RuntimeError("503"), RuntimeError("503"), _fake_interaction(),
     ]
-    with patch("services.llm.interactions_client._get_client", return_value=fake_client), \
-         patch("services.llm.interactions_client._RETRY_DELAYS", [0, 0]):
+    with patch("services.llm.gemini_client._get_client", return_value=fake_client), \
+         patch("services.llm.gemini_client._RETRY_DELAYS", [0, 0]):
         result = asyncio.run(call_interaction("재시도", lane="pipeline"))
     assert result["text"] == "결과"
     assert fake_client.interactions.create.call_count == 3
@@ -103,8 +103,8 @@ def test_call_interaction_does_not_retry_non_retryable_status():
     fake_client = MagicMock()
     fake_client.interactions.create.side_effect = _FakeApiError(400)
 
-    with patch("services.llm.interactions_client._get_client", return_value=fake_client), \
-         patch("services.llm.interactions_client._RETRY_DELAYS", [0, 0]):
+    with patch("services.llm.gemini_client._get_client", return_value=fake_client), \
+         patch("services.llm.gemini_client._RETRY_DELAYS", [0, 0]):
         with pytest.raises(RuntimeError, match="non-retryable"):
             asyncio.run(call_interaction("필터", lane="pipeline"))
 
@@ -119,8 +119,8 @@ def test_call_interaction_retries_transient_status(code):
         _FakeApiError(code), _FakeApiError(code), _fake_interaction(),
     ]
 
-    with patch("services.llm.interactions_client._get_client", return_value=fake_client), \
-         patch("services.llm.interactions_client._RETRY_DELAYS", [0, 0]):
+    with patch("services.llm.gemini_client._get_client", return_value=fake_client), \
+         patch("services.llm.gemini_client._RETRY_DELAYS", [0, 0]):
         result = asyncio.run(call_interaction("일시 오류", lane="pipeline"))
 
     assert result["text"] == "결과"
@@ -146,8 +146,8 @@ def test_call_interaction_releases_pipeline_sem_while_backing_off():
     fake_client.interactions.create.side_effect = [_FakeApiError(503), _fake_interaction()]
 
     async def _run():
-        with patch("services.llm.interactions_client._get_client", return_value=fake_client), \
-             patch("services.llm.interactions_client.asyncio.sleep", _probe):
+        with patch("services.llm.gemini_client._get_client", return_value=fake_client), \
+             patch("services.llm.gemini_client.asyncio.sleep", _probe):
             return await call_interaction("백오프", lane="pipeline")
 
     result = asyncio.run(_run())
@@ -200,8 +200,8 @@ def test_stream_interaction_yields_tokens_then_done():
     fake_client = MagicMock()
     fake_client.interactions.create.return_value = iter(events)
 
-    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        result = asyncio.run(_collect(interactions_client.stream_interaction("hi", lane="chat")))
+    with patch("services.llm.gemini_client._get_client", return_value=fake_client):
+        result = asyncio.run(_collect(gemini_client.stream_interaction("hi", lane="chat")))
 
     assert result[0] == {"type": "token", "text": "안"}
     assert result[1] == {"type": "token", "text": "녕"}
@@ -232,8 +232,8 @@ def test_stream_interaction_tokens_out_sums_output_and_thought_tokens():
     fake_client = MagicMock()
     fake_client.interactions.create.return_value = iter(events)
 
-    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        result = asyncio.run(_collect(interactions_client.stream_interaction("hi", lane="chat")))
+    with patch("services.llm.gemini_client._get_client", return_value=fake_client):
+        result = asyncio.run(_collect(gemini_client.stream_interaction("hi", lane="chat")))
 
     done = result[-1]
     assert done["type"] == "done"
@@ -255,8 +255,8 @@ def test_stream_interaction_ignores_non_text_events():
     fake_client = MagicMock()
     fake_client.interactions.create.return_value = iter(events)
 
-    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        result = asyncio.run(_collect(interactions_client.stream_interaction("hi", lane="chat")))
+    with patch("services.llm.gemini_client._get_client", return_value=fake_client):
+        result = asyncio.run(_collect(gemini_client.stream_interaction("hi", lane="chat")))
 
     tokens = [e for e in result if e["type"] == "token"]
     assert tokens == [{"type": "token", "text": "본문"}]
@@ -268,8 +268,8 @@ def test_stream_interaction_thinking_level_passed_without_disallowed_params():
     fake_client = MagicMock()
     fake_client.interactions.create.return_value = iter(events)
 
-    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        asyncio.run(_collect(interactions_client.stream_interaction("hi", lane="chat", thinking_level="low")))
+    with patch("services.llm.gemini_client._get_client", return_value=fake_client):
+        asyncio.run(_collect(gemini_client.stream_interaction("hi", lane="chat", thinking_level="low")))
 
     kwargs = fake_client.interactions.create.call_args.kwargs
     assert kwargs["generation_config"] == {"thinking_level": "low"}
@@ -281,7 +281,7 @@ def test_stream_interaction_store_false_with_previous_id_raises():
     with pytest.raises(ValueError, match="previous_interaction_id requires store=True"):
         asyncio.run(
             _collect(
-                interactions_client.stream_interaction(
+                gemini_client.stream_interaction(
                     "후속", lane="chat", previous_interaction_id="int_1", store=False
                 )
             )
@@ -304,7 +304,7 @@ def test_stream_interaction_does_not_block_event_loop():
     fake_client.interactions.create.return_value = fake_events()
 
     async def _run():
-        agen = interactions_client.stream_interaction("hi", lane="chat")
+        agen = gemini_client.stream_interaction("hi", lane="chat")
         first = await agen.__anext__()
         # 이 지점에 도달했다는 것 자체가 생산자 스레드가 블록된 동안
         # 이벤트 루프가 살아 있었다는 증거다.
@@ -312,7 +312,7 @@ def test_stream_interaction_does_not_block_event_loop():
         rest = [ev async for ev in agen]
         return [first, *rest]
 
-    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+    with patch("services.llm.gemini_client._get_client", return_value=fake_client):
         result = asyncio.run(_run())
 
     assert [e for e in result if e["type"] == "token"] == [
@@ -330,8 +330,8 @@ def test_stream_interaction_yields_fallback_done_when_stream_ends_without_comple
     fake_client = MagicMock()
     fake_client.interactions.create.return_value = iter(events)
 
-    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
-        result = asyncio.run(_collect(interactions_client.stream_interaction("hi", lane="chat")))
+    with patch("services.llm.gemini_client._get_client", return_value=fake_client):
+        result = asyncio.run(_collect(gemini_client.stream_interaction("hi", lane="chat")))
 
     assert result[0] == {"type": "token", "text": "안"}
     assert result[1] == {"type": "token", "text": "녕"}
@@ -350,9 +350,9 @@ def test_stream_interaction_raises_on_stream_error():
     fake_client.interactions.create.side_effect = RuntimeError("boom")
 
     async def _run():
-        return await _collect(interactions_client.stream_interaction("hi", lane="chat"))
+        return await _collect(gemini_client.stream_interaction("hi", lane="chat"))
 
-    with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+    with patch("services.llm.gemini_client._get_client", return_value=fake_client):
         with pytest.raises(RuntimeError, match="boom"):
             asyncio.run(_run())
 
@@ -369,7 +369,7 @@ def test_upload_pdf_for_paper_cache_hit_skips_upload():
 
     with patch("models.database.fetch_one", fake_fetch_one), \
          patch("models.database.execute_update", fake_execute_update), \
-         patch("services.llm.interactions_client._get_client", return_value=fake_client):
+         patch("services.llm.gemini_client._get_client", return_value=fake_client):
         uri = asyncio.run(upload_pdf_for_paper(1, "/tmp/fake.pdf"))
 
     assert uri == "uri-cached"
@@ -394,7 +394,7 @@ def test_upload_pdf_for_paper_expired_reuploads_and_updates(tmp_path):
 
     with patch("models.database.fetch_one", fake_fetch_one), \
          patch("models.database.execute_update", fake_execute_update), \
-         patch("services.llm.interactions_client._get_client", return_value=fake_client):
+         patch("services.llm.gemini_client._get_client", return_value=fake_client):
         uri = asyncio.run(upload_pdf_for_paper(2, pdf_path))
 
     assert uri == "uri-new"
@@ -416,7 +416,7 @@ def test_upload_pdf_for_paper_no_cache_uploads_and_updates(tmp_path):
 
     with patch("models.database.fetch_one", fake_fetch_one), \
          patch("models.database.execute_update", fake_execute_update), \
-         patch("services.llm.interactions_client._get_client", return_value=fake_client):
+         patch("services.llm.gemini_client._get_client", return_value=fake_client):
         uri = asyncio.run(upload_pdf_for_paper(3, pdf_path))
 
     assert uri == "uri-fresh"
@@ -440,7 +440,7 @@ def test_upload_pdf_for_paper_non_ascii_filename_passes_file_object(tmp_path):
 
     with patch("models.database.fetch_one", fake_fetch_one), \
          patch("models.database.execute_update", fake_execute_update), \
-         patch("services.llm.interactions_client._get_client", return_value=fake_client):
+         patch("services.llm.gemini_client._get_client", return_value=fake_client):
         uri = asyncio.run(upload_pdf_for_paper(7, pdf_path))
 
     assert uri == "uri-korean"
@@ -483,7 +483,7 @@ def test_upload_pdf_for_paper_concurrent_calls_upload_once(tmp_path):
     호출이 락 획득을 시도하는 동안 첫 번째 호출이 확실히 업로드 중이도록 만든다
     (타이밍에 의존하는 레이스 대신 결정적으로 동시성을 재현).
     """
-    interactions_client._upload_locks.clear()
+    gemini_client._upload_locks.clear()
     pdf_path = _write_pdf(tmp_path)
 
     started = threading.Event()
@@ -514,7 +514,7 @@ def test_upload_pdf_for_paper_concurrent_calls_upload_once(tmp_path):
 
     with patch("models.database.fetch_one", table.fetch_one), \
          patch("models.database.execute_update", table.execute_update), \
-         patch("services.llm.interactions_client._get_client", return_value=fake_client):
+         patch("services.llm.gemini_client._get_client", return_value=fake_client):
         results = asyncio.run(_run_concurrently())
 
     assert results == ["uri-concurrent", "uri-concurrent"]
@@ -548,7 +548,7 @@ def test_chat_lane_runs_on_chat_executor_and_skips_pipeline_sem():
 
         fake_client = MagicMock()
         fake_client.interactions.create.side_effect = fake_create
-        with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+        with patch("services.llm.gemini_client._get_client", return_value=fake_client):
             await call_interaction("안녕", lane="chat")
 
     asyncio.run(_run())
@@ -571,7 +571,7 @@ def test_pipeline_lane_runs_on_pipeline_executor_and_holds_sem():
 
         fake_client = MagicMock()
         fake_client.interactions.create.side_effect = fake_create
-        with patch("services.llm.interactions_client._get_client", return_value=fake_client):
+        with patch("services.llm.gemini_client._get_client", return_value=fake_client):
             await call_interaction("안녕", lane="pipeline")
         seen["after"] = sem._value
 
