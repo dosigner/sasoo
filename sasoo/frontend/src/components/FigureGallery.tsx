@@ -4,6 +4,7 @@ import { Loader2, Download } from 'lucide-react';
 import { getLibraryAssetUrl, type Figure, type VisualState } from '@/lib/api';
 import { S } from '@/lib/strings';
 import { resolveArtifactPlaceholder } from '@/lib/artifactState';
+import { CONFIDENCE_REVIEW_THRESHOLD } from '@/lib/confidence';
 import { generateFigureExplanation } from '@/lib/api';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { AppIcon } from '@/components/icons';
@@ -84,12 +85,6 @@ function citationAnchor(figure: Figure): string | undefined {
 function getFigureImageUrl(figure: Figure): string {
   return getLibraryAssetUrl(figure.file_path);
 }
-
-// backend document_audit의 저품질 의심 컷(0.72)과 동일 기준.
-// sasoo/backend/services/document_audit.py의 _figure_is_flagged/_table_is_flagged가
-// `confidence < 0.72`를 감사 대상으로 잡는다 — 프런트 색점도 같은 컷을 재사용해
-// "검토 권장"의 기준이 백엔드 감사 로직과 어긋나지 않게 한다.
-const CONFIDENCE_REVIEW_THRESHOLD = 0.72;
 
 function buildStatusBadge(figure: Figure): { label: string; variant: BadgeVariant } {
   if (figure.extraction_status === 'uncertain') {
