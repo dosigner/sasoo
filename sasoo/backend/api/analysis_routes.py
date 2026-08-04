@@ -64,6 +64,7 @@ from services.odl_parser import (
 from services.analysis_results import (
     get_latest_completed_phase_row,
     get_latest_completed_phase_rows,
+    parse_phase_row,
 )
 from services.artifact_status import resolve_artifact_status_contract
 from services.concurrency import run_chat_blocking, run_pipeline_blocking
@@ -161,6 +162,67 @@ async def _get_cached_phase_result(
         "cost_usd": cached.cost_usd,
         "input_hash": cached.input_hash or fallback_hash,
     }
+
+
+def _config_hash(provider: str | None, model: str | None, effort: str | None) -> str:
+    """(provider, model, effort) 지문 — 문서 내용을 포함하지 않는다.
+
+    Task 11(스펙 §D 2단계 조회)의 stage-1 키. input_hash는 문서 전체를 포함해
+    GET 상태 조회 시점에 재구성하려면 프롬프트 전체를 다시 만들어야 한다(비용
+    큰 중복). 이 지문은 그 비용 없이 "이 설정으로 이미 분석해본 적이 있는가"만
+    싸게 판정하기 위한 의도적 단순화다 — 문서가 바뀐 경우까지는 잡지 못하지만,
+    Task 6이 바꾼 캐시 키(provider/model/effort)의 후속 조치인 이 배지 기능의
+    범위 안에서는 충분하다. compute_input_hash(input_text="")의 퇴화형이라
+    별도 해시 스킴을 새로 만들지 않는다.
+    """
+    return compute_input_hash("", provider=provider, model=model, effort=effort)
+
+
+async def _lookup_phase_result_with_staleness(
+    paper_id: int,
+    phase: str,
+    current_hash: str,
+) -> Optional[dict]:
+    """phase 결과의 2단계 조회(스펙 §D).
+
+    1. 현재 (provider, model, effort) 지문(config_hash)으로 조회 → 히트하면
+       이 설정으로 이미 분석해본 적이 있다는 뜻이라 stale_model=None으로 그대로
+       쓴다.
+    2. 미스면 phase의 최신 행을 stale_model(그 행을 만든 옛 모델명)과 함께
+       돌려준다 — "다른 모델로 분석됨" 배지 + 재분석 안내(get_analysis_status)의
+       데이터 소스. 행이 아예 없으면 None.
+
+    캐시 키가 다르면 다른 결과다: 옛 행의 model_used가 현재 모델과 같아도
+    effort만 달랐다면 stale로 표시한다(config_hash가 그 차이를 흡수한다).
+    """
+    row = await fetch_one(
+        """
+        SELECT * FROM analysis_results
+        WHERE paper_id = ? AND phase = ? AND config_hash = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        """,
+        (paper_id, phase, current_hash),
+    )
+    if row is not None:
+        parsed = parse_phase_row(row)
+        parsed["stale_model"] = None
+        return parsed
+
+    latest = await fetch_one(
+        """
+        SELECT * FROM analysis_results
+        WHERE paper_id = ? AND phase = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        """,
+        (paper_id, phase),
+    )
+    if latest is None:
+        return None
+    parsed = parse_phase_row(latest)
+    parsed["stale_model"] = parsed.get("model_used")
+    return parsed
 
 
 # 게이트가 applicable=False로 스킵하기 전 요구하는 최소 확신도(잠정값 0.6 — e2e 분포로 재조정).
@@ -308,8 +370,8 @@ async def _insert_analysis_result(
     await execute_insert(
         """
         INSERT INTO analysis_results
-            (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd, input_hash, interaction_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd, input_hash, interaction_id, config_hash)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             paper_id,
@@ -321,6 +383,7 @@ async def _insert_analysis_result(
             cost_usd,
             compute_input_hash(input_text, provider=provider, model=model, effort=effort),
             interaction_id,
+            _config_hash(provider, model, effort),
         ),
     )
 
@@ -2839,12 +2902,35 @@ async def get_analysis_status(paper_id: int):
     phase_order = ["screening", "citation", "visual", "recipe", "deep_dive"]
     completed_phases = set(latest_results.keys())
 
+    # Task 11(스펙 §D): stale_model 배지용 현재 provider. 조회 실패해도(설정
+    # DB 미초기화 등) 상태 응답 자체는 죽으면 안 되므로 관대하게 폴백한다 —
+    # provider가 None이면 아래 루프에서 배지 계산을 그냥 건너뛴다.
+    stale_provider: Optional[str] = None
+    try:
+        stale_provider = await active_provider()
+    except Exception:
+        logger.debug("stale_model 조회용 provider 확인 실패 — 배지 없이 진행", exc_info=True)
+
     for phase_name in phase_order:
         r = latest_results.get(phase_name)
         if r:
             cost = r.get("cost_usd") or 0.0
             tin = r.get("tokens_in") or 0
             tout = r.get("tokens_out") or 0
+            stale_model: Optional[str] = None
+            if stale_provider:
+                try:
+                    choice = resolve_model(phase_name, stale_provider)
+                    current_hash = _config_hash(stale_provider, choice.model, choice.effort)
+                    staleness = await _lookup_phase_result_with_staleness(
+                        paper_id, phase_name, current_hash,
+                    )
+                    if staleness:
+                        stale_model = staleness.get("stale_model")
+                except Exception:
+                    logger.debug(
+                        "phase %s stale_model 조회 실패 — 배지 없이 진행", phase_name, exc_info=True,
+                    )
             phases.append(PhaseStatus(
                 phase=AnalysisPhase(phase_name),
                 status="completed",
@@ -2853,6 +2939,7 @@ async def get_analysis_status(paper_id: int):
                 tokens_out=tout,
                 cost_usd=cost,
                 completed_at=r.get("created_at"),
+                stale_model=stale_model,
             ))
             total_cost += cost
             total_in += tin

@@ -474,6 +474,110 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("latest deep dive", report.markdown)
         fetch_all_mock.assert_not_awaited()
 
+    # -- Task 11: 다른 모델로 분석된 결과 배지 (스펙 §D 2단계 조회) -------------
+
+    async def test_lookup_phase_result_with_staleness_reports_old_model(self):
+        """현재 키로 미스, 옛 행 존재 -> stale_model에 옛 모델명이 실린다(스펙 §D)."""
+        old_row = {"result": '{"ok": true}', "model_used": "gemini-3.6-flash",
+                   "input_hash": "옛키"}
+        with (
+            patch("api.analysis_routes.fetch_one",
+                  new=AsyncMock(side_effect=[None, old_row])),  # 1차: 현재 키 미스, 2차: 최신 행
+        ):
+            payload = await analysis_routes._lookup_phase_result_with_staleness(
+                paper_id=7, phase="recipe", current_hash="새키")
+        self.assertEqual(payload["stale_model"], "gemini-3.6-flash")
+
+    async def test_lookup_phase_result_with_staleness_hit_has_no_stale_model(self):
+        # 현재 (provider, model, effort) 지문으로 히트하면 이미 이 설정으로
+        # 분석해본 적이 있다는 뜻이라 stale_model=None이고, 2차 조회는 타지 않는다.
+        current_row = {"result": '{"ok": true}', "model_used": "gpt-5.6-luna", "config_hash": "새키"}
+        with patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=current_row)) as fetch_mock:
+            payload = await analysis_routes._lookup_phase_result_with_staleness(
+                paper_id=7, phase="recipe", current_hash="새키")
+        self.assertIsNone(payload["stale_model"])
+        fetch_mock.assert_awaited_once()
+
+    async def test_lookup_phase_result_with_staleness_no_rows_returns_none(self):
+        # 이 phase가 아예 실행된 적이 없으면(신규 논문) None -- 배지도 없다.
+        with patch("api.analysis_routes.fetch_one", new=AsyncMock(side_effect=[None, None])):
+            payload = await analysis_routes._lookup_phase_result_with_staleness(
+                paper_id=7, phase="recipe", current_hash="새키")
+        self.assertIsNone(payload)
+
+    def test_config_hash_differs_by_effort_only(self):
+        # 스펙 §D: 모델이 같아도 effort가 다르면 다른 캐시 키 -> stale 판정 근거.
+        # 옛 행의 model_used만 비교하면 이 케이스를 놓친다(직전 리뷰 지적).
+        low = analysis_routes._config_hash("openai", "gpt-5.6-luna", "low")
+        medium = analysis_routes._config_hash("openai", "gpt-5.6-luna", "medium")
+        self.assertNotEqual(low, medium)
+        self.assertEqual(analysis_routes._config_hash("openai", "gpt-5.6-luna", "low"), low)
+
+    async def test_get_analysis_status_surfaces_stale_model_badge(self):
+        # get_analysis_status가 완료된 phase마다 2단계 조회를 태워 stale_model을
+        # 응답에 싣는지 배선을 확인한다. active_provider는 클래스 setUp에서
+        # "gemini"로 고정.
+        paper = {"id": 7, "status": "completed"}
+        latest_rows = {
+            "recipe": _row("recipe", '{"title":"old"}', model_used="gemini-3.6-flash"),
+        }
+
+        async def _fake_staleness(paper_id, phase, current_hash):
+            del paper_id, current_hash
+            if phase == "recipe":
+                return {"stale_model": "gemini-3.6-flash"}
+            return None
+
+        with (
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)),
+            patch("api.analysis_routes.get_latest_completed_phase_rows",
+                  new=AsyncMock(return_value=latest_rows)),
+            patch("api.analysis_routes._lookup_phase_result_with_staleness",
+                  new=AsyncMock(side_effect=_fake_staleness)),
+        ):
+            status = await analysis_routes.get_analysis_status(7)
+
+        recipe_phase = next(p for p in status.phases if p.phase.value == "recipe")
+        self.assertEqual(recipe_phase.stale_model, "gemini-3.6-flash")
+        screening_phase = next(p for p in status.phases if p.phase.value == "screening")
+        self.assertIsNone(screening_phase.stale_model)
+        self.assertEqual(screening_phase.status, "pending")
+
+    async def test_get_analysis_status_tolerates_stale_lookup_failure(self):
+        # provider/registry 조회가 실패해도(예: 설정 DB 미초기화) /status 자체는
+        # 죽지 않고 stale_model 없이 정상 응답해야 한다 -- 배지는 nice-to-have.
+        paper = {"id": 7, "status": "completed"}
+        latest_rows = {
+            "recipe": _row("recipe", '{"title":"old"}', model_used="gemini-3.6-flash"),
+        }
+        with (
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)),
+            patch("api.analysis_routes.get_latest_completed_phase_rows",
+                  new=AsyncMock(return_value=latest_rows)),
+            patch("api.analysis_routes.active_provider",
+                  new=AsyncMock(side_effect=RuntimeError("settings db not ready"))),
+        ):
+            status = await analysis_routes.get_analysis_status(7)
+
+        recipe_phase = next(p for p in status.phases if p.phase.value == "recipe")
+        self.assertIsNone(recipe_phase.stale_model)
+        self.assertEqual(recipe_phase.status, "completed")
+
+    async def test_insert_analysis_result_stores_config_hash(self):
+        # config_hash가 실제로 INSERT에 실려야 나중에 stage-1 조회가 성립한다.
+        with patch("api.analysis_routes.execute_insert", new=AsyncMock()) as insert_mock:
+            await analysis_routes._insert_analysis_result(
+                7, "recipe", '{"ok":true}', "gpt-5.6-luna", 10, 20, 0.1, "doc text",
+                provider="openai", model="gpt-5.6-luna", effort="medium",
+            )
+        insert_mock.assert_awaited_once()
+        sql, params = insert_mock.call_args.args
+        self.assertIn("config_hash", sql)
+        self.assertEqual(
+            params[-1],
+            analysis_routes._config_hash("openai", "gpt-5.6-luna", "medium"),
+        )
+
     async def test_run_recipe_uses_current_screening_data_without_db_read(self):
         status = AnalysisStatus(
             paper_id=7,
