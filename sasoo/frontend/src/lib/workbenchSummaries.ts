@@ -38,8 +38,9 @@ const PHASE_LABELS: Record<AnalysisPhase, string> = {
 };
 
 // 상태부 진행 레일에 쓰는 단계명. currentPhaseLabel(PHASE_LABELS)과는 별개로,
-// 상태부 요약에서만 쓰는 5단계 고정 명칭이다.
-const STAGE_NAMES: string[] = ['스크리닝', '인용 분석', '시각 자료', '레시피', '심층 분석'];
+// 상태부 요약에서만 쓰는 5단계 고정 명칭이다. ProgressTracker의 단계 리스트 라벨도
+// 이 명칭을 재사용해 상태부 진행 레일과 표기를 통일한다.
+export const STAGE_NAMES: string[] = ['스크리닝', '인용 분석', '시각 자료', '레시피', '심층 분석'];
 
 function percent(value: unknown): string | null {
   if (typeof value !== 'number' || Number.isNaN(value)) return null;

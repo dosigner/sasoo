@@ -1144,13 +1144,18 @@ export default function AnalysisPanel({
       <div className="min-h-0 flex-1 overflow-y-auto scroll-stable px-5 py-4">
         {visibleTab === 'summary' && (
           <div className="space-y-5">
-            {status && status.overall_status !== 'pending' && (
-              <ProgressTracker
-                phases={status.phases}
-                overallProgress={status.progress_pct}
-                variant="minimal"
-              />
-            )}
+            {status &&
+              status.overall_status !== 'pending' &&
+              !(
+                workbenchStatus.totalCount > 0 &&
+                workbenchStatus.completedCount === workbenchStatus.totalCount
+              ) && (
+                <ProgressTracker
+                  phases={status.phases}
+                  overallProgress={status.progress_pct}
+                  variant="minimal"
+                />
+              )}
 
             <div className="space-y-0">
               <PhaseSection

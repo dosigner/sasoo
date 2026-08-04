@@ -1,16 +1,7 @@
-import {
-  FileSearch,
-  BookOpen,
-  ImageIcon,
-  FlaskConical,
-  GitBranch,
-  Check,
-  Loader2,
-  Circle,
-  AlertCircle,
-} from 'lucide-react';
-import type { PhaseInfo, PhaseStatusValue, AnalysisPhase } from '@/lib/api';
+import type { PhaseInfo, AnalysisPhase } from '@/lib/api';
 import { S } from '@/lib/strings';
+import { STAGE_NAMES } from '@/lib/workbenchSummaries';
+import AppIcon from '@/components/icons/AppIcon';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,85 +17,14 @@ interface ProgressTrackerProps {
 // Constants
 // ---------------------------------------------------------------------------
 
-const PHASE_META: Record<AnalysisPhase, {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  description: string;
-}> = {
-  screening: {
-    icon: FileSearch,
-    label: S.progressTracker.phase1,
-    description: S.progressTracker.phase1Desc,
-  },
-  citation: {
-    icon: BookOpen,
-    label: S.progressTracker.phase2,
-    description: S.progressTracker.phase2Desc,
-  },
-  visual: {
-    icon: ImageIcon,
-    label: S.progressTracker.phase3,
-    description: S.progressTracker.phase3Desc,
-  },
-  recipe: {
-    icon: FlaskConical,
-    label: S.progressTracker.phase4,
-    description: S.progressTracker.phase4Desc,
-  },
-  deep_dive: {
-    icon: GitBranch,
-    label: S.progressTracker.phase5,
-    description: S.progressTracker.phase5Desc,
-  },
+// 상태부 진행 레일(STAGE_NAMES)과 동일한 단계명을 재사용해 표기를 통일한다.
+const PHASE_META: Record<AnalysisPhase, { label: string }> = {
+  screening: { label: STAGE_NAMES[0] },
+  citation: { label: STAGE_NAMES[1] },
+  visual: { label: STAGE_NAMES[2] },
+  recipe: { label: STAGE_NAMES[3] },
+  deep_dive: { label: STAGE_NAMES[4] },
 };
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function getStatusIcon(status: PhaseStatusValue): React.ReactNode {
-  switch (status) {
-    case 'completed':
-      return <Check className="w-4 h-4 text-success" />;
-    case 'running':
-      return <Loader2 className="w-4 h-4 text-accent animate-spin" />;
-    case 'error':
-      return <AlertCircle className="w-4 h-4 text-danger" />;
-    case 'pending':
-    default:
-      return <Circle className="w-4 h-4 text-fg-muted" />;
-  }
-}
-
-function getPhaseClasses(status: PhaseStatusValue): string {
-  switch (status) {
-    case 'completed':
-      return 'border-success/30 bg-success/5';
-    case 'running':
-      return 'border-accent/50 bg-accent/5 ring-1 ring-accent/20';
-    case 'error':
-      return 'border-danger/30 bg-danger/5';
-    case 'pending':
-    default:
-      return 'border-border bg-surface/50';
-  }
-}
-
-function getConnectorClasses(
-  currentStatus: PhaseStatusValue,
-  nextStatus: PhaseStatusValue
-): string {
-  if (currentStatus === 'completed') {
-    return 'bg-success';
-  }
-  if (currentStatus === 'running') {
-    return 'bg-gradient-to-r from-accent to-border';
-  }
-  if (nextStatus !== 'pending') {
-    return 'bg-fg-muted';
-  }
-  return 'bg-border';
-}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -158,47 +78,34 @@ export default function ProgressTracker({
         />
       </div>
 
-      {/* Phase steps */}
-      <div className="flex items-start justify-between gap-1">
-        {phases.map((phase, index) => {
+      {/* Phase steps: slim vertical list (전체 진행률은 상태부가 담당) */}
+      <div className="flex flex-col gap-2">
+        {phases.map((phase) => {
           const meta = PHASE_META[phase.phase];
           if (!meta) return null;
 
-          const Icon = meta.icon;
-
           return (
-            <div key={phase.phase} className="flex items-center flex-1 last:flex-none">
-              {/* Phase card */}
-              <div
-                className={`flex flex-col items-center gap-2 rounded-lg border p-3 min-w-[100px] transition-all duration-300 ${getPhaseClasses(phase.status)}`}
-              >
-                <div className="flex items-center gap-1.5">
-                  {getStatusIcon(phase.status)}
-                  <Icon className="w-4 h-4 text-fg-secondary" />
-                </div>
-                <div className="text-center">
-                  <div className="text-2xs font-medium text-fg-secondary">
-                    {meta.label}
-                  </div>
-                  <div className="text-2xs text-fg-muted mt-0.5">
-                    {meta.description}
-                  </div>
-                </div>
-                {phase.status === 'running' && (
-                  <div className="w-full h-0.5 bg-border rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-accent rounded-full animate-pulse"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Connector line */}
-              {index < phases.length - 1 && (
-                <div
-                  className={`h-0.5 flex-1 mx-1 rounded-full transition-colors duration-300 ${getConnectorClasses(phase.status, phases[index + 1]?.status || 'pending')}`}
+            <div key={phase.phase} className="flex items-center gap-2">
+              {phase.status === 'completed' ? (
+                <AppIcon name="success" className="w-3.5 h-3.5 shrink-0 text-success" />
+              ) : phase.status === 'error' ? (
+                <AppIcon name="error" className="w-3.5 h-3.5 shrink-0 text-danger" />
+              ) : (
+                <span
+                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                    phase.status === 'running' ? 'bg-accent' : 'bg-border'
+                  }`}
                 />
               )}
+              <span
+                className={`text-xs ${
+                  phase.status === 'running'
+                    ? 'font-[650] text-fg'
+                    : 'font-normal text-fg-muted'
+                }`}
+              >
+                {meta.label}
+              </span>
             </div>
           );
         })}

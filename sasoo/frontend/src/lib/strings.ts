@@ -499,16 +499,6 @@ export const S = {
     title: '분석 진행',
     running: '실행 중',
     complete: '완료',
-    phase1: 'Phase 1',
-    phase1Desc: '스크리닝',
-    phase2: 'Phase 2',
-    phase2Desc: '인용 분석',
-    phase3: 'Phase 3',
-    phase3Desc: '시각 검증',
-    phase4: 'Phase 4',
-    phase4Desc: '레시피',
-    phase5: 'Phase 5',
-    phase5Desc: '심층 분석',
   },
 
   // ── Figures ──
