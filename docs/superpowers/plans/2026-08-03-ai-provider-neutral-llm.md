@@ -616,7 +616,7 @@ thinking_level 실값)의 이식이므로 바꾸면 동작 변경이다.
 
 OpenAI 열 원칙(스펙 개정 1 R3/R4): 모델은 Luna 하나, effort만 변주.
 deep_dive는 high까지(xhigh 금지). screening·리졸버·naming은 최저 사고량 —
-스파이크(Task 0)에서 minimal 미지원이 확인되면 low로 바꾼다.
+Task 0 실측(2026-08-05)에서 minimal 미지원 확정 — OpenAI 최저 effort는 low.
 """
 
 from dataclasses import dataclass
@@ -659,7 +659,7 @@ _REGISTRY: dict[str, dict[str, ModelChoice]] = {
         "image": ModelChoice(MODEL_IMAGE, None),
     },
     "openai": {
-        "screening": ModelChoice(MODEL_LUNA, "minimal"),
+        "screening": ModelChoice(MODEL_LUNA, "low"),
         "visual": ModelChoice(MODEL_LUNA, "low"),
         "citation": ModelChoice(MODEL_LUNA, "low"),
         "recipe": ModelChoice(MODEL_LUNA, "medium"),
@@ -668,10 +668,10 @@ _REGISTRY: dict[str, dict[str, ModelChoice]] = {
         "mermaid": ModelChoice(MODEL_LUNA, "medium"),
         "chat": ModelChoice(MODEL_LUNA, "low"),
         "figure_explain": ModelChoice(MODEL_LUNA, "medium"),
-        "figure_resolver": ModelChoice(MODEL_LUNA, "minimal"),
-        "table_resolver": ModelChoice(MODEL_LUNA, "minimal"),
-        "subfigure": ModelChoice(MODEL_LUNA, "minimal"),
-        "naming": ModelChoice(MODEL_LUNA, "minimal"),
+        "figure_resolver": ModelChoice(MODEL_LUNA, "low"),
+        "table_resolver": ModelChoice(MODEL_LUNA, "low"),
+        "subfigure": ModelChoice(MODEL_LUNA, "low"),
+        "naming": ModelChoice(MODEL_LUNA, "low"),
         "viz_image_plan": ModelChoice(MODEL_LUNA, "medium"),
         "image": ModelChoice(MODEL_IMAGE_OPENAI, None),
     },
