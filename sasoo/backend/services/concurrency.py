@@ -46,7 +46,11 @@ CHAT_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="sasoo-chat
 # 재시도 정책 정비(비재시도성 오류 즉시 중단 + 백오프 중 세마포어 반납)가 선행됐다 —
 # 429가 늘어도 제대로 백오프되고 대기가 슬롯을 잠그지 않는다.
 # 429 관측치에 따라 env로 되돌릴 수 있게 열어 둔다.
-PIPELINE_LLM_CONCURRENCY = _env_int("SASOO_PIPELINE_LLM_CONCURRENCY", 8)
+#
+# 8 -> 12: 2026-08-04 실측 — 동시성 12·실호출 254건에서 429 0건, max_inflight 12 도달.
+# 이득은 페이지 비전 파싱 구간(12페이지 논문 2웨이브→1웨이브)에서 나며, resolver 구간은
+# 대기열이 8을 거의 안 넘어 무영향(8 vs 12 비교 실측 294.7s vs 301.0s). 문제 시 env 롤백.
+PIPELINE_LLM_CONCURRENCY = _env_int("SASOO_PIPELINE_LLM_CONCURRENCY", 12)
 
 # Image renders run up to RENDER_TIMEOUT_S and hold a thread the entire time.
 RENDER_CONCURRENCY = 3

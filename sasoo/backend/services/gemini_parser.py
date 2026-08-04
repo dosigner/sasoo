@@ -61,7 +61,8 @@ def _env_str(name: str, default: str) -> str:
 RENDER_DPI = _env_int("SASOO_GEMINI_PARSER_DPI", 150)  # 페이지 래스터화 해상도(하향: 150)
 # 4 -> 8. 실효 동시성은 이 값과 services.concurrency.PIPELINE_LLM_CONCURRENCY 중 작은 쪽이라
 # 둘을 같이 올려야 의미가 있다(한쪽만 올리면 다른 쪽 세마포어에서 그대로 막힌다).
-PAGE_CONCURRENCY = _env_int("SASOO_GEMINI_PARSER_PAGE_CONCURRENCY", 8)
+# 8 -> 12: 2026-08-04 실측(스펙 2026-08-04-pipeline-concurrency-12-design.md 참조).
+PAGE_CONCURRENCY = _env_int("SASOO_GEMINI_PARSER_PAGE_CONCURRENCY", 12)
 _PAGE_RETRIES = 1              # 페이지 호출 실패 시 추가 재시도 횟수(총 2회 시도)
 # thinking 토큰은 출력 단가로 과금됨. ThinkingLevel 허용값 minimal<low<medium<high 중 최저치.
 _THINKING_LEVEL = _env_str("SASOO_GEMINI_PARSER_THINKING", "minimal")
