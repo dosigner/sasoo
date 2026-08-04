@@ -714,6 +714,37 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(json.loads(result["text"])["domain"], "optics")
         self.assertEqual(result["tokens_out"], 120)  # 실패분 합산
 
+    async def test_screening_retry_cost_is_sum_of_per_attempt_costs(self):
+        """R7-3: 재시도 시 총비용은 attempt별 계산의 합이어야 한다 —
+        합산된 토큰에 마지막 attempt 단가를 한 번만 적용하면(구단가) 값은
+        같아 보이지만, 이 등식 자체가 attempt별 계산의 정확성 기준이다."""
+        from services.pricing import calc_cost
+
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        calls = []
+
+        async def _fake_call(prompt, **kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                return {"text": '{"broken": ', "model": "m", "tokens_in": 10, "tokens_out": 100, "interaction_id": "i1"}
+            return {
+                "text": '{"domain":"optics","summary":"요약","relevance_score":0.9,'
+                        '"key_topics":["광학"],"is_experimental":true,'
+                        '"methodology_type":"experimental",'
+                        '"recipe_applicable":true,"deep_dive_applicable":true}',
+                "model": "m", "tokens_in": 10, "tokens_out": 20, "interaction_id": "i2",
+            }
+
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            await analysis_routes._run_screening(7, "논문 텍스트", status)
+
+        expected = calc_cost("m", 10, 100) + calc_cost("m", 10, 20)
+        self.assertEqual(status.total_cost_usd, expected)
+
     async def test_screening_returns_last_result_when_retry_also_fails(self):
         status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
         calls = []

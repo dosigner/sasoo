@@ -397,6 +397,23 @@ _CITATION_SCHEMA = {
 }
 
 
+def _result_cost(result: dict) -> float:
+    """LLM 호출 결과 하나의 USD 비용을 계산한다(R7-3).
+
+    재시도가 있었던 결과는 tokens_in/tokens_out이 이미 attempt 합산값이라
+    (사용량 표시를 위해 유지) calc_cost(model, tokens_in, tokens_out)을 그대로
+    호출하면 마지막 attempt 단가가 합산 토큰 전체에 적용돼 앞선 attempt 비용이
+    이중 계산되거나(평면 단가) 장문 임계값이 잘못 적용된다(단가 구간 있는
+    모델). 재시도 게이트가 attempt별로 미리 계산해 둔 총비용
+    (result["cost_usd_prior_attempts"])이 있으면 그 값을 그대로 쓰고,
+    없으면(재시도가 없었던 결과) 평소대로 단일 attempt 비용을 계산한다.
+    """
+    prior_total = result.get("cost_usd_prior_attempts")
+    if prior_total is not None:
+        return prior_total
+    return calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
+
+
 async def _run_screening(paper_id: int, screening_input: str, status: AnalysisStatus) -> dict:
     """Phase 1: Screening - classify domain, score relevance, extract topics."""
     phase_status = PhaseStatus(
@@ -465,7 +482,15 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
             result.get("tokens_out"),
         )
         retry = await _invoke()
-        # 재시도 사용량을 합산해 비용 추적이 실사용을 반영하게 한다
+        # 재시도 사용량은 attempt별로 비용을 계산해 합산한다(R7-3) — 토큰을
+        # 합쳐 한 번에 계산하면 장문 임계값이 잘못 적용되거나(단가 구간 있는
+        # 모델) 이후 tokens_in/out 합산과 겹쳐 비용이 이중 계산된다.
+        retry["cost_usd_prior_attempts"] = calc_cost(
+            result["model"], result.get("tokens_in") or 0, result.get("tokens_out") or 0,
+        ) + calc_cost(
+            retry["model"], retry.get("tokens_in") or 0, retry.get("tokens_out") or 0,
+        )
+        # 사용량 표시(tokens_in/out)는 실사용 총량이 맞으므로 토큰 합산은 유지한다.
         retry["tokens_in"] = (result.get("tokens_in") or 0) + (retry.get("tokens_in") or 0)
         retry["tokens_out"] = (result.get("tokens_out") or 0) + (retry.get("tokens_out") or 0)
         result = retry
@@ -481,7 +506,7 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
         logger.warning("Phase 1 JSON validation failed: %s", exc)
         result["text"] = json.dumps({"_raw": cleaned_text, "_parse_error": str(exc)})
 
-    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
+    cost = _result_cost(result)
 
     # Store in DB
     await _insert_analysis_result(
@@ -1033,7 +1058,15 @@ async def _run_chain_stage(
             phase, result.get("tokens_out"),
         )
         retry = await _invoke()
-        # 재시도 사용량을 합산해 비용 추적이 실사용을 반영하게 한다
+        # 재시도 사용량은 attempt별로 비용을 계산해 합산한다(R7-3) — 토큰을
+        # 합쳐 한 번에 계산하면 장문 임계값이 잘못 적용되거나(단가 구간 있는
+        # 모델) 이후 tokens_in/out 합산과 겹쳐 비용이 이중 계산된다.
+        retry["cost_usd_prior_attempts"] = calc_cost(
+            result["model"], result.get("tokens_in") or 0, result.get("tokens_out") or 0,
+        ) + calc_cost(
+            retry["model"], retry.get("tokens_in") or 0, retry.get("tokens_out") or 0,
+        )
+        # 사용량 표시(tokens_in/out)는 실사용 총량이 맞으므로 토큰 합산은 유지한다.
         retry["tokens_in"] = (result.get("tokens_in") or 0) + (retry.get("tokens_in") or 0)
         retry["tokens_out"] = (result.get("tokens_out") or 0) + (retry.get("tokens_out") or 0)
         result = retry
@@ -1196,7 +1229,7 @@ async def _run_visual(
         logger.warning("Phase 2 JSON validation failed: %s", exc)
         result["text"] = json.dumps({"_raw": cleaned_text, "_parse_error": str(exc)})
 
-    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
+    cost = _result_cost(result)
 
     await _insert_analysis_result(
         paper_id,
@@ -1362,7 +1395,7 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
         logger.warning("Phase 3 JSON validation failed: %s", exc)
         result["text"] = json.dumps({"_raw": cleaned_text, "_parse_error": str(exc)})
 
-    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
+    cost = _result_cost(result)
 
     await _insert_analysis_result(
         paper_id,
@@ -1488,7 +1521,7 @@ async def _run_deep_dive(
         logger.warning("Phase 4 JSON validation failed: %s", exc)
         result["text"] = json.dumps({"_raw": cleaned_text, "_parse_error": str(exc)})
 
-    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
+    cost = _result_cost(result)
 
     await _insert_analysis_result(
         paper_id,
@@ -1769,7 +1802,7 @@ category(experimental_protocol|algorithm_flow|signal_flow|system_architecture|co
         response_schema=_VIZ_PLAN_SCHEMA,
         restart_context=_build_chain_restart_context(previous_results),
     )
-    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
+    cost = _result_cost(result)
 
     status.total_cost_usd += cost
     status.total_tokens_in += result["tokens_in"]

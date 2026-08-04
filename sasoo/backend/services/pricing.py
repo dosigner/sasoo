@@ -33,6 +33,9 @@ PRICING: dict[str, dict[str, float]] = {
     "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
     "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
     "claude-sonnet-4-5-20250929": {"input": 3.00, "output": 15.00},
+
+    # --- OpenAI 텍스트 (provider 중립화 — 단가는 2026-08-05 공식 페이지 확인값) ---
+    "gpt-5.6-luna": {"input": 0.20, "output": 1.20},
 }
 
 # Prompts above this many tokens are billed at the long-context rate.
@@ -54,6 +57,12 @@ IMAGE_PRICING: dict[str, float] = {
 }
 
 _FALLBACK = "gemini-3-flash-preview"
+_FALLBACK_OPENAI = "gpt-5.6-luna"
+
+
+def _fallback_for(model: str) -> str:
+    """미등록 모델의 폴백 단가 — provider를 넘어가는 오산 금지(스펙 R7-1)."""
+    return _FALLBACK_OPENAI if model.startswith("gpt-") else _FALLBACK
 
 
 def calc_cost(model: str, input_tokens: int, output_tokens: int) -> float:
@@ -74,7 +83,7 @@ def calc_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     ):
         pricing = PRO_LONG_CONTEXT[model]
     else:
-        pricing = PRICING.get(model, PRICING[_FALLBACK])
+        pricing = PRICING.get(model) or PRICING[_fallback_for(model)]
 
     cost = (input_tokens / 1_000_000) * pricing["input"] + \
            (output_tokens / 1_000_000) * pricing["output"]
