@@ -3,7 +3,6 @@ import { Markdown } from '@/components/Markdown';
 import {
   BookOpen,
   GitBranch,
-  Check,
   Loader2,
   Circle,
   AlertCircle,
@@ -122,36 +121,33 @@ const PHASE_META: Record<string, {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// 배경 있는 뱃지가 아니라 색점/아이콘 + muted 텍스트 문법 — 완료·진행 상태는
+// 정보 표시이지 조작 대상이 아니라 칩으로 강조하지 않는다.
 function getPhaseStatusInfo(phaseStatus: PhaseStatusValue): {
   icon: React.ReactNode;
   label: string;
-  classes: string;
 } {
   switch (phaseStatus) {
     case 'completed':
       return {
-        icon: <Check className="w-4 h-4" />,
+        icon: <AppIcon name="success" className="w-3.5 h-3.5 text-success" />,
         label: S.status.complete,
-        classes: 'text-success bg-success/10',
       };
     case 'running':
       return {
-        icon: <Loader2 className="w-4 h-4 animate-spin" />,
+        icon: <span className="h-2 w-2 rounded-full bg-accent animate-pulse-subtle" aria-hidden="true" />,
         label: S.status.running,
-        classes: 'text-accent bg-accent/10',
       };
     case 'error':
       return {
-        icon: <AlertCircle className="w-4 h-4" />,
+        icon: <AlertCircle className="w-3.5 h-3.5 text-danger" />,
         label: S.status.error,
-        classes: 'text-danger bg-danger/8 border border-danger/10',
       };
     case 'pending':
     default:
       return {
-        icon: <Circle className="w-4 h-4" />,
+        icon: <Circle className="w-3.5 h-3.5 text-fg-muted" />,
         label: S.status.pending,
-        classes: 'text-fg-muted bg-surface/80 border border-border/45',
       };
   }
 }
@@ -288,9 +284,9 @@ function PhaseSection({
           )}
         </div>
 
-        <span className={`badge text-2xs shrink-0 ${statusInfo.classes}`}>
+        <span className="inline-flex items-center gap-1.5 text-2xs shrink-0">
           {statusInfo.icon}
-          <span className="ml-1 hidden sm:inline">{statusInfo.label}</span>
+          <span className="hidden font-normal text-fg-muted sm:inline">{statusInfo.label}</span>
         </span>
 
         <span className="text-fg-muted shrink-0">

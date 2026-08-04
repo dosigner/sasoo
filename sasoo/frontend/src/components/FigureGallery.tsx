@@ -783,7 +783,7 @@ export default function FigureGallery({
         <h3 className="text-sm font-semibold text-fg flex items-center gap-2">
           <AppIcon name="figures" className="w-4 h-4 text-accent" />
           {S.figures.title}
-          <span className="badge-primary text-2xs ml-1">
+          <span className="text-xs font-normal tabular-nums text-fg-muted">
             {figures.length}
           </span>
         </h3>
