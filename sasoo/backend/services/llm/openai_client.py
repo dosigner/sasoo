@@ -175,3 +175,79 @@ async def call_interaction(
             await asyncio.sleep(delay)
 
     raise last_exc  # 도달 불가 — 루프가 반드시 return 또는 raise 한다
+
+
+async def stream_interaction(
+    prompt,
+    *,
+    lane: Lane,
+    model: str = MODEL_LUNA,
+    system_instruction: str | None = None,
+    thinking_level: str | None = None,
+    store: bool = False,
+):
+    """토큰 단위 스트리밍. gemini_client.stream_interaction과 같은 이벤트 계약.
+
+    `{"type":"token","text":str}`를 토큰마다 yield하고, 마지막에
+    `{"type":"done","tokens_in":int,"tokens_out":int,"tokens_thought":int,
+    "interaction_id":str|None}`을 yield한다. gemini_client의 done 이벤트에는
+    "model"·"tokens_cached" 키가 없으므로(대응 개념이 없음) 여기서도 넣지
+    않는다 — call_interaction과 달리 이 done dict는 gemini와 바이트 단위로
+    같은 키 집합이어야 셔션이 분기 없이 위임할 수 있다.
+
+    동기 SDK 스트림은 스레드 풀에서 돌리고 asyncio.Queue로 브릿지해 이벤트
+    루프를 막지 않는다(gemini_client와 같은 관용구, 큐 전달 방식만 다르다 —
+    call_soon_threadsafe + put_nowait). 채팅은 stateless(store=False, 히스토리를
+    텍스트로 조립)라 previous_interaction_id 같은 체인 인자는 받지 않는다.
+
+    done 이전에 발생한 예외는 소비자에게 그대로 재던진다 — 채팅 라우트의
+    "첫 토큰 전 실패만 재시도" 정책(analysis_routes.py event_generator)이
+    이 예외에 의존한다.
+    """
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "input": _translate_parts(prompt),
+        "instructions": system_instruction or _SYSTEM_INSTRUCTION_KO,
+        "store": store,
+    }
+    if thinking_level:
+        kwargs["reasoning"] = {"effort": thinking_level}
+
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+    _SENTINEL = object()
+
+    def _produce():
+        try:
+            with _get_client().responses.stream(**kwargs) as stream:
+                for event in stream:
+                    if event.type == "response.output_text.delta":
+                        loop.call_soon_threadsafe(
+                            queue.put_nowait, {"type": "token", "text": event.delta})
+                    elif event.type == "response.completed":
+                        usage = getattr(event.response, "usage", None)
+                        output_details = getattr(usage, "output_tokens_details", None)
+                        loop.call_soon_threadsafe(queue.put_nowait, {
+                            "type": "done",
+                            # output_tokens는 reasoning 포함(R7-2) — 재합산 금지
+                            "tokens_in": getattr(usage, "input_tokens", 0) or 0,
+                            "tokens_out": getattr(usage, "output_tokens", 0) or 0,
+                            "tokens_thought": getattr(output_details, "reasoning_tokens", 0) or 0,
+                            "interaction_id": getattr(event.response, "id", None),
+                        })
+        except Exception as exc:  # noqa: BLE001 - 소비자에게 전달해 재시도 정책이 판단
+            loop.call_soon_threadsafe(queue.put_nowait, exc)
+        finally:
+            loop.call_soon_threadsafe(queue.put_nowait, _SENTINEL)
+
+    future = loop.run_in_executor(_executor_for(lane), _produce)
+    try:
+        while True:
+            item = await queue.get()
+            if item is _SENTINEL:
+                break
+            if isinstance(item, Exception):
+                raise item
+            yield item
+    finally:
+        await future
