@@ -50,6 +50,8 @@ export const DOMAIN_LABELS: Record<string, string> = {
   general: '일반',
 };
 
+export type WorkbenchStatusTone = 'accent' | 'success' | 'danger';
+
 export interface WorkbenchStatusSummary {
   runStateLabel: string;
   trustStateLabel: string;
@@ -58,6 +60,11 @@ export interface WorkbenchStatusSummary {
   completedCount: number;
   totalCount: number;
   progressRatio: number;
+  // 헤더 칩·우측 패널 상태부가 실제로 보여줘야 하는 라벨/톤. trustStateLabel은
+  // 항상 채워지는 폴백값이라 `trustStateLabel || runStateLabel` 식은 늘 trustStateLabel로만
+  // 귀결돼 분석 전/진행 중/실패/취소가 화면에서 사라진다 — 이를 대신하는 표시용 필드다.
+  displayStatusLabel: string;
+  statusTone: WorkbenchStatusTone;
 }
 
 // 상태부 진행 레일에 쓰는 단계명. ProgressTracker의 단계 리스트 라벨도 이 명칭을
@@ -260,7 +267,32 @@ export function buildChatStarterPrompts({
   return prompts.slice(0, 3);
 }
 
-export function buildWorkbenchStatusSummary({
+// 상태부·헤더 칩이 실제로 표시할 라벨/톤을 고른다. trustStateLabel은 항상 채워지는
+// 폴백값(마지막 폴백 '결과 준비됨')이라 `trustStateLabel || runStateLabel` 식은 도달
+// 불가한 폴백이 된다 — pending/running/analyzing/error/cancelled는 runStateLabel(accent
+// 또는 danger 톤)을, 그 외(완료·심층완료)는 trustStateLabel(success 톤)을 쓴다.
+function pickDisplayStatus(
+  runStateLabel: string,
+  trustStateLabel: string,
+  status: AnalysisStatus | null,
+  terminalState?: 'cancelled' | null,
+): { displayStatusLabel: string; statusTone: WorkbenchStatusTone } {
+  if (terminalState === 'cancelled') {
+    return { displayStatusLabel: runStateLabel, statusTone: 'danger' };
+  }
+  if (!status || status.overall_status === 'pending') {
+    return { displayStatusLabel: runStateLabel, statusTone: 'accent' };
+  }
+  if (status.overall_status === 'running' || status.overall_status === 'analyzing') {
+    return { displayStatusLabel: runStateLabel, statusTone: 'accent' };
+  }
+  if (status.overall_status === 'error') {
+    return { displayStatusLabel: runStateLabel, statusTone: 'danger' };
+  }
+  return { displayStatusLabel: trustStateLabel, statusTone: 'success' };
+}
+
+function buildWorkbenchStatusSummaryCore({
   status,
   artifactStatus,
   figures,
@@ -276,7 +308,7 @@ export function buildWorkbenchStatusSummary({
   recipe: Recipe | null;
   visualizations: VisualizationPlan | null;
   terminalState?: 'cancelled' | null;
-}): WorkbenchStatusSummary {
+}): Omit<WorkbenchStatusSummary, 'displayStatusLabel' | 'statusTone'> {
   const totalCount = status?.phases.length ?? 5;
   const completedCount = status?.phases.filter((phase) => phase.status === 'completed').length ?? 0;
   const progressRatio = totalCount > 0 ? completedCount / totalCount : 0;
@@ -459,4 +491,23 @@ export function buildWorkbenchStatusSummary({
     totalCount,
     progressRatio,
   };
+}
+
+export function buildWorkbenchStatusSummary(params: {
+  status: AnalysisStatus | null;
+  artifactStatus?: ArtifactStatus | null;
+  figures: Figure[];
+  tables: Table[];
+  recipe: Recipe | null;
+  visualizations: VisualizationPlan | null;
+  terminalState?: 'cancelled' | null;
+}): WorkbenchStatusSummary {
+  const core = buildWorkbenchStatusSummaryCore(params);
+  const { displayStatusLabel, statusTone } = pickDisplayStatus(
+    core.runStateLabel,
+    core.trustStateLabel,
+    params.status,
+    params.terminalState,
+  );
+  return { ...core, displayStatusLabel, statusTone };
 }

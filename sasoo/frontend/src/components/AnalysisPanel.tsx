@@ -55,7 +55,6 @@ interface AnalysisPanelProps {
   mermaid: MermaidDiagram | null;
   visualizations: VisualizationPlan | null;
   isRunning: boolean;
-  agentName?: string;
   paperId?: string;
   paperLevel?: string | null;
   onJumpToFigurePage?: (figure: Figure) => void;
@@ -248,12 +247,8 @@ function PhaseSection({
             {expanded ? meta.description : statusInfo.label}
           </div>
           {!expanded && collapsedMeta.length > 0 && (
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              {collapsedMeta.map((item) => (
-                <span key={item} className="chip-tint">
-                  {item}
-                </span>
-              ))}
+            <div className="mt-1 truncate text-xs font-normal text-fg-muted">
+              {collapsedMeta.join(' · ')}
             </div>
           )}
           {expanded && metaItems.length > 0 && (
@@ -269,12 +264,8 @@ function PhaseSection({
             </div>
           )}
           {expanded && metaItems.length === 0 && expandedMeta.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {expandedMeta.map((item) => (
-                <span key={item} className="chip-tint">
-                  {item}
-                </span>
-              ))}
+            <div className="mt-2 text-xs font-normal text-fg-muted">
+              {expandedMeta.join(' · ')}
             </div>
           )}
           {!expanded && summaryLine && (
@@ -1072,7 +1063,7 @@ export default function AnalysisPanel({
                 </div>
                 <div className="flex items-baseline justify-between gap-3">
                   <h3 className="text-sm font-[650] text-fg">
-                    {workbenchStatus.trustStateLabel || workbenchStatus.runStateLabel}
+                    {workbenchStatus.displayStatusLabel}
                   </h3>
                   <span className="text-2xs text-fg-muted tabular-nums">
                     {workbenchStatus.totalCount > 0 && `${workbenchStatus.completedCount}/${workbenchStatus.totalCount}`}

@@ -528,10 +528,9 @@
      워크벤치 헤더·우측 패널·질문 도우미 전용, 이 표면 밖의 status-pill/Badge는 무수정. */
   .chip-tint {
     @apply inline-flex items-center whitespace-nowrap font-medium;
-    border-radius: 9999px;
+    border-radius: var(--radius-pill);
     padding: 2px 10px;
     font-size: 12px;
-    font-weight: 500;
     background: rgb(var(--accent) / 0.10);
     color: rgb(var(--accent));
   }
@@ -541,9 +540,9 @@
     color: rgb(var(--success));
   }
 
-  .chip-tint-warning {
-    background: rgb(var(--warning) / 0.10);
-    color: rgb(var(--warning));
+  .chip-tint-danger {
+    background: rgb(var(--danger) / 0.10);
+    color: rgb(var(--danger));
   }
 
   .dark .chip-tint {
@@ -554,8 +553,8 @@
     background: rgb(var(--success) / 0.16);
   }
 
-  .dark .chip-tint-warning {
-    background: rgb(var(--warning) / 0.16);
+  .dark .chip-tint-danger {
+    background: rgb(var(--danger) / 0.16);
   }
 
   .library-archive-header {
@@ -1149,10 +1148,6 @@
 
   .chat-launcher-pending {
     @apply hover:bg-surface-hover/95;
-  }
-
-  .chat-launcher-badge-pending {
-    @apply inline-flex items-center rounded-full bg-surface px-2 py-0.5 text-2xs font-medium text-fg-muted;
   }
 
   .chat-floating-card {

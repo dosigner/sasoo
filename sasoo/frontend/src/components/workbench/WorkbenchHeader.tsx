@@ -3,7 +3,13 @@ import { AppIcon } from '@/components/icons';
 import AgentAvatar from '@/components/AgentAvatar';
 import type { AgentMeta } from '@/lib/agents';
 import type { WorkbenchSplitPreset } from '@/hooks/useWorkbenchLayout';
-import { DOMAIN_LABELS } from '@/lib/workbenchSummaries';
+import { DOMAIN_LABELS, type WorkbenchStatusTone } from '@/lib/workbenchSummaries';
+
+const STATUS_TONE_CLASS: Record<WorkbenchStatusTone, string> = {
+  accent: 'chip-tint',
+  success: 'chip-tint chip-tint-success',
+  danger: 'chip-tint chip-tint-danger',
+};
 
 function rgbaFromHex(color: string, alpha: number): string {
   const cleaned = color.replace('#', '');
@@ -193,8 +199,8 @@ interface WorkbenchHeaderProps {
   onSelectAgent?: (agent: AgentMeta) => void;
   pdfCollapsed: boolean;
   activeSplitPreset: WorkbenchSplitPreset | null;
-  runStateLabel: string;
-  trustStateLabel: string;
+  statusLabel: string;
+  statusTone: WorkbenchStatusTone;
   analysisError?: string | null;
   canStartAnalysis: boolean;
   isRunning: boolean;
@@ -217,8 +223,8 @@ export default function WorkbenchHeader({
   onSelectAgent,
   pdfCollapsed,
   activeSplitPreset,
-  runStateLabel,
-  trustStateLabel,
+  statusLabel,
+  statusTone,
   analysisError,
   canStartAnalysis,
   isRunning,
@@ -234,11 +240,6 @@ export default function WorkbenchHeader({
     { label: '중앙', value: 'center' },
     { label: '2:1', value: '2:1' },
   ];
-
-  // 상태 칩은 trustStateLabel을 우선 표시하고(buildWorkbenchStatusSummary가 항상 채워 넣는 값),
-  // runStateLabel은 폴백이다. 완료 상태 문구("~완료")는 success 톤, 그 외는 accent 톤을 쓴다.
-  const statusLabel = trustStateLabel || runStateLabel;
-  const statusIsDone = statusLabel.includes('완료');
 
   return (
     <div className="relative z-40 shrink-0 border-b border-border/45 bg-surface/95 px-4 py-3 backdrop-blur">
@@ -298,7 +299,7 @@ export default function WorkbenchHeader({
                   </span>
                 )
               )}
-              <span className={statusIsDone ? 'chip-tint chip-tint-success' : 'chip-tint'}>
+              <span className={STATUS_TONE_CLASS[statusTone]}>
                 {statusLabel}
               </span>
             </div>

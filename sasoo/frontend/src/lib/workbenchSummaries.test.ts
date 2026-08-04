@@ -129,6 +129,89 @@ describe('buildWorkbenchStatusSummary — progressRatio', () => {
   });
 });
 
+describe('buildWorkbenchStatusSummary — displayStatusLabel/statusTone', () => {
+  it('미분석(status 없음): displayStatusLabel은 runStateLabel("분석 전")이고 톤은 accent다', () => {
+    const summary = buildWorkbenchStatusSummary({
+      status: null,
+      figures: [],
+      tables: [],
+      recipe: null,
+      visualizations: null,
+    });
+    expect(summary.displayStatusLabel).toBe('분석 전');
+    expect(summary.displayStatusLabel).toBe(summary.runStateLabel);
+    expect(summary.statusTone).toBe('accent');
+  });
+
+  it('진행 중: displayStatusLabel은 runStateLabel("~진행 중")이고 톤은 accent다', () => {
+    const status = makeStatus(
+      ['completed', 'completed', 'completed', 'running', 'pending'],
+      'running',
+      'recipe',
+    );
+    const summary = buildWorkbenchStatusSummary({
+      status,
+      figures: [],
+      tables: [],
+      recipe: null,
+      visualizations: null,
+    });
+    expect(summary.displayStatusLabel).toBe(summary.runStateLabel);
+    expect(summary.displayStatusLabel).toContain('진행 중');
+    expect(summary.statusTone).toBe('accent');
+  });
+
+  it('실패: displayStatusLabel은 runStateLabel("분석 실패")이고 톤은 danger다', () => {
+    const status = makeStatus(
+      ['pending', 'pending', 'pending', 'pending', 'pending'],
+      'error',
+      null,
+    );
+    const summary = buildWorkbenchStatusSummary({
+      status,
+      figures: [],
+      tables: [],
+      recipe: null,
+      visualizations: null,
+    });
+    expect(summary.displayStatusLabel).toBe('분석 실패');
+    expect(summary.displayStatusLabel).toBe(summary.runStateLabel);
+    expect(summary.statusTone).toBe('danger');
+  });
+
+  it('취소됨(terminalState cancelled): displayStatusLabel은 runStateLabel("취소됨")이고 톤은 danger다', () => {
+    const status = makeStatus(
+      ['completed', 'running', 'pending', 'pending', 'pending'],
+      'running',
+      'citation',
+    );
+    const summary = buildWorkbenchStatusSummary({
+      status,
+      figures: [],
+      tables: [],
+      recipe: null,
+      visualizations: null,
+      terminalState: 'cancelled',
+    });
+    expect(summary.displayStatusLabel).toBe('취소됨');
+    expect(summary.displayStatusLabel).toBe(summary.runStateLabel);
+    expect(summary.statusTone).toBe('danger');
+  });
+
+  it('완료: displayStatusLabel은 trustStateLabel이고 톤은 success다', () => {
+    const status = makeStatus(['completed', 'completed', 'completed', 'completed', 'completed'], 'completed', null);
+    const summary = buildWorkbenchStatusSummary({
+      status,
+      figures: [],
+      tables: [],
+      recipe: null,
+      visualizations: null,
+    });
+    expect(summary.displayStatusLabel).toBe(summary.trustStateLabel);
+    expect(summary.statusTone).toBe('success');
+  });
+});
+
 function makeResults(screening: Record<string, unknown> | null): AnalysisResults {
   return {
     paper_id: 1,
