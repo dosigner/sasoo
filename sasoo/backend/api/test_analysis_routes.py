@@ -1811,6 +1811,39 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
                 response_schema={"type": "object"},
             )
 
+    async def test_chain_stage_doc_text_label_reflects_truncation(self):
+        """주입 라벨은 실제 절단 여부를 그대로 알린다(리뷰 Critical 수정).
+
+        호출측이 이미 _OPENAI_DOC_TEXT_CHAR_LIMIT으로 잘라 넘기므로, doc_text 길이가
+        그 상한 이상이면 절단 라벨, 미만이면 전문 라벨을 붙인다."""
+        limit = analysis_routes._OPENAI_DOC_TEXT_CHAR_LIMIT
+
+        async def _capture(prompt, **kwargs):
+            captured["prompt"] = prompt
+            return {"text": '{"ok": true}', "model": "m", "tokens_in": 1, "tokens_out": 1,
+                    "interaction_id": "i1"}
+
+        captured = {}
+        with patch("api.analysis_routes.call_interaction", new=_capture):
+            await analysis_routes._run_chain_stage(
+                phase="visual", prompt_chain="지시", prompt_fallback="폴백",
+                system_instruction="si", previous_interaction_id=None,
+                pdf_uri=None, doc_text="짧은 텍스트",
+                response_schema={"type": "object"},
+            )
+        self.assertIn("[논문 전문]", captured["prompt"])
+        self.assertNotIn("절단", captured["prompt"])
+
+        captured = {}
+        with patch("api.analysis_routes.call_interaction", new=_capture):
+            await analysis_routes._run_chain_stage(
+                phase="visual", prompt_chain="지시", prompt_fallback="폴백",
+                system_instruction="si", previous_interaction_id=None,
+                pdf_uri=None, doc_text="X" * limit,
+                response_schema={"type": "object"},
+            )
+        self.assertIn(f"[논문 본문({limit:,}자 절단)]", captured["prompt"])
+
     async def test_recipe_stage_forwards_chain_params(self):
         status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
         captured = {}
@@ -1870,6 +1903,11 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
     )
     _CITATION_TEXT = '{"citation_summary":"인용 분석 결과 텍스트"}'
     _VISUAL_CACHED_TEXT = '{"quality_summary":"CACHED-VISUAL-MARKER","key_findings_from_visuals":[]}'
+    # phase_inputs["screening"](5,000자 절단본, "SCREENING-INPUT")과 확실히 구분되는
+    # 비절단 full_text 픽스처. 5,000자를 넘겨 doc_text가 screening 절단본이 아니라
+    # full_text 기반임을 검증할 수 있게 한다(리뷰 Critical 수정 회귀 방어).
+    _FULL_TEXT_MARKER = "FULL-TEXT-MARKER"
+    _FULL_TEXT = _FULL_TEXT_MARKER + ("문" * 6000)
 
     def _orch_call_fake(self, calls):
         state = {"n": 0}
@@ -1973,7 +2011,10 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         stack.enter_context(patch("api.analysis_routes.fetch_all", new=AsyncMock(side_effect=[figures, tables])))
         stack.enter_context(patch("api.analysis_routes.get_paper_dir", return_value="/tmp/paper"))
         stack.enter_context(patch("api.analysis_routes.load_or_build_document_context",
-                                  return_value={"phase_inputs": phase_inputs, "sections": {}}))
+                                  return_value={
+                                      "phase_inputs": phase_inputs, "sections": {},
+                                      "full_text": self._FULL_TEXT,
+                                  }))
         stack.enter_context(patch("api.analysis_routes.schedule_paper_artifacts_refresh", new=AsyncMock()))
         stack.enter_context(patch("api.analysis_routes.execute_update", new=AsyncMock()))
         stack.enter_context(patch("api.analysis_routes.execute_insert", new=AsyncMock(return_value=1)))
@@ -2090,12 +2131,49 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
 
         # 첫 스테이지(visual)에만 로컬 추출 텍스트(doc_text)가 실리고 previous=None.
         self.assertIsNone(chain_calls[0]["previous_interaction_id"])
-        self.assertIn("SCREENING-INPUT", str(chain_calls[0]["contents"]))
+        self.assertIn(self._FULL_TEXT_MARKER, str(chain_calls[0]["contents"]))
+        # doc_text는 screening용 5,000자 절단본이 아니라 비절단 full_text 기반이다
+        # (리뷰 Critical 수정 회귀 방어 — 5,000자 절단본을 쓰면 recipe 등 후속 스테이지가
+        # 구조적으로 열화된다).
+        self.assertNotIn("SCREENING-INPUT", str(chain_calls[0]["contents"]))
         # 이후 스테이지는 재주입 없이 체인 id로만 이어진다(선형 전진).
-        self.assertNotIn("SCREENING-INPUT", str(chain_calls[1]["contents"]))
+        self.assertNotIn(self._FULL_TEXT_MARKER, str(chain_calls[1]["contents"]))
         self.assertEqual(chain_calls[1]["previous_interaction_id"], chain_calls[0]["interaction_id"])
         self.assertEqual(chain_calls[2]["previous_interaction_id"], chain_calls[1]["interaction_id"])
         self.assertEqual(chain_calls[3]["previous_interaction_id"], chain_calls[2]["interaction_id"])
+
+    async def test_cache_hit_restart_reincludes_doc_text_and_prev_context_openai(self):
+        """openai(doc_text) 버전의 캐시 히트 재시작 복원 — pdf_uri 버전
+        (test_cache_hit_restart_reincludes_pdf_and_prev_context)과 대칭 계약.
+
+        visual 캐시 히트로 chain_prev_id가 유실되면, recipe가 체인 재시작 케이스로
+        진입해 첫 call_interaction에 doc_text(비절단 full_text)와 restart_context
+        (직전 스테이지 결과 텍스트)가 함께 실려야 한다."""
+        calls = []
+        call_fake = self._orch_call_fake(calls)
+
+        async def _cache_visual_hit(paper_id, phase, input_text, **kwargs):
+            if phase == "visual":
+                return {
+                    "text": self._VISUAL_CACHED_TEXT, "model": "gpt-cache",
+                    "tokens_in": 1, "tokens_out": 1, "cost_usd": 0.01, "input_hash": "h",
+                }
+            return None
+
+        with self._orchestration_patches(
+            cache_fake=_cache_visual_hit, call_fake=call_fake, provider="openai",
+        ):
+            await analysis_routes._run_full_analysis(7)
+
+        # visual 캐시 히트 → interaction_id 유실 → recipe가 체인 재시작 케이스로 첫 call_interaction
+        self.assertTrue(calls)
+        recipe_call = calls[0]
+        self.assertIsNone(recipe_call["previous_interaction_id"])
+        # openai 체인은 document 파트가 아니라 문자열 — doc_text가 다시 포함되고
+        self.assertIsInstance(recipe_call["contents"], str)
+        self.assertIn(self._FULL_TEXT_MARKER, recipe_call["contents"])
+        # 캐시된 visual 결과 텍스트(restart_context)도 함께 복원됨
+        self.assertIn("CACHED-VISUAL-MARKER", recipe_call["contents"])
 
 
 class CitationPromptTests(unittest.IsolatedAsyncioTestCase):

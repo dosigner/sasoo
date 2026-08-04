@@ -1014,6 +1014,14 @@ def _build_persona_prompt(agent, stage: str | None = None) -> str:
     return "\n\n".join(p.strip() for p in (desc, overlay) if p and p.strip())
 
 
+# OpenAI 텍스트 체인(doc_text) 주입 상한. Task 0 스파이크 실측: 논문 전체 텍스트를
+# 프롬프트에 그대로 실었을 때 관측된 입력 토큰 최대치는 80,882(gpt-5.6-luna 계열
+# 기준). 문자:토큰 비율은 언어·인코딩에 따라 흔들릴 수 있어 실측치보다 넉넉한
+# 150,000자를 상한으로 둔다 — 대부분의 논문은 절단 없이 통과시키면서, 극단적으로
+# 긴 논문에서도 프롬프트가 무한정 커지지 않도록 안전판을 둔다(리뷰 Critical 수정).
+_OPENAI_DOC_TEXT_CHAR_LIMIT = 150_000
+
+
 async def _run_chain_stage(
     *,
     phase: str,
@@ -1037,7 +1045,9 @@ async def _run_chain_stage(
     - doc_text 있음(OpenAI 체인 모드, 스펙 R1): store=True. OpenAI는 document 파트를
       지원하지 않아 PDF 업로드 대신 로컬 추출 텍스트를 체인 첫 호출에 1회 주입하고,
       이후 스테이지는 pdf_uri 체인과 동일하게 지시문만 보내 서버 상태를 신뢰한다.
-      restart_context 복원 경로도 pdf_uri 체인과 동일하게 적용된다.
+      restart_context 복원 경로도 pdf_uri 체인과 동일하게 적용된다. 주입 라벨은 실제
+      절단 여부를 그대로 알린다 — doc_text 길이가 _OPENAI_DOC_TEXT_CHAR_LIMIT 이상이면
+      "절단" 라벨, 아니면 "전문" 라벨(호출측이 이미 그 상한으로 잘라 넘긴다).
     - 둘 다 없음(폴백): stateless(store=False). 기존 phase_inputs 텍스트를 프롬프트에
       삽입한다.
 
@@ -1064,7 +1074,11 @@ async def _run_chain_stage(
                         {"type": "text", "text": chain_text},
                     ]
                 else:
-                    contents = f"[논문 전문]\n{doc_text}\n\n{chain_text}"
+                    if len(doc_text) >= _OPENAI_DOC_TEXT_CHAR_LIMIT:
+                        doc_label = f"[논문 본문({_OPENAI_DOC_TEXT_CHAR_LIMIT:,}자 절단)]"
+                    else:
+                        doc_label = "[논문 전문]"
+                    contents = f"{doc_label}\n{doc_text}\n\n{chain_text}"
             else:
                 contents = prompt_chain
             choice = _stage_choice(phase, provider)
@@ -2304,9 +2318,13 @@ async def _run_full_analysis(paper_id: int):
         document_context = await run_pipeline_blocking(load_or_build_document_context, paper_dir)
         phase_inputs = document_context.get("phase_inputs", {})
         sections = document_context.get("sections", {})
-        # 스크리닝이 읽는 로컬 추출 텍스트 — OpenAI 체인의 doc_text 주입에도 그대로
-        # 재사용한다(새 파일 IO 없음).
+        # 스크리닝 전용 5,000자 절단본 — screening 호출에만 쓴다.
         paper_text = str(phase_inputs.get("screening", ""))
+        # 비절단 원문 — OpenAI 체인의 doc_text 주입은 이 값을 쓴다(리뷰 Critical 수정:
+        # paper_text의 5,000자 절단본을 그대로 재사용하면 recipe(기존 폴백 14,000자) 등
+        # 후속 스테이지가 구조적으로 열화된다). document_context가 이미 메모리에 올려둔
+        # 값을 노출한 것뿐이라 새 파일 IO는 없다.
+        full_text = str(document_context.get("full_text", ""))
         try:
             await schedule_paper_artifacts_refresh(paper_id, paper_dir)
         except Exception as exc:
@@ -2417,8 +2435,10 @@ async def _run_full_analysis(paper_id: int):
                     "No PDF found in %s for paper %s; using text-context fallback.", paper_dir, paper_id
                 )
         elif provider == "openai":
-            # 로컬에서 이미 추출한 스크리닝 텍스트를 체인 첫 호출에 1회 재사용한다.
-            doc_text = paper_text
+            # 비절단 원문(full_text)을 체인 첫 호출에 1회 주입한다 — screening용
+            # paper_text(5,000자 절단본)가 아니다. _OPENAI_DOC_TEXT_CHAR_LIMIT 상한만
+            # 적용하고, 그 안이면 절단 없이 그대로 넣는다.
+            doc_text = full_text[:_OPENAI_DOC_TEXT_CHAR_LIMIT]
 
         # Phase 2: Citation Analysis (after screening, before visual)
         # TODO(parser-hybrid): visual 단계가 gemini로 승격되면 sections/references는 gemini 텍스트라

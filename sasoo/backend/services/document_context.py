@@ -19,7 +19,11 @@ from services.section_splitter import SectionSplitter
 logger = logging.getLogger(__name__)
 
 DOCUMENT_CONTEXT_FILENAME = ".document_context.json"
-CONTEXT_BUILDER_VERSION = "document-context-v3"
+# v4: 반환 dict에 비절단 full_text를 노출한다(리뷰 Critical 수정, Task 10) — OpenAI
+# 텍스트 체인의 doc_text 주입이 phase_inputs 절단본 대신 이 값을 쓴다. 버전을 올려
+# v3 시절 사이드카(.document_context.json)에 full_text가 없는 경우를 자동 재빌드로
+# 무효화한다.
+CONTEXT_BUILDER_VERSION = "document-context-v4"
 _INPUT_HASH_LENGTH = 16
 _SECTION_SPLITTER = SectionSplitter()
 _QUANT_UNIT_PATTERN = (
@@ -193,6 +197,10 @@ def build_document_context_from_text(
         "sections": sections,
         "phase_inputs": _build_phase_inputs(sections, full_text),
         "quantitative_candidates": _extract_quantitative_candidates(sections, full_text),
+        # 비절단 원문. 이미 메모리에 로드돼 있던 값을 그대로 노출한다(새 파일 IO 없음) —
+        # OpenAI 텍스트 체인의 doc_text 주입(스펙 R1)이 phase_inputs의 스테이지별 절단본
+        # 대신 이 값을 쓴다. phase_inputs는 여전히 스테이지별 폴백/캐시 키 용도로 유지.
+        "full_text": full_text,
     }
 
 
