@@ -82,13 +82,7 @@ from api.analysis_helpers import (
     _is_error_result,
     _SYSTEM_INSTRUCTION_KO,
 )
-from services.models import (
-    MODEL_VIZ_PLANNING,
-    MODEL_MERMAID,
-    MODEL_CHAT,
-    MODEL_FLASH_HQ,
-)
-from services.model_registry import ModelChoice, resolve as resolve_model
+from services.model_registry import ModelChoice, active_provider, resolve as resolve_model
 from api.report_service import (
     _format_phase_data,
     _generate_paperbanana_image,
@@ -429,7 +423,9 @@ def _result_cost(result: dict) -> float:
     return calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
 
-async def _run_screening(paper_id: int, screening_input: str, status: AnalysisStatus) -> dict:
+async def _run_screening(
+    paper_id: int, screening_input: str, status: AnalysisStatus, *, provider: str = "gemini",
+) -> dict:
     """Phase 1: Screening - classify domain, score relevance, extract topics."""
     phase_status = PhaseStatus(
         phase=AnalysisPhase.SCREENING,
@@ -463,7 +459,6 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
 불확실하면 applicable을 성급히 false로 두지 말고 confidence를 낮춰.
 """
 
-    provider = "gemini"  # Task 9 전까지 리터럴 — 주입은 라우팅 배선에서
     choice = resolve_model("screening", provider)
     cached = await _get_cached_phase_result(
         paper_id, "screening", prompt, provider=provider, model=choice.model, effort=choice.effort,
@@ -609,6 +604,8 @@ async def _run_citation(
     citation_references: str,
     paper_authors: str,
     status: AnalysisStatus,
+    *,
+    provider: str = "gemini",
 ) -> dict:
     """Phase 2: Citation Analysis - parse references, count citation frequency, analyze roles."""
     phase_status = PhaseStatus(
@@ -619,7 +616,6 @@ async def _run_citation(
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.CITATION
 
-    provider = "gemini"  # Task 9 전까지 리터럴 — 주입은 라우팅 배선에서
     choice = resolve_model("citation", provider)
 
     # --- Step 1: Parse references and count citations locally ---
@@ -1028,6 +1024,7 @@ async def _run_chain_stage(
     pdf_uri: Optional[str],
     response_schema: dict,
     restart_context: str = "",
+    provider: str = "gemini",
 ) -> dict:
     """체인/폴백 모드에 맞춰 call_interaction을 호출한다.
 
@@ -1057,7 +1054,7 @@ async def _run_chain_stage(
                 ]
             else:
                 contents = prompt_chain
-            choice = _stage_choice(phase, "gemini")
+            choice = _stage_choice(phase, provider)
             return await call_interaction(
                 contents,
                 lane="pipeline",
@@ -1068,7 +1065,7 @@ async def _run_chain_stage(
                 response_schema=response_schema,
                 store=True,
             )
-        choice = _stage_choice(phase, "gemini")
+        choice = _stage_choice(phase, provider)
         return await call_interaction(
             prompt_fallback,
             lane="pipeline",
@@ -1112,6 +1109,7 @@ async def _run_visual(
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
+    provider: str = "gemini",
 ) -> dict:
     """Phase 3: Visual verification - analyze figures, assess quality."""
     phase_status = PhaseStatus(
@@ -1121,7 +1119,6 @@ async def _run_visual(
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.VISUAL
-    provider = "gemini"  # Task 9 전까지 리터럴 — 주입은 라우팅 배선에서
     choice = _stage_choice("visual", provider)
     paper_dir = get_paper_dir(folder_name)
     visual_contract, figure_count, table_count = await _get_visual_contract(
@@ -1255,6 +1252,7 @@ async def _run_visual(
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
         response_schema=_VISUAL_SCHEMA,
+        provider=provider,
     )
     cleaned_text = _clean_llm_json(result["text"])
 
@@ -1309,6 +1307,7 @@ async def _run_recipe(
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
+    provider: str = "gemini",
 ) -> dict:
     """Phase 3: Recipe extraction - extract structured experimental procedure."""
     phase_status = PhaseStatus(
@@ -1318,7 +1317,6 @@ async def _run_recipe(
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.RECIPE
-    provider = "gemini"  # Task 9 전까지 리터럴 — 주입은 라우팅 배선에서
     choice = _stage_choice("recipe", provider)
 
     should_skip, skip_reason = _screening_gate_decision(screening_result_text, phase="recipe")
@@ -1429,6 +1427,7 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
         pdf_uri=pdf_uri,
         response_schema=_RECIPE_SCHEMA,
         restart_context=_build_chain_restart_context(previous_results),
+        provider=provider,
     )
 
     cleaned_text = _clean_llm_json(result["text"])
@@ -1483,6 +1482,7 @@ async def _run_deep_dive(
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
+    provider: str = "gemini",
 ) -> dict:
     """Phase 4: Deep dive - comprehensive analysis over the stateful chain."""
     phase_status = PhaseStatus(
@@ -1492,7 +1492,6 @@ async def _run_deep_dive(
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.DEEP_DIVE
-    provider = "gemini"  # Task 9 전까지 리터럴 — 주입은 라우팅 배선에서
     choice = _stage_choice("deep_dive", provider)
 
     should_skip, skip_reason = _screening_gate_decision(screening_result_text, phase="deep_dive")
@@ -1562,6 +1561,7 @@ async def _run_deep_dive(
         pdf_uri=pdf_uri,
         response_schema=_DEEP_DIVE_SCHEMA,
         restart_context=_build_chain_restart_context(chain_stage_results),
+        provider=provider,
     )
 
     cleaned_text = _clean_llm_json(result["text"])
@@ -1802,6 +1802,7 @@ async def _plan_visualizations(
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
+    provider: str = "gemini",
 ) -> list[dict]:
     """
     Decide which visualizations (6-10) best help understand the paper's
@@ -1813,7 +1814,6 @@ async def _plan_visualizations(
         started_at=_utcnow_iso(),
     )
     # Don't append a new phase — we update the existing deep_dive phase's progress
-    provider = "gemini"  # Task 9 전까지 리터럴 — 주입은 라우팅 배선에서
     choice = _stage_choice("visualization", provider)  # role: viz_planning
 
     prev_context = "\n---\n".join(previous_results[:4])
@@ -1861,6 +1861,7 @@ category(experimental_protocol|algorithm_flow|signal_flow|system_architecture|co
         pdf_uri=pdf_uri,
         response_schema=_VIZ_PLAN_SCHEMA,
         restart_context=_build_chain_restart_context(previous_results),
+        provider=provider,
     )
     cost = _result_cost(result)
 
@@ -1924,6 +1925,8 @@ async def _generate_single_mermaid(
     viz_item: dict,
     visualization_input: str,
     previous_results: list[str],
+    *,
+    provider: str = "gemini",
 ) -> str:
     """Generate Mermaid code for a single visualization item using Gemini Pro 3."""
     title = viz_item.get("title", "Diagram")
@@ -1956,7 +1959,10 @@ async def _generate_single_mermaid(
 다이어그램 타입 키워드로 시작하는 유효한 Mermaid 코드만 반환해.
 """
 
-    result = await call_interaction(prompt, lane="pipeline", model=MODEL_MERMAID, store=False)
+    choice = resolve_model("mermaid", provider)
+    result = await call_interaction(
+        prompt, lane="pipeline", model=choice.model, thinking_level=choice.effort, store=False,
+    )
 
     return _sanitize_mermaid_code(result["text"])
 
@@ -1968,6 +1974,8 @@ async def _generate_single_paperbanana(
     folder_name: str,
     recipe_result: str,
     deep_dive_result: str,
+    *,
+    llm_provider: str = "gemini",
 ) -> dict:
     """
     Generate a PaperBanana illustration for a single visualization item.
@@ -1998,6 +2006,7 @@ async def _generate_single_paperbanana(
         str(get_paper_dir(folder_name)),
         preferred_provider=settings.get("image_provider", "openai"),
         quality=settings.get("image_quality", "high"),
+        llm_provider=llm_provider,
     )
     if result.path:
         url = f"/static/library/{folder_name}/paperbanana/{Path(result.path).name}"
@@ -2017,21 +2026,26 @@ async def _generate_single_paperbanana(
 
 
 async def _store_visualization_progress(
-    paper_id: int, items: list[dict], cache_input: str, done: bool
+    paper_id: int, items: list[dict], cache_input: str, done: bool, *, provider: str = "gemini",
 ) -> None:
     """항목이 하나 끝날 때마다 visualization 행을 갱신한다 (중간 사망 시 유실 방지).
 
     UPDATE 대상 SELECT는 input_hash까지 걸어 같은 실행(run)의 행만 찾는다. paper_id+phase
     최신 1건만 보면, 재분석(다른 input_hash로 재실행)이 이전 실행의 완료된 행을 이어달리기로
     착각하고 덮어써버린다 — 새 실행은 반드시 새 행을 INSERT해야 한다.
+
+    model_used는 provider에 맞는 레지스트리 모델명이어야 한다 — 이 메타데이터는
+    plan(viz_planning role)이 실제로 어떤 모델로 계획됐는지를 남기는 것이지, 개별
+    항목(mermaid/paperbanana)의 모델이 아니다.
     """
     input_hash = compute_input_hash(cache_input)
     total_cost_usd = sum(it.get("cost_usd") or 0 for it in items)
+    model_used = resolve_model("viz_planning", provider).model
     payload = json.dumps(
         {
             "items": sorted(items, key=lambda x: x.get("id", 0)),
             "total_count": len(items),
-            "model_used": MODEL_VIZ_PLANNING,
+            "model_used": model_used,
             "planned_at": _utcnow_iso(),
             "complete": done,
         },
@@ -2052,7 +2066,7 @@ async def _store_visualization_progress(
         )
     else:
         await _insert_analysis_result(
-            paper_id, "visualization", payload, MODEL_VIZ_PLANNING, 0, 0, total_cost_usd, cache_input,
+            paper_id, "visualization", payload, model_used, 0, 0, total_cost_usd, cache_input,
         )
 
 
@@ -2068,6 +2082,7 @@ async def _run_visualizations(
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
+    provider: str = "gemini",
 ) -> list[dict]:
     """
     Full visualization pipeline:
@@ -2109,6 +2124,7 @@ async def _run_visualizations(
         system_instruction=system_instruction,
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
+        provider=provider,
     )
 
     # Step 2: Generate all in parallel
@@ -2130,6 +2146,7 @@ async def _run_visualizations(
                     item,
                     visualization_input,
                     previous_results,
+                    provider=provider,
                 )
                 result_item["mermaid_code"] = code
                 result_item["status"] = "completed"
@@ -2141,6 +2158,7 @@ async def _run_visualizations(
                     folder_name,
                     recipe_result,
                     deep_dive_result,
+                    llm_provider=provider,
                 )
                 result_item["image_url"] = pb_result.get("image_url")
                 result_item["image_path"] = pb_result.get("image_path")
@@ -2177,7 +2195,9 @@ async def _run_visualizations(
     mermaid_results = await asyncio.gather(*mermaid_tasks, return_exceptions=False) if mermaid_tasks else []
     if mermaid_results:
         accumulated.extend(mermaid_results)
-        await _store_visualization_progress(paper_id, accumulated, visualization_cache_input, done=False)
+        await _store_visualization_progress(
+            paper_id, accumulated, visualization_cache_input, done=False, provider=provider,
+        )
 
     # Run paperbanana generations sequentially to avoid API rate limits
     paperbanana_results = []
@@ -2185,7 +2205,9 @@ async def _run_visualizations(
         result = await generate_one(i, item)
         paperbanana_results.append(result)
         accumulated.append(result)
-        await _store_visualization_progress(paper_id, accumulated, visualization_cache_input, done=False)
+        await _store_visualization_progress(
+            paper_id, accumulated, visualization_cache_input, done=False, provider=provider,
+        )
         # Small delay between PaperBanana calls to avoid rate limiting
         if idx < len(paperbanana_items) - 1:
             await asyncio.sleep(2.0)
@@ -2195,14 +2217,18 @@ async def _run_visualizations(
     other_results = await asyncio.gather(*other_tasks, return_exceptions=False) if other_tasks else []
     if other_results:
         accumulated.extend(other_results)
-        await _store_visualization_progress(paper_id, accumulated, visualization_cache_input, done=False)
+        await _store_visualization_progress(
+            paper_id, accumulated, visualization_cache_input, done=False, provider=provider,
+        )
 
     # Combine and sort by original index
     all_results = list(mermaid_results) + paperbanana_results + list(other_results)
     generated_items = sorted(all_results, key=lambda x: x.get("id", 0))
 
     # Step 3: Store all visualization results in DB (final, complete=True)
-    await _store_visualization_progress(paper_id, generated_items, visualization_cache_input, done=True)
+    await _store_visualization_progress(
+        paper_id, generated_items, visualization_cache_input, done=True, provider=provider,
+    )
 
     # Visualization complete — set progress to 100%
     status.progress_pct = 100.0
@@ -2245,6 +2271,10 @@ async def _run_full_analysis(paper_id: int):
         if paper is None:
             raise ValueError(f"Paper {paper_id} not found")
 
+        # 이 실행 전체에 걸쳐 provider를 한 번만 결정한다 — 분석 도중 설정 화면에서
+        # provider를 바꿔도 이미 진행 중인 실행은 처음 값으로 일관되게 끝까지 간다.
+        provider = await active_provider()
+
         folder_name = paper["folder_name"]
         paper_dir = get_paper_dir(folder_name)
 
@@ -2267,6 +2297,7 @@ async def _run_full_analysis(paper_id: int):
             paper_id,
             str(phase_inputs.get("screening", "")),
             status,
+            provider=provider,
         )
 
         # Check for cancellation
@@ -2364,6 +2395,7 @@ async def _run_full_analysis(paper_id: int):
             citation_references=str(phase_inputs.get("citation_references", "")),
             paper_authors=paper_authors,
             status=status,
+            provider=provider,
         )
 
         # Check for cancellation
@@ -2381,6 +2413,7 @@ async def _run_full_analysis(paper_id: int):
             system_instruction=visual_system_instruction,
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
+            provider=provider,
         )
         if pdf_uri:
             chain_prev_id = r2.get("interaction_id")
@@ -2410,6 +2443,7 @@ async def _run_full_analysis(paper_id: int):
             system_instruction=recipe_system_instruction,
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
+            provider=provider,
         )
         if pdf_uri:
             chain_prev_id = r3.get("interaction_id")
@@ -2434,6 +2468,7 @@ async def _run_full_analysis(paper_id: int):
             system_instruction=deep_dive_system_instruction,
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
+            provider=provider,
         )
         if pdf_uri:
             chain_prev_id = r4.get("interaction_id")
@@ -2474,6 +2509,7 @@ async def _run_full_analysis(paper_id: int):
                     system_instruction=viz_system_instruction,
                     previous_interaction_id=chain_prev_id,
                     pdf_uri=pdf_uri,
+                    provider=provider,
                 )
             except Exception as viz_err:
                 # Visualization failure should NOT block the analysis from completing
@@ -2579,6 +2615,18 @@ async def run_analysis(paper_id: int, background_tasks: BackgroundTasks):
     paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
     if paper is None:
         raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
+
+    # provider-aware 키 사전 점검: 분석 파이프라인 전체가 필요로 하는 키가
+    # 없으면 백그라운드 태스크를 큐에 올리기 전에 즉시 400으로 거절한다 —
+    # 큐에 올린 뒤 매 단계 LLM 호출에서 산발적으로 실패하는 것보다 낫다.
+    provider = await active_provider()
+    key_env = "OPENAI_API_KEY" if provider == "openai" else "GEMINI_API_KEY"
+    if not os.getenv(key_env):
+        provider_label = "OpenAI" if provider == "openai" else "Gemini"
+        raise HTTPException(
+            status_code=400,
+            detail=f"논문 분석에 {provider_label} API 키가 필요해요. 설정에서 키를 등록해 주세요.",
+        )
 
     try:
         await ensure_text_artifacts_async(get_paper_dir(paper["folder_name"]))
@@ -2946,7 +2994,11 @@ Paper text excerpt:
 Return ONLY valid Mermaid syntax starting with "flowchart TD" or "flowchart LR".
 """
 
-    result = await call_interaction(prompt, lane="chat", model=MODEL_FLASH_HQ, store=False)
+    provider = await active_provider()
+    choice = resolve_model("mermaid", provider)
+    result = await call_interaction(
+        prompt, lane="chat", model=choice.model, thinking_level=choice.effort, store=False,
+    )
 
     mermaid_code = _sanitize_mermaid_code(result["text"])
 
@@ -3051,7 +3103,11 @@ async def repair_mermaid(paper_id: int, request: MermaidRepairRequest):
 - linkStyle 인덱스가 엣지 수를 벗어나면 해당 linkStyle 줄을 삭제해.
 - 수정된 전체 Mermaid 코드만 반환해. 설명 금지."""
 
-    result = await call_interaction(prompt, lane="chat", model=MODEL_FLASH_HQ, store=False)
+    provider = await active_provider()
+    choice = resolve_model("mermaid", provider)
+    result = await call_interaction(
+        prompt, lane="chat", model=choice.model, thinking_level=choice.effort, store=False,
+    )
     repaired = _sanitize_mermaid_code(result["text"])
     if not repaired:
         raise HTTPException(status_code=502, detail="Repair produced empty Mermaid code.")
@@ -3124,8 +3180,9 @@ async def regenerate_visualization(paper_id: int, viz_id: int):
         if phase in phase_rows
     ]
 
+    provider = await active_provider()
     code = await _generate_single_mermaid(
-        paper_id, stored_item, visualization_input, previous_results
+        paper_id, stored_item, visualization_input, previous_results, provider=provider,
     )
     if not code:
         raise HTTPException(status_code=502, detail="Regeneration produced empty Mermaid code.")
@@ -3382,7 +3439,13 @@ Return ONLY valid JSON (마크다운 펜스 없이):
 }}
 """
 
-    result = await call_interaction(prompt, lane="chat", model=MODEL_FLASH_HQ, store=False)
+    # 등록된 레지스트리 role이 없는 일회성 생성이라 "chat" role을 재사용한다 —
+    # lane도 "chat"이고 effort 특성(gemini=None, openai=low)이 그대로 맞는다.
+    provider = await active_provider()
+    choice = resolve_model("chat", provider)
+    result = await call_interaction(
+        prompt, lane="chat", model=choice.model, thinking_level=choice.effort, store=False,
+    )
     cleaned_text = _clean_llm_json(result["text"])
 
     # Validate JSON
@@ -3447,8 +3510,6 @@ async def get_experiment_plan(paper_id: int):
 # ---------------------------------------------------------------------------
 # Agent Chat (SSE streaming)
 # ---------------------------------------------------------------------------
-
-_CHAT_MODEL = MODEL_CHAT
 
 # The analysis path already retries transient failures; chat used to fail on the
 # first blip, which is exactly when the pipeline is hammering the same quota.
@@ -3556,6 +3617,11 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
     transcript_parts.append(f"사용자: {message}")
     chat_input = "\n".join(transcript_parts)
 
+    # 5b. provider는 이 요청 안에서 한 번만 결정한다 — 스트림 재시도 도중 설정이
+    #     바뀌어도 같은 요청 안에서는 일관된 모델을 쓴다.
+    provider = await active_provider()
+    chat_choice = resolve_model("chat", provider)
+
     # 6. Stream via SSE — stream_interaction(lane="chat")이 전용 풀에서 브릿지를 담당한다.
     #
     # 파이프라인과 같은 쿼터를 때리는 순간이 곧 채팅이 실패하기 쉬운 순간이라,
@@ -3570,7 +3636,8 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
                 async for ev in stream_interaction(
                     chat_input,
                     lane="chat",
-                    model=_CHAT_MODEL,
+                    model=chat_choice.model,
+                    thinking_level=chat_choice.effort,
                     system_instruction=system_prompt,
                     store=False,
                 ):
@@ -3583,7 +3650,7 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
                         streamed_any = True
                         yield f"data: {json.dumps({'type': 'token', 'content': ev['text']}, ensure_ascii=False)}\n\n"
                     elif ev["type"] == "done":
-                        cost = calc_cost(_CHAT_MODEL, ev["tokens_in"], ev["tokens_out"])
+                        cost = calc_cost(chat_choice.model, ev["tokens_in"], ev["tokens_out"])
                         yield f"data: {json.dumps({'type': 'done', 'tokens_in': ev['tokens_in'], 'tokens_out': ev['tokens_out'], 'cost_usd': cost}, ensure_ascii=False)}\n\n"
                 return
             except asyncio.CancelledError:

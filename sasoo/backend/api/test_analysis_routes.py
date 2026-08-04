@@ -99,6 +99,17 @@ class _FakeRequest:
 
 
 class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        # Task 9: run_analysis/get_mermaid/repair_mermaid/chat/experiment-plan이
+        # 모두 active_provider()를 호출한다. 실제 구현은 api.settings._get_all_settings를
+        # 거쳐 DB를 읽으므로, DB를 세팅하지 않는 이 클래스의 다수 테스트가 실DB 접근으로
+        # 깨진다 — provider 로직 자체를 검증하는 테스트가 아닌 한 gemini로 고정한다.
+        self._active_provider_patch = patch(
+            "api.analysis_routes.active_provider", new=AsyncMock(return_value="gemini"),
+        )
+        self._active_provider_patch.start()
+        self.addCleanup(self._active_provider_patch.stop)
+
     def test_screening_gate_decision_flags_low_relevance(self):
         should_skip, reason = analysis_routes._screening_gate_decision(
             '{"relevance_score":0.2,"domain":"general","key_topics":[],"is_experimental":false}'
@@ -305,7 +316,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         paper_row = {"id": paper_id, "folder_name": "f"}
         upsert_mock = AsyncMock()
         with (
-            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1", "GEMINI_API_KEY": "test-key"}),
             patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
             patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
             patch("models.database.get_db", new=AsyncMock(return_value=object())),
@@ -336,7 +347,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             return True  # 결함2: 원자 가드 도입 후 upsert_queued는 bool을 반환한다
 
         with (
-            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1", "GEMINI_API_KEY": "test-key"}),
             patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
             patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
             patch("api.analysis_routes.execute_update", new=_fake_execute_update),
@@ -367,7 +378,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         paper_row = {"id": paper_id, "folder_name": "f"}
         reconcile_mock = AsyncMock()
         with (
-            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1", "GEMINI_API_KEY": "test-key"}),
             patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
             patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
             patch("api.analysis_routes.execute_update", new=AsyncMock()),
@@ -392,7 +403,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         paper_row = {"id": paper_id, "folder_name": "f"}
         reconcile_mock = AsyncMock()
         with (
-            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1", "GEMINI_API_KEY": "test-key"}),
             patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
             patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
             patch("api.analysis_routes.execute_update", new=AsyncMock()),
@@ -1273,6 +1284,15 @@ class BudgetParityTests(unittest.IsolatedAsyncioTestCase):
     읽게 해, 월 경계·phase 필터·NULL 처리가 실제로 일치하는지 검증한다(캔맥락 없는 통값
     비교가 아니라 실쿼리 실행)."""
 
+    def setUp(self):
+        # run_analysis의 provider-aware 키 사전 점검이 active_provider()를 호출한다 —
+        # 이 클래스는 예산 계산 일치만 검증하므로 gemini로 고정한다.
+        self._active_provider_patch = patch(
+            "api.analysis_routes.active_provider", new=AsyncMock(return_value="gemini"),
+        )
+        self._active_provider_patch.start()
+        self.addCleanup(self._active_provider_patch.stop)
+
     async def test_read_budget_state_matches_run_route_calculation(self):
         import re
         import tempfile
@@ -1321,6 +1341,7 @@ class BudgetParityTests(unittest.IsolatedAsyncioTestCase):
             with (
                 patch.object(db_module, "_db_connection", conn),
                 patch.dict(sys.modules, {"api.settings": settings_stub}),
+                patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=False),
                 patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
                 patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
             ):
@@ -1360,6 +1381,7 @@ class BudgetParityTests(unittest.IsolatedAsyncioTestCase):
             patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
             patch("api.analysis_routes.fetch_all", new=AsyncMock(return_value=[{"cost_usd": 10.0}])),
             patch.dict(sys.modules, {"api.settings": legacy_settings_stub}),
+            patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=False),
             patch("services.analysis_supervisor.read_budget_state", new=read_budget_mock),
         ):
             with self.assertRaises(Exception) as ctx:
@@ -1370,7 +1392,55 @@ class BudgetParityTests(unittest.IsolatedAsyncioTestCase):
         read_budget_mock.assert_awaited_once()
 
 
+class RunProviderPrecheckTests(unittest.IsolatedAsyncioTestCase):
+    """Task 9 Step 5: /run의 키 사전 점검이 provider-aware인지 검증한다.
+
+    이 브랜치엔 PR #41의 GEMINI_API_KEY 고정 점검이 없었다(별도 브랜치, 미병합) —
+    그래서 이 테스트는 "수정"이 아니라 신규 점검 로직 자체를 고정한다."""
+
+    async def test_gemini_selected_without_key_returns_400_naming_gemini(self):
+        paper_row = {"id": 8181, "folder_name": "f"}
+        with (
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
+            patch("api.analysis_routes.active_provider", new=AsyncMock(return_value="gemini")),
+            patch.dict(os.environ, {"GEMINI_API_KEY": ""}, clear=False),
+        ):
+            with self.assertRaises(Exception) as ctx:
+                await analysis_routes.run_analysis(8181, background_tasks=_StubBackgroundTasks())
+        self.assertEqual(getattr(ctx.exception, "status_code", None), 400)
+        self.assertIn("Gemini", ctx.exception.detail)
+
+    async def test_openai_selected_with_key_present_does_not_400(self):
+        paper_row = {"id": 8182, "folder_name": "f"}
+        with (
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
+            patch("api.analysis_routes.active_provider", new=AsyncMock(return_value="openai")),
+            patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.execute_update", new=AsyncMock()),
+            patch.dict(os.environ, {
+                "OPENAI_API_KEY": "sk-test", "GEMINI_API_KEY": "",
+                "SASOO_ANALYSIS_SUBPROCESS": "1",
+            }, clear=False),
+            patch("models.database.get_db", new=AsyncMock(return_value=object())),
+            patch("models.analysis_runs.get_run", new=AsyncMock(return_value=None)),
+            patch("models.analysis_runs.upsert_queued", new=AsyncMock(return_value=True)),
+            patch("services.analysis_supervisor.reconcile_once", new=AsyncMock()),
+            patch("services.analysis_supervisor.read_max_concurrent", new=AsyncMock(return_value=3)),
+            patch("services.analysis_supervisor.read_budget_state", new=AsyncMock(return_value=(0.0, 50.0))),
+        ):
+            result = await analysis_routes.run_analysis(8182, background_tasks=_StubBackgroundTasks())
+        self.assertEqual(result["status"], "started")
+
+
 class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        # explain_figure_handler가 active_provider()를 호출한다(Task 9).
+        self._active_provider_patch = patch(
+            "api.figure_service.active_provider", new=AsyncMock(return_value="gemini"),
+        )
+        self._active_provider_patch.start()
+        self.addCleanup(self._active_provider_patch.stop)
+
     async def test_figure_prompt_uses_figure_detail_context_and_latest_phase_snippets(self):
         paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "ai_ml", "agent_used": "neural"}
         figure = {"id": 9, "paper_id": 7, "figure_num": "Figure 1", "caption": "Caption", "file_path": None}
@@ -1408,6 +1478,14 @@ class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):
 
 
 class MermaidRepairAndRegenerateTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        # repair_mermaid/regenerate_visualization이 active_provider()를 호출한다.
+        self._active_provider_patch = patch(
+            "api.analysis_routes.active_provider", new=AsyncMock(return_value="gemini"),
+        )
+        self._active_provider_patch.start()
+        self.addCleanup(self._active_provider_patch.stop)
+
     def _viz_row(self, items):
         payload = {"items": items, "total_count": len(items), "complete": True}
         return _row(
@@ -1861,6 +1939,9 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
                                   new=AsyncMock(return_value=visual_ready_contract)))
         stack.enter_context(patch("api.analysis_routes._get_cached_phase_result", new=cache_fake))
         stack.enter_context(patch("api.analysis_routes.call_interaction", new=call_fake))
+        stack.enter_context(patch(
+            "api.analysis_routes.active_provider", new=AsyncMock(return_value="gemini"),
+        ))
         if visual_result is not None:
             stack.enter_context(patch("api.analysis_routes._run_visual",
                                       new=AsyncMock(return_value=visual_result)))

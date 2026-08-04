@@ -31,7 +31,7 @@ from services.concurrency import run_pipeline_blocking
 from services.document_context import load_or_build_document_context
 from services.pricing import calc_cost
 from services.llm.interactions_client import call_interaction
-from services.model_registry import resolve as resolve_model
+from services.model_registry import active_provider, resolve as resolve_model
 
 
 # ---------------------------------------------------------------------------
@@ -559,7 +559,8 @@ Be exhaustive. Do NOT summarize or abbreviate. Include every relevant numerical 
         except OSError:
             contents = prompt
 
-    _choice = resolve_model("figure_explain", "gemini")
+    provider = await active_provider()
+    _choice = resolve_model("figure_explain", provider)
     try:
         result = await call_interaction(contents, lane="chat", model=_choice.model, thinking_level=_choice.effort, store=False)
     except Exception:
