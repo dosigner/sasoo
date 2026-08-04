@@ -1,5 +1,4 @@
 import type { PhaseInfo, AnalysisPhase } from '@/lib/api';
-import { S } from '@/lib/strings';
 import { STAGE_NAMES } from '@/lib/workbenchSummaries';
 import AppIcon from '@/components/icons/AppIcon';
 
@@ -32,52 +31,14 @@ const PHASE_META: Record<AnalysisPhase, { label: string }> = {
 
 export default function ProgressTracker({
   phases,
-  overallProgress,
+  overallProgress: _overallProgress,
   variant: _variant,
 }: ProgressTrackerProps) {
-  const isActive = phases.some((p) => p.status === 'running');
-  const isComplete = phases.every((p) => p.status === 'completed');
-
+  // I9: 'glass rounded-2xl' 박스·'분석 진행' 헤더·자체 진행바·%는 전부 삭제한다.
+  // 전체 진행률은 상태부 레일(AnalysisPanel의 workbenchStatus.progressRatio)이 담당하고,
+  // 이 컴포넌트는 단계 리스트만 보여준다.
   return (
-    <div className="glass rounded-2xl px-5 py-4">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <h3 className="text-sm font-semibold text-fg">
-            {S.progressTracker.title}
-          </h3>
-          {isActive && (
-            <span className="badge-primary text-2xs">
-              <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse mr-1" />
-              {S.status.running}
-            </span>
-          )}
-          {isComplete && (
-            <span className="badge-success text-2xs">{S.status.complete}</span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-3 text-xs text-fg-muted">
-          <span className="font-mono tabular-nums">
-            {Math.round(overallProgress)}%
-          </span>
-        </div>
-      </div>
-
-      {/* Overall progress bar */}
-      <div className="h-1 bg-border rounded-full mb-5 overflow-hidden">
-        <div
-          className="h-full w-full transition-transform duration-300 ease-out"
-          style={{
-            transformOrigin: 'left',
-            transform: `scaleX(${overallProgress / 100})`,
-            background: isComplete
-              ? 'rgb(var(--success))'
-              : 'linear-gradient(90deg, rgb(var(--accent)), rgb(var(--accent-hover)))',
-          }}
-        />
-      </div>
-
+    <div>
       {/* Phase steps: slim vertical list (전체 진행률은 상태부가 담당) */}
       <div className="flex flex-col gap-2">
         {phases.map((phase) => {

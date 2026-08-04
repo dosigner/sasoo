@@ -1412,6 +1412,16 @@
   .chat-send-button:active {
     transform: none !important;
   }
+
+  /* I4: Figure/Table 카드 press-scale(active:scale-[0.96])도 movement이므로 끈다. */
+  [role="button"]:active {
+    transform: none !important;
+  }
+
+  /* I4: 워크벤치 상태부 진행 레일의 width 전환은 즉시 완료로 처리한다. */
+  .transition-\[width\] {
+    transition: none !important;
+  }
 }
 
 /* ── Agent tinting (color-mix, theme-aware) ──────────────────────────── */

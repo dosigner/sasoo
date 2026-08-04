@@ -530,7 +530,7 @@ export const S = {
     pageLabel: (page: number) => `${page}페이지`,
     saveImage: '그림 저장',
     saveFailed: '그림을 저장하지 못했어요',
-    childGroup: (count: number) => `서브피겨 ${count}개`,
+    childGroup: (count: number) => `서브피겨 ${count}`,
     provenanceLabel: (model: string) => `분류 ${model}`,
   },
 

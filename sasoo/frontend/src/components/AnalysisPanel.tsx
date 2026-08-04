@@ -511,14 +511,9 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
   const md = S.analysis.md;
 
   if (phase === 'screening') {
+    // C1: 분야/관련도/방법론/복잡도/실험적/그림 포함/에이전트 key-value 평문은 삭제.
+    // 메타 그리드(buildPhaseSummary의 metaItems)가 이미 같은 정보를 표시한다.
     if (data.summary) lines.push(`${data.summary}\n`);
-    if (data.domain) lines.push(`**${md.domain}:** ${data.domain}  `);
-    if (data.relevance_score != null) lines.push(`**${md.relevance}:** ${(Number(data.relevance_score) * 100).toFixed(0)}%  `);
-    if (data.methodology_type) lines.push(`**${md.methodology}:** ${data.methodology_type}  `);
-    if (data.estimated_complexity) lines.push(`**${md.complexity}:** ${data.estimated_complexity}  `);
-    if (data.is_experimental != null) lines.push(`**${md.experimental}:** ${data.is_experimental ? md.yes : md.no}  `);
-    if (data.has_figures != null) lines.push(`**${md.hasFigures}:** ${data.has_figures ? md.yes : md.no}  `);
-    if (data.agent_recommended) lines.push(`**${md.agent}:** ${data.agent_recommended}  `);
     const topics = data.key_topics as string[] | undefined;
     if (topics?.length) {
       lines.push(`\n**${md.keyTopics}:**`);
@@ -1093,12 +1088,12 @@ export default function AnalysisPanel({
 
   const visibleTab = activeTab === 'experiment' && !recipeReady ? 'summary' : activeTab;
 
-  const tabs: Array<{ key: 'summary' | 'figures' | 'tables' | 'recipe' | 'experiment'; label: string; icon: 'summary' | 'figures' | 'tables' | 'recipe' | 'experiment'; disabled?: boolean }> = [
-    { key: 'summary', label: S.workbench.summaryTab, icon: 'summary' },
-    { key: 'figures', label: S.workbench.figuresTab, icon: 'figures' },
-    { key: 'tables', label: S.workbench.tablesTab, icon: 'tables' },
-    { key: 'recipe', label: S.workbench.recipeTab, icon: 'recipe' },
-    { key: 'experiment', label: S.workbench.experimentTab, icon: 'experiment', disabled: !recipeReady },
+  const tabs: Array<{ key: 'summary' | 'figures' | 'tables' | 'recipe' | 'experiment'; label: string; disabled?: boolean }> = [
+    { key: 'summary', label: S.workbench.summaryTab },
+    { key: 'figures', label: S.workbench.figuresTab },
+    { key: 'tables', label: S.workbench.tablesTab },
+    { key: 'recipe', label: S.workbench.recipeTab },
+    { key: 'experiment', label: S.workbench.experimentTab, disabled: !recipeReady },
   ];
 
   return (
@@ -1113,9 +1108,9 @@ export default function AnalysisPanel({
                   <span>{S.workbench.statusRailTitle}</span>
                 </div>
                 <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-sm font-[650] text-fg">
+                  <h3 className="text-sm font-[650] text-fg">
                     {workbenchStatus.trustStateLabel || workbenchStatus.runStateLabel}
-                  </span>
+                  </h3>
                   <span className="text-2xs text-fg-muted tabular-nums">
                     {workbenchStatus.totalCount > 0 && `${workbenchStatus.completedCount}/${workbenchStatus.totalCount}`}
                   </span>

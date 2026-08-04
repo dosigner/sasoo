@@ -38,6 +38,18 @@ const METHODOLOGY_LABELS = {
   nonExperimental: '비실험 논문',
 } as const;
 
+// M1: screening.domain 표시용 한국어 라벨. 백엔드 enum(api/analysis_routes.py의
+// SCREENING 스키마 "optics"|"bio"|"ai_ml"|"ee"|"general")에 맞춘 전용 맵이다.
+// S.areas(연구자 프로필 관심 분야, optics_photonics 등)는 키 체계가 달라 재사용할 수 없다.
+// 맵에 없는 값(모델이 스키마 밖 값을 내보낸 경우)은 원본 문자열을 그대로 표시한다.
+const DOMAIN_LABELS: Record<string, string> = {
+  optics: '광학',
+  bio: '바이오',
+  ai_ml: 'AI·머신러닝',
+  ee: '전기·전자',
+  general: '일반',
+};
+
 export interface WorkbenchStatusSummary {
   runStateLabel: string;
   trustStateLabel: string;
@@ -45,22 +57,22 @@ export interface WorkbenchStatusSummary {
   currentPhaseLabel: string;
   completedCount: number;
   totalCount: number;
-  stageNames: string[];
   progressRatio: number;
 }
 
-const PHASE_LABELS: Record<AnalysisPhase, string> = {
-  screening: '스크리닝',
-  citation: '인용 분석',
-  visual: 'Figure 검토',
-  recipe: '레시피',
-  deep_dive: '심층 분석',
-};
-
-// 상태부 진행 레일에 쓰는 단계명. currentPhaseLabel(PHASE_LABELS)과는 별개로,
-// 상태부 요약에서만 쓰는 5단계 고정 명칭이다. ProgressTracker의 단계 리스트 라벨도
-// 이 명칭을 재사용해 상태부 진행 레일과 표기를 통일한다.
+// 상태부 진행 레일에 쓰는 단계명. ProgressTracker의 단계 리스트 라벨도 이 명칭을
+// 재사용해 상태부 진행 레일과 표기를 통일한다.
 export const STAGE_NAMES: string[] = ['스크리닝', '인용 분석', '시각 자료', '레시피', '심층 분석'];
+
+// I8: currentPhaseLabel(진행 중 문구용)도 STAGE_NAMES와 동일한 단계명을 쓴다.
+// 예전엔 visual만 'Figure 검토'로 따로 불러 상태부·진행 레일과 표기가 어긋났다.
+const PHASE_LABELS: Record<AnalysisPhase, string> = {
+  screening: STAGE_NAMES[0],
+  citation: STAGE_NAMES[1],
+  visual: STAGE_NAMES[2],
+  recipe: STAGE_NAMES[3],
+  deep_dive: STAGE_NAMES[4],
+};
 
 function percent(value: unknown): string | null {
   if (typeof value !== 'number' || Number.isNaN(value)) return null;
@@ -103,10 +115,14 @@ export function buildPhaseSummary(
   const recipeResult = recipe?.recipe ?? results.recipe ?? {};
 
   if (phase === 'screening') {
-    const domain = typeof screening.domain === 'string' ? screening.domain : '미분류';
+    const domainLabel =
+      typeof screening.domain === 'string' && screening.domain.trim()
+        ? DOMAIN_LABELS[screening.domain.trim()] ?? screening.domain.trim()
+        : null;
+    const domain = domainLabel ?? '미분류';
     const relevance = percent(screening.relevance_score);
     const agent = typeof screening.agent_recommended === 'string' ? screening.agent_recommended : null;
-    const rawDomain = typeof screening.domain === 'string' && screening.domain.trim() ? screening.domain.trim() : null;
+    const rawDomain = domainLabel;
     const methodologyLabel =
       screening.is_experimental === true
         ? METHODOLOGY_LABELS.experimental
@@ -263,7 +279,6 @@ export function buildWorkbenchStatusSummary({
 }): WorkbenchStatusSummary {
   const totalCount = status?.phases.length ?? 5;
   const completedCount = status?.phases.filter((phase) => phase.status === 'completed').length ?? 0;
-  const stageNames = STAGE_NAMES;
   const progressRatio = totalCount > 0 ? completedCount / totalCount : 0;
   const currentPhase = status?.current_phase;
   const currentPhaseLabel = currentPhase ? PHASE_LABELS[currentPhase] : '분석 대기';
@@ -299,7 +314,6 @@ export function buildWorkbenchStatusSummary({
       currentPhaseLabel,
       completedCount,
       totalCount,
-      stageNames,
       progressRatio,
     };
   }
@@ -320,7 +334,6 @@ export function buildWorkbenchStatusSummary({
       currentPhaseLabel,
       completedCount,
       totalCount,
-      stageNames,
       progressRatio,
     };
   }
@@ -334,7 +347,6 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
-        stageNames,
         progressRatio,
       };
     }
@@ -348,7 +360,6 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
-        stageNames,
         progressRatio,
       };
     }
@@ -362,7 +373,6 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
-        stageNames,
         progressRatio,
       };
     }
@@ -376,7 +386,6 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
-        stageNames,
         progressRatio,
       };
     }
@@ -388,7 +397,6 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
-        stageNames,
         progressRatio,
       };
     }
@@ -402,7 +410,6 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
-        stageNames,
         progressRatio,
       };
     }
@@ -414,7 +421,6 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
-        stageNames,
         progressRatio,
       };
     }
@@ -426,7 +432,6 @@ export function buildWorkbenchStatusSummary({
       currentPhaseLabel,
       completedCount,
       totalCount,
-      stageNames,
       progressRatio,
     };
   }
@@ -439,7 +444,6 @@ export function buildWorkbenchStatusSummary({
       currentPhaseLabel,
       completedCount,
       totalCount,
-      stageNames,
       progressRatio,
     };
   }
@@ -453,7 +457,6 @@ export function buildWorkbenchStatusSummary({
     currentPhaseLabel,
     completedCount,
     totalCount,
-    stageNames,
     progressRatio,
   };
 }

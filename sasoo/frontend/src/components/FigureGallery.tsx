@@ -86,14 +86,6 @@ function getFigureImageUrl(figure: Figure): string {
   return getLibraryAssetUrl(figure.file_path);
 }
 
-function buildStatusBadge(figure: Figure): { label: string; variant: BadgeVariant } {
-  if (figure.extraction_status === 'uncertain') {
-    return { label: S.figures.statusUncertain, variant: 'warning' };
-  }
-
-  return { label: S.figures.statusReady, variant: 'success' };
-}
-
 function buildFigureGroups(figures: Figure[]): FigureGroup[] {
   const byId = new Map<number, Figure>();
   const childMap = new Map<number, Figure[]>();
@@ -515,21 +507,12 @@ function FigureCard({
   onJumpToFigurePage,
 }: FigureCardProps) {
   const badge = qualityBadge(figure.quality);
-  const statusBadge = buildStatusBadge(figure);
   const dotClass = statusDotClass(badge.variant);
   // Red Flag reason: reuse the existing AI analysis field when present — no new
-  // data field is invented. Absent → label-only badge.
+  // data field is invented. Absent → dot tooltip falls back to the quality label
+  // so color never carries meaning alone (spec §6).
   const redFlagReason = badge.isRedFlag && figure.ai_analysis ? figure.ai_analysis : null;
-
-  const qualityBadgeEl = redFlagReason ? (
-    <Tooltip content={redFlagReason} className="max-w-xs whitespace-normal leading-snug">
-      <span className="inline-flex">
-        <Badge variant={badge.variant}>{badge.label}</Badge>
-      </span>
-    </Tooltip>
-  ) : (
-    <Badge variant={badge.variant}>{badge.label}</Badge>
-  );
+  const dotTooltip = redFlagReason ?? badge.label;
 
   // Confidence dot: reuses CONFIDENCE_REVIEW_THRESHOLD (backend document_audit's
   // 0.72 audit cut) — no threshold invented here.
@@ -541,9 +524,17 @@ function FigureCard({
       : `신뢰도 ${Math.round(figure.confidence! * 100)}%, 검토를 권해요`
     : undefined;
 
+  // I2: 서브피겨 개수 + 페이지를 캡션 아래 한 줄로 합친다(가운뎃점 1개).
+  const subfigureMetaLine = [
+    childCount > 0 ? S.figures.childGroup(childCount) : null,
+    typeof figure.page_number === 'number' ? S.figures.pageLabel(figure.page_number) : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
   return (
     <div
-      className="group relative overflow-hidden rounded-[12px] bg-surface p-0 shadow-[0_1px_2px_rgba(0,0,0,.04),0_2px_8px_rgba(0,0,0,.04)] transition-transform duration-150 active:scale-[0.96] dark:shadow-none"
+      className="group relative overflow-hidden rounded-[12px] bg-surface p-0 shadow-[0_1px_2px_rgba(0,0,0,.04),0_2px_8px_rgba(0,0,0,.04)] transition-transform duration-150 active:scale-[0.96] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent dark:shadow-none"
       data-citation-anchor={citationAnchor(figure)}
       role="button"
       tabIndex={0}
@@ -566,15 +557,14 @@ function FigureCard({
         <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/30">
           <AppIcon name="maximize" className="h-5 w-5 text-white opacity-0 transition-opacity group-hover:opacity-100" />
         </div>
-        <div className="absolute left-2 right-2 top-2 flex flex-wrap items-center justify-between gap-2">
-          {qualityBadgeEl}
-          <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
-        </div>
         {dotClass && (
-          <span
-            className={`absolute bottom-2 left-2 h-2.5 w-2.5 rounded-full ring-2 ring-surface ${dotClass}`}
-            aria-hidden="true"
-          />
+          <Tooltip content={dotTooltip} className="max-w-xs whitespace-normal leading-snug">
+            <span
+              role="img"
+              aria-label={dotTooltip}
+              className={`absolute bottom-2 left-2 h-2.5 w-2.5 rounded-full ring-2 ring-surface ${dotClass}`}
+            />
+          </Tooltip>
         )}
       </div>
 
@@ -586,24 +576,18 @@ function FigureCard({
             </h4>
             {hasConfidence && (
               <span
+                role="img"
                 className={`h-[7px] w-[7px] flex-shrink-0 rounded-full ${confidenceIsHigh ? 'bg-success' : 'bg-warning'}`}
                 title={confidenceDotTitle}
                 aria-label={confidenceDotTitle}
               />
             )}
           </div>
-          {(childCount > 0 || (import.meta.env.DEV && figure.is_composite)) && (
+          {import.meta.env.DEV && figure.is_composite && (
             <div className="mt-1 flex flex-wrap items-center gap-2">
-              {import.meta.env.DEV && figure.is_composite && (
-                <span className="status-pill border-accent/20 bg-accent/10 text-accent">
-                  {S.figures.composite}
-                </span>
-              )}
-              {childCount > 0 && (
-                <span className="status-pill border-border/50 bg-surface/80 text-fg-secondary">
-                  {S.figures.childGroup(childCount)}
-                </span>
-              )}
+              <span className="status-pill border-accent/20 bg-accent/10 text-accent">
+                {S.figures.composite}
+              </span>
             </div>
           )}
           {figure.caption && (
@@ -628,21 +612,23 @@ function FigureCard({
           </div>
         )}
 
-        {typeof figure.page_number === 'number' && onJumpToFigurePage && (
-          <div className="flex items-center justify-between gap-2 text-2xs tabular-nums text-fg-muted">
-            <span>{S.figures.pageLabel(figure.page_number)}</span>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onJumpToFigurePage(figure);
-              }}
-              className="-mr-1.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
-              aria-label={S.figures.jumpToPage}
-              title="PDF에서 보기"
-            >
-              <AppIcon name="document" className="h-3.5 w-3.5" />
-            </button>
+        {(subfigureMetaLine || (typeof figure.page_number === 'number' && onJumpToFigurePage)) && (
+          <div className="flex items-center justify-between gap-2 text-[11px] tabular-nums text-fg-muted">
+            <span>{subfigureMetaLine}</span>
+            {typeof figure.page_number === 'number' && onJumpToFigurePage && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onJumpToFigurePage(figure);
+                }}
+                className="-mr-1.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
+                aria-label={S.figures.jumpToPage}
+                title="PDF에서 보기"
+              >
+                <AppIcon name="document" className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         )}
       </div>

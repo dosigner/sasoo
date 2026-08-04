@@ -37,8 +37,8 @@ function makeStatus(statuses: PhaseStatusValue[], overallStatus: string, current
   };
 }
 
-describe('buildWorkbenchStatusSummary — stageNames/progressRatio', () => {
-  it('완료 5/5: progressRatio는 1이고 stageNames는 5단계다', () => {
+describe('buildWorkbenchStatusSummary — progressRatio', () => {
+  it('완료 5/5: progressRatio는 1이다', () => {
     const status = makeStatus(['completed', 'completed', 'completed', 'completed', 'completed'], 'completed', null);
     const summary = buildWorkbenchStatusSummary({
       status,
@@ -47,7 +47,6 @@ describe('buildWorkbenchStatusSummary — stageNames/progressRatio', () => {
       recipe: null,
       visualizations: null,
     });
-    expect(summary.stageNames.length).toBe(5);
     expect(summary.progressRatio).toBe(1);
     expect(summary.completedCount).toBe(5);
     expect(summary.totalCount).toBe(5);
@@ -68,7 +67,6 @@ describe('buildWorkbenchStatusSummary — stageNames/progressRatio', () => {
       recipe: null,
       visualizations: null,
     });
-    expect(summary.stageNames.length).toBe(5);
     expect(summary.progressRatio).toBeCloseTo(0.6);
     expect(summary.completedCount).toBe(3);
     expect(summary.totalCount).toBe(5);
@@ -88,7 +86,6 @@ describe('buildWorkbenchStatusSummary — stageNames/progressRatio', () => {
       recipe: null,
       visualizations: null,
     });
-    expect(summary.stageNames.length).toBe(5);
     expect(summary.progressRatio).toBe(0);
     expect(summary.completedCount).toBe(0);
     expect(summary.totalCount).toBe(5);

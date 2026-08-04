@@ -41,13 +41,29 @@ function formatRepairReason(reason: string | null | undefined): string | null {
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
-// FigureGallery의 색점 문법과 동일: pill 대신 7px 색점 + title 툴팁.
+// FigureGallery의 색점 문법과 동일: pill 대신 7px 색점 1개 + title 툴팁.
+// I6: 상태 점과 신뢰도 점을 하나로 합친다 — review_required거나 신뢰도가
+// 검토 임계값 미만이면 warning, 아니면 success. 문구만 원인별로 분기한다.
 function buildStatusDot(table: Table): { isWarning: boolean; label: string } {
-  if (table.review_required || table.extraction_status === 'uncertain') {
-    return { isWarning: true, label: S.tables.reviewRequired };
+  const hasConfidence = typeof table.confidence === 'number' && !Number.isNaN(table.confidence);
+  const confidenceIsLow = hasConfidence && table.confidence! < CONFIDENCE_REVIEW_THRESHOLD;
+  const needsReview = table.review_required || table.extraction_status === 'uncertain' || confidenceIsLow;
+
+  if (!needsReview) {
+    return {
+      isWarning: false,
+      label: hasConfidence ? `신뢰도 ${Math.round(table.confidence! * 100)}%` : S.tables.statusReady,
+    };
   }
 
-  return { isWarning: false, label: S.tables.statusReady };
+  if (hasConfidence) {
+    return {
+      isWarning: true,
+      label: `신뢰도 ${Math.round(table.confidence! * 100)}%, 검토를 권해요`,
+    };
+  }
+
+  return { isWarning: true, label: S.tables.reviewRequired };
 }
 
 function TableSkeleton() {
@@ -141,17 +157,10 @@ export default function TableGallery({
       <div className="grid gap-3">
         {tables.map((table, index) => {
           const statusDot = buildStatusDot(table);
-          const hasConfidence =
-            typeof table.confidence === 'number' && !Number.isNaN(table.confidence);
-          const confidenceIsHigh = hasConfidence && table.confidence! >= CONFIDENCE_REVIEW_THRESHOLD;
-          const confidenceDotTitle = hasConfidence
-            ? confidenceIsHigh
-              ? `신뢰도 ${Math.round(table.confidence! * 100)}%`
-              : `신뢰도 ${Math.round(table.confidence! * 100)}%, 검토를 권해요`
-            : undefined;
           const metaLine = [
             typeof table.page_number === 'number' ? S.tables.pageLabel(table.page_number) : null,
-            table.parse_method ? S.tables.parseMethod(table.parse_method) : null,
+            // C2: parse_method는 내부 파이프라인 용어라 개발자 모드에서만 노출한다.
+            import.meta.env.DEV && table.parse_method ? S.tables.parseMethod(table.parse_method) : null,
           ]
             .filter(Boolean)
             .join(' · ');
@@ -166,7 +175,7 @@ export default function TableGallery({
                   ? `table-${table.table_num.match(/\d+/)![0]}`
                   : undefined
               }
-              className="space-y-4 overflow-hidden rounded-[12px] bg-surface p-4 shadow-[0_1px_2px_rgba(0,0,0,.04),0_2px_8px_rgba(0,0,0,.04)] transition-transform duration-150 active:scale-[0.96] dark:shadow-none"
+              className="space-y-4 overflow-hidden rounded-[12px] bg-surface p-4 shadow-[0_1px_2px_rgba(0,0,0,.04),0_2px_8px_rgba(0,0,0,.04)] dark:shadow-none"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -175,17 +184,11 @@ export default function TableGallery({
                       {table.table_num || `Table ${index + 1}`}
                     </h3>
                     <span
+                      role="img"
                       className={`h-[7px] w-[7px] flex-shrink-0 rounded-full ${statusDot.isWarning ? 'bg-warning' : 'bg-success'}`}
                       title={statusDot.label}
                       aria-label={statusDot.label}
                     />
-                    {hasConfidence && (
-                      <span
-                        className={`h-[7px] w-[7px] flex-shrink-0 rounded-full ${confidenceIsHigh ? 'bg-success' : 'bg-warning'}`}
-                        title={confidenceDotTitle}
-                        aria-label={confidenceDotTitle}
-                      />
-                    )}
                   </div>
                   {table.caption && (
                     <p className="mt-2 text-sm leading-6 text-fg-secondary">
