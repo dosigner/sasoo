@@ -16,6 +16,14 @@ pdf_visual_engine은 미러 대상이 아니다. 값 도메인이 {gemini, odl}�
 
 VALID_PROVIDERS = ("openai", "gemini")
 
+
+def key_env_for(provider: str) -> str:
+    """provider가 쓰는 API 키의 환경변수 이름.
+
+    "openai"가 아니면 "gemini"로 취급한다 — active_provider()의 기본 폴백과
+    같은 관례(알 수 없는/None 값은 gemini)를 따른다."""
+    return "OPENAI_API_KEY" if provider == "openai" else "GEMINI_API_KEY"
+
 # ai_provider를 따라 함께 갱신할 레거시 설정 키. 값 도메인이 VALID_PROVIDERS와
 # 같은 것만 넣을 수 있다.
 _MIRRORED_KEYS = ("image_provider",)

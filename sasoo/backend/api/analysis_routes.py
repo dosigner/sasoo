@@ -2366,20 +2366,29 @@ async def _run_full_analysis(paper_id: int):
         viz_system_instruction = _stage_system_instruction(None)
 
         # PDF 직접 입력용 업로드. 실패/부재 시 pdf_uri=None → 각 스테이지는 텍스트 폴백 경로.
+        #
+        # gemini에서만 업로드한다. openai_client._translate_parts는 document 파트를
+        # 지원하지 않는다(스펙 R1 — OpenAI 체인은 파일이 아니라 텍스트 주입을 쓴다).
+        # 게이트 없이 업로드하면 pdf_uri가 채워진 채로 _run_chain_stage가 openai로
+        # 라우팅되어 document 파트를 만들고, openai_client가 그 자리에서 ValueError로
+        # 터진다 — provider=openai + GEMINI_API_KEY 보유(양쪽 키)인 흔한 조합에서
+        # 첫 체인 스테이지가 매번 100% 실패했다(리뷰 Critical 1). Task 10의 텍스트 주입
+        # 체인이 이 게이트 위에 얹힌다.
         chain_prev_id: Optional[str] = None
         pdf_uri: Optional[str] = None
-        pdf_file = _find_paper_pdf(paper_dir)
-        if pdf_file is not None:
-            try:
-                pdf_uri = await upload_pdf_for_paper(paper_id, str(pdf_file))
-            except Exception as exc:
+        if provider == "gemini":
+            pdf_file = _find_paper_pdf(paper_dir)
+            if pdf_file is not None:
+                try:
+                    pdf_uri = await upload_pdf_for_paper(paper_id, str(pdf_file))
+                except Exception as exc:
+                    logger.warning(
+                        "PDF upload failed for paper %s, falling back to text context: %s", paper_id, exc
+                    )
+            else:
                 logger.warning(
-                    "PDF upload failed for paper %s, falling back to text context: %s", paper_id, exc
+                    "No PDF found in %s for paper %s; using text-context fallback.", paper_dir, paper_id
                 )
-        else:
-            logger.warning(
-                "No PDF found in %s for paper %s; using text-context fallback.", paper_dir, paper_id
-            )
 
         # Phase 2: Citation Analysis (after screening, before visual)
         # TODO(parser-hybrid): visual 단계가 gemini로 승격되면 sections/references는 gemini 텍스트라

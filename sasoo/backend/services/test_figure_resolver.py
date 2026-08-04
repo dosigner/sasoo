@@ -127,6 +127,50 @@ class MaybeSelectCandidateCallInteractionTests(unittest.IsolatedAsyncioTestCase)
             fake_call.assert_not_awaited()
             self.assertEqual(model_used, "heuristic")
 
+    async def test_openai_provider_with_only_openai_key_enters_vlm_path(self) -> None:
+        """리뷰 Important 1 회귀 고정: provider=openai면 게이트가 GEMINI_API_KEY가
+        아니라 OPENAI_API_KEY 존재를 봐야 한다 — 그렇지 않으면 OpenAI 단독 키
+        환경에서 이 보강 경로가 한 번도 안 돌고 항상 휴리스틱으로 저하된다."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            paper_dir = Path(tmp_dir)
+            raster_rel = "pages/page_1.png"
+            _make_png(paper_dir / raster_rel)
+
+            group = [
+                {"id": "cand:1", "bbox": [40.0, 40.0, 260.0, 300.0], "source_kind": "pymupdf_image",
+                 "best_caption_id": "cap:1", "linked_caption_ids": ["cap:1"]},
+                {"id": "cand:2", "bbox": [60.0, 10.0, 240.0, 220.0], "source_kind": "pymupdf_image",
+                 "best_caption_id": "cap:1", "linked_caption_ids": ["cap:1"]},
+            ]
+            captions = {"cap:1": {"id": "cap:1", "text": "Figure 1. Example.",
+                                  "bbox": [10.0, 60.0, 120.0, 70.0], "linked_content_id": 7}}
+            page = {"page_size": {"width": 300.0, "height": 400.0}, "raster_path": raster_rel}
+
+            fake_call = AsyncMock(
+                return_value={
+                    "text": '{"selected_candidate_id": "cand:2", "confidence": 0.1}',
+                    "model": "gpt-5.6-luna",
+                    "tokens_in": 1,
+                    "tokens_out": 1,
+                }
+            )
+
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("GEMINI_API_KEY", None)
+                os.environ["OPENAI_API_KEY"] = "test-key"
+                try:
+                    with patch("services.figure_resolver.call_interaction", new=fake_call):
+                        chosen, delta, model_used = await figure_resolver._maybe_select_candidate(
+                            group, page, captions, figure_resolver._RasterCache(paper_dir),
+                            "resolver-v1", provider="openai",
+                        )
+                finally:
+                    os.environ.pop("OPENAI_API_KEY", None)
+
+            fake_call.assert_awaited_once()
+            self.assertEqual(chosen["id"], "cand:2")
+            self.assertNotEqual(model_used, "heuristic")
+
 
 class MaybeRerankCaptionCallInteractionTests(unittest.IsolatedAsyncioTestCase):
     async def test_calls_call_interaction_with_image_dict_and_model_contract(self) -> None:

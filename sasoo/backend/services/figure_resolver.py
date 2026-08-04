@@ -22,6 +22,7 @@ from models.paper import Figure as ParsedFigure
 from services.llm.interactions_client import call_interaction
 from services.document_manifest import strip_caption_decoration
 from services.model_registry import resolve as resolve_model
+from services.provider_state import key_env_for
 from services.subfigure_detector import SubFigureDetector
 
 logger = logging.getLogger(__name__)
@@ -311,7 +312,7 @@ async def _maybe_select_candidate(
 
     if not _needs_candidate_recheck(group, page):
         return (chosen, 0.0, "heuristic")
-    if len(scored) == 1 or not os.environ.get("GEMINI_API_KEY"):
+    if len(scored) == 1 or not os.environ.get(key_env_for(provider)):
         return (chosen, 0.0, "heuristic")
 
     image_b64 = rasters.get(page)
@@ -385,7 +386,7 @@ async def _maybe_rerank_caption(
     option_ids = candidate.get("linked_caption_ids", [])[:3]
     if (
         len(option_ids) <= 1
-        or not os.environ.get("GEMINI_API_KEY")
+        or not os.environ.get(key_env_for(provider))
         or not candidate.get("needs_vlm_rerank")
     ):
         return (candidate.get("best_caption_id"), 0.0, "heuristic")
@@ -464,7 +465,7 @@ async def _maybe_detect_subfigures(
     confidence: float,
     provider: str = "gemini",
 ) -> list[dict[str, Any]]:
-    if not os.environ.get("GEMINI_API_KEY"):
+    if not os.environ.get(key_env_for(provider)):
         return []
 
     detector = SubFigureDetector()

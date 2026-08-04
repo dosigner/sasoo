@@ -25,6 +25,7 @@ from services.document_manifest import (
     table_int_to_roman,
 )
 from services.model_registry import resolve as resolve_model
+from services.provider_state import key_env_for
 
 logger = logging.getLogger(__name__)
 
@@ -189,12 +190,13 @@ async def _repair_with_vlm(
     # 비어 있고, 그 상태로 돌아가면 최종 필터(_has_meaningful_grid)에서 100% 탈락한다.
     # 키가 없거나 호출이 실패했을 때 그 사실이 어디에도 남지 않아, 표가 통째로 사라져도
     # 원인을 알 수 없었다. 429·JSON 파싱 실패·타임아웃이 전부 같은 결과(빈 grid)로 보인다.
-    if not os.environ.get("GEMINI_API_KEY"):
+    key_env = key_env_for(provider)
+    if not os.environ.get(key_env):
         if not _has_meaningful_grid(_normalize_grid(candidate.get("text_grid"))):
             logger.warning(
-                "table resolver: GEMINI_API_KEY가 없어 격자 복원을 건너뛴다 — "
+                "table resolver: %s가 없어 격자 복원을 건너뛴다 — "
                 "이 후보는 격자가 비어 있어 표로 산출되지 못한다 (page=%s, id=%s)",
-                candidate.get("page_number"), candidate.get("id"),
+                key_env, candidate.get("page_number"), candidate.get("id"),
             )
         return (_normalize_grid(candidate.get("text_grid")), "heuristic", 0.0)
 

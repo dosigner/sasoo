@@ -1853,7 +1853,7 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         return _fake
 
     @contextlib.contextmanager
-    def _orchestration_patches(self, *, cache_fake, call_fake, visual_result=None):
+    def _orchestration_patches(self, *, cache_fake, call_fake, visual_result=None, provider="gemini"):
         paper = {
             "id": 7,
             "folder_name": "folder",
@@ -1886,8 +1886,13 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         )
         analysis_context_stub.build_reader_profile_block = lambda *a, **k: "PROFILE-BLOCK"
 
+        upload_calls: list = []
+
         async def _upload_stub(paper_id, path):
+            upload_calls.append((paper_id, path))
             return "files/uri-abc"
+
+        self._last_upload_calls = upload_calls
 
         interactions_stub = types.ModuleType("services.llm.interactions_client")
         interactions_stub.upload_pdf_for_paper = _upload_stub
@@ -1940,7 +1945,7 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         stack.enter_context(patch("api.analysis_routes._get_cached_phase_result", new=cache_fake))
         stack.enter_context(patch("api.analysis_routes.call_interaction", new=call_fake))
         stack.enter_context(patch(
-            "api.analysis_routes.active_provider", new=AsyncMock(return_value="gemini"),
+            "api.analysis_routes.active_provider", new=AsyncMock(return_value=provider),
         ))
         if visual_result is not None:
             stack.enter_context(patch("api.analysis_routes._run_visual",
@@ -2006,6 +2011,30 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         # 캐시된 visual 결과 텍스트가 프롬프트에 복원됨
         restored_text = recipe_call["contents"][1]["text"]
         self.assertIn("CACHED-VISUAL-MARKER", restored_text)
+
+    async def test_openai_provider_skips_pdf_upload_and_stays_stateless(self):
+        """리뷰 Critical 1 회귀 고정: provider=openai면 (GEMINI_API_KEY를 함께
+        보유한 양쪽 키 조합이어도) PDF를 업로드하지 않는다.
+
+        게이트 없이 업로드하면 pdf_uri가 채워진 채로 _run_chain_stage가 openai로
+        라우팅되고, openai_client._translate_parts는 document 파트를 지원하지
+        않아 ValueError로 첫 체인 스테이지가 매번 100% 실패했다."""
+        calls = []
+        call_fake = self._orch_call_fake(calls)
+
+        async def _cache_none(*a, **k):
+            return None
+
+        with self._orchestration_patches(
+            cache_fake=_cache_none, call_fake=call_fake, provider="openai",
+        ):
+            await analysis_routes._run_full_analysis(7)
+
+        self.assertEqual(self._last_upload_calls, [])
+        # pdf_uri가 비어 있으므로 모든 체인 스테이지가 stateless 폴백(store=False)이어야
+        # 한다 — 하나라도 store=True면 pdf_uri가 새고 있다는 뜻이다.
+        self.assertTrue(calls)
+        self.assertTrue(all(c["store"] is False for c in calls))
 
 
 class CitationPromptTests(unittest.IsolatedAsyncioTestCase):

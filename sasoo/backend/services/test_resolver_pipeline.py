@@ -371,6 +371,47 @@ class RepairWithVlmCallInteractionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(model_used, "heuristic")
             self.assertEqual(confidence, 0.0)
 
+    async def test_openai_provider_with_only_openai_key_enters_vlm_path(self) -> None:
+        """리뷰 Important 1 회귀 고정: provider=openai면 게이트가 GEMINI_API_KEY가
+        아니라 OPENAI_API_KEY 존재를 봐야 한다. 그렇지 않으면 OpenAI 단독 키
+        환경에서 격자 복원이 한 번도 안 돌아 text_grid가 빈 표 후보가 통째로
+        탈락한다(최종 필터 _has_meaningful_grid에서 100% 걸러짐)."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            paper_dir = Path(tmp_dir)
+            raster_rel = "pages/page_1.png"
+            _make_png(paper_dir / raster_rel)
+
+            manifest = {"pages": [{"page_number": 1, "raster_path": raster_rel}]}
+            candidate = {
+                "page_number": 1,
+                "bbox": [1.0, 2.0, 3.0, 4.0],
+                "text_grid": [],  # caption_fallback_crop 후보처럼 grid가 비어 있음
+            }
+
+            fake_call = AsyncMock(
+                return_value={
+                    "text": '{"rows": [["Name", "Value"], ["A", "1.0"]], "confidence": 0.5}',
+                    "model": "gpt-5.6-luna",
+                    "tokens_in": 1,
+                    "tokens_out": 1,
+                }
+            )
+
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("GEMINI_API_KEY", None)
+                os.environ["OPENAI_API_KEY"] = "test-key"
+                try:
+                    with patch("services.table_resolver.call_interaction", new=fake_call):
+                        grid, model_used, confidence = await _repair_with_vlm(
+                            candidate, manifest, paper_dir, provider="openai",
+                        )
+                finally:
+                    os.environ.pop("OPENAI_API_KEY", None)
+
+            fake_call.assert_awaited_once()
+            self.assertEqual(grid, [["Name", "Value"], ["A", "1.0"]])
+            self.assertNotEqual(model_used, "heuristic")
+
     async def test_call_interaction_exception_falls_back_to_heuristic_grid(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             paper_dir = Path(tmp_dir)
