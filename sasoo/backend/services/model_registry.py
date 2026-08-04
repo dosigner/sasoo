@@ -95,3 +95,21 @@ def resolve(role: str, provider: str) -> ModelChoice:
         return by_role[role]
     except KeyError:
         raise KeyError(f"unknown role: {role!r}") from None
+
+
+async def active_provider() -> str:
+    """현재 유효 provider. 설정(ai_provider)을 키 가용성으로 보정한 값.
+
+    api.settings의 _resolve_active_provider(기존 함수, 재구현하지 않음)를
+    그대로 호출한다. None(둘 다 키 없음)이면 "gemini"를 돌려준다 — 이 경우
+    어차피 분석 /run이 키 사전 점검에서 거절하므로 여기서 죽지 않는 것이 낫다.
+
+    함수 내부에서 지연 import하는 이유: api.settings가 임포트 시점에 무거운
+    라우터 의존성을 끌고 오고, model_registry는 services 계층이라 api 계층을
+    모듈 최상단에서 import하면 순환 import가 된다.
+    """
+    from api.settings import _get_all_settings, _resolve_active_provider
+
+    settings = await _get_all_settings()
+    resolved = _resolve_active_provider(settings, settings.get("ai_provider"))
+    return resolved or "gemini"

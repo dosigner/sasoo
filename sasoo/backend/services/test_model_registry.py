@@ -1,6 +1,8 @@
+import asyncio
 import unittest
+from unittest.mock import AsyncMock, patch
 
-from services.model_registry import ModelChoice, ROLES, resolve
+from services.model_registry import ModelChoice, ROLES, active_provider, resolve
 
 
 class TestGeminiColumnMatchesProduction(unittest.TestCase):
@@ -35,6 +37,37 @@ class TestGeminiColumnMatchesProduction(unittest.TestCase):
 
     def test_viz_image_plan_uses_pro(self):
         self.assertEqual(resolve("viz_image_plan", "gemini").model, "gemini-3.1-pro-preview")
+
+    def test_mermaid_and_chat_match_pre_task9_literals(self):
+        """Task 9 이전: get_mermaid/repair_mermaid/chat 핸들러가 레지스트리를 거치지
+        않고 MODEL_FLASH_HQ를 thinking_level 없이 직접 호출했다. Task 9가 이 두
+        role을 레지스트리 경유로 배선하므로, gemini 열이 그 실값과 바이트 단위로
+        같아야 provider가 gemini로 결정될 때 기존 경로가 무손상이다."""
+        for role in ("mermaid", "chat"):
+            with self.subTest(role=role):
+                choice = resolve(role, "gemini")
+                self.assertEqual(choice.model, "gemini-3.6-flash")
+                self.assertIsNone(choice.effort)
+
+
+class TestActiveProvider(unittest.TestCase):
+    def test_defaults_to_gemini_when_resolution_yields_none(self):
+        """둘 다 키가 없어 _resolve_active_provider가 None을 돌려주는 경우
+        (예: 최초 설치, 아직 아무 키도 등록 안 함) — active_provider는 여기서
+        죽지 않고 "gemini"를 돌려준다. 실제 거절은 /run 사전 점검이 한다."""
+        settings_stub = {"ai_provider": None, "openai_api_key": "", "gemini_api_key": ""}
+        with (
+            patch("api.settings._get_all_settings", new=AsyncMock(return_value=settings_stub)),
+            patch("api.settings._resolve_active_provider", return_value=None),
+        ):
+            result = asyncio.run(active_provider())
+        self.assertEqual(result, "gemini")
+
+    def test_delegates_to_settings_resolution(self):
+        settings_stub = {"ai_provider": "openai", "openai_api_key": "k", "gemini_api_key": ""}
+        with patch("api.settings._get_all_settings", new=AsyncMock(return_value=settings_stub)):
+            result = asyncio.run(active_provider())
+        self.assertEqual(result, "openai")
 
 
 class TestOpenAIColumn(unittest.TestCase):

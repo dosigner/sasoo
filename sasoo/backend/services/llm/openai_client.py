@@ -168,13 +168,18 @@ async def call_interaction(
             return await loop.run_in_executor(_executor_for(lane), _do_call)
         except Exception as exc:  # noqa: BLE001 - CancelledError는 BaseException이라 통과
             last_exc = exc
-            if attempt >= len(_RETRY_DELAYS) or not _is_retryable(exc):
-                raise
-            delay = _RETRY_DELAYS[attempt]
-            logger.warning("openai call failed (%s), retrying in %ss", exc, delay)
-            await asyncio.sleep(delay)
+            if not _is_retryable(exc):
+                # gemini_client와 동형 래핑 — 셔션 배선 이후 소비자(analysis_routes 등)가
+                # 두 provider를 구분 없이 다루므로 예외 타입도 맞춰야 한다.
+                raise RuntimeError(
+                    f"OpenAI call failed (non-retryable): {exc}"
+                ) from exc
+            if attempt < len(_RETRY_DELAYS):
+                delay = _RETRY_DELAYS[attempt]
+                logger.warning("openai call failed (%s), retrying in %ss", exc, delay)
+                await asyncio.sleep(delay)
 
-    raise last_exc  # 도달 불가 — 루프가 반드시 return 또는 raise 한다
+    raise RuntimeError(f"OpenAI call failed after retries: {last_exc}") from last_exc
 
 
 async def stream_interaction(

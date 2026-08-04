@@ -213,9 +213,25 @@ class TestCallInteractionBehavior(unittest.TestCase):
         fake_client.responses.create.side_effect = _FakeStatusError(400)
         with patch("services.llm.openai_client._get_client", return_value=fake_client), \
              patch("services.llm.openai_client._RETRY_DELAYS", [0, 0]):
-            with self.assertRaises(_FakeStatusError):
+            # gemini_client와 동형 래핑(RuntimeError) — 셔션 배선 이후 소비자가 provider를
+            # 구분하지 않고 예외를 다루므로 두 클라이언트의 예외 타입이 같아야 한다.
+            with self.assertRaisesRegex(RuntimeError, "non-retryable"):
                 asyncio.run(openai_client.call_interaction("필터", lane="pipeline"))
         self.assertEqual(fake_client.responses.create.call_count, 1)
+
+    def test_raises_runtime_error_after_retries_exhausted(self):
+        """재시도 가능한 오류(503 등)가 모든 attempt에서 반복되면, 마지막 원인을
+        RuntimeError로 감싸 던진다 — gemini_client.call_interaction의 "after retries"
+        폴백과 동형이다."""
+        from services.llm import openai_client
+
+        fake_client = MagicMock()
+        fake_client.responses.create.side_effect = _FakeStatusError(503)
+        with patch("services.llm.openai_client._get_client", return_value=fake_client), \
+             patch("services.llm.openai_client._RETRY_DELAYS", [0, 0]):
+            with self.assertRaisesRegex(RuntimeError, "after retries"):
+                asyncio.run(openai_client.call_interaction("재시도소진", lane="pipeline"))
+        self.assertEqual(fake_client.responses.create.call_count, 3)
 
 
 class _FakeStreamEvent:
