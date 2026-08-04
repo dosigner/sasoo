@@ -106,6 +106,11 @@ print(f"[SPEC] OpenDataLoader package data files collected: {len(odl_data)}")
 # required so packaged macOS/Windows builds retain Keychain/Credential Manager.
 keyring_hiddenimports = collect_submodules("keyring.backends")
 
+# `openai` (services/llm/openai_client.py — 리뷰 Important I4) has many submodules
+# resolved dynamically by the SDK; explicit collection avoids ModuleNotFoundError
+# in the frozen build for code paths PyInstaller's static analysis can't see.
+openai_hiddenimports = collect_submodules("openai")
+
 a = Analysis(
     ['main.py'],
     pathex=[str(backend_dir)],
@@ -161,6 +166,13 @@ a = Analysis(
         # Google AI (google-genai package)
         'google.genai',
         'google.genai.types',
+
+        # OpenAI (Responses API 클라이언트 — services/llm/openai_client.py). google.genai와
+        # 대칭으로 명시 나열에 더해, openai SDK는 서브모듈이 많고 동적 임포트가 있어
+        # collect_submodules로도 함께 수집한다(아래 openai_hiddenimports).
+        'openai',
+        'openai.types',
+        *openai_hiddenimports,
 
         # Anthropic
         'anthropic',
