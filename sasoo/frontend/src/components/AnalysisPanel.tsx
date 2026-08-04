@@ -1132,7 +1132,6 @@ export default function AnalysisPanel({
                   visibleTab === tab.key ? 'segmented-control__item-active' : ''
                 } ${tab.disabled ? 'segmented-control__item-disabled' : ''}`}
               >
-                <AppIcon name={tab.icon} className="h-4 w-4" />
                 {tab.label}
               </button>
             ))}

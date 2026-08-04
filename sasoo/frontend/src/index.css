@@ -503,7 +503,7 @@
   }
 
   .segmented-control__item {
-    @apply inline-flex min-h-[2.25rem] items-center justify-center gap-2 border-b-2 border-transparent px-2.5 py-2 text-xs font-medium text-fg-muted transition-colors duration-200 ease-out;
+    @apply inline-flex min-h-[2.25rem] items-center justify-center border-b-2 border-transparent px-2.5 py-2 text-xs font-medium text-fg-muted transition-[color] duration-150;
     border-radius: var(--radius-control);
   }
 
@@ -512,7 +512,7 @@
   }
 
   .segmented-control__item-active {
-    @apply rounded-none border-accent text-accent;
+    @apply rounded-none border-accent text-fg font-[650];
   }
 
   .segmented-control__item-disabled {
