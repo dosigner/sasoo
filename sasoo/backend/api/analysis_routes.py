@@ -2918,7 +2918,13 @@ async def get_analysis_status(paper_id: int):
             tin = r.get("tokens_in") or 0
             tout = r.get("tokens_out") or 0
             stale_model: Optional[str] = None
-            if stale_provider:
+            # 스크리닝 게이트로 스킵된 phase("system")는 provider/model/effort 없이
+            # 저장돼(_store_skipped_phase_result) config_hash가 고정 상수 해시라
+            # 어떤 현재 설정과도 절대 일치하지 않는다 — 가드가 없으면 provider가
+            # 안 바뀌어도, 심지어 같은 스킵 결정으로 재분석해도 매번 "system로
+            # 분석됨" 배지가 뜬다(리뷰 Important). 스킵은 "다른 모델로 분석됨"이
+            # 아니므로 애초에 stale 판정 대상에서 제외한다.
+            if stale_provider and r.get("model_used") != "system":
                 try:
                     choice = resolve_model(phase_name, stale_provider)
                     current_hash = _config_hash(stale_provider, choice.model, choice.effort)

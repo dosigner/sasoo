@@ -543,6 +543,32 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(screening_phase.stale_model)
         self.assertEqual(screening_phase.status, "pending")
 
+    async def test_get_analysis_status_skip_row_is_never_stale(self):
+        # 리뷰 Important(실 DB로 재현): 스크리닝 게이트로 스킵된 phase는
+        # _store_skipped_phase_result가 provider/model/effort 없이 저장해
+        # config_hash가 고정 상수 해시(compute_input_hash("", None, None, None))다.
+        # 어떤 현재 설정의 config_hash와도 절대 같을 수 없어, 가드가 없으면
+        # provider가 안 바뀌어도(같은 스킵 결정으로 재분석해도) 매번 "system로
+        # 분석됨"이 오탐된다. model_used="system" 행은 애초에 조회를 타면 안 된다.
+        paper = {"id": 7, "status": "completed"}
+        latest_rows = {
+            "recipe": _row("recipe", '{"skipped": true}', model_used="system"),
+        }
+        with (
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)),
+            patch("api.analysis_routes.get_latest_completed_phase_rows",
+                  new=AsyncMock(return_value=latest_rows)),
+            # 가드가 뚫리면 이 mock이 오탐 배지를 그대로 돌려준다 -- assert_not_awaited로
+            # "애초에 호출되지 않아야 한다"를 강하게 고정한다.
+            patch("api.analysis_routes._lookup_phase_result_with_staleness",
+                  new=AsyncMock(return_value={"stale_model": "system"})) as lookup_mock,
+        ):
+            status = await analysis_routes.get_analysis_status(7)
+
+        recipe_phase = next(p for p in status.phases if p.phase.value == "recipe")
+        self.assertIsNone(recipe_phase.stale_model)
+        lookup_mock.assert_not_awaited()
+
     async def test_get_analysis_status_tolerates_stale_lookup_failure(self):
         # provider/registry 조회가 실패해도(예: 설정 DB 미초기화) /status 자체는
         # 죽지 않고 stale_model 없이 정상 응답해야 한다 -- 배지는 nice-to-have.
