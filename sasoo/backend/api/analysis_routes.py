@@ -10,6 +10,7 @@ Phases:
 """
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -84,6 +85,7 @@ from api.analysis_helpers import (
     _SYSTEM_INSTRUCTION_KO,
 )
 from services.model_registry import ModelChoice, active_provider, resolve as resolve_model
+from services.provider_state import key_env_for
 from api.report_service import (
     _format_phase_data,
     _generate_paperbanana_image,
@@ -178,23 +180,58 @@ def _config_hash(provider: str | None, model: str | None, effort: str | None) ->
     return compute_input_hash("", provider=provider, model=model, effort=effort)
 
 
+def _stale_model_for_row(row: dict, current_hash: str, current_model: str) -> Optional[str]:
+    """phase의 최신 행 하나(row)만 보고 stale_model을 판정한다(추가 조회 없음, 순수함수).
+
+    - config_hash가 있고 current_hash와 같으면: 이 설정으로 이미 분석해본 적이
+      있다는 뜻 -> stale 아님(None).
+    - config_hash가 있고 다르면(config_hash 컬럼 도입 이후 행인데 지금 설정과
+      다름 — effort만 바뀐 경우 포함): stale, 옛 model_used를 그대로 싣는다
+      (스펙 §D — 캐시 키가 다르면 다른 결과다).
+    - config_hash가 NULL이면: config_hash 컬럼은 additive 마이그레이션이라 그
+      이전에 쓰인 행은 전부 NULL이다 — 이 경우 "다른 설정으로 분석됨"을 판단할
+      근거가 model_used뿐이므로, 옛 model_used를 현재 모델명과 직접 비교한다.
+      같으면 stale 아님(리뷰 Important I1 — 안 그러면 아무것도 안 바꾼 사용자의
+      기존 분석 전부에 "다른 모델로 분석됨" 배지가 상시 오탐된다), 다르면 stale.
+    """
+    config_hash = row.get("config_hash")
+    if config_hash is not None:
+        return None if config_hash == current_hash else row.get("model_used")
+    return None if row.get("model_used") == current_model else row.get("model_used")
+
+
 async def _lookup_phase_result_with_staleness(
     paper_id: int,
     phase: str,
     current_hash: str,
+    current_model: str,
+    *,
+    latest_row: Optional[dict] = None,
 ) -> Optional[dict]:
-    """phase 결과의 2단계 조회(스펙 §D).
+    """phase 결과의 2단계 조회(스펙 §D) + 레거시 행 오탐 수정(I1) + 폴링 부하 완화(I2).
+
+    latest_row: 호출측이 이미 들고 있는 이 phase의 최신 analysis_results 행
+    (예: get_latest_completed_phase_rows가 SELECT *로 이미 가져온 dict — 거기엔
+    config_hash·model_used가 이미 있다). 넘기면 이 함수는 DB를 전혀 조회하지
+    않고 그 값만으로 stale을 판정한다 — /status가 2초 간격으로 폴링하며
+    phase마다 최대 2쿼리씩 태우던 부하(리뷰 Important I2)를 없앤다. 대가로
+    "최신 행은 다른 설정인데 그보다 오래된 행 중 현재 설정과 일치하는 게
+    있는가"(stage-1의 전체 이력 매치)는 더 보지 않는다 — 최신 행 하나만 본다.
+    None이면(호출측에 미리 가져온 행이 없으면) 아래 2단계 DB 조회로 폴백한다.
 
     1. 현재 (provider, model, effort) 지문(config_hash)으로 조회 → 히트하면
        이 설정으로 이미 분석해본 적이 있다는 뜻이라 stale_model=None으로 그대로
        쓴다.
-    2. 미스면 phase의 최신 행을 stale_model(그 행을 만든 옛 모델명)과 함께
-       돌려준다 — "다른 모델로 분석됨" 배지 + 재분석 안내(get_analysis_status)의
-       데이터 소스. 행이 아예 없으면 None.
-
-    캐시 키가 다르면 다른 결과다: 옛 행의 model_used가 현재 모델과 같아도
-    effort만 달랐다면 stale로 표시한다(config_hash가 그 차이를 흡수한다).
+    2. 미스면 phase의 최신 행을 stale_model과 함께 돌려준다 — "다른 모델로
+       분석됨" 배지 + 재분석 안내(get_analysis_status)의 데이터 소스. 행이
+       아예 없으면 None. stale_model 판정은 _stale_model_for_row를 공유한다
+       (레거시 행 NULL config_hash 처리 포함).
     """
+    if latest_row is not None:
+        parsed = dict(latest_row)
+        parsed["stale_model"] = _stale_model_for_row(parsed, current_hash, current_model)
+        return parsed
+
     row = await fetch_one(
         """
         SELECT * FROM analysis_results
@@ -221,7 +258,7 @@ async def _lookup_phase_result_with_staleness(
     if latest is None:
         return None
     parsed = parse_phase_row(latest)
-    parsed["stale_model"] = parsed.get("model_used")
+    parsed["stale_model"] = _stale_model_for_row(parsed, current_hash, current_model)
     return parsed
 
 
@@ -1084,6 +1121,76 @@ def _build_persona_prompt(agent, stage: str | None = None) -> str:
 # 긴 논문에서도 프롬프트가 무한정 커지지 않도록 안전판을 둔다(리뷰 Critical 수정).
 _OPENAI_DOC_TEXT_CHAR_LIMIT = 150_000
 
+# OpenAI 체인 첫 호출(visual)에 별도 첨부하는 그림 이미지 장수 상한(스펙 R1).
+# OpenAI는 PDF 파트를 못 보므로(doc_text 텍스트 주입만) 그림은 이미지 파트로 직접
+# 붙여야 "그림을 봤다"가 참이 된다. 무한정 붙이면 요청이 무거워지므로 상한을 둔다.
+_OPENAI_VISUAL_IMAGE_LIMIT = 8
+
+# figure_service.py의 단일 그림 이미지 mime 추정과 같은 표 — 그림 추출이 사실상
+# PNG만 만들지만(figure_resolver.py) 과거 자산·수동 업로드 대비 나머지도 인식한다.
+_IMAGE_MIME_BY_SUFFIX = {
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".gif": "image/gif", ".webp": "image/webp",
+}
+
+
+async def _load_openai_figure_parts(paper_id: int, paper_dir: Path) -> list[dict]:
+    """OpenAI visual 첫 호출에 첨부할 그림 이미지 파트를 만든다(리뷰 Important I3).
+
+    스펙 R1: "visual 스테이지는 추출된 그림 이미지 파트를 별도 첨부한다." OpenAI
+    경로는 document 파트를 지원하지 않아(_translate_parts) PDF를 못 보므로,
+    doc_text 텍스트 주입만으로는 프롬프트의 "PDF를 직접 보고"가 거짓이 된다 — 이
+    함수가 그 간극을 메운다. 최대 _OPENAI_VISUAL_IMAGE_LIMIT장만 읽는다. 개별
+    그림 파일이 없거나 읽기 실패하면 그 그림만 건너뛰고 경고 로그를 남긴다 —
+    분석 전체를 막지 않는다.
+    """
+    rows = await fetch_all(
+        """
+        SELECT file_path FROM figures
+        WHERE paper_id = ?
+          AND COALESCE(extraction_status, 'resolved') != 'rejected'
+          AND file_path IS NOT NULL AND file_path != ''
+        ORDER BY id ASC
+        LIMIT ?
+        """,
+        (paper_id, _OPENAI_VISUAL_IMAGE_LIMIT),
+    )
+    parts: list[dict] = []
+    for row in rows:
+        file_path = row.get("file_path")
+        if not file_path:
+            continue
+        candidate = Path(file_path)
+        resolved = candidate if candidate.is_absolute() else (paper_dir / candidate)
+        try:
+            image_bytes = resolved.read_bytes()
+        except OSError as exc:
+            logger.warning(
+                "OpenAI visual figure image load failed (paper %s, %s): %s",
+                paper_id, resolved, exc,
+            )
+            continue
+        mime_type = _IMAGE_MIME_BY_SUFFIX.get(resolved.suffix.lower(), "image/png")
+        parts.append({
+            "type": "image",
+            "data": base64.b64encode(image_bytes).decode("ascii"),
+            "mime_type": mime_type,
+        })
+    return parts
+
+
+def _doc_reference_phrase(provider: str) -> str:
+    """체인 프롬프트가 가리키는 입력 소스 문구(리뷰 Important I3).
+
+    Gemini 체인은 PDF 파일을 실제로 첨부하므로 "위 논문 PDF"가 사실이다. OpenAI
+    체인은 PDF를 못 보고(document 파트 미지원) 로컬 추출 텍스트 + (visual 스테이지
+    한정) 그림 이미지 파트만 받으므로, 그대로 "PDF"라고 쓰면 거짓 지시문이 된다 —
+    각 호출부가 이 함수로 provider에 맞는 문구를 골라 쓴다.
+    """
+    if provider == "openai":
+        return "위 논문 본문 텍스트(첫 단계에 첨부된 그림 이미지 포함)"
+    return "위 논문 PDF"
+
 
 async def _run_chain_stage(
     *,
@@ -1097,6 +1204,7 @@ async def _run_chain_stage(
     restart_context: str = "",
     provider: str = "gemini",
     doc_text: str = "",
+    figure_parts: Optional[list[dict]] = None,
 ) -> dict:
     """체인/폴백 모드에 맞춰 call_interaction을 호출한다.
 
@@ -1104,13 +1212,19 @@ async def _run_chain_stage(
       None)만 PDF 문서를 input에 포함하고, 이후 스테이지는 지시문만 보내 서버 상태를
       신뢰한다. 단, 중간 스테이지 캐시 히트/스킵으로 previous_interaction_id가 유실된
       체인 재시작 케이스에는 restart_context(이전 스테이지 결과 텍스트)를 PDF와 함께
-      프롬프트에 실어 서버 상태 단절로 잃은 이전 분석 컨텍스트를 복원한다.
+      프롬프트에 실어 서버 상태 단절로 잃은 이전 분석 컨텍스트를 복원한다. figure_parts는
+      이 경로에서 쓰지 않는다(Gemini는 PDF에서 직접 그림을 본다).
     - doc_text 있음(OpenAI 체인 모드, 스펙 R1): store=True. OpenAI는 document 파트를
       지원하지 않아 PDF 업로드 대신 로컬 추출 텍스트를 체인 첫 호출에 1회 주입하고,
       이후 스테이지는 pdf_uri 체인과 동일하게 지시문만 보내 서버 상태를 신뢰한다.
       restart_context 복원 경로도 pdf_uri 체인과 동일하게 적용된다. 주입 라벨은 실제
       절단 여부를 그대로 알린다 — doc_text 길이가 _OPENAI_DOC_TEXT_CHAR_LIMIT 이상이면
-      "절단" 라벨, 아니면 "전문" 라벨(호출측이 이미 그 상한으로 잘라 넘긴다).
+      "절단" 라벨, 아니면 "전문" 라벨(호출측이 이미 그 상한으로 잘라 넘긴다). 체인 첫
+      호출(previous_interaction_id None)에 figure_parts가 있으면 이미지 파트들을
+      텍스트 파트 앞에 붙여 contents를 리스트로 조립한다(스펙 R1 — visual 스테이지가
+      추출된 그림을 별도 첨부). 이미지가 없으면(빈 리스트/None) 기존처럼 문자열
+      그대로 보낸다. 후속 스테이지(previous_interaction_id 있음)는 figure_parts를
+      받아도 무시한다 — 서버가 이미 첫 호출에서 본 이미지를 기억한다.
     - 둘 다 없음(폴백): stateless(store=False). 기존 phase_inputs 텍스트를 프롬프트에
       삽입한다.
 
@@ -1141,7 +1255,11 @@ async def _run_chain_stage(
                         doc_label = f"[논문 본문({_OPENAI_DOC_TEXT_CHAR_LIMIT:,}자 절단)]"
                     else:
                         doc_label = "[논문 전문]"
-                    contents = f"{doc_label}\n{doc_text}\n\n{chain_text}"
+                    text_content = f"{doc_label}\n{doc_text}\n\n{chain_text}"
+                    if figure_parts:
+                        contents = [*figure_parts, {"type": "text", "text": text_content}]
+                    else:
+                        contents = text_content
             else:
                 contents = prompt_chain
             choice = _stage_choice(phase, provider)
@@ -1200,9 +1318,14 @@ async def _run_visual(
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
     doc_text: str = "",
+    figure_parts: Optional[list[dict]] = None,
     provider: str = "gemini",
 ) -> dict:
-    """Phase 3: Visual verification - analyze figures, assess quality."""
+    """Phase 3: Visual verification - analyze figures, assess quality.
+
+    figure_parts는 OpenAI 체인 첫 호출(이 phase)에서만 쓰인다(스펙 R1) — Gemini는
+    PDF에서 직접 그림을 보므로 무시된다. _run_chain_stage로 그대로 전달한다.
+    """
     phase_status = PhaseStatus(
         phase=AnalysisPhase.VISUAL,
         status="running",
@@ -1315,7 +1438,7 @@ async def _run_visual(
 
     instruction = _VISUAL_INSTRUCTION
 
-    prompt_chain = f"{instruction}\n\n위 논문 PDF를 직접 보고 시각 요소를 분석해줘.{figure_desc}"
+    prompt_chain = f"{instruction}\n\n{_doc_reference_phrase(provider)}를 직접 보고 시각 요소를 분석해줘.{figure_desc}"
     prompt_fallback = f"논문 관련 텍스트:\n{visual_input}\n{figure_desc}\n\n{instruction}"
     cache_key = prompt_fallback
 
@@ -1343,6 +1466,7 @@ async def _run_visual(
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
         doc_text=doc_text,
+        figure_parts=figure_parts,
         response_schema=_VISUAL_SCHEMA,
         provider=provider,
     )
@@ -1491,7 +1615,7 @@ steps(단계별 상세 설명, 온도·시간·속도 등 포함), critical_note
 expected_results(예상 결과), safety_notes(안전 주의사항), confidence(0.0~1.0),
 missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibility_score(0.0~1.0), score_rationale(점수 근거)."""
 
-    prompt_chain = f"{instruction}\n\n위 논문 PDF와 이전 분석을 바탕으로 실험 레시피를 추출해줘."
+    prompt_chain = f"{instruction}\n\n{_doc_reference_phrase(provider)}와 이전 분석을 바탕으로 실험 레시피를 추출해줘."
     prompt_fallback = f"논문 텍스트:\n{recipe_input}\n\n{instruction}"
     cache_key = prompt_fallback
 
@@ -1611,7 +1735,7 @@ async def _run_deep_dive(
     stateless_context = _stateless_digest(screening_result_text or "", citation_result_text or "")
 
     prompt_chain = (
-        f"{instruction}\n\n위 논문 PDF와 앞선 체인 단계(시각·레시피) 결과, 그리고 아래 "
+        f"{instruction}\n\n{_doc_reference_phrase(provider)}와 앞선 체인 단계(시각·레시피) 결과, 그리고 아래 "
         "스크리닝·인용 분석 digest를 바탕으로 포괄적인 심층 분석을 제공해줘."
     )
     if stateless_context:
@@ -1933,7 +2057,7 @@ category(experimental_protocol|algorithm_flow|signal_flow|system_architecture|co
 실험 방법을 최대한 이해할 수 있는 시각화를 우선시해.
 고려할 것: 프로세스 흐름, 파라미터 관계, 장비 구성, 신호 경로, 비교표."""
 
-    prompt_chain = f"{instruction}\n\n위 논문 PDF와 이전 분석 단계 결과를 바탕으로 시각화 계획을 세워줘."
+    prompt_chain = f"{instruction}\n\n{_doc_reference_phrase(provider)}와 이전 분석 단계 결과를 바탕으로 시각화 계획을 세워줘."
     prompt_fallback = (
         f"{instruction}\n\n--- 분석 결과 (Phase 1-4) ---\n{prev_context[:9000]}\n\n"
         f"--- 관련 텍스트 요약 ---\n{visualization_input}"
@@ -2484,6 +2608,7 @@ async def _run_full_analysis(paper_id: int):
         chain_prev_id: Optional[str] = None
         pdf_uri: Optional[str] = None
         doc_text: str = ""
+        figure_parts: list[dict] = []
         if provider == "gemini":
             pdf_file = _find_paper_pdf(paper_dir)
             if pdf_file is not None:
@@ -2502,6 +2627,9 @@ async def _run_full_analysis(paper_id: int):
             # paper_text(5,000자 절단본)가 아니다. _OPENAI_DOC_TEXT_CHAR_LIMIT 상한만
             # 적용하고, 그 안이면 절단 없이 그대로 넣는다.
             doc_text = full_text[:_OPENAI_DOC_TEXT_CHAR_LIMIT]
+            # PDF를 못 보는 대신(스펙 R1) 추출된 그림을 이미지 파트로 최대 8장 직접
+            # 첨부한다 — visual 스테이지(체인 첫 호출)에만 실린다(리뷰 Important I3).
+            figure_parts = await _load_openai_figure_parts(paper_id, paper_dir)
 
         # Phase 2: Citation Analysis (after screening, before visual)
         # TODO(parser-hybrid): visual 단계가 gemini로 승격되면 sections/references는 gemini 텍스트라
@@ -2536,6 +2664,7 @@ async def _run_full_analysis(paper_id: int):
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
             doc_text=doc_text,
+            figure_parts=figure_parts,
             provider=provider,
         )
         if pdf_uri or doc_text:
@@ -2746,7 +2875,7 @@ async def run_analysis(paper_id: int, background_tasks: BackgroundTasks):
     # 없으면 백그라운드 태스크를 큐에 올리기 전에 즉시 400으로 거절한다 —
     # 큐에 올린 뒤 매 단계 LLM 호출에서 산발적으로 실패하는 것보다 낫다.
     provider = await active_provider()
-    key_env = "OPENAI_API_KEY" if provider == "openai" else "GEMINI_API_KEY"
+    key_env = key_env_for(provider)
     if not os.getenv(key_env):
         provider_label = "OpenAI" if provider == "openai" else "Gemini"
         raise HTTPException(
@@ -2904,12 +3033,16 @@ async def get_analysis_status(paper_id: int):
 
     # Task 11(스펙 §D): stale_model 배지용 현재 provider. 조회 실패해도(설정
     # DB 미초기화 등) 상태 응답 자체는 죽으면 안 되므로 관대하게 폴백한다 —
-    # provider가 None이면 아래 루프에서 배지 계산을 그냥 건너뛴다.
+    # provider가 None이면 아래 루프에서 배지 계산을 그냥 건너뛴다. 완료된 phase가
+    # 하나도 없으면(배지를 매길 대상 자체가 없음) 애초에 호출하지 않는다 — /status는
+    # 분석 진행 중 2초 간격으로 폴리되므로(리뷰 Important I2) 불필요한 settings
+    # 조회(_get_all_settings, fetch_one 20회+commit)를 아낀다.
     stale_provider: Optional[str] = None
-    try:
-        stale_provider = await active_provider()
-    except Exception:
-        logger.debug("stale_model 조회용 provider 확인 실패 — 배지 없이 진행", exc_info=True)
+    if completed_phases:
+        try:
+            stale_provider = await active_provider()
+        except Exception:
+            logger.debug("stale_model 조회용 provider 확인 실패 — 배지 없이 진행", exc_info=True)
 
     for phase_name in phase_order:
         r = latest_results.get(phase_name)
@@ -2928,8 +3061,12 @@ async def get_analysis_status(paper_id: int):
                 try:
                     choice = resolve_model(phase_name, stale_provider)
                     current_hash = _config_hash(stale_provider, choice.model, choice.effort)
+                    # latest_row=r: get_latest_completed_phase_rows가 이미 SELECT *로
+                    # 가져온 이 phase의 최신 행을 그대로 넘긴다 — _lookup_phase_result_
+                    # with_staleness가 같은 행을 또 fetch_one 2회로 재조회하지 않게
+                    # 한다(리뷰 Important I2, /status 2초 폴링 부하).
                     staleness = await _lookup_phase_result_with_staleness(
-                        paper_id, phase_name, current_hash,
+                        paper_id, phase_name, current_hash, choice.model, latest_row=r,
                     )
                     if staleness:
                         stale_model = staleness.get("stale_model")

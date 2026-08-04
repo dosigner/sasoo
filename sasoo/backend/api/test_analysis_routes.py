@@ -16,13 +16,16 @@ I/O(파일·DB·LLM 호출)는 ambient 스텁이 아니라 각 테스트에서 p
 모듈 더블이 필요하면 patch.dict(sys.modules, ...)로 테스트 스코프 안에서만 갈아끼운다.
 """
 
+import base64
 import contextlib
 import json
 import os
 import sys
+import tempfile
 import threading
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from api import analysis_routes, figure_service
@@ -475,18 +478,37 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         fetch_all_mock.assert_not_awaited()
 
     # -- Task 11: 다른 모델로 분석된 결과 배지 (스펙 §D 2단계 조회) -------------
+    # -- 리뷰 Important I1: config_hash가 NULL인 레거시 행(마이그레이션 이전
+    #    분석 결과 — additive 컬럼이라 전부 NULL)의 stale 판정이 세 시나리오로
+    #    갈린다. 예전 단일 테스트가 "레거시+같은 모델"까지 stale로 고정해
+    #    아무 것도 안 바꾼 Gemini 사용자에게 배지가 상시 오탐됐다.
 
-    async def test_lookup_phase_result_with_staleness_reports_old_model(self):
-        """현재 키로 미스, 옛 행 존재 -> stale_model에 옛 모델명이 실린다(스펙 §D)."""
-        old_row = {"result": '{"ok": true}', "model_used": "gemini-3.6-flash",
-                   "input_hash": "옛키"}
-        with (
-            patch("api.analysis_routes.fetch_one",
-                  new=AsyncMock(side_effect=[None, old_row])),  # 1차: 현재 키 미스, 2차: 최신 행
-        ):
+    async def test_lookup_phase_result_with_staleness_legacy_same_model_is_not_stale(self):
+        """레거시 행(config_hash NULL) + model_used가 현재 모델과 같으면 stale
+        아님(None) — I1 핵심 수정. 이게 없으면 아무 것도 안 바꾼 사용자의 기존
+        분석 전부에 "다른 모델로 분석됨" 배지가 뜬다."""
+        old_row = {"result": '{"ok": true}', "model_used": "gemini-3.6-flash", "config_hash": None}
+        with patch("api.analysis_routes.fetch_one", new=AsyncMock(side_effect=[None, old_row])):
             payload = await analysis_routes._lookup_phase_result_with_staleness(
-                paper_id=7, phase="recipe", current_hash="새키")
+                paper_id=7, phase="recipe", current_hash="새키", current_model="gemini-3.6-flash")
+        self.assertIsNone(payload["stale_model"])
+
+    async def test_lookup_phase_result_with_staleness_legacy_different_model_is_stale(self):
+        """레거시 행 + model_used가 현재 모델과 다르면 진짜 모델 교체 -> stale."""
+        old_row = {"result": '{"ok": true}', "model_used": "gemini-3.6-flash", "config_hash": None}
+        with patch("api.analysis_routes.fetch_one", new=AsyncMock(side_effect=[None, old_row])):
+            payload = await analysis_routes._lookup_phase_result_with_staleness(
+                paper_id=7, phase="recipe", current_hash="새키", current_model="gpt-5.6-luna")
         self.assertEqual(payload["stale_model"], "gemini-3.6-flash")
+
+    async def test_lookup_phase_result_with_staleness_config_hash_mismatch_is_stale(self):
+        """config_hash가 있는(신규 스키마 이후) 행인데 현재 해시와 다르면 stale —
+        model_used가 같아도(effort만 바뀐 경우) 잡아야 한다(스펙 §D, 회귀 방어)."""
+        old_row = {"result": '{"ok": true}', "model_used": "gpt-5.6-luna", "config_hash": "옛키"}
+        with patch("api.analysis_routes.fetch_one", new=AsyncMock(side_effect=[None, old_row])):
+            payload = await analysis_routes._lookup_phase_result_with_staleness(
+                paper_id=7, phase="recipe", current_hash="새키", current_model="gpt-5.6-luna")
+        self.assertEqual(payload["stale_model"], "gpt-5.6-luna")
 
     async def test_lookup_phase_result_with_staleness_hit_has_no_stale_model(self):
         # 현재 (provider, model, effort) 지문으로 히트하면 이미 이 설정으로
@@ -494,7 +516,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         current_row = {"result": '{"ok": true}', "model_used": "gpt-5.6-luna", "config_hash": "새키"}
         with patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=current_row)) as fetch_mock:
             payload = await analysis_routes._lookup_phase_result_with_staleness(
-                paper_id=7, phase="recipe", current_hash="새키")
+                paper_id=7, phase="recipe", current_hash="새키", current_model="gpt-5.6-luna")
         self.assertIsNone(payload["stale_model"])
         fetch_mock.assert_awaited_once()
 
@@ -502,8 +524,21 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         # 이 phase가 아예 실행된 적이 없으면(신규 논문) None -- 배지도 없다.
         with patch("api.analysis_routes.fetch_one", new=AsyncMock(side_effect=[None, None])):
             payload = await analysis_routes._lookup_phase_result_with_staleness(
-                paper_id=7, phase="recipe", current_hash="새키")
+                paper_id=7, phase="recipe", current_hash="새키", current_model="gpt-5.6-luna")
         self.assertIsNone(payload)
+
+    async def test_lookup_phase_result_with_staleness_latest_row_skips_query(self):
+        """리뷰 Important I2: latest_row를 넘기면 DB 조회 없이 그 값만으로
+        판정한다 — /status가 2초 간격 폴링하며 phase마다 추가 fetch_one을
+        태우던 부하를 없앤다."""
+        row = {"result": '{"ok": true}', "model_used": "gemini-3.6-flash", "config_hash": None}
+        with patch("api.analysis_routes.fetch_one", new=AsyncMock()) as fetch_mock:
+            payload = await analysis_routes._lookup_phase_result_with_staleness(
+                paper_id=7, phase="recipe", current_hash="새키", current_model="gpt-5.6-luna",
+                latest_row=row,
+            )
+        self.assertEqual(payload["stale_model"], "gemini-3.6-flash")
+        fetch_mock.assert_not_awaited()
 
     def test_config_hash_differs_by_effort_only(self):
         # 스펙 §D: 모델이 같아도 effort가 다르면 다른 캐시 키 -> stale 판정 근거.
@@ -514,34 +549,52 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(analysis_routes._config_hash("openai", "gpt-5.6-luna", "low"), low)
 
     async def test_get_analysis_status_surfaces_stale_model_badge(self):
-        # get_analysis_status가 완료된 phase마다 2단계 조회를 태워 stale_model을
-        # 응답에 싣는지 배선을 확인한다. active_provider는 클래스 setUp에서
-        # "gemini"로 고정.
+        # get_analysis_status가 완료된 phase마다 latest_results 딕셔너리(이미 SELECT *로
+        # 가져온 행)만으로 stale_model을 판정해 응답에 싣는지 확인한다(리뷰 Important I2 —
+        # _lookup_phase_result_with_staleness를 mock으로 대체하지 않고 실구현을 그대로
+        # 태운다). active_provider는 클래스 setUp에서 "gemini"로 고정 -> recipe의 현재
+        # 모델은 gemini-3.6-flash. 레거시 행(config_hash 없음) + 다른 모델명으로 실제
+        # stale 케이스를 재현한다.
         paper = {"id": 7, "status": "completed"}
         latest_rows = {
-            "recipe": _row("recipe", '{"title":"old"}', model_used="gemini-3.6-flash"),
+            "recipe": _row("recipe", '{"title":"old"}', model_used="gemini-3.5-flash-lite"),
         }
 
-        async def _fake_staleness(paper_id, phase, current_hash):
-            del paper_id, current_hash
-            if phase == "recipe":
-                return {"stale_model": "gemini-3.6-flash"}
-            return None
-
         with (
-            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)),
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)) as fetch_mock,
             patch("api.analysis_routes.get_latest_completed_phase_rows",
                   new=AsyncMock(return_value=latest_rows)),
-            patch("api.analysis_routes._lookup_phase_result_with_staleness",
-                  new=AsyncMock(side_effect=_fake_staleness)),
         ):
             status = await analysis_routes.get_analysis_status(7)
 
         recipe_phase = next(p for p in status.phases if p.phase.value == "recipe")
-        self.assertEqual(recipe_phase.stale_model, "gemini-3.6-flash")
+        self.assertEqual(recipe_phase.stale_model, "gemini-3.5-flash-lite")
         screening_phase = next(p for p in status.phases if p.phase.value == "screening")
         self.assertIsNone(screening_phase.stale_model)
         self.assertEqual(screening_phase.status, "pending")
+        # I2: latest_row를 그대로 재사용하므로 phase당 추가 fetch_one이 없다 —
+        # paper 조회 1회뿐.
+        fetch_mock.assert_awaited_once()
+
+    async def test_get_analysis_status_no_extra_fetch_one_per_phase(self):
+        """리뷰 Important I2: 완료 phase가 여러 개여도 phase당 추가 fetch_one이
+        없어야 한다 — /status는 분석 중 2초 간격으로 폴리되므로, 예전처럼
+        phase마다 최대 2쿼리씩 태우면(_lookup_phase_result_with_staleness의
+        stage-1/stage-2 DB 조회) 폴링 부하가 phase 수에 비례해 커진다."""
+        paper = {"id": 7, "status": "completed"}
+        latest_rows = {
+            "screening": _row("screening", '{"s":1}', model_used="gemini-3.5-flash-lite"),
+            "recipe": _row("recipe", '{"title":"old"}', model_used="gemini-3.6-flash"),
+            "deep_dive": _row("deep_dive", '{"d":1}', model_used="gemini-3.6-flash"),
+        }
+        with (
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)) as fetch_mock,
+            patch("api.analysis_routes.get_latest_completed_phase_rows",
+                  new=AsyncMock(return_value=latest_rows)),
+        ):
+            await analysis_routes.get_analysis_status(7)
+        # 논문 조회 1회뿐 — 완료 phase 3개인데도 phase별 추가 조회가 없다.
+        fetch_mock.assert_awaited_once()
 
     async def test_get_analysis_status_skip_row_is_never_stale(self):
         # 리뷰 Important(실 DB로 재현): 스크리닝 게이트로 스킵된 phase는
@@ -2009,6 +2062,307 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
         # 완료 시 interaction_id를 analysis_results에 저장
         self.assertEqual(insert_mock.await_args.kwargs.get("interaction_id"), "int_recipe")
 
+    # -- 리뷰 Important I3: openai 체인 첫 호출의 그림 이미지 파트 첨부(스펙 R1) ---
+
+    async def test_chain_stage_openai_first_call_attaches_figure_parts(self):
+        """openai 체인 첫 호출은 doc_text 텍스트 파트와 함께 그림 이미지
+        파트들을 리스트로 조립해 보낸다."""
+        captured = {}
+
+        async def _fake_call(prompt, **kwargs):
+            captured["prompt"] = prompt
+            captured.update(kwargs)
+            return {"text": '{"ok": true}', "model": "gpt-5.6-luna",
+                    "tokens_in": 1, "tokens_out": 1, "interaction_id": "resp_1"}
+
+        figure_parts = [{"type": "image", "data": "QUJD", "mime_type": "image/png"}]
+        with patch("api.analysis_routes.call_interaction", new=_fake_call):
+            await analysis_routes._run_chain_stage(
+                phase="visual", prompt_chain="지시1", prompt_fallback="폴백",
+                system_instruction="si", previous_interaction_id=None,
+                pdf_uri=None, doc_text="논문 전문 텍스트",
+                figure_parts=figure_parts,
+                response_schema={"type": "object"},
+            )
+
+        contents = captured["prompt"]
+        self.assertIsInstance(contents, list)
+        self.assertEqual(contents[0], figure_parts[0])
+        self.assertEqual(contents[-1]["type"], "text")
+        self.assertIn("논문 전문 텍스트", contents[-1]["text"])
+        self.assertIn("지시1", contents[-1]["text"])
+
+    async def test_chain_stage_openai_continuation_ignores_figure_parts(self):
+        """후속 스테이지는 previous_interaction_id로 서버 상태를 잇고, figure_parts를
+        넘겨도 무시한다 — 서버가 이미 첫 호출에서 이미지를 봤다."""
+        captured = {}
+
+        async def _fake_call(prompt, **kwargs):
+            captured["prompt"] = prompt
+            captured.update(kwargs)
+            return {"text": '{"ok": true}', "model": "gpt-5.6-luna",
+                    "tokens_in": 1, "tokens_out": 1, "interaction_id": "resp_2"}
+
+        figure_parts = [{"type": "image", "data": "QUJD", "mime_type": "image/png"}]
+        with patch("api.analysis_routes.call_interaction", new=_fake_call):
+            await analysis_routes._run_chain_stage(
+                phase="recipe", prompt_chain="지시2", prompt_fallback="폴백",
+                system_instruction="si", previous_interaction_id="resp_1",
+                pdf_uri=None, doc_text="논문 전문 텍스트",
+                figure_parts=figure_parts,
+                response_schema={"type": "object"},
+            )
+
+        self.assertEqual(captured["prompt"], "지시2")  # 문자열 그대로 — 이미지 파트 없음
+
+    async def test_chain_stage_no_figure_parts_stays_string(self):
+        """figure_parts가 없으면(그림 0장 등) 기존처럼 문자열 그대로 보낸다."""
+        captured = {}
+
+        async def _fake_call(prompt, **kwargs):
+            captured["prompt"] = prompt
+            return {"text": '{"ok": true}', "model": "gpt-5.6-luna",
+                    "tokens_in": 1, "tokens_out": 1, "interaction_id": "resp_1"}
+
+        with patch("api.analysis_routes.call_interaction", new=_fake_call):
+            await analysis_routes._run_chain_stage(
+                phase="visual", prompt_chain="지시1", prompt_fallback="폴백",
+                system_instruction="si", previous_interaction_id=None,
+                pdf_uri=None, doc_text="논문 전문 텍스트",
+                response_schema={"type": "object"},
+            )
+        self.assertIsInstance(captured["prompt"], str)
+
+    async def test_chain_stage_gemini_pdf_path_ignores_figure_parts(self):
+        """gemini 경로는 무변경 — figure_parts를 넘겨도 document+text 2-파트
+        구조 그대로다(Gemini는 PDF에서 직접 그림을 본다)."""
+        captured = {}
+
+        async def _fake_call(prompt, **kwargs):
+            captured["prompt"] = prompt
+            return {"text": '{"ok": true}', "model": MODEL_FLASH_HQ,
+                    "tokens_in": 1, "tokens_out": 1, "interaction_id": "resp_1"}
+
+        figure_parts = [{"type": "image", "data": "QUJD", "mime_type": "image/png"}]
+        with patch("api.analysis_routes.call_interaction", new=_fake_call):
+            await analysis_routes._run_chain_stage(
+                phase="visual", prompt_chain="지시1", prompt_fallback="폴백",
+                system_instruction="si", previous_interaction_id=None,
+                pdf_uri="files/uri-123", figure_parts=figure_parts,
+                response_schema={"type": "object"},
+            )
+        self.assertEqual(len(captured["prompt"]), 2)
+        self.assertEqual(captured["prompt"][0]["type"], "document")
+
+
+class OpenAIFigurePartsTests(unittest.IsolatedAsyncioTestCase):
+    """리뷰 Important I3: OpenAI visual 첫 호출에 첨부할 그림 이미지 파트 로더."""
+
+    async def test_load_openai_figure_parts_reads_and_encodes_images(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paper_dir = Path(tmp)
+            figures_dir = paper_dir / "figures"
+            figures_dir.mkdir()
+            png_bytes = b"\x89PNG\r\n\x1a\nfake-image-bytes"
+            (figures_dir / "fig1.png").write_bytes(png_bytes)
+
+            rows = [{"file_path": "figures/fig1.png"}]
+            with patch("api.analysis_routes.fetch_all", new=AsyncMock(return_value=rows)):
+                parts = await analysis_routes._load_openai_figure_parts(7, paper_dir)
+
+        self.assertEqual(len(parts), 1)
+        self.assertEqual(parts[0]["type"], "image")
+        self.assertEqual(parts[0]["mime_type"], "image/png")
+        self.assertEqual(base64.b64decode(parts[0]["data"]), png_bytes)
+
+    async def test_load_openai_figure_parts_skips_missing_file_individually(self):
+        """이미지 로드 실패는 그 그림만 건너뛴다 — 전체를 막지 않는다."""
+        with tempfile.TemporaryDirectory() as tmp:
+            paper_dir = Path(tmp)
+            figures_dir = paper_dir / "figures"
+            figures_dir.mkdir()
+            png_bytes = b"\x89PNG\r\n\x1a\nreal-bytes"
+            (figures_dir / "fig2.png").write_bytes(png_bytes)
+
+            rows = [
+                {"file_path": "figures/missing.png"},  # 파일 없음 -> 개별 스킵
+                {"file_path": "figures/fig2.png"},      # 정상
+            ]
+            with patch("api.analysis_routes.fetch_all", new=AsyncMock(return_value=rows)):
+                parts = await analysis_routes._load_openai_figure_parts(7, paper_dir)
+
+        self.assertEqual(len(parts), 1)
+        self.assertEqual(base64.b64decode(parts[0]["data"]), png_bytes)
+
+    async def test_load_openai_figure_parts_no_rows_returns_empty(self):
+        with patch("api.analysis_routes.fetch_all", new=AsyncMock(return_value=[])):
+            parts = await analysis_routes._load_openai_figure_parts(7, Path("/tmp"))
+        self.assertEqual(parts, [])
+
+    async def test_load_openai_figure_parts_queries_with_limit(self):
+        fetch_mock = AsyncMock(return_value=[])
+        with patch("api.analysis_routes.fetch_all", new=fetch_mock):
+            await analysis_routes._load_openai_figure_parts(7, Path("/tmp"))
+        _query, params = fetch_mock.await_args.args
+        self.assertIn(analysis_routes._OPENAI_VISUAL_IMAGE_LIMIT, params)
+
+
+class ChainPromptWordingByProviderTests(unittest.IsolatedAsyncioTestCase):
+    """리뷰 Important I3-②: 체인 프롬프트 4곳이 OpenAI 경로에서 "PDF"가 아니라
+    실제로 준 것(본문 텍스트 + 첫 단계 첨부 그림)을 가리키는지 검증한다.
+
+    체인 후속 스테이지(previous_interaction_id 있음)는 contents가 prompt_chain
+    문자열 그대로 전달되므로(_run_chain_stage), 문구를 직접 assert하기 쉽다 —
+    각 phase 함수를 이 모드로 호출해 문구 조립 로직만 분리 검증한다."""
+
+    def test_doc_reference_phrase_by_provider(self):
+        self.assertEqual(analysis_routes._doc_reference_phrase("gemini"), "위 논문 PDF")
+        phrase = analysis_routes._doc_reference_phrase("openai")
+        self.assertNotIn("PDF", phrase)
+        self.assertIn("본문 텍스트", phrase)
+        self.assertIn("그림", phrase)
+
+    async def test_recipe_prompt_wording_by_provider(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+
+        async def _run(provider):
+            captured = {}
+
+            async def _fake_call(contents, **kwargs):
+                captured["contents"] = contents
+                return {"text": '{"title":"r","objective":"o","parameters":[],"steps":[]}',
+                        "model": "m", "tokens_in": 1, "tokens_out": 1, "interaction_id": "i"}
+
+            with (
+                patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+                patch("api.analysis_routes.call_interaction", new=_fake_call),
+                patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+            ):
+                await analysis_routes._run_recipe(
+                    7, "Recipe body", status,
+                    previous_interaction_id="int_visual",
+                    pdf_uri=None, doc_text="논문 전문", provider=provider,
+                )
+            return captured["contents"]
+
+        gemini_contents = await _run("gemini")
+        self.assertIn("위 논문 PDF", gemini_contents)
+
+        openai_contents = await _run("openai")
+        # 다른 곳(예: deep_dive 인스트럭션 본문의 "논문 PDF(또는 논문 텍스트)"
+        # 같은 기존 안전 문구)까지 "PDF"라는 낱말로 뭉뚱그려 거부하면 오탐이라,
+        # 이번에 고친 정확한 문구(위 논문 PDF -> 위 논문 본문 텍스트...)만 짚는다.
+        self.assertNotIn("위 논문 PDF", openai_contents)
+        self.assertIn("위 논문 본문 텍스트(첫 단계에 첨부된 그림 이미지 포함)", openai_contents)
+
+    async def test_deep_dive_prompt_wording_by_provider(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+
+        async def _run(provider):
+            captured = {}
+
+            async def _fake_call(contents, **kwargs):
+                captured["contents"] = contents
+                return {"text": '{"detailed_analysis":"d"}',
+                        "model": "m", "tokens_in": 1, "tokens_out": 1, "interaction_id": "i"}
+
+            with (
+                patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+                patch("api.analysis_routes.call_interaction", new=_fake_call),
+                patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+            ):
+                await analysis_routes._run_deep_dive(
+                    7, "Deep dive body", [], status,
+                    previous_interaction_id="int_recipe",
+                    pdf_uri=None, doc_text="논문 전문", provider=provider,
+                )
+            return captured["contents"]
+
+        gemini_contents = await _run("gemini")
+        self.assertIn("위 논문 PDF", gemini_contents)
+
+        openai_contents = await _run("openai")
+        # 다른 곳(예: deep_dive 인스트럭션 본문의 "논문 PDF(또는 논문 텍스트)"
+        # 같은 기존 안전 문구)까지 "PDF"라는 낱말로 뭉뚱그려 거부하면 오탐이라,
+        # 이번에 고친 정확한 문구(위 논문 PDF -> 위 논문 본문 텍스트...)만 짚는다.
+        self.assertNotIn("위 논문 PDF", openai_contents)
+        self.assertIn("위 논문 본문 텍스트(첫 단계에 첨부된 그림 이미지 포함)", openai_contents)
+
+    async def test_viz_plan_prompt_wording_by_provider(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+
+        async def _run(provider):
+            captured = {}
+
+            async def _fake_call(contents, **kwargs):
+                captured["contents"] = contents
+                return {"text": '{"visualizations": []}',
+                        "model": "m", "tokens_in": 1, "tokens_out": 1, "interaction_id": "i"}
+
+            with (
+                patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+                patch("api.analysis_routes.call_interaction", new=_fake_call),
+                patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+            ):
+                await analysis_routes._plan_visualizations(
+                    7, "Viz input", [], status,
+                    previous_interaction_id="int_deepdive",
+                    pdf_uri=None, doc_text="논문 전문", provider=provider,
+                )
+            return captured["contents"]
+
+        gemini_contents = await _run("gemini")
+        self.assertIn("위 논문 PDF", gemini_contents)
+
+        openai_contents = await _run("openai")
+        # 다른 곳(예: deep_dive 인스트럭션 본문의 "논문 PDF(또는 논문 텍스트)"
+        # 같은 기존 안전 문구)까지 "PDF"라는 낱말로 뭉뚱그려 거부하면 오탐이라,
+        # 이번에 고친 정확한 문구(위 논문 PDF -> 위 논문 본문 텍스트...)만 짚는다.
+        self.assertNotIn("위 논문 PDF", openai_contents)
+        self.assertIn("위 논문 본문 텍스트(첫 단계에 첨부된 그림 이미지 포함)", openai_contents)
+
+    async def test_visual_prompt_wording_by_provider(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        visual_contract = (
+            {"visual_ready": True, "visual_state": "ready", "visual_error": None,
+             "artifacts_ready": True, "artifacts_error": None},
+            1, 0,
+        )
+        figures = [{"figure_num": "Figure 1", "quality": "good", "confidence": 0.9, "resolver_version": "v1"}]
+
+        async def _run(provider):
+            captured = {}
+
+            async def _fake_call(contents, **kwargs):
+                captured["contents"] = contents
+                return {"text": '{"quality_summary":"ok","key_findings_from_visuals":[]}',
+                        "model": "m", "tokens_in": 1, "tokens_out": 1, "interaction_id": "i"}
+
+            with (
+                patch("api.analysis_routes._get_visual_contract", new=AsyncMock(return_value=visual_contract)),
+                patch("api.analysis_routes.get_paper_dir", return_value="/tmp/paper"),
+                patch("api.analysis_routes.fetch_all", new=AsyncMock(side_effect=[figures, []])),
+                patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+                patch("api.analysis_routes.call_interaction", new=_fake_call),
+                patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+            ):
+                await analysis_routes._run_visual(
+                    7, "Visual input", "folder", status,
+                    previous_interaction_id="int_prev",
+                    pdf_uri=None, doc_text="논문 전문", provider=provider,
+                )
+            return captured["contents"]
+
+        gemini_contents = await _run("gemini")
+        self.assertIn("위 논문 PDF", gemini_contents)
+
+        openai_contents = await _run("openai")
+        # 다른 곳(예: deep_dive 인스트럭션 본문의 "논문 PDF(또는 논문 텍스트)"
+        # 같은 기존 안전 문구)까지 "PDF"라는 낱말로 뭉뚱그려 거부하면 오탐이라,
+        # 이번에 고친 정확한 문구(위 논문 PDF -> 위 논문 본문 텍스트...)만 짚는다.
+        self.assertNotIn("위 논문 PDF", openai_contents)
+        self.assertIn("위 논문 본문 텍스트(첫 단계에 첨부된 그림 이미지 포함)", openai_contents)
+
 
 class _OrchStubProfile:
     personality = "precise"
@@ -2062,7 +2416,10 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         return _fake
 
     @contextlib.contextmanager
-    def _orchestration_patches(self, *, cache_fake, call_fake, visual_result=None, provider="gemini"):
+    def _orchestration_patches(
+        self, *, cache_fake, call_fake, visual_result=None, provider="gemini",
+        openai_figure_parts=None,
+    ):
         paper = {
             "id": 7,
             "folder_name": "folder",
@@ -2158,6 +2515,14 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         stack.enter_context(patch("api.analysis_routes.call_interaction", new=call_fake))
         stack.enter_context(patch(
             "api.analysis_routes.active_provider", new=AsyncMock(return_value=provider),
+        ))
+        # I3: provider=openai일 때만 실제로 쓰이는 그림 이미지 로더. 직접 패치해
+        # 기본값 []을 돌려주면(그림 파트 검증이 목적이 아닌 테스트) 이 함수가 실제
+        # fetch_all을 태우지 않아 위 figures/tables용 side_effect 순서를 건드리지
+        # 않는다. 그림 파트 자체를 검증하는 테스트는 openai_figure_parts로 값을 준다.
+        stack.enter_context(patch(
+            "api.analysis_routes._load_openai_figure_parts",
+            new=AsyncMock(return_value=openai_figure_parts or []),
         ))
         if visual_result is not None:
             stack.enter_context(patch("api.analysis_routes._run_visual",
@@ -2304,6 +2669,32 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(self._FULL_TEXT_MARKER, recipe_call["contents"])
         # 캐시된 visual 결과 텍스트(restart_context)도 함께 복원됨
         self.assertIn("CACHED-VISUAL-MARKER", recipe_call["contents"])
+
+    async def test_openai_visual_first_call_attaches_figure_parts(self):
+        """리뷰 Important I3: provider=openai면 visual 첫 호출에 추출 그림 이미지
+        파트를 doc_text와 함께 첨부한다(스펙 R1 — visual 스테이지는 이미지 파트를
+        별도 첨부). 후속 스테이지(recipe 등)에는 이미지가 다시 실리지 않는다."""
+        calls = []
+        call_fake = self._orch_call_fake(calls)
+
+        async def _cache_none(*a, **k):
+            return None
+
+        figure_parts = [{"type": "image", "data": "QUJD", "mime_type": "image/png"}]
+        with self._orchestration_patches(
+            cache_fake=_cache_none, call_fake=call_fake, provider="openai",
+            openai_figure_parts=figure_parts,
+        ):
+            await analysis_routes._run_full_analysis(7)
+
+        chain_calls = [c for c in calls if c["store"] is True]
+        first_contents = chain_calls[0]["contents"]
+        self.assertIsInstance(first_contents, list)
+        self.assertEqual(first_contents[0], figure_parts[0])
+        self.assertEqual(first_contents[-1]["type"], "text")
+        self.assertIn(self._FULL_TEXT_MARKER, first_contents[-1]["text"])
+        # 후속 스테이지는 이미지 파트 없이 문자열 그대로(체인 id로만 이어짐).
+        self.assertIsInstance(chain_calls[1]["contents"], str)
 
 
 class CitationPromptTests(unittest.IsolatedAsyncioTestCase):
