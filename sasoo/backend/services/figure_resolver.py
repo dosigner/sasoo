@@ -295,6 +295,8 @@ async def _maybe_select_candidate(
     captions_by_id: dict[str, dict[str, Any]],
     rasters: _RasterCache,
     resolver_version: str,
+    *,
+    provider: str = "gemini",
 ) -> tuple[dict[str, Any], float, str]:
     scored = sorted(
         group,
@@ -342,7 +344,7 @@ async def _maybe_select_candidate(
     }
 
     try:
-        _choice = resolve_model("figure_resolver", "gemini")
+        _choice = resolve_model("figure_resolver", provider)
         result = await call_interaction(
             [
                 {"type": "image", "data": image_b64, "mime_type": "image/png"},
@@ -377,6 +379,8 @@ async def _maybe_rerank_caption(
     captions_by_id: dict[str, dict[str, Any]],
     rasters: _RasterCache,
     resolver_version: str,
+    *,
+    provider: str = "gemini",
 ) -> tuple[str | None, float, str]:
     option_ids = candidate.get("linked_caption_ids", [])[:3]
     if (
@@ -413,7 +417,7 @@ async def _maybe_rerank_caption(
     }
 
     try:
-        _choice = resolve_model("figure_resolver", "gemini")
+        _choice = resolve_model("figure_resolver", provider)
         result = await call_interaction(
             [
                 {"type": "image", "data": image_b64, "mime_type": "image/png"},
@@ -458,6 +462,7 @@ async def _maybe_detect_subfigures(
     page_number: int,
     caption_text: str | None,
     confidence: float,
+    provider: str = "gemini",
 ) -> list[dict[str, Any]]:
     if not os.environ.get("GEMINI_API_KEY"):
         return []
@@ -472,10 +477,12 @@ async def _maybe_detect_subfigures(
     )
 
     try:
-        result = await detector.detect_subfigures(parsed_figure)
+        result = await detector.detect_subfigures(parsed_figure, provider=provider)
         if not result.has_subfigures or result.confidence < 0.5:
             return []
-        extracted = await detector.extract_subfigures(parsed_figure, figure_path.parent, result)
+        extracted = await detector.extract_subfigures(
+            parsed_figure, figure_path.parent, result, provider=provider,
+        )
     except Exception:
         return []
 
@@ -514,6 +521,7 @@ async def resolve_figure_candidates(
     pdf_path: Path,
     resolver_version: str,
     page_numbers: set[int] | None = None,
+    provider: str = "gemini",
 ) -> dict[str, Any]:
     pages_by_number = {
         page["page_number"]: page
@@ -568,6 +576,7 @@ async def resolve_figure_candidates(
             captions_by_id,
             rasters,
             resolver_version,
+            provider=provider,
         )
         bbox = selected_candidate.get("bbox")
         if not bbox:
@@ -586,6 +595,7 @@ async def resolve_figure_candidates(
                 captions_by_id,
                 rasters,
                 resolver_version,
+                provider=provider,
             )
             confidence = min(0.99, confidence + delta)
         elif confidence < 0.5:
@@ -675,6 +685,7 @@ async def resolve_figure_candidates(
                     page_number=entry["page_number"],
                     caption_text=entry["caption"],
                     confidence=entry["confidence"],
+                    provider=provider,
                 )
                 for _, entry, path in pending_subfigures
             ]

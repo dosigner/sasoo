@@ -45,6 +45,8 @@ async def generate_folder_name(
     journal: Optional[str] = None,
     domain: Optional[str] = None,
     abstract: Optional[str] = None,
+    *,
+    provider: str = "gemini",
 ) -> str:
     """
     Generate a human-readable folder name for a paper.
@@ -73,7 +75,7 @@ async def generate_folder_name(
             "Return ONLY the folder name string, nothing else."
         )
 
-        _choice = resolve_model("naming", "gemini")
+        _choice = resolve_model("naming", provider)
         result = await call_interaction(
             prompt,
             lane="pipeline",
@@ -104,6 +106,8 @@ async def generate_folder_name(
 
 async def generate_figure_names(
     captions_and_pages: list[dict],
+    *,
+    provider: str = "gemini",
 ) -> list[str]:
     """
     Generate human-readable figure filenames from captions.
@@ -135,7 +139,7 @@ async def generate_figure_names(
             "Example: [\"fig1_sem_cross_section\", \"fig2_transmission_spectrum\"]"
         )
 
-        _choice = resolve_model("naming", "gemini")
+        _choice = resolve_model("naming", provider)
         result = await call_interaction(
             prompt,
             lane="pipeline",
@@ -169,6 +173,8 @@ async def generate_figure_names(
 async def generate_paperbanana_name(
     title: str,
     description: Optional[str] = None,
+    *,
+    provider: str = "gemini",
 ) -> str:
     """
     Generate a human-readable filename for a PaperBanana illustration.
@@ -190,7 +196,7 @@ async def generate_paperbanana_name(
             "Return ONLY the filename string, nothing else."
         )
 
-        _choice = resolve_model("naming", "gemini")
+        _choice = resolve_model("naming", provider)
         result = await call_interaction(
             prompt,
             lane="pipeline",

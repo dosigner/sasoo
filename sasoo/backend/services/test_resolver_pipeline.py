@@ -463,6 +463,7 @@ class RetryPassMergeTests(unittest.IsolatedAsyncioTestCase):
                  patch.object(odl_parser, "resolve_table_candidates", fake_resolve_tables), \
                  patch.object(odl_parser, "build_figure_candidates", lambda *a, **k: []), \
                  patch.object(odl_parser, "build_table_candidates", lambda *a, **k: []), \
+                 patch.object(odl_parser, "active_provider", AsyncMock(return_value="gemini")), \
                  patch.object(
                      odl_parser,
                      "find_suspect_pages",

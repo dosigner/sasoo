@@ -28,6 +28,7 @@ from services.document_audit import _page_text_map, find_suspect_pages
 from services.document_manifest import build_document_manifest, resolve_paper_journal
 from services.figure_candidates import build_figure_candidates
 from services.figure_resolver import resolve_figure_candidates
+from services.model_registry import active_provider
 from services.table_candidates import build_table_candidates
 from services.table_resolver import resolve_table_candidates
 
@@ -1109,12 +1110,17 @@ async def _build_resolver_v1_manifest(
         resolver_version=RESOLVER_VERSION,
     )
 
+    # 그림·표 resolve 전체(1차 + 재시도)에 걸쳐 provider를 한 번만 결정한다 — 매니페스트
+    # 하나를 만드는 도중 설정이 바뀌어도 이 실행 안에서는 일관된 provider를 쓴다.
+    provider = await active_provider()
+
     manifest["figure_candidates"] = build_figure_candidates(manifest, pdf_path=pdf_path)
     figure_result = await resolve_figure_candidates(
         manifest,
         paper_dir=paper_dir,
         pdf_path=pdf_path,
         resolver_version=RESOLVER_VERSION,
+        provider=provider,
     )
     manifest["figures"] = figure_result["figures"]
     low_figure_pages = set(figure_result.get("low_confidence_pages", []))
@@ -1128,6 +1134,7 @@ async def _build_resolver_v1_manifest(
         manifest,
         paper_dir=paper_dir,
         resolver_version=RESOLVER_VERSION,
+        provider=provider,
     )
     manifest["tables"] = table_result["tables"]
     low_table_pages = set(table_result.get("low_confidence_pages", []))
@@ -1184,6 +1191,7 @@ async def _build_resolver_v1_manifest(
             pdf_path=pdf_path,
             resolver_version=RESOLVER_VERSION,
             page_numbers=retry_figure_pages,
+            provider=provider,
         )
         manifest["figures"] = _merge_page_scoped_items(
             manifest.get("figures", []),
@@ -1209,6 +1217,7 @@ async def _build_resolver_v1_manifest(
             paper_dir=paper_dir,
             resolver_version=RESOLVER_VERSION,
             page_numbers=retry_table_pages,
+            provider=provider,
         )
         manifest["tables"] = _merge_page_scoped_items(
             manifest.get("tables", []),

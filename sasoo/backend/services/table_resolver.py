@@ -182,7 +182,9 @@ def _grid_to_markdown(grid: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
-async def _repair_with_vlm(candidate: dict[str, Any], manifest: dict[str, Any], paper_dir: Path) -> tuple[list[list[str]], str, float]:
+async def _repair_with_vlm(
+    candidate: dict[str, Any], manifest: dict[str, Any], paper_dir: Path, *, provider: str = "gemini",
+) -> tuple[list[list[str]], str, float]:
     # 표의 격자 복원은 본질적으로 VLM에 의존한다 — `caption_fallback_crop` 후보는 text_grid가
     # 비어 있고, 그 상태로 돌아가면 최종 필터(_has_meaningful_grid)에서 100% 탈락한다.
     # 키가 없거나 호출이 실패했을 때 그 사실이 어디에도 남지 않아, 표가 통째로 사라져도
@@ -211,7 +213,7 @@ async def _repair_with_vlm(candidate: dict[str, Any], manifest: dict[str, Any], 
     }
     try:
         image_bytes = (paper_dir / page["raster_path"]).resolve().read_bytes()
-        _choice = resolve_model("table_resolver", "gemini")
+        _choice = resolve_model("table_resolver", provider)
         result = await call_interaction(
             [
                 {"type": "image", "data": base64.b64encode(image_bytes).decode("ascii"), "mime_type": "image/png"},
@@ -240,6 +242,7 @@ async def resolve_table_candidates(
     paper_dir: Path,
     resolver_version: str,
     page_numbers: set[int] | None = None,
+    provider: str = "gemini",
 ) -> dict[str, Any]:
     captions_by_id = {
         caption["id"]: caption
@@ -319,7 +322,10 @@ async def resolve_table_candidates(
     repair_targets = [item for item in prepared if item["needs_vlm_repair"] and not item["skip"]]
     if repair_targets:
         repair_results = await asyncio.gather(
-            *[_repair_with_vlm(item["candidate"], manifest, paper_dir) for item in repair_targets]
+            *[
+                _repair_with_vlm(item["candidate"], manifest, paper_dir, provider=provider)
+                for item in repair_targets
+            ]
         )
         for item, result in zip(repair_targets, repair_results):
             item["repair_result"] = result

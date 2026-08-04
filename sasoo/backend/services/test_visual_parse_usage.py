@@ -132,6 +132,14 @@ def _root(content: str) -> dict:
 class ChannelCaptureTests(unittest.TestCase):
     """_run_convert(mock 경계)를 건드리지 않고 gemini usage가 manifest로 올라오는지."""
 
+    def setUp(self):
+        # Task 9: _build_resolver_v1_manifest가 active_provider()를 호출한다.
+        self._active_provider_patch = patch(
+            "services.odl_parser.active_provider", new=AsyncMock(return_value="gemini"),
+        )
+        self._active_provider_patch.start()
+        self.addCleanup(self._active_provider_patch.stop)
+
     def _make_paper(self, tmp_dir: str) -> Path:
         paper_dir = Path(tmp_dir)
         pdf_path = paper_dir / "paper.pdf"
@@ -199,6 +207,14 @@ class ChannelCaptureTests(unittest.TestCase):
 
 class FallbackAndTextRootTests(unittest.TestCase):
     """F1(폴백 우회 방지) + F2(부분 실패 원장 기록) + F4(텍스트 계약 본문 보전)."""
+
+    def setUp(self):
+        # Task 9: _build_resolver_v1_manifest가 active_provider()를 호출한다.
+        self._active_provider_patch = patch(
+            "services.odl_parser.active_provider", new=AsyncMock(return_value="gemini"),
+        )
+        self._active_provider_patch.start()
+        self.addCleanup(self._active_provider_patch.stop)
 
     def _make_paper(self, tmp_dir: str) -> Path:
         paper_dir = Path(tmp_dir)

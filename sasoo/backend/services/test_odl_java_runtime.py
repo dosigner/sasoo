@@ -19,7 +19,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import fitz
 
@@ -249,6 +249,8 @@ class VisualFallbackTests(unittest.TestCase):
                 "services.odl_parser.ensure_text_artifacts"
             ), patch(
                 "services.odl_parser._run_convert", side_effect=_fake_run_convert
+            ), patch(
+                "services.odl_parser.active_provider", new=AsyncMock(return_value="gemini")
             ):
                 manifest = ensure_visual_artifacts(
                     paper_dir, mode="java", extraction_pipeline_version="legacy", force=True

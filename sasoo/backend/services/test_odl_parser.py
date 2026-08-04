@@ -601,7 +601,10 @@ class OdlParserIntegrationTests(unittest.TestCase):
             # 이 테스트는 "java/ODL 모드 종단" 시나리오를 검증한다. 로컬 .env에
             # 실제 GEMINI_API_KEY가 있으면 visual 스테이지가 gemini로 선택돼
             # engine 필드가 달라지므로, 환경과 무관하게 폴백 경로를 강제한다.
-            with patch.dict(os.environ, {"GEMINI_API_KEY": ""}):
+            with (
+                patch.dict(os.environ, {"GEMINI_API_KEY": ""}),
+                patch("services.odl_parser.active_provider", new=AsyncMock(return_value="gemini")),
+            ):
                 manifest = ensure_parsed_artifacts(paper_dir, mode="java", force=True)
 
             self.assertEqual(manifest["engine"], "odl-java")
@@ -743,6 +746,15 @@ class RunConvertKeyGuardTests(unittest.TestCase):
 
 
 class VisualPromotionTests(unittest.TestCase):
+    def setUp(self):
+        # Task 9: _build_resolver_v1_manifest가 active_provider()를 호출한다 —
+        # 이 클래스는 엔진 승격/폴백 로직만 검증하므로 gemini로 고정한다.
+        self._active_provider_patch = patch(
+            "services.odl_parser.active_provider", new=AsyncMock(return_value="gemini"),
+        )
+        self._active_provider_patch.start()
+        self.addCleanup(self._active_provider_patch.stop)
+
     def _make_paper(self, tmp_dir: str) -> Path:
         paper_dir = Path(tmp_dir)
         pdf_path = paper_dir / "paper.pdf"
