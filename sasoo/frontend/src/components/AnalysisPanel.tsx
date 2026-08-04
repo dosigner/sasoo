@@ -29,7 +29,6 @@ import {
   type Figure,
   type Table,
 } from '@/lib/api';
-import { getAgentMeta } from '@/lib/agents';
 import { buildPhaseSummary, buildWorkbenchStatusSummary } from '@/lib/workbenchSummaries';
 import { S } from '@/lib/strings';
 import { extractOutline } from '@/lib/mdOutline';
@@ -171,27 +170,7 @@ interface PhaseSectionProps {
   expandedMeta?: string[];
   metaItems?: { label: string; value: string; accent?: boolean }[];
   tone?: 'primary' | 'muted' | 'practical';
-  accentColor?: string;
   children?: React.ReactNode;
-}
-
-function rgbaFromHex(color: string, alpha: number): string {
-  const cleaned = color.replace('#', '');
-  if (cleaned.length !== 6) return color;
-  const r = parseInt(cleaned.slice(0, 2), 16);
-  const g = parseInt(cleaned.slice(2, 4), 16);
-  const b = parseInt(cleaned.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-function buildMetaPillStyle(color?: string, variant: 'default' | 'soft' = 'default'): React.CSSProperties | undefined {
-  if (!color) return undefined;
-
-  return {
-    color,
-    borderColor: rgbaFromHex(color, variant === 'soft' ? 0.24 : 0.28),
-    backgroundColor: rgbaFromHex(color, variant === 'soft' ? 0.08 : 0.13),
-  };
 }
 
 function PhaseSection({
@@ -204,7 +183,6 @@ function PhaseSection({
   expandedMeta = [],
   metaItems = [],
   tone = 'muted',
-  accentColor,
   children,
 }: PhaseSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -276,11 +254,7 @@ function PhaseSection({
           {!expanded && collapsedMeta.length > 0 && (
             <div className="mt-1 flex flex-wrap gap-1.5">
               {collapsedMeta.map((item) => (
-                <span
-                  key={item}
-                  className="phase-meta-pill"
-                  style={buildMetaPillStyle(accentColor)}
-                >
+                <span key={item} className="chip-tint">
                   {item}
                 </span>
               ))}
@@ -301,11 +275,7 @@ function PhaseSection({
           {expanded && metaItems.length === 0 && expandedMeta.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {expandedMeta.map((item) => (
-                <span
-                  key={item}
-                  className="phase-meta-pill phase-meta-pill-soft"
-                  style={buildMetaPillStyle(accentColor, 'soft')}
-                >
+                <span key={item} className="chip-tint">
                   {item}
                 </span>
               ))}
@@ -1010,7 +980,6 @@ export default function AnalysisPanel({
   mermaid: mermaidDiagram,
   visualizations,
   isRunning,
-  agentName,
   paperId,
   onJumpToFigurePage,
   onJumpToTablePage,
@@ -1066,8 +1035,6 @@ export default function AnalysisPanel({
     );
   }
 
-  const agentMeta = getAgentMeta(agentName);
-  const phaseAccentColor = agentMeta?.color;
   const figureList = figures?.figures ?? [];
   const tableList = tables?.tables ?? [];
   const screeningSummary = buildPhaseSummary('screening', results, recipe, figureList, tableList, visualizations);
@@ -1176,7 +1143,6 @@ export default function AnalysisPanel({
                 expandedMeta={screeningSummary.expandedMeta}
                 metaItems={screeningSummary.metaItems}
                 tone={screeningSummary.tone}
-                accentColor={phaseAccentColor}
               />
 
               <PhaseSection
@@ -1188,7 +1154,6 @@ export default function AnalysisPanel({
                 collapsedMeta={citationSummary.collapsedMeta}
                 expandedMeta={citationSummary.expandedMeta}
                 tone={citationSummary.tone}
-                accentColor={phaseAccentColor}
               />
 
               <PhaseSection
@@ -1200,7 +1165,6 @@ export default function AnalysisPanel({
                 collapsedMeta={deepDiveSummary.collapsedMeta}
                 expandedMeta={deepDiveSummary.expandedMeta}
                 tone={deepDiveSummary.tone}
-                accentColor={phaseAccentColor}
               >
                 <VisualizationGallery
                   visualizations={visualizations}

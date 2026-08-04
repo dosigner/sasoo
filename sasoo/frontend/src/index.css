@@ -524,6 +524,40 @@
     border-radius: var(--radius-pill);
   }
 
+  /* 워크벤치 공용 틴트 칩 — 보더 없는 저채도 배경 + 시맨틱 색 텍스트.
+     워크벤치 헤더·우측 패널·질문 도우미 전용, 이 표면 밖의 status-pill/Badge는 무수정. */
+  .chip-tint {
+    @apply inline-flex items-center whitespace-nowrap font-medium;
+    border-radius: 9999px;
+    padding: 2px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    background: rgb(var(--accent) / 0.10);
+    color: rgb(var(--accent));
+  }
+
+  .chip-tint-success {
+    background: rgb(var(--success) / 0.10);
+    color: rgb(var(--success));
+  }
+
+  .chip-tint-warning {
+    background: rgb(var(--warning) / 0.10);
+    color: rgb(var(--warning));
+  }
+
+  .dark .chip-tint {
+    background: rgb(var(--accent) / 0.16);
+  }
+
+  .dark .chip-tint-success {
+    background: rgb(var(--success) / 0.16);
+  }
+
+  .dark .chip-tint-warning {
+    background: rgb(var(--warning) / 0.16);
+  }
+
   .library-archive-header {
     @apply bg-surface;
   }
@@ -1001,15 +1035,6 @@
     @apply py-0;
   }
 
-  .phase-meta-pill {
-    @apply inline-flex items-center border border-border/50 bg-surface/60 px-2 py-0.5 text-2xs uppercase tracking-[0.14em] text-fg-muted;
-    border-radius: var(--radius-pill);
-  }
-
-  .phase-meta-pill-soft {
-    @apply bg-surface/50 text-fg-muted;
-  }
-
   .pdf-toolbar-btn {
     @apply inline-flex h-8 min-w-[2rem] items-center justify-center border border-transparent bg-transparent px-2 text-fg-muted transition-[color,background-color,border-color,transform] duration-150 hover:border-border/70 hover:bg-surface-hover/70 hover:text-fg disabled:pointer-events-none disabled:opacity-35;
     border-radius: var(--radius-control);
@@ -1126,16 +1151,8 @@
     @apply hover:bg-surface-hover/95;
   }
 
-  .chat-launcher-badge {
-    @apply inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-medium;
-  }
-
-  .chat-launcher-badge-ready {
-    @apply bg-success/10 text-success;
-  }
-
   .chat-launcher-badge-pending {
-    @apply bg-surface text-fg-muted;
+    @apply inline-flex items-center rounded-full bg-surface px-2 py-0.5 text-2xs font-medium text-fg-muted;
   }
 
   .chat-floating-card {
