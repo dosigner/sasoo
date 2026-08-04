@@ -528,6 +528,7 @@ export const S = {
     statusReady: '확정',
     composite: 'Composite',
     jumpToPage: 'PDF 페이지로 이동',
+    pageLabel: (page: number) => `${page}페이지`,
     saveImage: '그림 저장',
     saveFailed: '그림을 저장하지 못했어요',
     childGroup: (count: number) => `서브피겨 ${count}개`,

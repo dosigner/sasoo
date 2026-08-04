@@ -85,11 +85,6 @@ function getFigureImageUrl(figure: Figure): string {
   return getLibraryAssetUrl(figure.file_path);
 }
 
-function formatConfidence(confidence: number | null | undefined): string | null {
-  if (typeof confidence !== 'number' || Number.isNaN(confidence)) return null;
-  return `${Math.round(confidence * 100)}%`;
-}
-
 function buildStatusBadge(figure: Figure): { label: string; variant: BadgeVariant } {
   if (figure.extraction_status === 'uncertain') {
     return { label: S.figures.statusUncertain, variant: 'warning' };
@@ -520,7 +515,6 @@ function FigureCard({
 }: FigureCardProps) {
   const badge = qualityBadge(figure.quality);
   const statusBadge = buildStatusBadge(figure);
-  const confidenceLabel = formatConfidence(figure.confidence);
   const dotClass = statusDotClass(badge.variant);
   // Red Flag reason: reuse the existing AI analysis field when present — no new
   // data field is invented. Absent → label-only badge.
@@ -536,9 +530,19 @@ function FigureCard({
     <Badge variant={badge.variant}>{badge.label}</Badge>
   );
 
+  // Confidence dot: same success/warning cut as qualityBadge already uses
+  // elsewhere (>= 0.7 reads as "no review needed") — no new threshold invented.
+  const hasConfidence = typeof figure.confidence === 'number' && !Number.isNaN(figure.confidence);
+  const confidenceIsHigh = hasConfidence && figure.confidence! >= 0.7;
+  const confidenceDotTitle = hasConfidence
+    ? confidenceIsHigh
+      ? `신뢰도 ${Math.round(figure.confidence! * 100)}%`
+      : `신뢰도 ${Math.round(figure.confidence! * 100)}%, 검토를 권해요`
+    : undefined;
+
   return (
     <div
-      className="card-hover overflow-hidden p-0 group"
+      className="group relative overflow-hidden rounded-[12px] bg-surface p-0 shadow-[0_1px_2px_rgba(0,0,0,.04),0_2px_8px_rgba(0,0,0,.04)] transition-transform duration-150 active:scale-[0.96] dark:shadow-none"
       data-citation-anchor={citationAnchor(figure)}
       role="button"
       tabIndex={0}
@@ -573,23 +577,34 @@ function FigureCard({
         )}
       </div>
 
-      <div className="space-y-3 p-3">
+      <div className="space-y-2 p-3">
         <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h4 className="text-xs font-semibold text-fg">
+          <div className="flex items-center gap-2">
+            <h4 className="min-w-0 flex-1 truncate text-xs font-[650] text-fg">
               {figure.figure_num || `Figure ${index + 1}`}
             </h4>
-            {figure.is_composite && (
-              <span className="status-pill border-accent/20 bg-accent/10 text-accent">
-                {S.figures.composite}
-              </span>
-            )}
-            {childCount > 0 && (
-              <span className="status-pill border-border/50 bg-surface/80 text-fg-secondary">
-                {S.figures.childGroup(childCount)}
-              </span>
+            {hasConfidence && (
+              <span
+                className={`h-[7px] w-[7px] flex-shrink-0 rounded-full ${confidenceIsHigh ? 'bg-success' : 'bg-warning'}`}
+                title={confidenceDotTitle}
+                aria-label={confidenceDotTitle}
+              />
             )}
           </div>
+          {(childCount > 0 || (import.meta.env.DEV && figure.is_composite)) && (
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              {import.meta.env.DEV && figure.is_composite && (
+                <span className="status-pill border-accent/20 bg-accent/10 text-accent">
+                  {S.figures.composite}
+                </span>
+              )}
+              {childCount > 0 && (
+                <span className="status-pill border-border/50 bg-surface/80 text-fg-secondary">
+                  {S.figures.childGroup(childCount)}
+                </span>
+              )}
+            </div>
+          )}
           {figure.caption && (
             <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-fg-muted">
               {figure.caption}
@@ -597,36 +612,37 @@ function FigureCard({
           )}
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {confidenceLabel && (
-            <span className="status-pill border-accent/20 bg-accent/10 text-accent">
-              {S.figures.confidence(confidenceLabel)}
-            </span>
-          )}
-          {figure.classifier_model && (
-            <span className="status-pill border-border/50 bg-surface/80 text-fg-secondary">
-              {S.figures.provenanceLabel(figure.classifier_model)}
-            </span>
-          )}
-          {figure.resolver_version && (
-            <span className="status-pill border-border/50 bg-surface/80 text-fg-muted">
-              {figure.resolver_version}
-            </span>
-          )}
-        </div>
+        {import.meta.env.DEV && (figure.classifier_model || figure.resolver_version) && (
+          <div className="flex flex-wrap gap-2">
+            {figure.classifier_model && (
+              <span className="status-pill border-border/50 bg-surface/80 text-fg-secondary">
+                {S.figures.provenanceLabel(figure.classifier_model)}
+              </span>
+            )}
+            {figure.resolver_version && (
+              <span className="status-pill border-border/50 bg-surface/80 text-fg-muted">
+                {figure.resolver_version}
+              </span>
+            )}
+          </div>
+        )}
 
         {typeof figure.page_number === 'number' && onJumpToFigurePage && (
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onJumpToFigurePage(figure);
-            }}
-            className="btn-secondary w-full text-xs"
-          >
-            <AppIcon name="arrow-right" className="h-3.5 w-3.5" />
-            {S.figures.jumpToPage}
-          </button>
+          <div className="flex items-center justify-between gap-2 text-2xs tabular-nums text-fg-muted">
+            <span>{S.figures.pageLabel(figure.page_number)}</span>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onJumpToFigurePage(figure);
+              }}
+              className="-mr-1.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
+              aria-label={S.figures.jumpToPage}
+              title="PDF에서 보기"
+            >
+              <AppIcon name="document" className="h-3.5 w-3.5" />
+            </button>
+          </div>
         )}
       </div>
     </div>
