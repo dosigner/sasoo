@@ -169,6 +169,7 @@ interface PhaseSectionProps {
   summaryLine?: string | null;
   collapsedMeta?: string[];
   expandedMeta?: string[];
+  metaItems?: { label: string; value: string; accent?: boolean }[];
   tone?: 'primary' | 'muted' | 'practical';
   accentColor?: string;
   children?: React.ReactNode;
@@ -201,6 +202,7 @@ function PhaseSection({
   summaryLine,
   collapsedMeta = [],
   expandedMeta = [],
+  metaItems = [],
   tone = 'muted',
   accentColor,
   children,
@@ -284,7 +286,19 @@ function PhaseSection({
               ))}
             </div>
           )}
-          {expanded && expandedMeta.length > 0 && (
+          {expanded && metaItems.length > 0 && (
+            <div className="mt-2 grid grid-cols-4 gap-3">
+              {metaItems.map((m) => (
+                <div key={m.label}>
+                  <div className="text-[10px] font-medium text-fg-muted">{m.label}</div>
+                  <div className={`text-[13px] font-[650] tabular-nums ${m.accent ? 'text-accent' : 'text-fg'}`}>
+                    {m.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {expanded && metaItems.length === 0 && expandedMeta.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {expandedMeta.map((item) => (
                 <span
@@ -1165,6 +1179,7 @@ export default function AnalysisPanel({
                 summaryLine={screeningSummary.summaryLine}
                 collapsedMeta={screeningSummary.collapsedMeta}
                 expandedMeta={screeningSummary.expandedMeta}
+                metaItems={screeningSummary.metaItems}
                 tone={screeningSummary.tone}
                 accentColor={phaseAccentColor}
               />

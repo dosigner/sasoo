@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
-import { buildWorkbenchStatusSummary } from './workbenchSummaries';
-import type { AnalysisStatus, PhaseInfo, PhaseStatusValue } from '@/lib/api';
+import { buildPhaseSummary, buildWorkbenchStatusSummary } from './workbenchSummaries';
+import type { AnalysisResults, AnalysisStatus, PhaseInfo, PhaseStatusValue } from '@/lib/api';
 
 function makePhases(statuses: PhaseStatusValue[]): PhaseInfo[] {
   const phaseNames: AnalysisStatus['phases'][number]['phase'][] = [
@@ -129,5 +129,71 @@ describe('buildWorkbenchStatusSummary — stageNames/progressRatio', () => {
     });
     expect(summary.trustStateLabel).toBe('심층 분석 완료');
     expect(summary.trustStateLabel.length).toBeGreaterThan(0);
+  });
+});
+
+function makeResults(screening: Record<string, unknown> | null): AnalysisResults {
+  return {
+    paper_id: 1,
+    status: {} as AnalysisStatus,
+    screening,
+    citation: null,
+    visual: null,
+    recipe: null,
+    deep_dive: null,
+  };
+}
+
+describe('buildPhaseSummary(screening) — metaItems', () => {
+  it('전체 필드가 있으면 분야·관련도·방법론·복잡도 4항목을 라벨/값 형태로 반환한다', () => {
+    const results = makeResults({
+      domain: 'Optics',
+      relevance_score: 0.95,
+      is_experimental: true,
+      estimated_complexity: 'high',
+    });
+    const summary = buildPhaseSummary('screening', results, null, [], [], null);
+    expect(summary.metaItems).toEqual([
+      { label: '분야', value: 'Optics' },
+      { label: '관련도', value: '95%', accent: true },
+      { label: '방법론', value: '실험 논문' },
+      { label: '복잡도', value: '높음' },
+    ]);
+  });
+
+  it('원본 값이 결측이면 해당 항목이 생략된다', () => {
+    const results = makeResults({ domain: 'Optics' });
+    const summary = buildPhaseSummary('screening', results, null, [], [], null);
+    expect(summary.metaItems).toEqual([{ label: '분야', value: 'Optics' }]);
+  });
+
+  it('estimated_complexity가 medium/low면 보통/낮음으로, is_experimental이 false면 비실험 논문으로 매핑된다', () => {
+    const medium = buildPhaseSummary(
+      'screening',
+      makeResults({ estimated_complexity: 'medium', is_experimental: false }),
+      null,
+      [],
+      [],
+      null,
+    );
+    expect(medium.metaItems).toEqual([
+      { label: '방법론', value: '비실험 논문' },
+      { label: '복잡도', value: '보통' },
+    ]);
+
+    const low = buildPhaseSummary(
+      'screening',
+      makeResults({ estimated_complexity: 'low' }),
+      null,
+      [],
+      [],
+      null,
+    );
+    expect(low.metaItems).toEqual([{ label: '복잡도', value: '낮음' }]);
+  });
+
+  it('screening 결과가 전혀 없으면 metaItems는 빈 배열이다', () => {
+    const summary = buildPhaseSummary('screening', null, null, [], [], null);
+    expect(summary.metaItems).toEqual([]);
   });
 });

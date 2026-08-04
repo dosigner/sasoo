@@ -11,12 +11,32 @@ import type {
 
 type PhaseTone = 'primary' | 'muted' | 'practical';
 
+export interface MetaItem {
+  label: string;
+  value: string;
+  accent?: boolean;
+}
+
 export interface PhaseSummary {
   summaryLine: string | null;
   collapsedMeta: string[];
   expandedMeta: string[];
+  metaItems: MetaItem[];
   tone: PhaseTone;
 }
+
+// screening 메타 그리드 값 한국어 매핑. AnalysisResults.screening의 원본 필드(estimated_complexity,
+// is_experimental)를 그대로 쓰지 않고 여기서 한 번 한국어 라벨로 옮긴다.
+const COMPLEXITY_LABELS: Record<string, string> = {
+  high: '높음',
+  medium: '보통',
+  low: '낮음',
+};
+
+const METHODOLOGY_LABELS = {
+  experimental: '실험 논문',
+  nonExperimental: '비실험 논문',
+} as const;
 
 export interface WorkbenchStatusSummary {
   runStateLabel: string;
@@ -71,6 +91,7 @@ export function buildPhaseSummary(
       summaryLine: null,
       collapsedMeta: [],
       expandedMeta: [],
+      metaItems: [],
       tone: phase === 'screening' ? 'primary' : phase === 'visual' || phase === 'recipe' ? 'practical' : 'muted',
     };
   }
@@ -85,14 +106,26 @@ export function buildPhaseSummary(
     const domain = typeof screening.domain === 'string' ? screening.domain : '미분류';
     const relevance = percent(screening.relevance_score);
     const agent = typeof screening.agent_recommended === 'string' ? screening.agent_recommended : null;
+    const rawDomain = typeof screening.domain === 'string' && screening.domain.trim() ? screening.domain.trim() : null;
+    const methodologyLabel =
+      screening.is_experimental === true
+        ? METHODOLOGY_LABELS.experimental
+        : screening.is_experimental === false
+          ? METHODOLOGY_LABELS.nonExperimental
+          : null;
+    const complexityLabel =
+      typeof screening.estimated_complexity === 'string' ? COMPLEXITY_LABELS[screening.estimated_complexity] ?? null : null;
+    const metaItems: MetaItem[] = [
+      rawDomain ? { label: '분야', value: rawDomain } : null,
+      relevance ? { label: '관련도', value: relevance, accent: true } : null,
+      methodologyLabel ? { label: '방법론', value: methodologyLabel } : null,
+      complexityLabel ? { label: '복잡도', value: complexityLabel } : null,
+    ].filter((item): item is MetaItem => item !== null);
     return {
       summaryLine: shortText(screening.summary, '논문의 핵심 맥락을 정리해요.'),
       collapsedMeta: [domain, relevance ? `관련도 ${relevance}` : '', agent ? `추천 ${agent}` : ''].filter(Boolean),
-      expandedMeta: [
-        typeof screening.methodology_type === 'string' ? screening.methodology_type : '',
-        typeof screening.estimated_complexity === 'string' ? `복잡도 ${screening.estimated_complexity}` : '',
-        screening.is_experimental === true ? '실험 논문' : screening.is_experimental === false ? '비실험 논문' : '',
-      ].filter(Boolean),
+      expandedMeta: [],
+      metaItems,
       tone: 'primary',
     };
   }
@@ -112,6 +145,7 @@ export function buildPhaseSummary(
         countList(citation.top_cited) > 0 ? `주요 인용 ${countList(citation.top_cited)}건` : '',
         Object.keys((citation.citation_distribution as Record<string, number> | undefined) ?? {}).length > 0 ? '섹션 분포 포함' : '',
       ].filter(Boolean),
+      metaItems: [],
       tone: 'muted',
     };
   }
@@ -141,6 +175,7 @@ export function buildPhaseSummary(
         countList(visual.diagram_types) > 0 ? `유형 ${countList(visual.diagram_types)}개` : '',
         countList(visual.key_findings_from_visuals) > 0 ? `핵심 발견 ${countList(visual.key_findings_from_visuals)}개` : '',
       ].filter(Boolean),
+      metaItems: [],
       tone: 'practical',
     };
   }
@@ -160,6 +195,7 @@ export function buildPhaseSummary(
         countList(recipeResult.materials) > 0 ? `재료 ${countList(recipeResult.materials)}개` : '',
         countList(recipeResult.steps) > 0 ? `절차 ${countList(recipeResult.steps)}단계` : '',
       ].filter(Boolean),
+      metaItems: [],
       tone: 'practical',
     };
   }
@@ -179,6 +215,7 @@ export function buildPhaseSummary(
       countList(deepDive.follow_up_questions) > 0 ? `후속 질문 ${countList(deepDive.follow_up_questions)}개` : '',
       countList(deepDive.practical_applications) > 0 ? `응용 ${countList(deepDive.practical_applications)}개` : '',
     ].filter(Boolean),
+    metaItems: [],
     tone: 'muted',
   };
 }
