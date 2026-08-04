@@ -1770,6 +1770,47 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("previous_interaction_id", captured)
         self.assertEqual(captured["thinking_level"], "medium")
 
+    async def test_chain_stage_openai_injects_doc_text_on_first_call_only(self):
+        """OpenAI 체인: 첫 스테이지에만 추출 텍스트를 싣고, 이후는 체인 id로 잇는다(스펙 R1)."""
+        calls = []
+
+        async def _fake_call(prompt, **kwargs):
+            calls.append({"prompt": prompt, **kwargs})
+            return {"text": '{"ok": true}', "model": "gpt-5.6-luna",
+                    "tokens_in": 10, "tokens_out": 5, "interaction_id": f"resp_{len(calls)}"}
+
+        with patch("api.analysis_routes.call_interaction", new=_fake_call):
+            # 첫 스테이지: previous_interaction_id 없음 -> doc_text 포함
+            r1 = await analysis_routes._run_chain_stage(
+                phase="visual", prompt_chain="지시1", prompt_fallback="폴백",
+                system_instruction="si", previous_interaction_id=None,
+                pdf_uri=None, doc_text="논문 전문 텍스트",
+                response_schema={"type": "object"},
+            )
+            # 후속 스테이지: 체인 id 있음 -> 지시문만
+            await analysis_routes._run_chain_stage(
+                phase="recipe", prompt_chain="지시2", prompt_fallback="폴백",
+                system_instruction="si",
+                previous_interaction_id=r1["interaction_id"],
+                pdf_uri=None, doc_text="논문 전문 텍스트",
+                response_schema={"type": "object"},
+            )
+
+        first, second = calls[0], calls[1]
+        self.assertIn("논문 전문 텍스트", str(first["prompt"]))
+        self.assertTrue(first["store"])                       # 체인이므로 store=True
+        self.assertNotIn("논문 전문 텍스트", str(second["prompt"]))  # 재주입 금지
+        self.assertEqual(second["previous_interaction_id"], "resp_1")
+
+    async def test_chain_stage_rejects_both_pdf_and_doc_text(self):
+        with self.assertRaises(ValueError):
+            await analysis_routes._run_chain_stage(
+                phase="visual", prompt_chain="지시", prompt_fallback="폴백",
+                system_instruction="si", previous_interaction_id=None,
+                pdf_uri="files/abc", doc_text="텍스트",
+                response_schema={"type": "object"},
+            )
+
     async def test_recipe_stage_forwards_chain_params(self):
         status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
         captured = {}
@@ -2012,13 +2053,20 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         restored_text = recipe_call["contents"][1]["text"]
         self.assertIn("CACHED-VISUAL-MARKER", restored_text)
 
-    async def test_openai_provider_skips_pdf_upload_and_stays_stateless(self):
-        """리뷰 Critical 1 회귀 고정: provider=openai면 (GEMINI_API_KEY를 함께
-        보유한 양쪽 키 조합이어도) PDF를 업로드하지 않는다.
+    async def test_openai_provider_skips_pdf_upload_and_uses_text_chain(self):
+        """provider=openai면 (GEMINI_API_KEY를 함께 보유한 양쪽 키 조합이어도)
+        PDF를 업로드하지 않는다 — 리뷰 Critical 1 회귀 고정은 유지.
 
         게이트 없이 업로드하면 pdf_uri가 채워진 채로 _run_chain_stage가 openai로
         라우팅되고, openai_client._translate_parts는 document 파트를 지원하지
-        않아 ValueError로 첫 체인 스테이지가 매번 100% 실패했다."""
+        않아 ValueError로 첫 체인 스테이지가 매번 100% 실패했다.
+
+        Task 9 시점에는 pdf_uri가 없으니 모든 스테이지가 stateless 폴백(store=False)
+        이었다. Task 10이 그 위에 doc_text 텍스트 주입 체인(스펙 R1)을 얹어 openai도
+        store=True 상태 유지 체인으로 승격했으므로, 이 테스트의 store 검증도 그에 맞춰
+        재작성한다: 전부 stateless였다는 옛 assert 대신, 체인 모드(store=True) +
+        첫 스테이지에만 로컬 추출 텍스트가 실리고 이후 스테이지는 체인 id로 잇는지를
+        검증한다."""
         calls = []
         call_fake = self._orch_call_fake(calls)
 
@@ -2030,11 +2078,24 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         ):
             await analysis_routes._run_full_analysis(7)
 
+        # PDF는 여전히 업로드되지 않는다 — gemini 전용 경로.
         self.assertEqual(self._last_upload_calls, [])
-        # pdf_uri가 비어 있으므로 모든 체인 스테이지가 stateless 폴백(store=False)이어야
-        # 한다 — 하나라도 store=True면 pdf_uri가 새고 있다는 뜻이다.
-        self.assertTrue(calls)
-        self.assertTrue(all(c["store"] is False for c in calls))
+
+        # 4개 체인 스테이지(visual→recipe→deep_dive→viz) 전부 store=True(체인 모드).
+        chain_calls = [c for c in calls if c["store"] is True]
+        self.assertEqual(len(chain_calls), 4)
+        # document 파트(PDF)는 전혀 만들어지지 않는다 — pdf_uri가 비어 있으므로.
+        for c in chain_calls:
+            self.assertNotIsInstance(c["contents"], list)
+
+        # 첫 스테이지(visual)에만 로컬 추출 텍스트(doc_text)가 실리고 previous=None.
+        self.assertIsNone(chain_calls[0]["previous_interaction_id"])
+        self.assertIn("SCREENING-INPUT", str(chain_calls[0]["contents"]))
+        # 이후 스테이지는 재주입 없이 체인 id로만 이어진다(선형 전진).
+        self.assertNotIn("SCREENING-INPUT", str(chain_calls[1]["contents"]))
+        self.assertEqual(chain_calls[1]["previous_interaction_id"], chain_calls[0]["interaction_id"])
+        self.assertEqual(chain_calls[2]["previous_interaction_id"], chain_calls[1]["interaction_id"])
+        self.assertEqual(chain_calls[3]["previous_interaction_id"], chain_calls[2]["interaction_id"])
 
 
 class CitationPromptTests(unittest.IsolatedAsyncioTestCase):

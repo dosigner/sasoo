@@ -1025,22 +1025,32 @@ async def _run_chain_stage(
     response_schema: dict,
     restart_context: str = "",
     provider: str = "gemini",
+    doc_text: str = "",
 ) -> dict:
     """체인/폴백 모드에 맞춰 call_interaction을 호출한다.
 
-    - pdf_uri 있음(체인 모드): store=True. 체인 첫 호출(previous_interaction_id None)만
-      PDF 문서를 input에 포함하고, 이후 스테이지는 지시문만 보내 서버 상태를 신뢰한다.
-      단, 중간 스테이지 캐시 히트/스킵으로 previous_interaction_id가 유실된 체인 재시작
-      케이스에는 restart_context(이전 스테이지 결과 텍스트)를 PDF와 함께 프롬프트에 실어
-      서버 상태 단절로 잃은 이전 분석 컨텍스트를 복원한다.
-    - pdf_uri 없음(폴백): stateless(store=False). 기존 phase_inputs 텍스트를 프롬프트에 삽입한다.
+    - pdf_uri 있음(Gemini 체인 모드): store=True. 체인 첫 호출(previous_interaction_id
+      None)만 PDF 문서를 input에 포함하고, 이후 스테이지는 지시문만 보내 서버 상태를
+      신뢰한다. 단, 중간 스테이지 캐시 히트/스킵으로 previous_interaction_id가 유실된
+      체인 재시작 케이스에는 restart_context(이전 스테이지 결과 텍스트)를 PDF와 함께
+      프롬프트에 실어 서버 상태 단절로 잃은 이전 분석 컨텍스트를 복원한다.
+    - doc_text 있음(OpenAI 체인 모드, 스펙 R1): store=True. OpenAI는 document 파트를
+      지원하지 않아 PDF 업로드 대신 로컬 추출 텍스트를 체인 첫 호출에 1회 주입하고,
+      이후 스테이지는 pdf_uri 체인과 동일하게 지시문만 보내 서버 상태를 신뢰한다.
+      restart_context 복원 경로도 pdf_uri 체인과 동일하게 적용된다.
+    - 둘 다 없음(폴백): stateless(store=False). 기존 phase_inputs 텍스트를 프롬프트에
+      삽입한다.
+
+    pdf_uri와 doc_text는 상호 배타다(Gemini는 PDF 파트, OpenAI는 텍스트 주입만 쓴다).
 
     확률적 반복 루프 등으로 결과 텍스트가 JSON 파싱 불가면 1회 재시도한다(재시도도
     실패하면 그대로 반환 — 기존 `_raw`/`_parse_error` 경로가 처리).
     """
+    if pdf_uri and doc_text:
+        raise ValueError("pdf_uri(Gemini 체인)와 doc_text(OpenAI 체인)는 동시 사용 불가")
 
     async def _invoke() -> dict:
-        if pdf_uri:
+        if pdf_uri or doc_text:
             if previous_interaction_id is None:
                 chain_text = prompt_chain
                 if restart_context:
@@ -1048,10 +1058,13 @@ async def _run_chain_stage(
                         f"{prompt_chain}\n\n"
                         f"이전 분석 단계 결과(체인 재시작으로 복원):\n{restart_context}"
                     )
-                contents = [
-                    {"type": "document", "uri": pdf_uri, "mime_type": "application/pdf"},
-                    {"type": "text", "text": chain_text},
-                ]
+                if pdf_uri:
+                    contents = [
+                        {"type": "document", "uri": pdf_uri, "mime_type": "application/pdf"},
+                        {"type": "text", "text": chain_text},
+                    ]
+                else:
+                    contents = f"[논문 전문]\n{doc_text}\n\n{chain_text}"
             else:
                 contents = prompt_chain
             choice = _stage_choice(phase, provider)
@@ -1109,6 +1122,7 @@ async def _run_visual(
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
+    doc_text: str = "",
     provider: str = "gemini",
 ) -> dict:
     """Phase 3: Visual verification - analyze figures, assess quality."""
@@ -1251,6 +1265,7 @@ async def _run_visual(
         system_instruction=system_instruction,
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
+        doc_text=doc_text,
         response_schema=_VISUAL_SCHEMA,
         provider=provider,
     )
@@ -1307,6 +1322,7 @@ async def _run_recipe(
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
+    doc_text: str = "",
     provider: str = "gemini",
 ) -> dict:
     """Phase 3: Recipe extraction - extract structured experimental procedure."""
@@ -1425,6 +1441,7 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
         system_instruction=system_instruction,
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
+        doc_text=doc_text,
         response_schema=_RECIPE_SCHEMA,
         restart_context=_build_chain_restart_context(previous_results),
         provider=provider,
@@ -1482,6 +1499,7 @@ async def _run_deep_dive(
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
+    doc_text: str = "",
     provider: str = "gemini",
 ) -> dict:
     """Phase 4: Deep dive - comprehensive analysis over the stateful chain."""
@@ -1559,6 +1577,7 @@ async def _run_deep_dive(
         system_instruction=system_instruction,
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
+        doc_text=doc_text,
         response_schema=_DEEP_DIVE_SCHEMA,
         restart_context=_build_chain_restart_context(chain_stage_results),
         provider=provider,
@@ -1802,6 +1821,7 @@ async def _plan_visualizations(
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
+    doc_text: str = "",
     provider: str = "gemini",
 ) -> list[dict]:
     """
@@ -1859,6 +1879,7 @@ category(experimental_protocol|algorithm_flow|signal_flow|system_architecture|co
         system_instruction=system_instruction,
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
+        doc_text=doc_text,
         response_schema=_VIZ_PLAN_SCHEMA,
         restart_context=_build_chain_restart_context(previous_results),
         provider=provider,
@@ -2082,6 +2103,7 @@ async def _run_visualizations(
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
+    doc_text: str = "",
     provider: str = "gemini",
 ) -> list[dict]:
     """
@@ -2124,6 +2146,7 @@ async def _run_visualizations(
         system_instruction=system_instruction,
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
+        doc_text=doc_text,
         provider=provider,
     )
 
@@ -2281,6 +2304,9 @@ async def _run_full_analysis(paper_id: int):
         document_context = await run_pipeline_blocking(load_or_build_document_context, paper_dir)
         phase_inputs = document_context.get("phase_inputs", {})
         sections = document_context.get("sections", {})
+        # 스크리닝이 읽는 로컬 추출 텍스트 — OpenAI 체인의 doc_text 주입에도 그대로
+        # 재사용한다(새 파일 IO 없음).
+        paper_text = str(phase_inputs.get("screening", ""))
         try:
             await schedule_paper_artifacts_refresh(paper_id, paper_dir)
         except Exception as exc:
@@ -2295,7 +2321,7 @@ async def _run_full_analysis(paper_id: int):
         # Phase 1: Screening
         r1 = await _run_screening(
             paper_id,
-            str(phase_inputs.get("screening", "")),
+            paper_text,
             status,
             provider=provider,
         )
@@ -2372,10 +2398,11 @@ async def _run_full_analysis(paper_id: int):
         # 게이트 없이 업로드하면 pdf_uri가 채워진 채로 _run_chain_stage가 openai로
         # 라우팅되어 document 파트를 만들고, openai_client가 그 자리에서 ValueError로
         # 터진다 — provider=openai + GEMINI_API_KEY 보유(양쪽 키)인 흔한 조합에서
-        # 첫 체인 스테이지가 매번 100% 실패했다(리뷰 Critical 1). Task 10의 텍스트 주입
-        # 체인이 이 게이트 위에 얹힌다.
+        # 첫 체인 스테이지가 매번 100% 실패했다(리뷰 Critical 1). openai는 아래 elif
+        # 분기에서 doc_text로 텍스트 체인을 탄다(Task 10, 스펙 R1).
         chain_prev_id: Optional[str] = None
         pdf_uri: Optional[str] = None
+        doc_text: str = ""
         if provider == "gemini":
             pdf_file = _find_paper_pdf(paper_dir)
             if pdf_file is not None:
@@ -2389,6 +2416,9 @@ async def _run_full_analysis(paper_id: int):
                 logger.warning(
                     "No PDF found in %s for paper %s; using text-context fallback.", paper_dir, paper_id
                 )
+        elif provider == "openai":
+            # 로컬에서 이미 추출한 스크리닝 텍스트를 체인 첫 호출에 1회 재사용한다.
+            doc_text = paper_text
 
         # Phase 2: Citation Analysis (after screening, before visual)
         # TODO(parser-hybrid): visual 단계가 gemini로 승격되면 sections/references는 gemini 텍스트라
@@ -2422,9 +2452,10 @@ async def _run_full_analysis(paper_id: int):
             system_instruction=visual_system_instruction,
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
+            doc_text=doc_text,
             provider=provider,
         )
-        if pdf_uri:
+        if pdf_uri or doc_text:
             chain_prev_id = r2.get("interaction_id")
 
         # Check for cancellation
@@ -2452,9 +2483,10 @@ async def _run_full_analysis(paper_id: int):
             system_instruction=recipe_system_instruction,
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
+            doc_text=doc_text,
             provider=provider,
         )
-        if pdf_uri:
+        if pdf_uri or doc_text:
             chain_prev_id = r3.get("interaction_id")
 
         # Check for cancellation
@@ -2477,9 +2509,10 @@ async def _run_full_analysis(paper_id: int):
             system_instruction=deep_dive_system_instruction,
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
+            doc_text=doc_text,
             provider=provider,
         )
-        if pdf_uri:
+        if pdf_uri or doc_text:
             chain_prev_id = r4.get("interaction_id")
 
         # Check for cancellation
@@ -2518,6 +2551,7 @@ async def _run_full_analysis(paper_id: int):
                     system_instruction=viz_system_instruction,
                     previous_interaction_id=chain_prev_id,
                     pdf_uri=pdf_uri,
+                    doc_text=doc_text,
                     provider=provider,
                 )
             except Exception as viz_err:
