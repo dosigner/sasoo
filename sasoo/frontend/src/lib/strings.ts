@@ -523,7 +523,6 @@ export const S = {
     qualityMedium: '보통',
     qualityLow: '저화질',
     qualityUnknown: '알 수 없음',
-    confidence: (score: string) => `신뢰도 ${score}`,
     statusUncertain: '불확실',
     statusReady: '확정',
     composite: 'Composite',
