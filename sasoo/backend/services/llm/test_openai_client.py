@@ -1,5 +1,6 @@
 import asyncio
 import os
+import threading
 import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -397,6 +398,137 @@ class TestStreamContract(unittest.TestCase):
 
         kwargs = fake_client.responses.stream.call_args.kwargs
         self.assertEqual(kwargs["reasoning"], {"effort": "high"})
+
+    def test_stream_yields_fallback_done_when_stream_ends_without_completed(self):
+        """SDK 스트림이 response.completed 없이 예외 없이 끝나도(예: 서버가 종료
+        이벤트를 누락) done 없이 조용히 끝나면 안 된다 — 프론트 onDone(비용
+        집계·액션 버튼)이 영영 호출되지 않는다. gemini_client와 같은 폴백."""
+        from services.llm import openai_client
+
+        events = [
+            _FakeStreamEvent("response.output_text.delta", delta="안"),
+            _FakeStreamEvent("response.output_text.delta", delta="녕"),
+        ]
+        fake_client = MagicMock()
+        fake_client.responses.stream.return_value = _FakeResponseStream(events)
+
+        with patch.object(openai_client, "_get_client", return_value=fake_client):
+            result = asyncio.run(_collect_stream(
+                openai_client.stream_interaction("질문", lane="chat", store=False)
+            ))
+
+        self.assertEqual(result[0], {"type": "token", "text": "안"})
+        self.assertEqual(result[1], {"type": "token", "text": "녕"})
+        self.assertEqual(len(result), 3)
+        self.assertEqual(result[2], {
+            "type": "done",
+            "tokens_in": 0,
+            "tokens_out": 0,
+            "tokens_thought": 0,
+            "interaction_id": None,
+        })
+
+    def test_stream_raises_after_tokens_before_done_without_fallback(self):
+        """토큰이 이미 나간 뒤 done 전에 실패하면 예외를 그대로 재던지고,
+        폴백 done을 끼워넣지 않는다 — 채팅 라우트는 이 경우를 terminal 실패로
+        취급한다(streamed_any=True라 재시도 없이 SSE error를 보낸다)."""
+        from services.llm import openai_client
+
+        def fake_events():
+            yield _FakeStreamEvent("response.output_text.delta", delta="안")
+            yield _FakeStreamEvent("response.output_text.delta", delta="녕")
+            raise RuntimeError("mid-stream boom")
+
+        class _FakeResponseStreamMidError:
+            def __enter__(self):
+                return fake_events()
+
+            def __exit__(self, *a):
+                return False
+
+        fake_client = MagicMock()
+        fake_client.responses.stream.return_value = _FakeResponseStreamMidError()
+
+        collected = []
+
+        async def run():
+            with patch.object(openai_client, "_get_client", return_value=fake_client):
+                async for ev in openai_client.stream_interaction(
+                    "질문", lane="chat", store=False,
+                ):
+                    collected.append(ev)
+
+        with self.assertRaisesRegex(RuntimeError, "mid-stream boom"):
+            asyncio.run(run())
+
+        self.assertEqual(collected, [
+            {"type": "token", "text": "안"},
+            {"type": "token", "text": "녕"},
+        ])
+
+    def test_stream_chat_lane_skips_pipeline_sem(self):
+        """chat lane은 파이프라인 세마포어를 절대 건드리지 않는다 — 파이프라인
+        팬아웃이 세마포어 슬롯을 다 채워도 채팅이 걸려선 안 된다."""
+        from services.concurrency import pipeline_llm_sem
+        from services.llm import openai_client
+
+        events = [_FakeStreamEvent("response.completed", response=_fake_stream_response())]
+        fake_client = MagicMock()
+        fake_client.responses.stream.return_value = _FakeResponseStream(events)
+        seen = {}
+
+        async def run():
+            sem = pipeline_llm_sem()
+            seen["baseline"] = sem._value
+            with patch.object(openai_client, "_get_client", return_value=fake_client):
+                await _collect_stream(
+                    openai_client.stream_interaction("질문", lane="chat", store=False)
+                )
+            seen["after"] = sem._value
+
+        asyncio.run(run())
+        self.assertEqual(seen["after"], seen["baseline"])
+
+    def test_stream_pipeline_lane_holds_pipeline_sem_during_stream(self):
+        """pipeline lane은 gemini_client.stream_interaction과 동형으로 스트림이
+        살아있는 전체 구간 동안 세마포어 슬롯 하나를 점유해야 한다(429 방지) —
+        call_interaction의 pipeline 분기와 같은 정책."""
+        from services.concurrency import pipeline_llm_sem
+        from services.llm import openai_client
+
+        proceed = threading.Event()
+        seen = {}
+
+        def fake_events():
+            yield _FakeStreamEvent("response.output_text.delta", delta="첫")
+            assert proceed.wait(timeout=2), "소비자가 첫 토큰 후 proceed를 풀지 못했다"
+            yield _FakeStreamEvent("response.completed", response=_fake_stream_response())
+
+        class _FakeResponseStreamBlocking:
+            def __enter__(self):
+                return fake_events()
+
+            def __exit__(self, *a):
+                return False
+
+        fake_client = MagicMock()
+        fake_client.responses.stream.return_value = _FakeResponseStreamBlocking()
+
+        async def run():
+            sem = pipeline_llm_sem()
+            seen["baseline"] = sem._value
+            with patch.object(openai_client, "_get_client", return_value=fake_client):
+                agen = openai_client.stream_interaction("질문", lane="pipeline", store=False)
+                await agen.__anext__()  # 첫 토큰
+                seen["sem_during"] = sem._value
+                proceed.set()
+                async for _ in agen:
+                    pass
+            seen["after"] = sem._value
+
+        asyncio.run(run())
+        self.assertEqual(seen["sem_during"], seen["baseline"] - 1)  # 스트림 중 슬롯 하나 점유
+        self.assertEqual(seen["after"], seen["baseline"])  # 종료 후 반납
 
 
 if __name__ == "__main__":

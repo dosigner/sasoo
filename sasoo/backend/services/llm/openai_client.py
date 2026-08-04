@@ -195,14 +195,23 @@ async def stream_interaction(
     않는다 — call_interaction과 달리 이 done dict는 gemini와 바이트 단위로
     같은 키 집합이어야 셔션이 분기 없이 위임할 수 있다.
 
+    SDK 스트림이 `response.completed` 없이 예외 없이 끝나면(gemini_client와
+    같은 이유의 폴백) `tokens_in/out/thought=0, interaction_id=None`인 폴백
+    done을 yield한다 — 안 그러면 프론트 onDone(비용 집계·액션 버튼)이 영영
+    호출되지 않는다.
+
     동기 SDK 스트림은 스레드 풀에서 돌리고 asyncio.Queue로 브릿지해 이벤트
     루프를 막지 않는다(gemini_client와 같은 관용구, 큐 전달 방식만 다르다 —
     call_soon_threadsafe + put_nowait). 채팅은 stateless(store=False, 히스토리를
     텍스트로 조립)라 previous_interaction_id 같은 체인 인자는 받지 않는다.
 
-    done 이전에 발생한 예외는 소비자에게 그대로 재던진다 — 채팅 라우트의
-    "첫 토큰 전 실패만 재시도" 정책(analysis_routes.py event_generator)이
-    이 예외에 의존한다.
+    done 이전에 발생한 예외는 소비자에게 그대로 재던진다(폴백 done은 나가지
+    않는다) — 채팅 라우트의 "첫 토큰 전 실패만 재시도" 정책(analysis_routes.py
+    event_generator)이 이 예외에 의존한다.
+
+    lane="pipeline"이면 gemini_client와 동형으로 스트림이 살아있는 전체 구간
+    동안 `pipeline_llm_sem()` 슬롯 하나를 점유한다(429 방지, call_interaction의
+    pipeline 분기와 동일 정책). chat lane은 세마포어를 쓰지 않는다.
     """
     kwargs: dict[str, Any] = {
         "model": model,
@@ -240,14 +249,35 @@ async def stream_interaction(
         finally:
             loop.call_soon_threadsafe(queue.put_nowait, _SENTINEL)
 
-    future = loop.run_in_executor(_executor_for(lane), _produce)
+    # pipeline lane은 스트림이 살아있는 동안 세마포어 슬롯 하나를 점유한다
+    # (gemini_client.stream_interaction과 동형 — 현재 루프 전용 세마포어라
+    # 크로스루프 바인딩 문제가 없다).
+    sem = pipeline_llm_sem() if lane == "pipeline" else None
+    if sem is not None:
+        await sem.acquire()
     try:
-        while True:
-            item = await queue.get()
-            if item is _SENTINEL:
-                break
-            if isinstance(item, Exception):
-                raise item
-            yield item
+        future = loop.run_in_executor(_executor_for(lane), _produce)
+        try:
+            done_seen = False
+            while True:
+                item = await queue.get()
+                if item is _SENTINEL:
+                    if not done_seen:
+                        yield {
+                            "type": "done",
+                            "tokens_in": 0,
+                            "tokens_out": 0,
+                            "tokens_thought": 0,
+                            "interaction_id": None,
+                        }
+                    break
+                if isinstance(item, Exception):
+                    raise item
+                if item.get("type") == "done":
+                    done_seen = True
+                yield item
+        finally:
+            await future
     finally:
-        await future
+        if sem is not None:
+            sem.release()
