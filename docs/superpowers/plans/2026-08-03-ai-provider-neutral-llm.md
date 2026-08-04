@@ -55,7 +55,7 @@ backend/tools/provider_compare.py    수정 — 5단계 전체 + 결함율·토�
 - Consumes: `OPENAI_API_KEY` 환경변수
 - Produces: 실측 결과 JSON(stdout) + 아래 체크박스 기록
 
-- [ ] **Step 1: 스파이크 스크립트 작성**
+- [x] **Step 1: 스파이크 스크립트 작성**
 
 `backend/tools/openai_spike.py`:
 
@@ -200,7 +200,7 @@ if __name__ == "__main__":
     print(json.dumps(RESULTS, ensure_ascii=False, indent=2))
 ```
 
-- [ ] **Step 2: 실행**
+- [x] **Step 2: 실행**
 
 ```bash
 cd sasoo/backend && OPENAI_API_KEY=$OPENAI_API_KEY .venv/bin/python tools/openai_spike.py
@@ -208,25 +208,29 @@ cd sasoo/backend && OPENAI_API_KEY=$OPENAI_API_KEY .venv/bin/python tools/openai
 
 Expected: 6개 검사 결과 JSON. 실패한 검사는 error에 원인이 남는다.
 
-- [ ] **Step 3: 결과를 기록하고 후속 태스크를 보정**
+- [x] **Step 3: 결과를 기록하고 후속 태스크를 보정**
 
 아래 체크박스에 실측값을 기입한다(플랜 파일을 직접 수정).
 
-- [ ] 체인 유지: (기록: __________) — 실패 시 Task 10을 stateless 폴백 전용으로 강등
-- [ ] effort 값 집합: (기록: __________) — `minimal` 미지원이면 Task 3의 OpenAI 열에서 `minimal` → `low`
-- [ ] strict:false 준수: missing_required=(기록: __________)
-- [ ] 스트리밍 이벤트명: (기록: __________) — `response.output_text.delta`가 아니면 Task 8 수정
-- [ ] reasoning_tokens 위치: (기록: __________)
-- [ ] 이미지 파트: (기록: __________)
+- [x] 체인 유지: (기록: 유지됨 — 5회 시행 중 4회 정상 회수, 1회 일시적 컨텍스트 유실. `store=True` 직후 곧바로 `previous_response_id`로 잇는 첫 시행에서 드물게(관측 1/5) 이전 턴 텍스트를 못 불러왔고, 격리된 재시행 3/3과 재실행 1/1은 모두 성공(`recalled_first_turn: true`, r1/r2 output_text 직접 확인함). 서버 측 저장 반영 지연으로 추정. Task 10을 stateless 폴백 전용으로 강등할 근거는 아님 — 다만 회수 실패 시 1회 재시도(또는 텍스트 재주입 폴백)를 Task 10 설계에 권장 사항으로 남김) — 실패 시 Task 10을 stateless 폴백 전용으로 강등
+- [x] effort 값 집합: (기록: `minimal` 미지원(`BadRequestError`, 2회 실행 모두 재현) / `low`·`medium`·`high`·`xhigh`는 지원) — `minimal` 미지원이므로 Task 3의 OpenAI 열에서 `minimal` → `low`로 변경
+- [x] strict:false 준수: missing_required=(기록: `[]` — 2회 실행 모두 프로덕션 `_SCREENING_SCHEMA` required 필드 전부 채움, 파싱 성공)
+- [x] 스트리밍 이벤트명: (기록: `response.created`, `response.in_progress`, `response.output_item.added`, `response.content_part.added`, `response.output_text.delta`, `response.output_text.done`, `response.content_part.done`, `response.output_item.done`, `response.completed` — `response.output_text.delta` 포함되어 Task 8 가정과 일치, 수정 불필요) — `response.output_text.delta`가 아니면 Task 8 수정
+- [x] reasoning_tokens 위치: (기록: `response.completed` 이벤트의 `response.usage.output_tokens_details.reasoning_tokens`에 존재(2회 모두 0 — 이 스파이크 질의는 reasoning 미사용). `usage.output_tokens`가 reasoning 토큰을 포함한다는 스펙 R7-2 가정과 일치하는 위치)
+- [x] 이미지 파트: (기록: 지원됨 — 단, 브리프에 포함된 1x1 테스트 PNG는 두 실행 모두 `BadRequestError`(`invalid_value`, "이미지 데이터가 유효하지 않다")로 거부됨. 별도 진단으로 64x64 실제 PNG를 보냈더니 정상 응답(`"빨간색"`) — API가 극소 크기(1x1) 이미지를 거부하는 것이지 `input_image`+base64 data URL 파트 자체는 정상 동작. R8-7 가정 유지, 브리프 스파이크의 테스트 자산(1x1 PNG)만 부적합함을 비고로 남김)
 
-- [ ] **Step 4: Luna 공식 단가 확인 (R7-5 게이트)**
+- [x] **Step 4: Luna 공식 단가 확인 (R7-5 게이트)**
 
 스펙 원안($0.20/$1.20)과 자문 제시값($1/$6)이 5배 어긋난다. 공식 가격 페이지
 (https://platform.openai.com/docs/pricing)에서 `gpt-5.6-luna`의 input/output/cached
-단가를 확인해 기록한다: (기록: input $______ / output $______ / cached $______)
+단가를 확인해 기록한다: (기록: input $0.20 / output $1.20 / cached input $0.02 — 모두 1M 토큰당,
+2026-08-05 https://developers.openai.com/api/docs/pricing 확인(platform.openai.com/docs/pricing이
+301 리다이렉트되는 신규 URL), standard 티어. 스펙 원안과 일치 — 자문 제시값($1/$6)은 2026-07-30
+OpenAI의 80% 가격 인하 이전 출시가로 확인됨(VentureBeat·Axios·CNBC 보도 교차 확인). batch/flex
+티어는 input $0.10 / output $0.60 / cached $0.01)
 → 이 값이 Task 5의 `PRICING` 항목에 들어간다.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git checkout -b feat/provider-neutral-llm origin/main
