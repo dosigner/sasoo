@@ -25,6 +25,8 @@ export interface WorkbenchStatusSummary {
   currentPhaseLabel: string;
   completedCount: number;
   totalCount: number;
+  stageNames: string[];
+  progressRatio: number;
 }
 
 const PHASE_LABELS: Record<AnalysisPhase, string> = {
@@ -34,6 +36,10 @@ const PHASE_LABELS: Record<AnalysisPhase, string> = {
   recipe: '레시피',
   deep_dive: '심층 분석',
 };
+
+// 상태부 진행 레일에 쓰는 단계명. currentPhaseLabel(PHASE_LABELS)과는 별개로,
+// 상태부 요약에서만 쓰는 5단계 고정 명칭이다.
+const STAGE_NAMES: string[] = ['스크리닝', '인용 분석', '시각 자료', '레시피', '심층 분석'];
 
 function percent(value: unknown): string | null {
   if (typeof value !== 'number' || Number.isNaN(value)) return null;
@@ -219,6 +225,8 @@ export function buildWorkbenchStatusSummary({
 }): WorkbenchStatusSummary {
   const totalCount = status?.phases.length ?? 5;
   const completedCount = status?.phases.filter((phase) => phase.status === 'completed').length ?? 0;
+  const stageNames = STAGE_NAMES;
+  const progressRatio = totalCount > 0 ? completedCount / totalCount : 0;
   const currentPhase = status?.current_phase;
   const currentPhaseLabel = currentPhase ? PHASE_LABELS[currentPhase] : '분석 대기';
   const hasFigures = figures.length > 0;
@@ -253,6 +261,8 @@ export function buildWorkbenchStatusSummary({
       currentPhaseLabel,
       completedCount,
       totalCount,
+      stageNames,
+      progressRatio,
     };
   }
 
@@ -272,6 +282,8 @@ export function buildWorkbenchStatusSummary({
       currentPhaseLabel,
       completedCount,
       totalCount,
+      stageNames,
+      progressRatio,
     };
   }
 
@@ -284,6 +296,8 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        stageNames,
+        progressRatio,
       };
     }
     if (visualState === 'error') {
@@ -296,6 +310,8 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        stageNames,
+        progressRatio,
       };
     }
     if (visualState === 'running') {
@@ -308,6 +324,8 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        stageNames,
+        progressRatio,
       };
     }
     if (visualState === 'partial' || (textReady === true && visualReady === false)) {
@@ -320,6 +338,8 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        stageNames,
+        progressRatio,
       };
     }
     if (hasRecipe) {
@@ -330,6 +350,8 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        stageNames,
+        progressRatio,
       };
     }
     if (hasFigures || hasTables) {
@@ -342,6 +364,8 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        stageNames,
+        progressRatio,
       };
     }
     if (completedCount > 0) {
@@ -352,6 +376,8 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        stageNames,
+        progressRatio,
       };
     }
 
@@ -362,6 +388,8 @@ export function buildWorkbenchStatusSummary({
       currentPhaseLabel,
       completedCount,
       totalCount,
+      stageNames,
+      progressRatio,
     };
   }
 
@@ -373,6 +401,8 @@ export function buildWorkbenchStatusSummary({
       currentPhaseLabel,
       completedCount,
       totalCount,
+      stageNames,
+      progressRatio,
     };
   }
 
@@ -385,5 +415,7 @@ export function buildWorkbenchStatusSummary({
     currentPhaseLabel,
     completedCount,
     totalCount,
+    stageNames,
+    progressRatio,
   };
 }

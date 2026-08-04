@@ -1093,24 +1093,22 @@ export default function AnalysisPanel({
         <div className="px-5 py-4">
           <div className="border border-border/45 bg-surface/50 px-4 py-3" style={{ borderRadius: 'var(--radius-surface)' }}>
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="mb-1 flex items-center gap-2 text-2xs tracking-[0.08em] text-fg-muted">
                   <AppIcon name="summary" className="h-3.5 w-3.5 text-accent" />
                   <span>{S.workbench.statusRailTitle}</span>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-semibold text-fg">
-                    {workbenchStatus.runStateLabel}
-                  </h3>
-                  <span className="status-pill border-border/50 bg-surface/80 text-fg-secondary">
-                    {workbenchStatus.currentPhaseLabel}
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-sm font-[650] text-fg">{workbenchStatus.runStateLabel}</span>
+                  <span className="text-2xs text-fg-muted tabular-nums">
+                    {workbenchStatus.totalCount > 0 && `${workbenchStatus.completedCount}/${workbenchStatus.totalCount}`}
                   </span>
-                  <span className="status-pill border-border/50 bg-surface/80 text-fg-secondary">
-                    {workbenchStatus.completedCount}/{workbenchStatus.totalCount} 완료
-                  </span>
-                  <span className="status-pill border-success/20 bg-success/10 text-success">
-                    {workbenchStatus.trustStateLabel}
-                  </span>
+                </div>
+                <div className="mt-2 h-[3px] rounded-full bg-border">
+                  <div
+                    className="h-[3px] rounded-full bg-accent transition-[width] duration-150"
+                    style={{ width: `${Math.round(workbenchStatus.progressRatio * 100)}%` }}
+                  />
                 </div>
               </div>
 
