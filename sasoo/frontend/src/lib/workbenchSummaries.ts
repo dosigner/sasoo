@@ -42,7 +42,7 @@ const METHODOLOGY_LABELS = {
 // SCREENING 스키마 "optics"|"bio"|"ai_ml"|"ee"|"general")에 맞춘 전용 맵이다.
 // S.areas(연구자 프로필 관심 분야, optics_photonics 등)는 키 체계가 달라 재사용할 수 없다.
 // 맵에 없는 값(모델이 스키마 밖 값을 내보낸 경우)은 원본 문자열을 그대로 표시한다.
-const DOMAIN_LABELS: Record<string, string> = {
+export const DOMAIN_LABELS: Record<string, string> = {
   optics: '광학',
   bio: '바이오',
   ai_ml: 'AI·머신러닝',

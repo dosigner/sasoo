@@ -3,6 +3,7 @@ import { AppIcon } from '@/components/icons';
 import AgentAvatar from '@/components/AgentAvatar';
 import type { AgentMeta } from '@/lib/agents';
 import type { WorkbenchSplitPreset } from '@/hooks/useWorkbenchLayout';
+import { DOMAIN_LABELS } from '@/lib/workbenchSummaries';
 
 function rgbaFromHex(color: string, alpha: number): string {
   const cleaned = color.replace('#', '');
@@ -129,8 +130,8 @@ function AgentBadgeDropdown({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={`담당 에이전트: ${agentLabel}. 변경하려면 여세요`}
-        className={agentColor ? 'status-pill cursor-pointer' : 'status-pill cursor-pointer border-border/50 bg-surface/80 text-fg-secondary'}
-        style={buildAgentPillStyle(agentColor)}
+        className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-2xs font-medium text-fg-secondary transition-colors duration-150 hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
+        style={agentColor ? { color: agentColor } : undefined}
       >
         {changing ? (
           <AppIcon name="spinner" className="h-3 w-3 animate-spin" />
@@ -234,6 +235,11 @@ export default function WorkbenchHeader({
     { label: '2:1', value: '2:1' },
   ];
 
+  // 상태 칩은 trustStateLabel을 우선 표시하고(buildWorkbenchStatusSummary가 항상 채워 넣는 값),
+  // runStateLabel은 폴백이다. 완료 상태 문구("~완료")는 success 톤, 그 외는 accent 톤을 쓴다.
+  const statusLabel = trustStateLabel || runStateLabel;
+  const statusIsDone = statusLabel.includes('완료');
+
   return (
     <div className="relative z-40 shrink-0 border-b border-border/45 bg-surface/95 px-4 py-3 backdrop-blur">
       <div className="flex items-start justify-between gap-4">
@@ -266,7 +272,7 @@ export default function WorkbenchHeader({
               {title}
             </h1>
             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-fg-muted">
-              {domain && <span className="status-pill border-accent/20 bg-accent/10 text-accent">{domain}</span>}
+              {domain && <span className="chip-tint">{DOMAIN_LABELS[domain] ?? domain}</span>}
               {agentLabel && (
                 onSelectAgent && agents && agents.length > 0 ? (
                   <AgentBadgeDropdown
@@ -292,11 +298,8 @@ export default function WorkbenchHeader({
                   </span>
                 )
               )}
-              <span className="status-pill border-border/50 bg-surface/80 text-fg-secondary">
-                {runStateLabel}
-              </span>
-              <span className="status-pill border-success/20 bg-success/10 text-success">
-                {trustStateLabel}
+              <span className={statusIsDone ? 'chip-tint chip-tint-success' : 'chip-tint'}>
+                {statusLabel}
               </span>
             </div>
           </div>
