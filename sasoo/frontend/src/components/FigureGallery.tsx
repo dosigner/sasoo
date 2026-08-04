@@ -515,14 +515,21 @@ function FigureCard({
   const dotTooltip = redFlagReason ?? badge.label;
 
   // Confidence dot: reuses CONFIDENCE_REVIEW_THRESHOLD (backend document_audit's
-  // 0.72 audit cut) — no threshold invented here.
+  // 0.72 audit cut) — no threshold invented here. I1 재리뷰: extraction_status
+  // === 'uncertain' 신호도 Table의 buildStatusDot과 동일하게 warning 판정에
+  // 합류시킨다(이관 없이 소실되던 신호).
   const hasConfidence = typeof figure.confidence === 'number' && !Number.isNaN(figure.confidence);
-  const confidenceIsHigh = hasConfidence && figure.confidence! >= CONFIDENCE_REVIEW_THRESHOLD;
+  const isUncertain = figure.extraction_status === 'uncertain';
+  const confidenceIsHigh = hasConfidence && !isUncertain && figure.confidence! >= CONFIDENCE_REVIEW_THRESHOLD;
+  const showReviewDot = hasConfidence || isUncertain;
+  const reviewReason = isUncertain ? '추출이 불확실해요, 검토를 권해요' : '검토를 권해요';
   const confidenceDotTitle = hasConfidence
     ? confidenceIsHigh
       ? `신뢰도 ${Math.round(figure.confidence! * 100)}%`
-      : `신뢰도 ${Math.round(figure.confidence! * 100)}%, 검토를 권해요`
-    : undefined;
+      : `신뢰도 ${Math.round(figure.confidence! * 100)}%, ${reviewReason}`
+    : isUncertain
+      ? reviewReason
+      : undefined;
 
   // I2: 서브피겨 개수 + 페이지를 캡션 아래 한 줄로 합친다(가운뎃점 1개).
   const subfigureMetaLine = [
@@ -574,7 +581,7 @@ function FigureCard({
             <h4 className="min-w-0 flex-1 truncate text-xs font-[650] text-fg">
               {figure.figure_num || `Figure ${index + 1}`}
             </h4>
-            {hasConfidence && (
+            {showReviewDot && (
               <span
                 role="img"
                 className={`h-[7px] w-[7px] flex-shrink-0 rounded-full ${confidenceIsHigh ? 'bg-success' : 'bg-warning'}`}
