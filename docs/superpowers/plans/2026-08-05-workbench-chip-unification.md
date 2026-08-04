@@ -69,4 +69,25 @@
 
 ## 실측 결과 (Task 4에서 기록)
 
-(작성 전)
+**검증일**: 2026-08-05, 브랜치 `ui/workbench-right-panel`, 대상 커밋 범위 `f9e8306..cff091d`(Task 1~3).
+
+### Step 1: 금지 패턴 grep
+
+- em-dash·화살표: 변경 파일(`AnalysisPanel.tsx`·`ChatPanel.tsx`·`FigureGallery.tsx`·`WorkbenchHeader.tsx`·`workbenchSummaries.ts`) 전체에서 매치된 8건 전부 코드 주석. 사용자 노출 문자열 내 0건.
+- `status-pill` 잔존: 워크벤치 4대 표면(WorkbenchHeader·AnalysisPanel·Figure/TableGallery·ChatPanel) 중 AnalysisPanel·ChatPanel은 0건. WorkbenchHeader는 허용된 1건(정적 에이전트 배지, 비드롭다운 폴백 경로)만 잔존. FigureGallery(3건: 서브피겨 배지·classifier_model·resolver_version, 전부 `import.meta.env.DEV` 게이트)·TableGallery(5건: resolver_version·classifier_model·review_required·repair_attempted·repair_confidence)는 카드 본문 메타 필로, 플랜 Global Constraints("워크벤치 표면만... FigureGallery/TableGallery의 **헤더부**"만 대상, index.css 주석도 "이 표면 밖의 status-pill/Badge는 무수정" 명시)와 Task 1~3 브리프 범위(갤러리 카운트 뱃지·Phase 완료 뱃지만 대상) 밖이라 위반 아님으로 판정. 코드 수정 없음.
+
+### Step 2: 빌드·테스트
+
+- `pnpm vitest run`: 8 files / 54 tests 전부 통과.
+- `pnpm vite build`: 7.80s 정상 완료, 신규 에러·경고 없음.
+
+### Step 3: 실행 스크린샷
+
+- 백엔드(8000)·프론트 preview(4173) 모두 검증 시작 전부터 기동 중이던 기존 프로세스 재사용(PID 9788/10204, 세션 종료 후에도 그대로 둠). `pnpm vite build` 재빌드 후 `curl`로 preview 응답과 `dist/index.html`을 diff해 이미 최신 빌드를 서빙 중임을 확인(재시작 불필요, sirv가 디스크에서 매 요청 직접 읽음).
+- Playwright(Chromium) `/tmp/pw-scratch`(전편 임시 설치 재사용), 대상 `http://127.0.0.1:4173/#/workbench/999005`(paper_id=999005), `localStorage['sasoo-theme']` 주입으로 라이트/다크 강제, 뷰포트 1600×1100 전폭(헤더 포함).
+- **디버깅 메모**: 최초 캡처에서 다크 스크린샷의 헤더 바만 흰색으로 찍히는 현상 발견 — `getComputedStyle` 확인 결과 실제 배경은 `rgba(23,23,26,0.95)`(정상 다크)였고 `backdrop-blur` 제거로도 재현되어, headless Chromium이 `BrowserContext`에 `colorScheme`을 명시하지 않으면 `backdrop-filter`가 걸린 반투명 배경을 스크린샷 컴포지팅 시 잘못 칠하는 렌더링 아티팩트로 판명(실제 DOM/CSS는 항상 정상). `newContext({ colorScheme: 'light'|'dark' })`를 추가해 해결 — 실제 앱 버그 아님, Playwright 스크린샷 캡처 환경 이슈.
+- 저장 파일: `screenshots/workbench-light-summary.png`, `screenshots/workbench-dark-summary.png`(둘 다 요약 탭, 헤더 포함 전폭). 픽셀 샘플링(`PIL.Image.getpixel`)으로 라이트 배경 `(247,247,248)`, 다크 배경 `(10,10,11)`/헤더 `(23,23,26)` 확인 — 헤더·칩(`도메인`·`상태`·에이전트)·PhaseSection 완료 아이콘 모두 라이트/다크 각각 올바른 색으로 렌더링.
+
+### 결론
+
+Task 1~3 변경분에 금지 패턴 위반 없음, 빌드·테스트 그린, 실행 화면 라이트·다크 모두 정상. 코드 수정 없이 검증만 수행(위반 0건이라 정리 대상 없었음).
