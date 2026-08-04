@@ -21,6 +21,9 @@ MODEL_FLASH_LITE = "gemini-3.5-flash-lite"
 MODEL_FLASH_HQ = "gemini-3.6-flash"
 MODEL_PRO = "gemini-3.1-pro-preview"
 
+# OpenAI 텍스트 모델 — provider 중립화(스펙 2026-07-31 + 개정 1)
+MODEL_LUNA = "gpt-5.6-luna"
+
 # Image generation
 MODEL_IMAGE = "gemini-3.1-flash-image"   # Nano Banana 2 ($0.067/장)
 MODEL_IMAGE_OPENAI = "gpt-image-2"
