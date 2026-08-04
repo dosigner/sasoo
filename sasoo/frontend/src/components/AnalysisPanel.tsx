@@ -1099,7 +1099,9 @@ export default function AnalysisPanel({
                   <span>{S.workbench.statusRailTitle}</span>
                 </div>
                 <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-sm font-[650] text-fg">{workbenchStatus.runStateLabel}</span>
+                  <span className="text-sm font-[650] text-fg">
+                    {workbenchStatus.trustStateLabel || workbenchStatus.runStateLabel}
+                  </span>
                   <span className="text-2xs text-fg-muted tabular-nums">
                     {workbenchStatus.totalCount > 0 && `${workbenchStatus.completedCount}/${workbenchStatus.totalCount}`}
                   </span>

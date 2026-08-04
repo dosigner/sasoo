@@ -115,4 +115,19 @@ describe('buildWorkbenchStatusSummary — stageNames/progressRatio', () => {
       }),
     );
   });
+
+  it('완료 + 시각화 있음: trustStateLabel이 상태 라인에서 우선 표시되는 값("심층 분석 완료")을 갖는다', () => {
+    // 상태 라인은 컴포넌트에서 trustStateLabel || runStateLabel 순으로 표시한다.
+    // trustStateLabel이 항상 채워지는 값임을 여기서 보장해 렌더 쪽 우선순위 로직의 전제를 지킨다.
+    const status = makeStatus(['completed', 'completed', 'completed', 'completed', 'completed'], 'completed', null);
+    const summary = buildWorkbenchStatusSummary({
+      status,
+      figures: [],
+      tables: [],
+      recipe: null,
+      visualizations: { paper_id: 1, items: [{ id: 1 } as never], total_count: 1, model_used: 'x', planned_at: null },
+    });
+    expect(summary.trustStateLabel).toBe('심층 분석 완료');
+    expect(summary.trustStateLabel.length).toBeGreaterThan(0);
+  });
 });
