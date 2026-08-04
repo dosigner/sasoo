@@ -346,5 +346,24 @@ class CachedPhaseLookupTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cached.result_data["title"], "recipe")
 
 
+class TestInputHashProviderAware(unittest.TestCase):
+    def test_legacy_call_without_kwargs_is_unchanged(self):
+        """odl_parser 등 provider 무관 호출부의 해시가 변하면 기존 캐시가 전멸한다."""
+        legacy = compute_input_hash("본문 텍스트")
+        self.assertEqual(len(legacy), 16)  # 기존 길이 계약 유지
+        self.assertEqual(legacy, compute_input_hash("본문 텍스트"))
+
+    def test_model_and_effort_change_the_hash(self):
+        base = compute_input_hash("t", provider="gemini", model="gemini-3.6-flash", effort="high")
+        self.assertNotEqual(base, compute_input_hash("t", provider="openai", model="gpt-5.6-luna", effort="high"))
+        self.assertNotEqual(base, compute_input_hash("t", provider="gemini", model="gemini-3.6-flash", effort="low"))
+
+    def test_kwargs_hash_differs_from_legacy(self):
+        self.assertNotEqual(
+            compute_input_hash("t"),
+            compute_input_hash("t", provider="gemini", model="gemini-3.6-flash", effort=None),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

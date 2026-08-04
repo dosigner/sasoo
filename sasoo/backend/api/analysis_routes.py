@@ -128,10 +128,21 @@ async def _get_visual_row_counts(paper_id: int) -> tuple[int, int]:
     return int(row["figure_count"] or 0), int(row["table_count"] or 0)
 
 
-async def _get_cached_phase_result(paper_id: int, phase: str, input_text: str) -> Optional[dict]:
-    cached = await find_cached_phase_result(paper_id, phase, input_text)
+async def _get_cached_phase_result(
+    paper_id: int,
+    phase: str,
+    input_text: str,
+    *,
+    provider: str | None = None,
+    model: str | None = None,
+    effort: str | None = None,
+) -> Optional[dict]:
+    cached = await find_cached_phase_result(
+        paper_id, phase, input_text, provider=provider, model=model, effort=effort,
+    )
     if cached is None:
         return None
+    fallback_hash = compute_input_hash(input_text, provider=provider, model=model, effort=effort)
     await execute_insert(
         """
         INSERT INTO analysis_cache_events
@@ -141,7 +152,7 @@ async def _get_cached_phase_result(paper_id: int, phase: str, input_text: str) -
         (
             paper_id,
             phase,
-            cached.input_hash or compute_input_hash(input_text),
+            cached.input_hash or fallback_hash,
             cached.model_used or "cached",
             cached.cost_usd or 0.0,
             cached.tokens_in or 0,
@@ -154,7 +165,7 @@ async def _get_cached_phase_result(paper_id: int, phase: str, input_text: str) -
         "tokens_in": cached.tokens_in,
         "tokens_out": cached.tokens_out,
         "cost_usd": cached.cost_usd,
-        "input_hash": cached.input_hash or compute_input_hash(input_text),
+        "input_hash": cached.input_hash or fallback_hash,
     }
 
 
@@ -295,6 +306,10 @@ async def _insert_analysis_result(
     cost_usd: float,
     input_text: str,
     interaction_id: str | None = None,
+    *,
+    provider: str | None = None,
+    model: str | None = None,
+    effort: str | None = None,
 ) -> None:
     await execute_insert(
         """
@@ -310,7 +325,7 @@ async def _insert_analysis_result(
             tokens_in,
             tokens_out,
             cost_usd,
-            compute_input_hash(input_text),
+            compute_input_hash(input_text, provider=provider, model=model, effort=effort),
             interaction_id,
         ),
     )
@@ -448,7 +463,11 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
 불확실하면 applicable을 성급히 false로 두지 말고 confidence를 낮춰.
 """
 
-    cached = await _get_cached_phase_result(paper_id, "screening", prompt)
+    provider = "gemini"  # Task 9 전까지 리터럴 — 주입은 라우팅 배선에서
+    choice = resolve_model("screening", provider)
+    cached = await _get_cached_phase_result(
+        paper_id, "screening", prompt, provider=provider, model=choice.model, effort=choice.effort,
+    )
     if cached is not None:
         phase_status.status = "completed"
         phase_status.completed_at = _utcnow_iso()
@@ -463,7 +482,6 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
         return cached
 
     async def _invoke() -> dict:
-        choice = resolve_model("screening", "gemini")
         return await call_interaction(
             prompt,
             lane="pipeline",
@@ -519,6 +537,9 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
         cost,
         prompt,
         interaction_id=result.get("interaction_id"),
+        provider=provider,
+        model=choice.model,
+        effort=choice.effort,
     )
 
     # Update status
@@ -598,6 +619,9 @@ async def _run_citation(
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.CITATION
 
+    provider = "gemini"  # Task 9 전까지 리터럴 — 주입은 라우팅 배선에서
+    choice = resolve_model("citation", provider)
+
     # --- Step 1: Parse references and count citations locally ---
     from services.citation_analyzer import analyze_citations
 
@@ -655,7 +679,9 @@ async def _run_citation(
 """
 
         cache_key = _citation_cache_key(local_result, citation_body)
-        cached = await _get_cached_phase_result(paper_id, "citation", cache_key)
+        cached = await _get_cached_phase_result(
+            paper_id, "citation", cache_key, provider=provider, model=choice.model, effort=choice.effort,
+        )
         if cached is not None:
             phase_status.status = "completed"
             phase_status.completed_at = _utcnow_iso()
@@ -670,7 +696,6 @@ async def _run_citation(
             return cached
 
         try:
-            choice = resolve_model("citation", "gemini")
             result = await call_interaction(
                 llm_prompt,
                 lane="pipeline",
@@ -748,7 +773,9 @@ async def _run_citation(
     )
 
     if not top_refs:
-        cached = await _get_cached_phase_result(paper_id, "citation", input_hash_source)
+        cached = await _get_cached_phase_result(
+            paper_id, "citation", input_hash_source, provider=provider, model=choice.model, effort=choice.effort,
+        )
         if cached is not None:
             phase_status.status = "completed"
             phase_status.completed_at = _utcnow_iso()
@@ -773,6 +800,9 @@ async def _run_citation(
         phase_status.tokens_out or 0,
         cost,
         input_hash_source,
+        provider=provider,
+        model=choice.model,
+        effort=choice.effort,
     )
 
     phase_status.status = "completed"
@@ -1091,6 +1121,8 @@ async def _run_visual(
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.VISUAL
+    provider = "gemini"  # Task 9 전까지 리터럴 — 주입은 라우팅 배선에서
+    choice = _stage_choice("visual", provider)
     paper_dir = get_paper_dir(folder_name)
     visual_contract, figure_count, table_count = await _get_visual_contract(
         paper_id,
@@ -1150,7 +1182,9 @@ async def _run_visual(
             visual_state=str(visual_contract["visual_state"]),
             visual_error=visual_contract["visual_error"],
         )
-        cached = await _get_cached_phase_result(paper_id, "visual", partial_hash_source)
+        cached = await _get_cached_phase_result(
+            paper_id, "visual", partial_hash_source, provider=provider, model=choice.model, effort=choice.effort,
+        )
         if cached is None:
             await _insert_analysis_result(
                 paper_id,
@@ -1161,6 +1195,9 @@ async def _run_visual(
                 0,
                 0.0,
                 partial_hash_source,
+                provider=provider,
+                model=choice.model,
+                effort=choice.effort,
             )
         else:
             result_text = cached["text"]
@@ -1194,7 +1231,9 @@ async def _run_visual(
     prompt_fallback = f"논문 관련 텍스트:\n{visual_input}\n{figure_desc}\n\n{instruction}"
     cache_key = prompt_fallback
 
-    cached = await _get_cached_phase_result(paper_id, "visual", cache_key)
+    cached = await _get_cached_phase_result(
+        paper_id, "visual", cache_key, provider=provider, model=choice.model, effort=choice.effort,
+    )
     if cached is not None:
         phase_status.status = "completed"
         phase_status.completed_at = _utcnow_iso()
@@ -1241,6 +1280,9 @@ async def _run_visual(
         cost,
         cache_key,
         interaction_id=result.get("interaction_id"),
+        provider=provider,
+        model=choice.model,
+        effort=choice.effort,
     )
 
     phase_status.status = "completed"
@@ -1276,6 +1318,8 @@ async def _run_recipe(
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.RECIPE
+    provider = "gemini"  # Task 9 전까지 리터럴 — 주입은 라우팅 배선에서
+    choice = _stage_choice("recipe", provider)
 
     should_skip, skip_reason = _screening_gate_decision(screening_result_text, phase="recipe")
     if should_skip:
@@ -1360,7 +1404,9 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
     prompt_fallback = f"논문 텍스트:\n{recipe_input}\n\n{instruction}"
     cache_key = prompt_fallback
 
-    cached = await _get_cached_phase_result(paper_id, "recipe", cache_key)
+    cached = await _get_cached_phase_result(
+        paper_id, "recipe", cache_key, provider=provider, model=choice.model, effort=choice.effort,
+    )
     if cached is not None:
         phase_status.status = "completed"
         phase_status.completed_at = _utcnow_iso()
@@ -1407,6 +1453,9 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
         cost,
         cache_key,
         interaction_id=result.get("interaction_id"),
+        provider=provider,
+        model=choice.model,
+        effort=choice.effort,
     )
 
     phase_status.status = "completed"
@@ -1443,6 +1492,8 @@ async def _run_deep_dive(
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.DEEP_DIVE
+    provider = "gemini"  # Task 9 전까지 리터럴 — 주입은 라우팅 배선에서
+    choice = _stage_choice("deep_dive", provider)
 
     should_skip, skip_reason = _screening_gate_decision(screening_result_text, phase="deep_dive")
     if should_skip:
@@ -1486,7 +1537,9 @@ async def _run_deep_dive(
         if r not in (screening_result_text, citation_result_text)
     ]
 
-    cached = await _get_cached_phase_result(paper_id, "deep_dive", cache_key)
+    cached = await _get_cached_phase_result(
+        paper_id, "deep_dive", cache_key, provider=provider, model=choice.model, effort=choice.effort,
+    )
     if cached is not None:
         phase_status.status = "completed"
         phase_status.completed_at = _utcnow_iso()
@@ -1533,6 +1586,9 @@ async def _run_deep_dive(
         cost,
         cache_key,
         interaction_id=result.get("interaction_id"),
+        provider=provider,
+        model=choice.model,
+        effort=choice.effort,
     )
 
     phase_status.status = "completed"
@@ -1757,6 +1813,8 @@ async def _plan_visualizations(
         started_at=_utcnow_iso(),
     )
     # Don't append a new phase — we update the existing deep_dive phase's progress
+    provider = "gemini"  # Task 9 전까지 리터럴 — 주입은 라우팅 배선에서
+    choice = _stage_choice("visualization", provider)  # role: viz_planning
 
     prev_context = "\n---\n".join(previous_results[:4])
 
@@ -1785,7 +1843,9 @@ category(experimental_protocol|algorithm_flow|signal_flow|system_architecture|co
     )
     cache_key = prompt_fallback
 
-    cached = await _get_cached_phase_result(paper_id, "viz_plan", cache_key)
+    cached = await _get_cached_phase_result(
+        paper_id, "viz_plan", cache_key, provider=provider, model=choice.model, effort=choice.effort,
+    )
     if cached is not None:
         try:
             return json.loads(cached["text"]).get("visualizations", [])
@@ -1844,6 +1904,9 @@ category(experimental_protocol|algorithm_flow|signal_flow|system_architecture|co
         cost,
         cache_key,
         interaction_id=result.get("interaction_id"),
+        provider=provider,
+        model=choice.model,
+        effort=choice.effort,
     )
 
     return items

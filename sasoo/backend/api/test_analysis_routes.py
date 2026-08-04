@@ -1900,7 +1900,10 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         calls = []
         call_fake = self._orch_call_fake(calls)
 
-        async def _cache_visual_hit(paper_id, phase, input_text):
+        async def _cache_visual_hit(paper_id, phase, input_text, **kwargs):
+            # Task 6(R6): _get_cached_phase_result가 provider/model/effort kwargs를
+            # 스테이지 진입 시 확정한 값으로 넘긴다 — 이 fake도 그 kwargs를 받아야
+            # 실제 호출 시그니처와 어긋나지 않는다(TypeError로 조용히 삼켜지는 걸 방지).
             if phase == "visual":
                 return {
                     "text": self._VISUAL_CACHED_TEXT, "model": "gemini-cache",
