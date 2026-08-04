@@ -25,6 +25,8 @@ export interface WorkbenchStatusSummary {
   currentPhaseLabel: string;
   completedCount: number;
   totalCount: number;
+  /** 완료된 phase 중 현재 설정과 다른 모델로 분석된 결과가 있으면 그 모델명(스펙 §D). */
+  staleModel: string | null;
 }
 
 const PHASE_LABELS: Record<AnalysisPhase, string> = {
@@ -219,6 +221,7 @@ export function buildWorkbenchStatusSummary({
 }): WorkbenchStatusSummary {
   const totalCount = status?.phases.length ?? 5;
   const completedCount = status?.phases.filter((phase) => phase.status === 'completed').length ?? 0;
+  const staleModel = status?.phases.find((phase) => Boolean(phase.stale_model))?.stale_model ?? null;
   const currentPhase = status?.current_phase;
   const currentPhaseLabel = currentPhase ? PHASE_LABELS[currentPhase] : '분석 대기';
   const hasFigures = figures.length > 0;
@@ -253,6 +256,7 @@ export function buildWorkbenchStatusSummary({
       currentPhaseLabel,
       completedCount,
       totalCount,
+      staleModel,
     };
   }
 
@@ -272,6 +276,7 @@ export function buildWorkbenchStatusSummary({
       currentPhaseLabel,
       completedCount,
       totalCount,
+      staleModel,
     };
   }
 
@@ -284,6 +289,7 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        staleModel,
       };
     }
     if (visualState === 'error') {
@@ -296,6 +302,7 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        staleModel,
       };
     }
     if (visualState === 'running') {
@@ -308,6 +315,7 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        staleModel,
       };
     }
     if (visualState === 'partial' || (textReady === true && visualReady === false)) {
@@ -320,6 +328,7 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        staleModel,
       };
     }
     if (hasRecipe) {
@@ -330,6 +339,7 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        staleModel,
       };
     }
     if (hasFigures || hasTables) {
@@ -342,6 +352,7 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        staleModel,
       };
     }
     if (completedCount > 0) {
@@ -352,6 +363,7 @@ export function buildWorkbenchStatusSummary({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        staleModel,
       };
     }
 
@@ -362,6 +374,7 @@ export function buildWorkbenchStatusSummary({
       currentPhaseLabel,
       completedCount,
       totalCount,
+      staleModel,
     };
   }
 
@@ -373,6 +386,7 @@ export function buildWorkbenchStatusSummary({
       currentPhaseLabel,
       completedCount,
       totalCount,
+      staleModel,
     };
   }
 
@@ -385,5 +399,6 @@ export function buildWorkbenchStatusSummary({
     currentPhaseLabel,
     completedCount,
     totalCount,
+    staleModel,
   };
 }

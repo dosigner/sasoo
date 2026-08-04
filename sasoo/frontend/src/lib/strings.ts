@@ -180,6 +180,8 @@ export const S = {
     analysisFocus: '분석 중심',
     startAnalysis: '분석 시작',
     reAnalyze: '재분석',
+    staleModelBadge: (model: string) => `${model}로 분석됨`,
+    staleModelHint: '현재 설정과 다른 모델의 결과예요. 재분석하면 갱신돼요.',
     analyzing: '분석 중...',
     cancel: '취소',
     panelResize: '패널 크기 조절',
