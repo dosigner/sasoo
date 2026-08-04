@@ -30,7 +30,8 @@ from pathlib import Path
 from typing import Optional, Protocol
 
 from services.concurrency import RENDER_SEM, run_pipeline_blocking
-from services.models import MODEL_IMAGE, MODEL_IMAGE_OPENAI, MODEL_PRO
+from services.model_registry import resolve as resolve_model
+from services.models import MODEL_IMAGE, MODEL_IMAGE_OPENAI
 from services.pricing import calc_image_cost
 
 logger = logging.getLogger(__name__)
@@ -74,12 +75,13 @@ async def _plan_description(viz_target: dict) -> str:
         f"Context:\n{viz_target.get('description', '')[:6000]}\n\n"
         "Write the final image description now."
     )
+    _choice = resolve_model("viz_image_plan", "gemini")
     result = await call_interaction(
         prompt,
         lane="pipeline",
-        model=MODEL_PRO,
+        model=_choice.model,
         system_instruction=_PLANNER_SYSTEM,
-        thinking_level="medium",
+        thinking_level=_choice.effort,
         store=False,
     )
     return str(result.get("text", "")).strip()

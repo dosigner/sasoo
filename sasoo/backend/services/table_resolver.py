@@ -24,7 +24,7 @@ from services.document_manifest import (
     strip_caption_decoration,
     table_int_to_roman,
 )
-from services.models import MODEL_FLASH_HQ
+from services.model_registry import resolve as resolve_model
 
 logger = logging.getLogger(__name__)
 
@@ -211,14 +211,15 @@ async def _repair_with_vlm(candidate: dict[str, Any], manifest: dict[str, Any], 
     }
     try:
         image_bytes = (paper_dir / page["raster_path"]).resolve().read_bytes()
+        _choice = resolve_model("table_resolver", "gemini")
         result = await call_interaction(
             [
                 {"type": "image", "data": base64.b64encode(image_bytes).decode("ascii"), "mime_type": "image/png"},
                 {"type": "text", "text": json.dumps(prompt, ensure_ascii=False)},
             ],
             lane="pipeline",
-            model=MODEL_FLASH_HQ,
-            thinking_level="minimal",
+            model=_choice.model,
+            thinking_level=_choice.effort,
             store=False,
         )
         payload = json.loads(_clean_llm_json(result["text"]))

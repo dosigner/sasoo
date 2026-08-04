@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from PIL import Image
 
 from services.llm.interactions_client import call_interaction
-from services.models import MODEL_FLASH_HQ
+from services.model_registry import resolve as resolve_model
 from models.paper import Figure
 
 _SUBFIGURE_RESPONSE_SCHEMA = {
@@ -169,14 +169,15 @@ If no sub-figures are detected, return:
 
         # Call Gemini with vision via the Interactions API
         try:
+            _choice = resolve_model("subfigure", "gemini")
             result = await call_interaction(
                 [
                     {"type": "image", "data": image_base64, "mime_type": "image/png"},
                     {"type": "text", "text": self.DETECTION_PROMPT},
                 ],
                 lane="pipeline",
-                model=MODEL_FLASH_HQ,
-                thinking_level="minimal",
+                model=_choice.model,
+                thinking_level=_choice.effort,
                 store=False,
                 response_schema=_SUBFIGURE_RESPONSE_SCHEMA,
             )

@@ -1171,13 +1171,11 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(m.MODEL_DEEP_DIVE, MODEL_FLASH_HQ)
         self.assertEqual(m.MODEL_VIZ_PLANNING, MODEL_FLASH_HQ)
         self.assertEqual(m.MODEL_MERMAID, MODEL_FLASH_HQ)
-        # 체인 스테이지 → 모델 매핑이 상수를 사용
-        self.assertEqual(analysis_routes._STAGE_MODELS, {
-            "visual": m.MODEL_VISUAL,
-            "recipe": m.MODEL_RECIPE,
-            "deep_dive": m.MODEL_DEEP_DIVE,
-            "visualization": m.MODEL_VIZ_PLANNING,
-        })
+        # 체인 스테이지 → 모델 매핑이 레지스트리 조회(_stage_choice)를 사용
+        self.assertEqual(analysis_routes._stage_choice("visual", "gemini").model, m.MODEL_VISUAL)
+        self.assertEqual(analysis_routes._stage_choice("recipe", "gemini").model, m.MODEL_RECIPE)
+        self.assertEqual(analysis_routes._stage_choice("deep_dive", "gemini").model, m.MODEL_DEEP_DIVE)
+        self.assertEqual(analysis_routes._stage_choice("visualization", "gemini").model, m.MODEL_VIZ_PLANNING)
 
     def test_norm_ref_id_normalizes_bracket_and_space(self):
         self.assertEqual(analysis_routes._norm_ref_id("[1]"), analysis_routes._norm_ref_id(" 1 "))

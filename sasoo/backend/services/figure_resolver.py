@@ -21,7 +21,7 @@ from api.analysis_helpers import _clean_llm_json
 from models.paper import Figure as ParsedFigure
 from services.llm.interactions_client import call_interaction
 from services.document_manifest import strip_caption_decoration
-from services.models import MODEL_FLASH_HQ
+from services.model_registry import resolve as resolve_model
 from services.subfigure_detector import SubFigureDetector
 
 logger = logging.getLogger(__name__)
@@ -342,14 +342,15 @@ async def _maybe_select_candidate(
     }
 
     try:
+        _choice = resolve_model("figure_resolver", "gemini")
         result = await call_interaction(
             [
                 {"type": "image", "data": image_b64, "mime_type": "image/png"},
                 {"type": "text", "text": json.dumps(prompt, ensure_ascii=False)},
             ],
             lane="pipeline",
-            model=MODEL_FLASH_HQ,
-            thinking_level="minimal",
+            model=_choice.model,
+            thinking_level=_choice.effort,
             store=False,
         )
         payload = json.loads(_clean_llm_json(result["text"]))
@@ -412,14 +413,15 @@ async def _maybe_rerank_caption(
     }
 
     try:
+        _choice = resolve_model("figure_resolver", "gemini")
         result = await call_interaction(
             [
                 {"type": "image", "data": image_b64, "mime_type": "image/png"},
                 {"type": "text", "text": json.dumps(prompt, ensure_ascii=False)},
             ],
             lane="pipeline",
-            model=MODEL_FLASH_HQ,
-            thinking_level="minimal",
+            model=_choice.model,
+            thinking_level=_choice.effort,
             store=False,
         )
         payload = json.loads(_clean_llm_json(result["text"]))

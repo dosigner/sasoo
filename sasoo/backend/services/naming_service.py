@@ -16,7 +16,7 @@ import uuid
 from typing import Optional
 
 from services.llm.interactions_client import call_interaction
-from services.models import MODEL_FLASH_LITE
+from services.model_registry import resolve as resolve_model
 
 logger = logging.getLogger(__name__)
 
@@ -73,12 +73,13 @@ async def generate_folder_name(
             "Return ONLY the folder name string, nothing else."
         )
 
+        _choice = resolve_model("naming", "gemini")
         result = await call_interaction(
             prompt,
             lane="pipeline",
-            model=MODEL_FLASH_LITE,
+            model=_choice.model,
             system_instruction=_NAMING_SYSTEM_INSTRUCTION,
-            thinking_level="minimal",
+            thinking_level=_choice.effort,
             store=False,
         )
         raw_name = result["text"].strip()
@@ -134,12 +135,13 @@ async def generate_figure_names(
             "Example: [\"fig1_sem_cross_section\", \"fig2_transmission_spectrum\"]"
         )
 
+        _choice = resolve_model("naming", "gemini")
         result = await call_interaction(
             prompt,
             lane="pipeline",
-            model=MODEL_FLASH_LITE,
+            model=_choice.model,
             system_instruction=_NAMING_SYSTEM_INSTRUCTION,
-            thinking_level="minimal",
+            thinking_level=_choice.effort,
             store=False,
             response_schema=_FIGURE_NAMES_RESPONSE_SCHEMA,
         )
@@ -188,12 +190,13 @@ async def generate_paperbanana_name(
             "Return ONLY the filename string, nothing else."
         )
 
+        _choice = resolve_model("naming", "gemini")
         result = await call_interaction(
             prompt,
             lane="pipeline",
-            model=MODEL_FLASH_LITE,
+            model=_choice.model,
             system_instruction=_NAMING_SYSTEM_INSTRUCTION,
-            thinking_level="minimal",
+            thinking_level=_choice.effort,
             store=False,
         )
         raw = result["text"].strip().strip('`"\'').split('\n')[0]

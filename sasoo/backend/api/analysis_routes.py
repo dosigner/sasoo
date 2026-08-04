@@ -83,16 +83,12 @@ from api.analysis_helpers import (
     _SYSTEM_INSTRUCTION_KO,
 )
 from services.models import (
-    MODEL_SCREENING,
-    MODEL_CITATION,
-    MODEL_VISUAL,
-    MODEL_RECIPE,
-    MODEL_DEEP_DIVE,
     MODEL_VIZ_PLANNING,
     MODEL_MERMAID,
     MODEL_CHAT,
     MODEL_FLASH_HQ,
 )
+from services.model_registry import ModelChoice, resolve as resolve_model
 from api.report_service import (
     _format_phase_data,
     _generate_paperbanana_image,
@@ -450,11 +446,12 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
         return cached
 
     async def _invoke() -> dict:
+        choice = resolve_model("screening", "gemini")
         return await call_interaction(
             prompt,
             lane="pipeline",
-            model=MODEL_SCREENING,
-            thinking_level="minimal",
+            model=choice.model,
+            thinking_level=choice.effort,
             response_schema=_SCREENING_SCHEMA,
             store=False,
         )
@@ -648,11 +645,12 @@ async def _run_citation(
             return cached
 
         try:
+            choice = resolve_model("citation", "gemini")
             result = await call_interaction(
                 llm_prompt,
                 lane="pipeline",
-                model=MODEL_CITATION,
-                thinking_level="low",
+                model=choice.model,
+                thinking_level=choice.effort,
                 response_schema=_CITATION_SCHEMA,
                 store=False,
             )
@@ -764,15 +762,19 @@ async def _run_citation(
 # Stateful chain: Visual -> Recipe -> Deep Dive -> Viz planning (gemini-3.6-flash)
 # ---------------------------------------------------------------------------
 
-# 단계별 thinking_level (visual=low, recipe=medium, deep_dive=high, visualization=medium)
-_STAGE_THINKING = {"visual": "low", "recipe": "medium", "deep_dive": "high", "visualization": "medium"}
-
-_STAGE_MODELS = {
-    "visual": MODEL_VISUAL,
-    "recipe": MODEL_RECIPE,
-    "deep_dive": MODEL_DEEP_DIVE,
-    "visualization": MODEL_VIZ_PLANNING,
+# 체인 스테이지 이름과 레지스트리 role의 번역표.
+# "visualization"(파이프라인 내부 명)만 레지스트리 role "viz_planning"과 다르다.
+_PHASE_TO_ROLE = {
+    "visual": "visual",
+    "recipe": "recipe",
+    "deep_dive": "deep_dive",
+    "visualization": "viz_planning",
 }
+
+
+def _stage_choice(phase: str, provider: str) -> ModelChoice:
+    return resolve_model(_PHASE_TO_ROLE[phase], provider)
+
 
 _VISUAL_SCHEMA = {
     "type": "object",
@@ -1000,22 +1002,24 @@ async def _run_chain_stage(
                 ]
             else:
                 contents = prompt_chain
+            choice = _stage_choice(phase, "gemini")
             return await call_interaction(
                 contents,
                 lane="pipeline",
-                model=_STAGE_MODELS[phase],
+                model=choice.model,
                 system_instruction=system_instruction,
-                thinking_level=_STAGE_THINKING[phase],
+                thinking_level=choice.effort,
                 previous_interaction_id=previous_interaction_id,
                 response_schema=response_schema,
                 store=True,
             )
+        choice = _stage_choice(phase, "gemini")
         return await call_interaction(
             prompt_fallback,
             lane="pipeline",
-            model=_STAGE_MODELS[phase],
+            model=choice.model,
             system_instruction=system_instruction,
-            thinking_level=_STAGE_THINKING[phase],
+            thinking_level=choice.effort,
             response_schema=response_schema,
             store=False,
         )
