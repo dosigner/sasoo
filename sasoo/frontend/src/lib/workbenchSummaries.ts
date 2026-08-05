@@ -8,6 +8,7 @@ import type {
   Table,
   VisualizationPlan,
 } from '@/lib/api';
+import { getAgentMeta } from '@/lib/agents';
 
 type PhaseTone = 'primary' | 'muted' | 'practical';
 
@@ -19,7 +20,7 @@ export interface MetaItem {
 
 export interface PhaseSummary {
   summaryLine: string | null;
-  collapsedMeta: string[];
+  collapsedMeta: Array<string | { text: string; accent?: boolean }>;
   expandedMeta: string[];
   metaItems: MetaItem[];
   tone: PhaseTone;
@@ -146,7 +147,13 @@ export function buildPhaseSummary(
     ].filter((item): item is MetaItem => item !== null);
     return {
       summaryLine: shortText(screening.summary, '논문의 핵심 맥락을 정리해요.'),
-      collapsedMeta: [domain, relevance ? `관련도 ${relevance}` : '', agent ? `추천 ${agent}` : ''].filter(Boolean),
+      collapsedMeta: ([
+        domain,
+        relevance ? { text: `관련도 ${relevance}`, accent: true } : null,
+        agent ? `추천 ${getAgentMeta(agent)?.nameKo ?? agent}` : null,
+      ] as Array<string | { text: string; accent?: boolean } | null>).filter(
+        (item): item is string | { text: string; accent?: boolean } => item !== null,
+      ),
       expandedMeta: [],
       metaItems,
       tone: 'primary',

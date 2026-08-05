@@ -161,7 +161,7 @@ interface PhaseSectionProps {
   content: string | null;
   defaultExpanded: boolean;
   summaryLine?: string | null;
-  collapsedMeta?: string[];
+  collapsedMeta?: Array<string | { text: string; accent?: boolean }>;
   expandedMeta?: string[];
   metaItems?: { label: string; value: string; accent?: boolean }[];
   tone?: 'primary' | 'muted' | 'practical';
@@ -247,8 +247,16 @@ function PhaseSection({
             {expanded ? meta.description : statusInfo.label}
           </div>
           {!expanded && collapsedMeta.length > 0 && (
-            <div className="mt-1 truncate text-xs font-normal text-fg-muted">
-              {collapsedMeta.join(' · ')}
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {collapsedMeta.map((item) => {
+                const text = typeof item === 'string' ? item : item.text;
+                const accent = typeof item !== 'string' && item.accent;
+                return (
+                  <span key={text} className={accent ? 'chip-tint tabular-nums' : 'chip-soft'}>
+                    {text}
+                  </span>
+                );
+              })}
             </div>
           )}
           {expanded && metaItems.length > 0 && (

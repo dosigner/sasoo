@@ -535,6 +535,16 @@
     color: rgb(var(--accent));
   }
 
+  /* 정보성 메타용 조용한 칩 — 틴트 칩(상태성)과 짝. 변수 기반이라 다크 모드 자동 적응. */
+  .chip-soft {
+    @apply inline-flex items-center whitespace-nowrap font-medium;
+    border-radius: var(--radius-pill);
+    padding: 2px 10px;
+    font-size: 12px;
+    background: rgb(var(--surface-hover));
+    color: rgb(var(--fg-secondary));
+  }
+
   .chip-tint-success {
     background: rgb(var(--success) / 0.10);
     color: rgb(var(--success));
