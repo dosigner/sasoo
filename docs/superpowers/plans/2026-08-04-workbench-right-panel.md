@@ -156,13 +156,46 @@
 - 점검: `sasoo/frontend/src/lib/strings.ts`, `workbenchSummaries.ts`, `AnalysisPanel.tsx`, `FigureGallery.tsx`, `TableGallery.tsx`, `ProgressTracker.tsx`
 - 기록: 이 플랜 하단 "실측 결과" 절
 
-- [ ] **Step 1: 금지 패턴 grep** — `grep -rn "—\|→" src/components/AnalysisPanel.tsx src/components/FigureGallery.tsx src/components/TableGallery.tsx src/components/ProgressTracker.tsx src/lib/strings.ts src/lib/workbenchSummaries.ts` 로 UI 문자열 내 em-dash·화살표 잔존 0건 확인(주석·코드 로직 내 사용은 허용, 사용자 노출 문자열만 금지). `resolver\|heuristic` grep으로 DEV 게이트 밖 노출 0건 확인.
-- [ ] **Step 2: 전체 검증** — `pnpm vitest run` + `pnpm vite build` 통과.
-- [ ] **Step 3: 실행 스크린샷** — 앱을 띄워(프로젝트 launch 방법: `launch-sim` 스킬 또는 `pnpm dev` + Electron) 분석 완료 논문 1편의 요약·그림·표 탭 스크린샷을 찍고 목업 v2와 대조. 라이트·다크 모두. 스크린샷 파일 경로를 플랜 하단에 기록.
-- [ ] **Step 4: 결과 기록·커밋** — 플랜 하단에 검증 결과 추기 후 `git commit -m "docs(plan): 워크벤치 패널 재정비 검증 기록"`
+- [x] **Step 1: 금지 패턴 grep** — `grep -rn "—\|→" src/components/AnalysisPanel.tsx src/components/FigureGallery.tsx src/components/TableGallery.tsx src/components/ProgressTracker.tsx src/lib/strings.ts src/lib/workbenchSummaries.ts` 로 UI 문자열 내 em-dash·화살표 잔존 0건 확인(주석·코드 로직 내 사용은 허용, 사용자 노출 문자열만 금지). `resolver\|heuristic` grep으로 DEV 게이트 밖 노출 0건 확인.
+- [x] **Step 2: 전체 검증** — `pnpm vitest run` + `pnpm vite build` 통과.
+- [x] **Step 3: 실행 스크린샷** — 앱을 띄워(프로젝트 launch 방법: `launch-sim` 스킬 또는 `pnpm dev` + Electron) 분석 완료 논문 1편의 요약·그림·표 탭 스크린샷을 찍고 목업 v2와 대조. 라이트·다크 모두. 스크린샷 파일 경로를 플랜 하단에 기록.
+- [x] **Step 4: 결과 기록·커밋** — 플랜 하단에 검증 결과 추기 후 `git commit -m "docs(plan): 워크벤치 패널 재정비 검증 기록"`
 
 ---
 
 ## 실측 결과 (Task 7에서 기록)
 
-(작성 전)
+작업 브랜치 `ui/workbench-right-panel`, 검증일 2026-08-04.
+
+### Step 1: 금지 패턴 grep
+
+`grep -rn "—\|→" src/components/AnalysisPanel.tsx src/components/FigureGallery.tsx src/components/TableGallery.tsx src/components/ProgressTracker.tsx src/lib/strings.ts src/lib/workbenchSummaries.ts` 결과 — 매치 8건, 전부 코드 주석(`AnalysisPanel.tsx:483,504`, `FigureGallery.tsx:78,209,520,521,535,664`). 사용자 노출 문자열 내 em-dash·화살표는 0건.
+
+`grep -rn "resolver\|heuristic\|classifier" ...` 결과 — `FigureGallery.tsx:616-625`와 `TableGallery.tsx:216-225`는 모두 `import.meta.env.DEV && (...)` 게이트 안. `strings.ts:350-351`(`extractionPipelineHelp`, `extractionPipelineResolverV1`)와 `strings.ts:548`(`resolverLabel`)는 정의만 존재하고, 호출부(`S.figures.provenanceLabel`, `S.tables.resolverLabel`, `S.tables.modelLabel`)는 전부 위 DEV 게이트 내부에서만 쓰임. DEV 게이트 밖 노출 0건. 코드 수정 없음(위반 없어 정리할 것 없음).
+
+### Step 2: 전체 검증
+
+- `pnpm vitest run` — 8 test files, 54 tests 전부 통과.
+- `pnpm vite build` — 8.28s에 정상 빌드 완료(경고 없음, 청크 사이즈 경고만 기존과 동일 수준).
+
+### Step 3: 실행 스크린샷
+
+- 백엔드: `cd sasoo/backend && .venv/bin/python -m uvicorn main:app --port 8000` (정상 기동, `/` 200 응답).
+- 프론트: `cd sasoo/frontend && pnpm dev` (Vite 6.4.3, `http://127.0.0.1:5173`).
+- 대상 논문: paper_id 999005 "GR00T N1: An Open Foundation Model for Generalist Humanoid Robots" (그림 14개, 표 7개 보유 — 그림·표 모두 확인 가능한 완료 논문).
+- 라우팅은 `HashRouter`이므로 실제 접속 URL은 `http://127.0.0.1:5173/#/workbench/999005` (경로 없는 `/workbench/999005` 직접 접근은 홈으로 렌더링됨 — 앱 정상 동작, 조사 중 확인한 라우팅 특성일 뿐 버그 아님).
+- 테마는 `prefers-color-scheme`이 아니라 `localStorage['sasoo-theme']`로만 결정됨(App.tsx:50-79) — Playwright `colorScheme` 컨텍스트 옵션은 무효, `page.addInitScript`로 `localStorage.setItem('sasoo-theme', ...)`를 주입해 라이트/다크를 강제.
+- 캡처 도구: Playwright(Chromium) 1.58.0, `/tmp/pw-scratch`에 임시 설치(프로젝트 devDependencies 변경 없음).
+- 스크린샷 6장, 요약·그림·표 탭 × 라이트·다크:
+  - `.superpowers/sdd/2026-08-04-workbench-right-panel/screenshots/workbench-light-summary.png`
+  - `.superpowers/sdd/2026-08-04-workbench-right-panel/screenshots/workbench-dark-summary.png`
+  - `.superpowers/sdd/2026-08-04-workbench-right-panel/screenshots/workbench-light-figures.png`
+  - `.superpowers/sdd/2026-08-04-workbench-right-panel/screenshots/workbench-dark-figures.png`
+  - `.superpowers/sdd/2026-08-04-workbench-right-panel/screenshots/workbench-light-tables.png`
+  - `.superpowers/sdd/2026-08-04-workbench-right-panel/screenshots/workbench-dark-tables.png`
+- 목업 대비: 스테퍼·탭·메타 그리드·Figure/Table 풀블리드 카드 모두 목업 v2 방향대로 렌더링됨. Figure/Table 카드에 신뢰도 색점, DEV 게이트 badge(`분류 heuristic`, `resolver-v1`, `해결기 resolver-v1`, `복구 gemini-3.6-flash`)가 `pnpm dev` 환경(DEV=true)에서 정상적으로 노출됨(프로덕션 빌드에서는 게이트로 숨겨짐 — Step 1에서 코드 경로 확인, 프로덕션 빌드 화면 자체는 미검증). em-dash·화살표 등 금지 문자는 스크린샷 육안 확인상 없음.
+- 검증 후 백엔드(8000)·프론트(5173) 프로세스 모두 종료 확인.
+
+### Step 4: 결론
+
+Task 1~6 결과물이 grep 점검·유닛 테스트·빌드·실행 스크린샷까지 전부 통과. 리뷰 대기.

@@ -56,7 +56,9 @@ Pretendard Variable, `--accent`(104 61 204 보라), `--bg`/`--surface`/`--border
 - 캡션 한 줄: "Figure 11" (650) + "서브피겨 4 · p.7" (11px muted, tabular-nums).
 - **신뢰도 = 시맨틱 색점**(7px, `--success` ≥ 임계 / `--warning` 미만, 비인터랙티브).
   상세는 카드 hover 툴팁: "신뢰도 53%, 검토를 권해요".
-- 카드 전체가 클릭 영역(PDF 해당 페이지로 이동). 아웃라인 버튼 삭제.
+- 카드 클릭 = 라이트박스 유지(확대·다운로드·AI 설명의 기존 진입점 — 2026-08-04 구현 중
+  발견된 충돌에 대한 사용자 결정). PDF 이동은 풀와이드 아웃라인 버튼 대신 캡션 줄의
+  작은 아이콘 버튼("PDF에서 보기" 툴팁, 히트 영역 36px+, stopPropagation으로 분리).
   press 시 `scale(0.96)` + `transition-property` 명시(`all` 금지).
 - **내부 용어 완전 제거**: `resolver-v1`·`heuristic`·`gemini-subfigure`·`Composite` 류는
   기본 UI에서 렌더하지 않는다. 개발자 모드 토글(설정)이 켜진 경우에만 노출.

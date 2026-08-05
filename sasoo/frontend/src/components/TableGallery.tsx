@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 import { getLibraryAssetUrl, type Table, type VisualState } from '@/lib/api';
 import { S } from '@/lib/strings';
 import { resolveArtifactPlaceholder } from '@/lib/artifactState';
+import { CONFIDENCE_REVIEW_THRESHOLD } from '@/lib/confidence';
 import { AppIcon } from '@/components/icons';
 
 interface TableGalleryProps {
@@ -40,18 +41,29 @@ function formatRepairReason(reason: string | null | undefined): string | null {
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
-function buildStatusBadge(table: Table): { label: string; classes: string } {
-  if (table.review_required || table.extraction_status === 'uncertain') {
+// FigureGallery의 색점 문법과 동일: pill 대신 7px 색점 1개 + title 툴팁.
+// I6: 상태 점과 신뢰도 점을 하나로 합친다 — review_required거나 신뢰도가
+// 검토 임계값 미만이면 warning, 아니면 success. 문구만 원인별로 분기한다.
+function buildStatusDot(table: Table): { isWarning: boolean; label: string } {
+  const hasConfidence = typeof table.confidence === 'number' && !Number.isNaN(table.confidence);
+  const confidenceIsLow = hasConfidence && table.confidence! < CONFIDENCE_REVIEW_THRESHOLD;
+  const needsReview = table.review_required || table.extraction_status === 'uncertain' || confidenceIsLow;
+
+  if (!needsReview) {
     return {
-      label: S.tables.reviewRequired,
-      classes: 'bg-warning/10 text-warning border border-warning/20',
+      isWarning: false,
+      label: hasConfidence ? `신뢰도 ${Math.round(table.confidence! * 100)}%` : S.tables.statusReady,
     };
   }
 
-  return {
-    label: S.tables.statusReady,
-    classes: 'bg-success/10 text-success border border-success/20',
-  };
+  if (hasConfidence) {
+    return {
+      isWarning: true,
+      label: `신뢰도 ${Math.round(table.confidence! * 100)}%, 검토를 권해요`,
+    };
+  }
+
+  return { isWarning: true, label: S.tables.reviewRequired };
 }
 
 function TableSkeleton() {
@@ -144,8 +156,14 @@ export default function TableGallery({
 
       <div className="grid gap-3">
         {tables.map((table, index) => {
-          const statusBadge = buildStatusBadge(table);
-          const confidenceLabel = formatPercent(table.confidence);
+          const statusDot = buildStatusDot(table);
+          const metaLine = [
+            typeof table.page_number === 'number' ? S.tables.pageLabel(table.page_number) : null,
+            // C2: parse_method는 내부 파이프라인 용어라 개발자 모드에서만 노출한다.
+            import.meta.env.DEV && table.parse_method ? S.tables.parseMethod(table.parse_method) : null,
+          ]
+            .filter(Boolean)
+            .join(' · ');
           const csvUrl = getLibraryAssetUrl(table.csv_path);
           const htmlUrl = getLibraryAssetUrl(table.html_path);
 
@@ -157,52 +175,61 @@ export default function TableGallery({
                   ? `table-${table.table_num.match(/\d+/)![0]}`
                   : undefined
               }
-              className="card space-y-4 border border-border/40 bg-surface/30"
+              className="space-y-4 overflow-hidden rounded-[12px] bg-surface p-4 shadow-[0_1px_2px_rgba(0,0,0,.04),0_2px_8px_rgba(0,0,0,.04)] dark:shadow-none"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-base font-semibold text-fg">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="min-w-0 truncate text-base font-[650] text-fg">
                       {table.table_num || `Table ${index + 1}`}
                     </h3>
-                    {typeof table.page_number === 'number' && (
-                      <span className="status-pill border-border/50 bg-surface/80 text-fg-secondary">
-                        {S.tables.pageLabel(table.page_number)}
-                      </span>
-                    )}
-                    <span className={`status-pill ${statusBadge.classes}`}>
-                      {statusBadge.label}
-                    </span>
+                    <span
+                      role="img"
+                      className={`h-[7px] w-[7px] flex-shrink-0 rounded-full ${statusDot.isWarning ? 'bg-warning' : 'bg-success'}`}
+                      title={statusDot.label}
+                      aria-label={statusDot.label}
+                    />
                   </div>
                   {table.caption && (
                     <p className="mt-2 text-sm leading-6 text-fg-secondary">
                       {table.caption}
                     </p>
                   )}
+                  {(metaLine || (typeof table.page_number === 'number' && onJumpToTablePage)) && (
+                    <div className="mt-2 flex items-center justify-between gap-2 text-2xs text-fg-muted">
+                      <span>{metaLine}</span>
+                      {typeof table.page_number === 'number' && onJumpToTablePage && (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onJumpToTablePage(table);
+                          }}
+                          className="-mr-1.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
+                          aria-label={S.tables.jumpToPage}
+                          title="PDF에서 보기"
+                        >
+                          <AppIcon name="document" className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  {confidenceLabel && (
-                    <span className="status-pill border-accent/20 bg-accent/10 text-accent">
-                      {S.tables.confidence(confidenceLabel)}
-                    </span>
-                  )}
-                  {table.parse_method && (
-                    <span className="status-pill border-border/50 bg-surface/80 text-fg-secondary">
-                      {S.tables.parseMethod(table.parse_method)}
-                    </span>
-                  )}
-                  {table.resolver_version && (
-                    <span className="status-pill border-border/50 bg-surface/80 text-fg-muted">
-                      {S.tables.resolverLabel(table.resolver_version)}
-                    </span>
-                  )}
-                  {table.classifier_model && (
-                    <span className="status-pill border-border/50 bg-surface/80 text-fg-muted">
-                      {S.tables.modelLabel(table.classifier_model)}
-                    </span>
-                  )}
-                </div>
+                {import.meta.env.DEV && (table.resolver_version || table.classifier_model) && (
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    {table.resolver_version && (
+                      <span className="status-pill border-border/50 bg-surface/80 text-fg-muted">
+                        {S.tables.resolverLabel(table.resolver_version)}
+                      </span>
+                    )}
+                    {table.classifier_model && (
+                      <span className="status-pill border-border/50 bg-surface/80 text-fg-muted">
+                        {S.tables.modelLabel(table.classifier_model)}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {(table.review_required || table.repair_attempted) && (
@@ -245,16 +272,6 @@ export default function TableGallery({
               )}
 
               <div className="flex flex-wrap items-center gap-2">
-                {typeof table.page_number === 'number' && onJumpToTablePage && (
-                  <button
-                    type="button"
-                    onClick={() => onJumpToTablePage(table)}
-                    className="btn-secondary text-xs"
-                  >
-                    <AppIcon name="arrow-right" className="h-3.5 w-3.5" />
-                    {S.tables.jumpToPage}
-                  </button>
-                )}
                 {csvUrl && (
                   <a
                     href={csvUrl}

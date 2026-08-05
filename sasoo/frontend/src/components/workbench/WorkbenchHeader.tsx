@@ -4,6 +4,13 @@ import AgentAvatar from '@/components/AgentAvatar';
 import type { AgentMeta } from '@/lib/agents';
 import type { WorkbenchSplitPreset } from '@/hooks/useWorkbenchLayout';
 import { S } from '@/lib/strings';
+import { DOMAIN_LABELS, type WorkbenchStatusTone } from '@/lib/workbenchSummaries';
+
+const STATUS_TONE_CLASS: Record<WorkbenchStatusTone, string> = {
+  accent: 'chip-tint',
+  success: 'chip-tint chip-tint-success',
+  danger: 'chip-tint chip-tint-danger',
+};
 
 function rgbaFromHex(color: string, alpha: number): string {
   const cleaned = color.replace('#', '');
@@ -130,8 +137,8 @@ function AgentBadgeDropdown({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={`담당 에이전트: ${agentLabel}. 변경하려면 여세요`}
-        className={agentColor ? 'status-pill cursor-pointer' : 'status-pill cursor-pointer border-border/50 bg-surface/80 text-fg-secondary'}
-        style={buildAgentPillStyle(agentColor)}
+        className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-2xs font-medium text-fg-secondary transition-colors duration-150 hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
+        style={agentColor ? { color: agentColor } : undefined}
       >
         {changing ? (
           <AppIcon name="spinner" className="h-3 w-3 animate-spin" />
@@ -193,8 +200,8 @@ interface WorkbenchHeaderProps {
   onSelectAgent?: (agent: AgentMeta) => void;
   pdfCollapsed: boolean;
   activeSplitPreset: WorkbenchSplitPreset | null;
-  runStateLabel: string;
-  trustStateLabel: string;
+  statusLabel: string;
+  statusTone: WorkbenchStatusTone;
   analysisError?: string | null;
   canStartAnalysis: boolean;
   isRunning: boolean;
@@ -219,8 +226,8 @@ export default function WorkbenchHeader({
   onSelectAgent,
   pdfCollapsed,
   activeSplitPreset,
-  runStateLabel,
-  trustStateLabel,
+  statusLabel,
+  statusTone,
   analysisError,
   canStartAnalysis,
   isRunning,
@@ -270,7 +277,7 @@ export default function WorkbenchHeader({
               {title}
             </h1>
             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-fg-muted">
-              {domain && <span className="status-pill border-accent/20 bg-accent/10 text-accent">{domain}</span>}
+              {domain && <span className="chip-tint">{DOMAIN_LABELS[domain] ?? domain}</span>}
               {agentLabel && (
                 onSelectAgent && agents && agents.length > 0 ? (
                   <AgentBadgeDropdown
@@ -296,11 +303,8 @@ export default function WorkbenchHeader({
                   </span>
                 )
               )}
-              <span className="status-pill border-border/50 bg-surface/80 text-fg-secondary">
-                {runStateLabel}
-              </span>
-              <span className="status-pill border-success/20 bg-success/10 text-success">
-                {trustStateLabel}
+              <span className={STATUS_TONE_CLASS[statusTone]}>
+                {statusLabel}
               </span>
             </div>
           </div>

@@ -1361,7 +1361,7 @@ async def _run_visual(
 
     if visual_contract["visual_state"] != "ready" or (figure_count == 0 and table_count == 0):
         if figure_count == 0 and table_count == 0:
-            quality_summary = "추출된 figure/table artifact가 없어 visual phase를 partial mode로 저장했습니다."
+            quality_summary = "이 논문에서는 그림과 표를 추출하지 못해 텍스트 분석만으로 진행했어요."
             key_findings = ["시각 asset이 준비되지 않아 텍스트 분석만으로 후속 단계를 진행했습니다."]
         else:
             quality_summary = "시각 artifact가 아직 준비되지 않아 현재 확보된 DB 메타데이터만으로 partial visual result를 저장했습니다."

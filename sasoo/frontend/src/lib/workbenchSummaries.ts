@@ -8,15 +8,50 @@ import type {
   Table,
   VisualizationPlan,
 } from '@/lib/api';
+import { getAgentMeta } from '@/lib/agents';
 
 type PhaseTone = 'primary' | 'muted' | 'practical';
 
+export interface MetaItem {
+  label: string;
+  value: string;
+  accent?: boolean;
+}
+
 export interface PhaseSummary {
   summaryLine: string | null;
-  collapsedMeta: string[];
+  collapsedMeta: Array<string | { text: string; accent?: boolean }>;
   expandedMeta: string[];
+  metaItems: MetaItem[];
   tone: PhaseTone;
 }
+
+// screening 메타 그리드 값 한국어 매핑. AnalysisResults.screening의 원본 필드(estimated_complexity,
+// is_experimental)를 그대로 쓰지 않고 여기서 한 번 한국어 라벨로 옮긴다.
+const COMPLEXITY_LABELS: Record<string, string> = {
+  high: '높음',
+  medium: '보통',
+  low: '낮음',
+};
+
+const METHODOLOGY_LABELS = {
+  experimental: '실험 논문',
+  nonExperimental: '비실험 논문',
+} as const;
+
+// M1: screening.domain 표시용 한국어 라벨. 백엔드 enum(api/analysis_routes.py의
+// SCREENING 스키마 "optics"|"bio"|"ai_ml"|"ee"|"general")에 맞춘 전용 맵이다.
+// S.areas(연구자 프로필 관심 분야, optics_photonics 등)는 키 체계가 달라 재사용할 수 없다.
+// 맵에 없는 값(모델이 스키마 밖 값을 내보낸 경우)은 원본 문자열을 그대로 표시한다.
+export const DOMAIN_LABELS: Record<string, string> = {
+  optics: '광학',
+  bio: '바이오',
+  ai_ml: 'AI·머신러닝',
+  ee: '전기·전자',
+  general: '일반',
+};
+
+export type WorkbenchStatusTone = 'accent' | 'success' | 'danger';
 
 export interface WorkbenchStatusSummary {
   runStateLabel: string;
@@ -27,14 +62,26 @@ export interface WorkbenchStatusSummary {
   totalCount: number;
   /** 완료된 phase 중 현재 설정과 다른 모델로 분석된 결과가 있으면 그 모델명(스펙 §D). */
   staleModel: string | null;
+  progressRatio: number;
+  // 헤더 칩·우측 패널 상태부가 실제로 보여줘야 하는 라벨/톤. trustStateLabel은
+  // 항상 채워지는 폴백값이라 `trustStateLabel || runStateLabel` 식은 늘 trustStateLabel로만
+  // 귀결돼 분석 전/진행 중/실패/취소가 화면에서 사라진다 — 이를 대신하는 표시용 필드다.
+  displayStatusLabel: string;
+  statusTone: WorkbenchStatusTone;
 }
 
+// 상태부 진행 레일에 쓰는 단계명. ProgressTracker의 단계 리스트 라벨도 이 명칭을
+// 재사용해 상태부 진행 레일과 표기를 통일한다.
+export const STAGE_NAMES: string[] = ['스크리닝', '인용 분석', '시각 자료', '레시피', '심층 분석'];
+
+// I8: currentPhaseLabel(진행 중 문구용)도 STAGE_NAMES와 동일한 단계명을 쓴다.
+// 예전엔 visual만 'Figure 검토'로 따로 불러 상태부·진행 레일과 표기가 어긋났다.
 const PHASE_LABELS: Record<AnalysisPhase, string> = {
-  screening: '스크리닝',
-  citation: '인용 분석',
-  visual: 'Figure 검토',
-  recipe: '레시피',
-  deep_dive: '심층 분석',
+  screening: STAGE_NAMES[0],
+  citation: STAGE_NAMES[1],
+  visual: STAGE_NAMES[2],
+  recipe: STAGE_NAMES[3],
+  deep_dive: STAGE_NAMES[4],
 };
 
 function percent(value: unknown): string | null {
@@ -66,6 +113,7 @@ export function buildPhaseSummary(
       summaryLine: null,
       collapsedMeta: [],
       expandedMeta: [],
+      metaItems: [],
       tone: phase === 'screening' ? 'primary' : phase === 'visual' || phase === 'recipe' ? 'practical' : 'muted',
     };
   }
@@ -77,17 +125,39 @@ export function buildPhaseSummary(
   const recipeResult = recipe?.recipe ?? results.recipe ?? {};
 
   if (phase === 'screening') {
-    const domain = typeof screening.domain === 'string' ? screening.domain : '미분류';
+    const domainLabel =
+      typeof screening.domain === 'string' && screening.domain.trim()
+        ? DOMAIN_LABELS[screening.domain.trim()] ?? screening.domain.trim()
+        : null;
+    const domain = domainLabel ?? '미분류';
     const relevance = percent(screening.relevance_score);
     const agent = typeof screening.agent_recommended === 'string' ? screening.agent_recommended : null;
+    const rawDomain = domainLabel;
+    const methodologyLabel =
+      screening.is_experimental === true
+        ? METHODOLOGY_LABELS.experimental
+        : screening.is_experimental === false
+          ? METHODOLOGY_LABELS.nonExperimental
+          : null;
+    const complexityLabel =
+      typeof screening.estimated_complexity === 'string' ? COMPLEXITY_LABELS[screening.estimated_complexity] ?? null : null;
+    const metaItems: MetaItem[] = [
+      rawDomain ? { label: '분야', value: rawDomain } : null,
+      relevance ? { label: '관련도', value: relevance, accent: true } : null,
+      methodologyLabel ? { label: '방법론', value: methodologyLabel } : null,
+      complexityLabel ? { label: '복잡도', value: complexityLabel } : null,
+    ].filter((item): item is MetaItem => item !== null);
     return {
       summaryLine: shortText(screening.summary, '논문의 핵심 맥락을 정리해요.'),
-      collapsedMeta: [domain, relevance ? `관련도 ${relevance}` : '', agent ? `추천 ${agent}` : ''].filter(Boolean),
-      expandedMeta: [
-        typeof screening.methodology_type === 'string' ? screening.methodology_type : '',
-        typeof screening.estimated_complexity === 'string' ? `복잡도 ${screening.estimated_complexity}` : '',
-        screening.is_experimental === true ? '실험 논문' : screening.is_experimental === false ? '비실험 논문' : '',
-      ].filter(Boolean),
+      collapsedMeta: ([
+        domain,
+        relevance ? { text: `관련도 ${relevance}`, accent: true } : null,
+        agent ? `추천 ${getAgentMeta(agent)?.nameKo ?? agent}` : null,
+      ] as Array<string | { text: string; accent?: boolean } | null>).filter(
+        (item): item is string | { text: string; accent?: boolean } => item !== null,
+      ),
+      expandedMeta: [],
+      metaItems,
       tone: 'primary',
     };
   }
@@ -107,6 +177,7 @@ export function buildPhaseSummary(
         countList(citation.top_cited) > 0 ? `주요 인용 ${countList(citation.top_cited)}건` : '',
         Object.keys((citation.citation_distribution as Record<string, number> | undefined) ?? {}).length > 0 ? '섹션 분포 포함' : '',
       ].filter(Boolean),
+      metaItems: [],
       tone: 'muted',
     };
   }
@@ -136,6 +207,7 @@ export function buildPhaseSummary(
         countList(visual.diagram_types) > 0 ? `유형 ${countList(visual.diagram_types)}개` : '',
         countList(visual.key_findings_from_visuals) > 0 ? `핵심 발견 ${countList(visual.key_findings_from_visuals)}개` : '',
       ].filter(Boolean),
+      metaItems: [],
       tone: 'practical',
     };
   }
@@ -155,6 +227,7 @@ export function buildPhaseSummary(
         countList(recipeResult.materials) > 0 ? `재료 ${countList(recipeResult.materials)}개` : '',
         countList(recipeResult.steps) > 0 ? `절차 ${countList(recipeResult.steps)}단계` : '',
       ].filter(Boolean),
+      metaItems: [],
       tone: 'practical',
     };
   }
@@ -174,6 +247,7 @@ export function buildPhaseSummary(
       countList(deepDive.follow_up_questions) > 0 ? `후속 질문 ${countList(deepDive.follow_up_questions)}개` : '',
       countList(deepDive.practical_applications) > 0 ? `응용 ${countList(deepDive.practical_applications)}개` : '',
     ].filter(Boolean),
+    metaItems: [],
     tone: 'muted',
   };
 }
@@ -202,7 +276,32 @@ export function buildChatStarterPrompts({
   return prompts.slice(0, 3);
 }
 
-export function buildWorkbenchStatusSummary({
+// 상태부·헤더 칩이 실제로 표시할 라벨/톤을 고른다. trustStateLabel은 항상 채워지는
+// 폴백값(마지막 폴백 '결과 준비됨')이라 `trustStateLabel || runStateLabel` 식은 도달
+// 불가한 폴백이 된다 — pending/running/analyzing/error/cancelled는 runStateLabel(accent
+// 또는 danger 톤)을, 그 외(완료·심층완료)는 trustStateLabel(success 톤)을 쓴다.
+function pickDisplayStatus(
+  runStateLabel: string,
+  trustStateLabel: string,
+  status: AnalysisStatus | null,
+  terminalState?: 'cancelled' | null,
+): { displayStatusLabel: string; statusTone: WorkbenchStatusTone } {
+  if (terminalState === 'cancelled') {
+    return { displayStatusLabel: runStateLabel, statusTone: 'danger' };
+  }
+  if (!status || status.overall_status === 'pending') {
+    return { displayStatusLabel: runStateLabel, statusTone: 'accent' };
+  }
+  if (status.overall_status === 'running' || status.overall_status === 'analyzing') {
+    return { displayStatusLabel: runStateLabel, statusTone: 'accent' };
+  }
+  if (status.overall_status === 'error') {
+    return { displayStatusLabel: runStateLabel, statusTone: 'danger' };
+  }
+  return { displayStatusLabel: trustStateLabel, statusTone: 'success' };
+}
+
+function buildWorkbenchStatusSummaryCore({
   status,
   artifactStatus,
   figures,
@@ -218,10 +317,11 @@ export function buildWorkbenchStatusSummary({
   recipe: Recipe | null;
   visualizations: VisualizationPlan | null;
   terminalState?: 'cancelled' | null;
-}): WorkbenchStatusSummary {
+}): Omit<WorkbenchStatusSummary, 'displayStatusLabel' | 'statusTone'> {
   const totalCount = status?.phases.length ?? 5;
   const completedCount = status?.phases.filter((phase) => phase.status === 'completed').length ?? 0;
   const staleModel = status?.phases.find((phase) => Boolean(phase.stale_model))?.stale_model ?? null;
+  const progressRatio = totalCount > 0 ? completedCount / totalCount : 0;
   const currentPhase = status?.current_phase;
   const currentPhaseLabel = currentPhase ? PHASE_LABELS[currentPhase] : '분석 대기';
   const hasFigures = figures.length > 0;
@@ -257,6 +357,7 @@ export function buildWorkbenchStatusSummary({
       completedCount,
       totalCount,
       staleModel,
+      progressRatio,
     };
   }
 
@@ -277,6 +378,7 @@ export function buildWorkbenchStatusSummary({
       completedCount,
       totalCount,
       staleModel,
+      progressRatio,
     };
   }
 
@@ -290,6 +392,7 @@ export function buildWorkbenchStatusSummary({
         completedCount,
         totalCount,
         staleModel,
+        progressRatio,
       };
     }
     if (visualState === 'error') {
@@ -303,6 +406,7 @@ export function buildWorkbenchStatusSummary({
         completedCount,
         totalCount,
         staleModel,
+        progressRatio,
       };
     }
     if (visualState === 'running') {
@@ -316,6 +420,7 @@ export function buildWorkbenchStatusSummary({
         completedCount,
         totalCount,
         staleModel,
+        progressRatio,
       };
     }
     if (visualState === 'partial' || (textReady === true && visualReady === false)) {
@@ -329,6 +434,7 @@ export function buildWorkbenchStatusSummary({
         completedCount,
         totalCount,
         staleModel,
+        progressRatio,
       };
     }
     if (hasRecipe) {
@@ -340,6 +446,7 @@ export function buildWorkbenchStatusSummary({
         completedCount,
         totalCount,
         staleModel,
+        progressRatio,
       };
     }
     if (hasFigures || hasTables) {
@@ -353,6 +460,7 @@ export function buildWorkbenchStatusSummary({
         completedCount,
         totalCount,
         staleModel,
+        progressRatio,
       };
     }
     if (completedCount > 0) {
@@ -364,6 +472,7 @@ export function buildWorkbenchStatusSummary({
         completedCount,
         totalCount,
         staleModel,
+        progressRatio,
       };
     }
 
@@ -375,6 +484,7 @@ export function buildWorkbenchStatusSummary({
       completedCount,
       totalCount,
       staleModel,
+      progressRatio,
     };
   }
 
@@ -387,6 +497,7 @@ export function buildWorkbenchStatusSummary({
       completedCount,
       totalCount,
       staleModel,
+      progressRatio,
     };
   }
 
@@ -400,5 +511,25 @@ export function buildWorkbenchStatusSummary({
     completedCount,
     totalCount,
     staleModel,
+    progressRatio,
   };
+}
+
+export function buildWorkbenchStatusSummary(params: {
+  status: AnalysisStatus | null;
+  artifactStatus?: ArtifactStatus | null;
+  figures: Figure[];
+  tables: Table[];
+  recipe: Recipe | null;
+  visualizations: VisualizationPlan | null;
+  terminalState?: 'cancelled' | null;
+}): WorkbenchStatusSummary {
+  const core = buildWorkbenchStatusSummaryCore(params);
+  const { displayStatusLabel, statusTone } = pickDisplayStatus(
+    core.runStateLabel,
+    core.trustStateLabel,
+    params.status,
+    params.terminalState,
+  );
+  return { ...core, displayStatusLabel, statusTone };
 }

@@ -3,7 +3,6 @@ import { Markdown } from '@/components/Markdown';
 import {
   BookOpen,
   GitBranch,
-  Check,
   Loader2,
   Circle,
   AlertCircle,
@@ -29,7 +28,6 @@ import {
   type Figure,
   type Table,
 } from '@/lib/api';
-import { getAgentMeta } from '@/lib/agents';
 import { buildPhaseSummary, buildWorkbenchStatusSummary } from '@/lib/workbenchSummaries';
 import { S } from '@/lib/strings';
 import { extractOutline } from '@/lib/mdOutline';
@@ -57,7 +55,6 @@ interface AnalysisPanelProps {
   mermaid: MermaidDiagram | null;
   visualizations: VisualizationPlan | null;
   isRunning: boolean;
-  agentName?: string;
   paperId?: string;
   paperLevel?: string | null;
   onJumpToFigurePage?: (figure: Figure) => void;
@@ -123,36 +120,33 @@ const PHASE_META: Record<string, {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// 배경 있는 뱃지가 아니라 색점/아이콘 + muted 텍스트 문법 — 완료·진행 상태는
+// 정보 표시이지 조작 대상이 아니라 칩으로 강조하지 않는다.
 function getPhaseStatusInfo(phaseStatus: PhaseStatusValue): {
   icon: React.ReactNode;
   label: string;
-  classes: string;
 } {
   switch (phaseStatus) {
     case 'completed':
       return {
-        icon: <Check className="w-4 h-4" />,
+        icon: <AppIcon name="success" className="w-3.5 h-3.5 text-success" />,
         label: S.status.complete,
-        classes: 'text-success bg-success/10',
       };
     case 'running':
       return {
-        icon: <Loader2 className="w-4 h-4 animate-spin" />,
+        icon: <span className="h-2 w-2 rounded-full bg-accent animate-pulse-subtle" aria-hidden="true" />,
         label: S.status.running,
-        classes: 'text-accent bg-accent/10',
       };
     case 'error':
       return {
-        icon: <AlertCircle className="w-4 h-4" />,
+        icon: <AlertCircle className="w-3.5 h-3.5 text-danger" />,
         label: S.status.error,
-        classes: 'text-danger bg-danger/8 border border-danger/10',
       };
     case 'pending':
     default:
       return {
-        icon: <Circle className="w-4 h-4" />,
+        icon: <Circle className="w-3.5 h-3.5 text-fg-muted" />,
         label: S.status.pending,
-        classes: 'text-fg-muted bg-surface/80 border border-border/45',
       };
   }
 }
@@ -167,30 +161,11 @@ interface PhaseSectionProps {
   content: string | null;
   defaultExpanded: boolean;
   summaryLine?: string | null;
-  collapsedMeta?: string[];
+  collapsedMeta?: Array<string | { text: string; accent?: boolean }>;
   expandedMeta?: string[];
+  metaItems?: { label: string; value: string; accent?: boolean }[];
   tone?: 'primary' | 'muted' | 'practical';
-  accentColor?: string;
   children?: React.ReactNode;
-}
-
-function rgbaFromHex(color: string, alpha: number): string {
-  const cleaned = color.replace('#', '');
-  if (cleaned.length !== 6) return color;
-  const r = parseInt(cleaned.slice(0, 2), 16);
-  const g = parseInt(cleaned.slice(2, 4), 16);
-  const b = parseInt(cleaned.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-function buildMetaPillStyle(color?: string, variant: 'default' | 'soft' = 'default'): React.CSSProperties | undefined {
-  if (!color) return undefined;
-
-  return {
-    color,
-    borderColor: rgbaFromHex(color, variant === 'soft' ? 0.24 : 0.28),
-    backgroundColor: rgbaFromHex(color, variant === 'soft' ? 0.08 : 0.13),
-  };
 }
 
 function PhaseSection({
@@ -201,8 +176,8 @@ function PhaseSection({
   summaryLine,
   collapsedMeta = [],
   expandedMeta = [],
+  metaItems = [],
   tone = 'muted',
-  accentColor,
   children,
 }: PhaseSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -272,29 +247,33 @@ function PhaseSection({
             {expanded ? meta.description : statusInfo.label}
           </div>
           {!expanded && collapsedMeta.length > 0 && (
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              {collapsedMeta.map((item) => (
-                <span
-                  key={item}
-                  className="phase-meta-pill"
-                  style={buildMetaPillStyle(accentColor)}
-                >
-                  {item}
-                </span>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {collapsedMeta.map((item) => {
+                const text = typeof item === 'string' ? item : item.text;
+                const accent = typeof item !== 'string' && item.accent;
+                return (
+                  <span key={text} className={accent ? 'chip-tint tabular-nums' : 'chip-soft'}>
+                    {text}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+          {expanded && metaItems.length > 0 && (
+            <div className="mt-2 grid grid-cols-4 gap-3">
+              {metaItems.map((m) => (
+                <div key={m.label}>
+                  <div className="text-[10px] font-medium text-fg-muted">{m.label}</div>
+                  <div className={`text-[13px] font-[650] tabular-nums ${m.accent ? 'text-accent' : 'text-fg'}`}>
+                    {m.value}
+                  </div>
+                </div>
               ))}
             </div>
           )}
-          {expanded && expandedMeta.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {expandedMeta.map((item) => (
-                <span
-                  key={item}
-                  className="phase-meta-pill phase-meta-pill-soft"
-                  style={buildMetaPillStyle(accentColor, 'soft')}
-                >
-                  {item}
-                </span>
-              ))}
+          {expanded && metaItems.length === 0 && expandedMeta.length > 0 && (
+            <div className="mt-2 text-xs font-normal text-fg-muted">
+              {expandedMeta.join(' · ')}
             </div>
           )}
           {!expanded && summaryLine && (
@@ -304,9 +283,9 @@ function PhaseSection({
           )}
         </div>
 
-        <span className={`badge text-2xs shrink-0 ${statusInfo.classes}`}>
+        <span className="inline-flex items-center gap-1.5 text-2xs shrink-0">
           {statusInfo.icon}
-          <span className="ml-1 hidden sm:inline">{statusInfo.label}</span>
+          <span className="hidden font-normal text-fg-muted sm:inline">{statusInfo.label}</span>
         </span>
 
         <span className="text-fg-muted shrink-0">
@@ -497,14 +476,9 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
   const md = S.analysis.md;
 
   if (phase === 'screening') {
+    // C1: 분야/관련도/방법론/복잡도/실험적/그림 포함/에이전트 key-value 평문은 삭제.
+    // 메타 그리드(buildPhaseSummary의 metaItems)가 이미 같은 정보를 표시한다.
     if (data.summary) lines.push(`${data.summary}\n`);
-    if (data.domain) lines.push(`**${md.domain}:** ${data.domain}  `);
-    if (data.relevance_score != null) lines.push(`**${md.relevance}:** ${(Number(data.relevance_score) * 100).toFixed(0)}%  `);
-    if (data.methodology_type) lines.push(`**${md.methodology}:** ${data.methodology_type}  `);
-    if (data.estimated_complexity) lines.push(`**${md.complexity}:** ${data.estimated_complexity}  `);
-    if (data.is_experimental != null) lines.push(`**${md.experimental}:** ${data.is_experimental ? md.yes : md.no}  `);
-    if (data.has_figures != null) lines.push(`**${md.hasFigures}:** ${data.has_figures ? md.yes : md.no}  `);
-    if (data.agent_recommended) lines.push(`**${md.agent}:** ${data.agent_recommended}  `);
     const topics = data.key_topics as string[] | undefined;
     if (topics?.length) {
       lines.push(`\n**${md.keyTopics}:**`);
@@ -1001,7 +975,6 @@ export default function AnalysisPanel({
   mermaid: mermaidDiagram,
   visualizations,
   isRunning,
-  agentName,
   paperId,
   onJumpToFigurePage,
   onJumpToTablePage,
@@ -1057,8 +1030,6 @@ export default function AnalysisPanel({
     );
   }
 
-  const agentMeta = getAgentMeta(agentName);
-  const phaseAccentColor = agentMeta?.color;
   const figureList = figures?.figures ?? [];
   const tableList = tables?.tables ?? [];
   const screeningSummary = buildPhaseSummary('screening', results, recipe, figureList, tableList, visualizations);
@@ -1079,12 +1050,12 @@ export default function AnalysisPanel({
 
   const visibleTab = activeTab === 'experiment' && !recipeReady ? 'summary' : activeTab;
 
-  const tabs: Array<{ key: 'summary' | 'figures' | 'tables' | 'recipe' | 'experiment'; label: string; icon: 'summary' | 'figures' | 'tables' | 'recipe' | 'experiment'; disabled?: boolean }> = [
-    { key: 'summary', label: S.workbench.summaryTab, icon: 'summary' },
-    { key: 'figures', label: S.workbench.figuresTab, icon: 'figures' },
-    { key: 'tables', label: S.workbench.tablesTab, icon: 'tables' },
-    { key: 'recipe', label: S.workbench.recipeTab, icon: 'recipe' },
-    { key: 'experiment', label: S.workbench.experimentTab, icon: 'experiment', disabled: !recipeReady },
+  const tabs: Array<{ key: 'summary' | 'figures' | 'tables' | 'recipe' | 'experiment'; label: string; disabled?: boolean }> = [
+    { key: 'summary', label: S.workbench.summaryTab },
+    { key: 'figures', label: S.workbench.figuresTab },
+    { key: 'tables', label: S.workbench.tablesTab },
+    { key: 'recipe', label: S.workbench.recipeTab },
+    { key: 'experiment', label: S.workbench.experimentTab, disabled: !recipeReady },
   ];
 
   return (
@@ -1093,24 +1064,24 @@ export default function AnalysisPanel({
         <div className="px-5 py-4">
           <div className="border border-border/45 bg-surface/50 px-4 py-3" style={{ borderRadius: 'var(--radius-surface)' }}>
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="mb-1 flex items-center gap-2 text-2xs tracking-[0.08em] text-fg-muted">
                   <AppIcon name="summary" className="h-3.5 w-3.5 text-accent" />
                   <span>{S.workbench.statusRailTitle}</span>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-semibold text-fg">
-                    {workbenchStatus.runStateLabel}
+                <div className="flex items-baseline justify-between gap-3">
+                  <h3 className="text-sm font-[650] text-fg">
+                    {workbenchStatus.displayStatusLabel}
                   </h3>
-                  <span className="status-pill border-border/50 bg-surface/80 text-fg-secondary">
-                    {workbenchStatus.currentPhaseLabel}
+                  <span className="text-2xs text-fg-muted tabular-nums">
+                    {workbenchStatus.totalCount > 0 && `${workbenchStatus.completedCount}/${workbenchStatus.totalCount}`}
                   </span>
-                  <span className="status-pill border-border/50 bg-surface/80 text-fg-secondary">
-                    {workbenchStatus.completedCount}/{workbenchStatus.totalCount} 완료
-                  </span>
-                  <span className="status-pill border-success/20 bg-success/10 text-success">
-                    {workbenchStatus.trustStateLabel}
-                  </span>
+                </div>
+                <div className="mt-2 h-[3px] rounded-full bg-border">
+                  <div
+                    className="h-[3px] rounded-full bg-accent transition-[width] duration-150"
+                    style={{ width: `${Math.round(workbenchStatus.progressRatio * 100)}%` }}
+                  />
                 </div>
               </div>
 
@@ -1132,7 +1103,6 @@ export default function AnalysisPanel({
                   visibleTab === tab.key ? 'segmented-control__item-active' : ''
                 } ${tab.disabled ? 'segmented-control__item-disabled' : ''}`}
               >
-                <AppIcon name={tab.icon} className="h-4 w-4" />
                 {tab.label}
               </button>
             ))}
@@ -1144,13 +1114,18 @@ export default function AnalysisPanel({
       <div className="min-h-0 flex-1 overflow-y-auto scroll-stable px-5 py-4">
         {visibleTab === 'summary' && (
           <div className="space-y-5">
-            {status && status.overall_status !== 'pending' && (
-              <ProgressTracker
-                phases={status.phases}
-                overallProgress={status.progress_pct}
-                variant="minimal"
-              />
-            )}
+            {status &&
+              status.overall_status !== 'pending' &&
+              !(
+                workbenchStatus.totalCount > 0 &&
+                workbenchStatus.completedCount === workbenchStatus.totalCount
+              ) && (
+                <ProgressTracker
+                  phases={status.phases}
+                  overallProgress={status.progress_pct}
+                  variant="minimal"
+                />
+              )}
 
             <div className="space-y-0">
               <PhaseSection
@@ -1161,8 +1136,8 @@ export default function AnalysisPanel({
                 summaryLine={screeningSummary.summaryLine}
                 collapsedMeta={screeningSummary.collapsedMeta}
                 expandedMeta={screeningSummary.expandedMeta}
+                metaItems={screeningSummary.metaItems}
                 tone={screeningSummary.tone}
-                accentColor={phaseAccentColor}
               />
 
               <PhaseSection
@@ -1174,7 +1149,6 @@ export default function AnalysisPanel({
                 collapsedMeta={citationSummary.collapsedMeta}
                 expandedMeta={citationSummary.expandedMeta}
                 tone={citationSummary.tone}
-                accentColor={phaseAccentColor}
               />
 
               <PhaseSection
@@ -1186,7 +1160,6 @@ export default function AnalysisPanel({
                 collapsedMeta={deepDiveSummary.collapsedMeta}
                 expandedMeta={deepDiveSummary.expandedMeta}
                 tone={deepDiveSummary.tone}
-                accentColor={phaseAccentColor}
               >
                 <VisualizationGallery
                   visualizations={visualizations}
