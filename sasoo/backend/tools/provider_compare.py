@@ -31,13 +31,12 @@ sasoo의 실제 프롬프트·스키마·모델 레지스트리를 그대로 써
   보낸다. DB에는 쓰지 않는다(analysis_results/papers 테이블 무변경) —
   Gemini PDF 업로드도 papers.pdf_file_uri 캐시를 쓰는 프로덕션 헬퍼
   (upload_pdf_for_paper) 대신 이 파일 안의 독립 업로드 함수를 쓴다.
-- _stage_result_defect라는 이름의 헬퍼는 프로덕션에 없다. 가장 가까운
-  기존 함수는 api.analysis_helpers._is_error_result(빈 텍스트·_parse_error·
-  error 키 감지) — _run_full_analysis가 체인에 넘길 스테이지 결과를 거르는
-  데 실제로 쓰는 함수라 이걸 defect 신호로 쓴다. 재시도 횟수(defect_retries)는
-  프로덕션의 "JSON 파싱 실패 시 1회 재시도" 정책(_run_screening,
-  _run_chain_stage)을 이 파일 안에서 그대로 재현해 센다 — citation은
-  프로덕션도 재시도하지 않으므로 이 도구도 재시도하지 않는다.
+- defect_final은 api.analysis_helpers._stage_result_defect(JSON 파싱 실패·
+  반복 루프 오염 감지 — PR #44)를 그대로 써서 최종 결과가 결함인지 기록한다.
+  재시도 횟수(defect_retries)는 프로덕션의 "JSON 파싱 실패 시 1회 재시도"
+  정책(_run_screening, _run_chain_stage)을 이 파일 안에서 그대로 재현해
+  센다 — citation은 프로덕션도 재시도하지 않으므로 이 도구도 재시도하지
+  않는다.
 """
 
 import argparse
@@ -475,7 +474,7 @@ async def run_one(
         }
     elapsed = time.time() - started
 
-    from api.analysis_helpers import _is_error_result
+    from api.analysis_helpers import _stage_result_defect
 
     cost = _result_cost(result)
     record = {
@@ -489,10 +488,10 @@ async def run_one(
         "cached_tokens": result.get("tokens_cached", 0),
         "defect_retries": retries,
         # 추가 신호(스펙 필드 밖, 정보용): 재시도 후에도 여전히 결함인지.
-        # api.analysis_helpers._is_error_result — _run_full_analysis가 체인에
-        # 넘길 스테이지 결과를 거르는 데 실제 쓰는 함수(브리프의
-        # _stage_result_defect에 대응하는 실재 함수, 상단 docstring 참조).
-        "defect_final": _is_error_result(result.get("text") or ""),
+        # api.analysis_helpers._stage_result_defect — _run_screening/
+        # _run_chain_stage가 재시도 게이트로 실제 쓰는 함수(JSON 파싱
+        # 실패·반복 루프 오염 감지). None이 아니면 결함이 발화한 것이다.
+        "defect_final": _stage_result_defect(result.get("text") or "") is not None,
         "latency_s": round(elapsed, 1),
         "cost_usd": round(cost, 6),
     }

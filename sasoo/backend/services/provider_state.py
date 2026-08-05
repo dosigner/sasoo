@@ -1,6 +1,10 @@
 """Sasoo - AI 공급사 상태.
 
-ai_provider 하나가 분석·PDF파싱·그림생성을 모두 결정한다. 레거시 설정
+ai_provider가 텍스트 분석 5단계·채팅·그림 판독·도해 생성의 공급사를 결정한다
+(프로바이더 중립화, PR #44). 분석에는 선택된 공급사의 API 키가 필요하며,
+api/analysis_routes.py의 /run이 key_env_for()로 사전 점검한다.
+
+레거시 설정
 image_provider는 삭제하지 않고 쓰기 전용 미러로 남긴다 — 이 값을 읽는 기존
 코드(api/analysis_routes.py의 preferred_provider)를 한 번에 걷어내면 회귀
 위험이 크기 때문이다.

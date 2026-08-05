@@ -253,7 +253,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         paper_row = {"id": paper_id, "status": "cancelled"}
         run_row = {"status": "cancelled", "cancel_requested": 1, "current_phase": None, "progress_pct": 0.0}
         with (
-            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1", "GEMINI_API_KEY": "test-key"}),
             patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
             patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value={})),
             patch("models.database.get_db", new=AsyncMock(return_value=object())),
@@ -269,7 +269,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         analysis_routes._cancel_events[paper_id] = threading.Event()
         try:
             with (
-                patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+                patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1", "GEMINI_API_KEY": "test-key"}),
                 patch("models.database.get_db", new=AsyncMock(side_effect=RuntimeError("no analysis_runs table"))),
             ):
                 result = await analysis_routes.cancel_analysis(paper_id)
@@ -283,7 +283,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         # 원자적 즉시 취소로 응답해야 한다 — 소비되지 않는 플래그로 영구 좀비가 되던 문제.
         paper_id = 5151
         with (
-            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1", "GEMINI_API_KEY": "test-key"}),
             patch("models.database.get_db", new=AsyncMock(return_value=object())),
             patch("models.analysis_runs.cancel_queued_now", new=AsyncMock(return_value=1)),
             patch("api.analysis_routes.execute_update", new=AsyncMock()) as exec_update,
@@ -300,7 +300,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         # rowcount 0(=이미 running)이면 기존 request_cancel 폴백으로 넘어가야 한다.
         paper_id = 5152
         with (
-            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1"}),
+            patch.dict(os.environ, {"SASOO_ANALYSIS_SUBPROCESS": "1", "GEMINI_API_KEY": "test-key"}),
             patch("models.database.get_db", new=AsyncMock(return_value=object())),
             patch("models.analysis_runs.cancel_queued_now", new=AsyncMock(return_value=0)),
             patch("models.analysis_runs.get_run", new=AsyncMock(return_value={"status": "running"})),
@@ -984,6 +984,41 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["tokens_out"], 120)  # 실패분 합산
         self.assertEqual(result["interaction_id"], "i2")  # 실패 호출 id가 새지 않음
 
+    async def test_chain_stage_retries_on_degenerate_field_value(self):
+        # JSON은 유효하지만 notes 필드가 반복 루프에 오염된 경우 (실사례: GR00T 논문 recipe)
+        garbage = " ".join(
+            ["standard", "logic", "pattern", "text", "format"] * 120
+        )
+        calls = []
+
+        async def _fake_call(prompt, **kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                return {
+                    "text": json.dumps({"parameters": [{"name": "model_architecture", "value": "DiT", "notes": garbage}]}),
+                    "model": "m", "tokens_in": 10, "tokens_out": 900, "interaction_id": "i1",
+                }
+            return {
+                "text": json.dumps({"parameters": [{"name": "model_architecture", "value": "DiT", "notes": "정상 설명"}]}),
+                "model": "m", "tokens_in": 10, "tokens_out": 20, "interaction_id": "i2",
+            }
+
+        with patch("api.analysis_routes.call_interaction", new=_fake_call):
+            result = await analysis_routes._run_chain_stage(
+                phase="recipe",
+                prompt_chain="지시",
+                prompt_fallback="폴백",
+                system_instruction="si",
+                previous_interaction_id=None,
+                pdf_uri=None,
+                response_schema={"type": "object"},
+            )
+
+        self.assertEqual(len(calls), 2)
+        payload = json.loads(result["text"])
+        self.assertEqual(payload["parameters"][0]["notes"], "정상 설명")
+        self.assertEqual(result["tokens_out"], 920)  # 실패분 합산
+
     async def test_chain_stage_returns_last_result_when_retry_also_fails(self):
         async def _fake_call(prompt, **kwargs):
             return {"text": "not json", "model": "m", "tokens_in": 1, "tokens_out": 2, "interaction_id": None}
@@ -1560,6 +1595,7 @@ class BudgetParityTests(unittest.IsolatedAsyncioTestCase):
         read_budget_mock = AsyncMock(return_value=(10.0, 5.0))
         legacy_settings_stub = _settings_stub_returning({"monthly_budget_limit": "5.0"})
         with (
+            patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}),
             patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper_row)),
             patch("api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock(return_value=None)),
             patch("api.analysis_routes.fetch_all", new=AsyncMock(return_value=[{"cost_usd": 10.0}])),
@@ -2825,6 +2861,66 @@ class ModuleIsolationContractTests(unittest.TestCase):
         import models.database
 
         self.assertIs(models.database.aiosqlite, aiosqlite)
+
+
+class TestDegenerateRepetitionDetector(unittest.TestCase):
+    """LLM 반복 루프 감지기 — 필드 값 오염이 스키마 강제 출력을 통과하는 케이스 방어."""
+
+    def test_detects_word_loop(self):
+        from api.analysis_helpers import _is_degenerate_string
+        garbage = " ".join(["standard", "logic", "pattern", "text", "format"] * 100)
+        self.assertTrue(_is_degenerate_string(garbage))
+
+    def test_detects_loop_after_normal_prefix(self):
+        from api.analysis_helpers import _is_degenerate_string
+        text = "이 논문은 Eagle-2 VLM과 Diffusion Transformer를 결합한 구조를 제안한다. " \
+               + " ".join(["standard", "text", "format", "logic"] * 80)
+        self.assertTrue(_is_degenerate_string(text))
+
+    def test_detects_charwise_loop_without_spaces(self):
+        from api.analysis_helpers import _is_degenerate_string
+        self.assertTrue(_is_degenerate_string("표준텍스트형식논리" * 200))
+
+    def test_passes_normal_korean_prose(self):
+        from api.analysis_helpers import _is_degenerate_string
+        text = (
+            "이 논문은 휴머노이드 로봇을 위한 범용 파운데이션 모델 GR00T N1을 제안한다. "
+            "시스템 2에 해당하는 Eagle-2 VLM이 시각·언어 입력을 해석하고, 시스템 1에 해당하는 "
+            "Diffusion Transformer가 연속적인 행동을 생성한다. 두 모듈은 단일 모델로 결합되어 "
+            "엔드투엔드로 학습되며, 웹 데이터·합성 데이터·실로봇 데이터로 구성된 피라미드형 "
+            "데이터 전략을 사용한다. 실험에서는 시뮬레이션 벤치마크와 실제 Fourier GR-1 로봇 "
+            "양쪽에서 기존 베이스라인을 웃도는 성공률을 보였고, 소량의 데이터로도 새로운 과제에 "
+            "적응하는 데이터 효율성을 입증했다. "
+        ) * 3
+        self.assertFalse(_is_degenerate_string(text))
+
+    def test_passes_short_strings(self):
+        from api.analysis_helpers import _is_degenerate_string
+        self.assertFalse(_is_degenerate_string("N/A"))
+        self.assertFalse(_is_degenerate_string(""))
+        self.assertFalse(_is_degenerate_string("800 nm"))
+
+    def test_passes_repeated_numeric_list(self):
+        # 파라미터 값에 흔한 짧은 수치 나열은 300자 미만이라 검사 대상이 아니다
+        from api.analysis_helpers import _is_degenerate_string
+        self.assertFalse(_is_degenerate_string("0.1, 0.2, 0.1, 0.3, 0.1, 0.2"))
+
+    def test_recursive_scan_finds_nested_field(self):
+        from api.analysis_helpers import _has_degenerate_repetition
+        garbage = " ".join(["standard", "logic", "pattern", "text", "format"] * 100)
+        payload = {"parameters": [{"name": "ok", "notes": garbage}]}
+        self.assertTrue(_has_degenerate_repetition(payload))
+        self.assertFalse(_has_degenerate_repetition({"parameters": [{"name": "ok", "notes": "정상"}]}))
+
+    def test_stage_result_defect_reasons(self):
+        from api.analysis_helpers import _stage_result_defect
+        garbage = " ".join(["standard", "logic", "pattern", "text", "format"] * 100)
+        self.assertEqual(_stage_result_defect('{"broken": '), "JSON parse failed")
+        self.assertEqual(
+            _stage_result_defect(json.dumps({"notes": garbage})),
+            "degenerate repetition detected",
+        )
+        self.assertIsNone(_stage_result_defect('{"notes": "정상 텍스트"}'))
 
 
 if __name__ == "__main__":

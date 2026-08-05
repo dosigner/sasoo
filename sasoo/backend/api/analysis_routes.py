@@ -82,6 +82,7 @@ from api.analysis_state import _running_analyses, _cancel_events, _analyses_lock
 from api.analysis_helpers import (
     _clean_llm_json,
     _is_error_result,
+    _stage_result_defect,
     _SYSTEM_INSTRUCTION_KO,
 )
 from services.model_registry import ModelChoice, active_provider, resolve as resolve_model
@@ -587,12 +588,11 @@ async def _run_screening(
         )
 
     result = await _invoke()
-    try:
-        json.loads(_clean_llm_json(result.get("text") or ""))
-    except (json.JSONDecodeError, TypeError):
+    defect = _stage_result_defect(result.get("text") or "")
+    if defect:
         logger.warning(
-            "screening JSON parse failed (tokens_out=%s); retrying once",
-            result.get("tokens_out"),
+            "screening %s (tokens_out=%s); retrying once",
+            defect, result.get("tokens_out"),
         )
         retry = await _invoke()
         # 재시도 사용량은 attempt별로 비용을 계산해 합산한다(R7-3) — 토큰을
@@ -1230,8 +1230,9 @@ async def _run_chain_stage(
 
     pdf_uri와 doc_text는 상호 배타다(Gemini는 PDF 파트, OpenAI는 텍스트 주입만 쓴다).
 
-    확률적 반복 루프 등으로 결과 텍스트가 JSON 파싱 불가면 1회 재시도한다(재시도도
-    실패하면 그대로 반환 — 기존 `_raw`/`_parse_error` 경로가 처리).
+    결과 텍스트가 JSON 파싱 불가이거나, 파싱은 되지만 필드 값이 반복 루프
+    (degenerate repetition)에 오염됐으면 1회 재시도한다(재시도도 실패하면
+    그대로 반환 — 기존 `_raw`/`_parse_error` 경로가 처리).
     """
     if pdf_uri and doc_text:
         raise ValueError("pdf_uri(Gemini 체인)와 doc_text(OpenAI 체인)는 동시 사용 불가")
@@ -1285,12 +1286,11 @@ async def _run_chain_stage(
         )
 
     result = await _invoke()
-    try:
-        json.loads(_clean_llm_json(result.get("text") or ""))
-    except (json.JSONDecodeError, TypeError):
+    defect = _stage_result_defect(result.get("text") or "")
+    if defect:
         logger.warning(
-            "chain stage %s JSON parse failed (tokens_out=%s); retrying once",
-            phase, result.get("tokens_out"),
+            "chain stage %s %s (tokens_out=%s); retrying once",
+            phase, defect, result.get("tokens_out"),
         )
         retry = await _invoke()
         # 재시도 사용량은 attempt별로 비용을 계산해 합산한다(R7-3) — 토큰을
