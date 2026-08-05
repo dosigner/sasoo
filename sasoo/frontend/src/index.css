@@ -503,7 +503,7 @@
   }
 
   .segmented-control__item {
-    @apply inline-flex min-h-[2.25rem] items-center justify-center gap-2 border-b-2 border-transparent px-2.5 py-2 text-xs font-medium text-fg-muted transition-colors duration-200 ease-out;
+    @apply inline-flex min-h-[2.25rem] items-center justify-center border-b-2 border-transparent px-2.5 py-2 text-xs font-medium text-fg-muted transition-[color] duration-150;
     border-radius: var(--radius-control);
   }
 
@@ -512,7 +512,7 @@
   }
 
   .segmented-control__item-active {
-    @apply rounded-none border-accent text-accent;
+    @apply rounded-none border-accent text-fg font-[650];
   }
 
   .segmented-control__item-disabled {
@@ -522,6 +522,49 @@
   .status-pill {
     @apply inline-flex items-center gap-1.5 border px-2.5 py-1 text-2xs font-medium;
     border-radius: var(--radius-pill);
+  }
+
+  /* 워크벤치 공용 틴트 칩 — 보더 없는 저채도 배경 + 시맨틱 색 텍스트.
+     워크벤치 헤더·우측 패널·질문 도우미 전용, 이 표면 밖의 status-pill/Badge는 무수정. */
+  .chip-tint {
+    @apply inline-flex items-center whitespace-nowrap font-medium;
+    border-radius: var(--radius-pill);
+    padding: 2px 10px;
+    font-size: 12px;
+    background: rgb(var(--accent) / 0.10);
+    color: rgb(var(--accent));
+  }
+
+  /* 정보성 메타용 조용한 칩 — 틴트 칩(상태성)과 짝. 변수 기반이라 다크 모드 자동 적응. */
+  .chip-soft {
+    @apply inline-flex items-center whitespace-nowrap font-medium;
+    border-radius: var(--radius-pill);
+    padding: 2px 10px;
+    font-size: 12px;
+    background: rgb(var(--surface-hover));
+    color: rgb(var(--fg-secondary));
+  }
+
+  .chip-tint-success {
+    background: rgb(var(--success) / 0.10);
+    color: rgb(var(--success));
+  }
+
+  .chip-tint-danger {
+    background: rgb(var(--danger) / 0.10);
+    color: rgb(var(--danger));
+  }
+
+  .dark .chip-tint {
+    background: rgb(var(--accent) / 0.16);
+  }
+
+  .dark .chip-tint-success {
+    background: rgb(var(--success) / 0.16);
+  }
+
+  .dark .chip-tint-danger {
+    background: rgb(var(--danger) / 0.16);
   }
 
   .library-archive-header {
@@ -1001,15 +1044,6 @@
     @apply py-0;
   }
 
-  .phase-meta-pill {
-    @apply inline-flex items-center border border-border/50 bg-surface/60 px-2 py-0.5 text-2xs uppercase tracking-[0.14em] text-fg-muted;
-    border-radius: var(--radius-pill);
-  }
-
-  .phase-meta-pill-soft {
-    @apply bg-surface/50 text-fg-muted;
-  }
-
   .pdf-toolbar-btn {
     @apply inline-flex h-8 min-w-[2rem] items-center justify-center border border-transparent bg-transparent px-2 text-fg-muted transition-[color,background-color,border-color,transform] duration-150 hover:border-border/70 hover:bg-surface-hover/70 hover:text-fg disabled:pointer-events-none disabled:opacity-35;
     border-radius: var(--radius-control);
@@ -1124,18 +1158,6 @@
 
   .chat-launcher-pending {
     @apply hover:bg-surface-hover/95;
-  }
-
-  .chat-launcher-badge {
-    @apply inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-medium;
-  }
-
-  .chat-launcher-badge-ready {
-    @apply bg-success/10 text-success;
-  }
-
-  .chat-launcher-badge-pending {
-    @apply bg-surface text-fg-muted;
   }
 
   .chat-floating-card {
@@ -1411,6 +1433,16 @@
   .pdf-toolbar-btn:active,
   .chat-send-button:active {
     transform: none !important;
+  }
+
+  /* I4: Figure/Table 카드 press-scale(active:scale-[0.96])도 movement이므로 끈다. */
+  [role="button"]:active {
+    transform: none !important;
+  }
+
+  /* I4: 워크벤치 상태부 진행 레일의 width 전환은 즉시 완료로 처리한다. */
+  .transition-\[width\] {
+    transition: none !important;
   }
 }
 

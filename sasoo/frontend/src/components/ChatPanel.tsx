@@ -338,7 +338,7 @@ export default function ChatPanel({
                 질문 도우미
               </span>
               <span className="mt-0.5 flex items-center gap-2 text-2xs text-fg-muted">
-                <span className={`chat-launcher-badge ${ready ? 'chat-launcher-badge-ready' : 'chat-launcher-badge-pending'}`}>
+                <span className={ready ? 'chip-tint chip-tint-success' : 'text-2xs font-normal text-fg-muted'}>
                   {ready ? '준비됨' : '대기'}
                 </span>
                 <span className="truncate">{ready ? '논문 맥락으로 바로 질문해요' : 'PDF 텍스트를 읽고 있어요'}</span>
@@ -361,7 +361,7 @@ export default function ChatPanel({
                   <span className="truncate text-sm font-semibold text-fg">
                     {agent?.display_name_ko || '질문 도우미'}
                   </span>
-                  <span className={`chat-launcher-badge ${ready ? 'chat-launcher-badge-ready' : 'chat-launcher-badge-pending'}`}>
+                  <span className={ready ? 'chip-tint chip-tint-success' : 'text-2xs font-normal text-fg-muted'}>
                     {ready ? '준비됨' : '대기'}
                   </span>
                 </div>

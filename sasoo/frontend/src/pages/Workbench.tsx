@@ -321,8 +321,8 @@ export default function Workbench() {
         onSelectAgent={(agent) => void onSelectAgent(agent)}
         pdfCollapsed={pdfCollapsed}
         activeSplitPreset={activePreset}
-        runStateLabel={statusSummary.runStateLabel}
-        trustStateLabel={statusSummary.trustStateLabel}
+        statusLabel={statusSummary.displayStatusLabel}
+        statusTone={statusSummary.statusTone}
         analysisError={analysisError}
         canStartAnalysis={canStartAnalysis}
         isRunning={isRunning}
@@ -399,7 +399,6 @@ export default function Workbench() {
                 mermaid={mermaid}
                 visualizations={visualizations}
                 isRunning={isRunning}
-                agentName={paper.agent_used}
                 paperId={paperId}
                 paperLevel={paper.explanation_level}
                 terminalState={terminalState}
