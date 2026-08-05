@@ -80,6 +80,7 @@ from api.analysis_state import _running_analyses, _cancel_events, _analyses_lock
 from api.analysis_helpers import (
     _clean_llm_json,
     _is_error_result,
+    _stage_result_defect,
     _SYSTEM_INSTRUCTION_KO,
 )
 from services.models import (
@@ -460,12 +461,11 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
         )
 
     result = await _invoke()
-    try:
-        json.loads(_clean_llm_json(result.get("text") or ""))
-    except (json.JSONDecodeError, TypeError):
+    defect = _stage_result_defect(result.get("text") or "")
+    if defect:
         logger.warning(
-            "screening JSON parse failed (tokens_out=%s); retrying once",
-            result.get("tokens_out"),
+            "screening %s (tokens_out=%s); retrying once",
+            defect, result.get("tokens_out"),
         )
         retry = await _invoke()
         # 재시도 사용량을 합산해 비용 추적이 실사용을 반영하게 한다
@@ -981,8 +981,9 @@ async def _run_chain_stage(
       서버 상태 단절로 잃은 이전 분석 컨텍스트를 복원한다.
     - pdf_uri 없음(폴백): stateless(store=False). 기존 phase_inputs 텍스트를 프롬프트에 삽입한다.
 
-    확률적 반복 루프 등으로 결과 텍스트가 JSON 파싱 불가면 1회 재시도한다(재시도도
-    실패하면 그대로 반환 — 기존 `_raw`/`_parse_error` 경로가 처리).
+    결과 텍스트가 JSON 파싱 불가이거나, 파싱은 되지만 필드 값이 반복 루프
+    (degenerate repetition)에 오염됐으면 1회 재시도한다(재시도도 실패하면
+    그대로 반환 — 기존 `_raw`/`_parse_error` 경로가 처리).
     """
 
     async def _invoke() -> dict:
@@ -1021,12 +1022,11 @@ async def _run_chain_stage(
         )
 
     result = await _invoke()
-    try:
-        json.loads(_clean_llm_json(result.get("text") or ""))
-    except (json.JSONDecodeError, TypeError):
+    defect = _stage_result_defect(result.get("text") or "")
+    if defect:
         logger.warning(
-            "chain stage %s JSON parse failed (tokens_out=%s); retrying once",
-            phase, result.get("tokens_out"),
+            "chain stage %s %s (tokens_out=%s); retrying once",
+            phase, defect, result.get("tokens_out"),
         )
         retry = await _invoke()
         # 재시도 사용량을 합산해 비용 추적이 실사용을 반영하게 한다
@@ -2479,6 +2479,16 @@ async def run_analysis(paper_id: int, background_tasks: BackgroundTasks):
     paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
     if paper is None:
         raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
+
+    # 분석 5단계는 공급사 설정과 무관하게 Gemini 전용이다(services/models.py).
+    # OpenAI 키만 등록된 설치에서 파이프라인 깊숙이 들어가 "GEMINI_API_KEY not set"
+    # 으로 죽는 대신, 시작 전에 명확한 안내로 거절한다.
+    if not os.getenv("GEMINI_API_KEY"):
+        raise HTTPException(
+            status_code=400,
+            detail="논문 분석은 Gemini로 실행되어 Gemini API 키가 필요해요. "
+                   "설정에서 Gemini 키를 등록해 주세요.",
+        )
 
     try:
         await ensure_text_artifacts_async(get_paper_dir(paper["folder_name"]))

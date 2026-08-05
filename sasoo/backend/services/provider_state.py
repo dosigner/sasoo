@@ -1,6 +1,12 @@
 """Sasoo - AI 공급사 상태.
 
-ai_provider 하나가 분석·PDF파싱·그림생성을 모두 결정한다. 레거시 설정
+ai_provider가 실제로 결정하는 것은 도해 이미지 생성 공급사뿐이다
+(gpt-image-2 vs Nano Banana 2 — services/viz/figure_gen.py). 텍스트 분석
+5단계·그림 판독·채팅은 공급사 선택과 무관하게 항상 Gemini로 돈다
+(services/models.py의 Gemini-only 스택 결정). 따라서 분석에는 항상
+GEMINI_API_KEY가 필요하고, api/analysis_routes.py의 /run이 사전 점검한다.
+
+레거시 설정
 image_provider는 삭제하지 않고 쓰기 전용 미러로 남긴다 — 이 값을 읽는 기존
 코드(api/analysis_routes.py의 preferred_provider)를 한 번에 걷어내면 회귀
 위험이 크기 때문이다.
