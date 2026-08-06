@@ -343,6 +343,36 @@ class PdfIndexTests(unittest.TestCase):
         with fitz.open(self.pdf_path) as doc:
             self.assertIsNone(ev.locate_bbox(doc[0], "no such text in this document at all"))
 
+    def test_bbox_of_wrapped_normalized_match_unions_all_lines(self):
+        # P1_HYPHEN_RAW는 좁은 textbox에 들어가 최소 2줄로 줄바꿈된다 — search_for가 줄마다
+        # 별도 rect를 반환하므로, 첫 rect(첫 줄)만 쓰면 인용 뒷부분이 bbox 밖으로 잘린다.
+        with fitz.open(self.pdf_path) as doc:
+            page = doc[0]
+            line_rects = page.search_for(_PdfFixture.P1_HYPHEN_RAW)
+            bbox = ev.locate_bbox(page, _PdfFixture.P1_HYPHEN_RAW)
+        self.assertGreaterEqual(len(line_rects), 2)  # sanity: 실제로 여러 줄로 나뉘었는가
+        self.assertIsNotNone(bbox)
+        assert bbox is not None
+        first_line_height = line_rects[0].y1 - line_rects[0].y0
+        self.assertGreater(bbox[3] - bbox[1], first_line_height)  # 첫 줄보다 커야 union이 적용된 것
+
+    def test_bbox_falls_back_to_first_rect_when_union_is_oversized(self):
+        # 다단 조판 등에서 같은 검색어가 페이지의 서로 먼 두 지점에 우연히 걸리는 경우를
+        # 흉내낸다 — union하면 페이지 절반을 넘는 과대 박스가 되므로 첫 rect로 폴백해야 한다.
+        doc = fitz.open()
+        page = doc.new_page()
+        needle = "Shared column heading text"
+        page.insert_text((50, 50), needle, fontsize=10, fontname="helv")
+        page.insert_text((50, 750), needle, fontsize=10, fontname="helv")
+        rects = page.search_for(needle)
+        self.assertEqual(len(rects), 2)
+        bbox = ev.locate_bbox(page, needle)
+        doc.close()
+        self.assertIsNotNone(bbox)
+        assert bbox is not None
+        first_rect_height = rects[0].y1 - rects[0].y0
+        self.assertAlmostEqual(bbox[3] - bbox[1], first_rect_height, delta=0.5)
+
 
 class RecipeParameterIterationTests(unittest.TestCase):
     def test_index_alignment_matches_frontend_parser_rules(self):

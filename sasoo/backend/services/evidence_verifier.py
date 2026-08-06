@@ -452,11 +452,19 @@ def find_quote(index: PdfTextIndex, quote: str, claimed_page: int | None) -> Quo
 # ---------------------------------------------------------------------------
 
 
+_BBOX_UNION_HEIGHT_RATIO = 0.5
+
+
 def locate_bbox(page, matched_quote: str | None) -> list[float] | None:
     """확인된 원문 span의 bbox를 PDF 포인트·좌하단 원점으로 반환한다.
 
-    첫 매치 rect만 쓴다 — 다단 조판에서 union은 과대 박스가 되어 오히려 오해를 만든다
-    (스펙 §알려진 위험 3). 실패하면 None이고, UI는 페이지 점프로 폴백한다.
+    search_for()는 하나의 논리적 매치가 여러 물리 줄에 걸치면 줄마다 별도 Rect를 반환한다
+    — 줄바꿈으로 감싸진 인용은 normalized 경로로 확인되는 경우가 많아 이건 흔한 경우다.
+    find_quote가 이미 페이지 내 다중 발생을 ambiguous로 걸러냈으므로, 같은 페이지에서 나온
+    다중 rect는 하나의 매치를 이루는 여러 줄로 보고 union해 인용 전체를 덮는다.
+    다단 조판에서는 서로 다른 컬럼의 텍스트가 우연히 같은 검색어에 걸려 union이 과대해질
+    수 있다(스펙 §알려진 위험 3) — union의 세로 span이 페이지 높이의 50%를 넘으면 그 경우로
+    보고 첫 rect(첫 줄)로 폴백한다. 실패하면 None이고, UI는 페이지 점프로 폴백한다.
     """
     needle = str(matched_quote or "").strip()
     if not needle:
@@ -467,8 +475,16 @@ def locate_bbox(page, matched_quote: str | None) -> list[float] | None:
             rects = page.search_for(needle[:40])
         if not rects:
             return None
-        rect = rects[0]
         height = float(page.rect.height)
+        union = rects[0]
+        for extra in rects[1:]:
+            union |= extra
+        if (union.y1 - union.y0) > height * _BBOX_UNION_HEIGHT_RATIO:
+            # 다단 조판 등 서로 다른 컬럼이 우연히 같은 검색어에 걸린 경우 — union은
+            # 과대 박스가 되어 오해를 만드므로, 첫 rect(첫 줄)만 커버하는 쪽을 택한다.
+            rect = rects[0]
+        else:
+            rect = union
         bbox = [
             round(float(rect.x0), 2),
             round(height - float(rect.y1), 2),
