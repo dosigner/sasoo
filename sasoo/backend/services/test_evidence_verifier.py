@@ -5,8 +5,13 @@
 0.0%만 통과했다. 그 0을 회귀 게이트로 고정한다.
 """
 
+import json
+import os
+import tempfile
 import unicodedata
 import unittest
+
+import fitz
 
 from services import evidence_verifier as ev
 
@@ -209,6 +214,260 @@ class ValueGuardTests(unittest.TestCase):
             ev.check_value_in_quote("-40", "explicit", "The device was tested at -40 degrees.")[0],
             "value_in_quote",
         )
+
+
+class _PdfFixture:
+    """검증기 테스트용 합성 PDF. 실제 라이브러리 논문 없이 CI에서 돌아야 한다.
+
+    p1: 축자 인용 1건 + 줄바꿈 하이픈으로 끊긴 인용 1건 + 양 페이지 중복 문장
+    p2: 긴 문장(부분일치용) + 값 가드용 문장 + 양 페이지 중복 문장
+    """
+
+    P1_EXACT = "The samples were annealed at 500 °C for 2 h."
+    P1_HYPHEN_RAW = "We used a wave-\nlength of 1550 nm in the setup."
+    P1_HYPHEN_QUOTE = "We used a wavelength of 1550 nm in the setup."
+    DUPLICATE = "This sentence appears on both pages of the document."
+    P2_LONG = (
+        "In this experiment the beam diameter was measured as 12.5 mm "
+        "at the output aperture of the telescope."
+    )
+    P2_PARTIAL_QUOTE = (
+        "In this experiment the beam diameter was measured as 12.5 mm "
+        "at the entrance aperture of the telescope."
+    )
+    P2_NITROGEN = "The annealing was performed under a nitrogen atmosphere."
+
+    @classmethod
+    def write(cls, path: str) -> None:
+        doc = fitz.open()
+        page1 = doc.new_page()
+        page1.insert_text((50, 100), cls.P1_EXACT, fontsize=10, fontname="helv")
+        page1.insert_textbox(fitz.Rect(50, 120, 200, 200), cls.P1_HYPHEN_RAW, fontsize=10, fontname="helv")
+        page1.insert_text((50, 220), cls.DUPLICATE, fontsize=10, fontname="helv")
+        page2 = doc.new_page()
+        page2.insert_text((50, 100), cls.P2_LONG, fontsize=8, fontname="helv")
+        page2.insert_text((50, 130), cls.P2_NITROGEN, fontsize=10, fontname="helv")
+        page2.insert_text((50, 160), cls.DUPLICATE, fontsize=10, fontname="helv")
+        doc.save(path)
+        doc.close()
+
+    @staticmethod
+    def write_blank(path: str) -> None:
+        doc = fitz.open()
+        doc.new_page()
+        doc.save(path)
+        doc.close()
+
+
+class PdfIndexTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        handle = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+        handle.close()
+        cls.pdf_path = handle.name
+        _PdfFixture.write(cls.pdf_path)
+        cls.index = ev.build_pdf_index(cls.pdf_path)
+
+    @classmethod
+    def tearDownClass(cls):
+        os.unlink(cls.pdf_path)
+
+    def test_index_has_two_pages_with_text(self):
+        self.assertEqual(self.index.page_count, 2)
+        self.assertTrue(self.index.has_text_layer)
+        self.assertIn("annealed at 500", self.index.pages[0].normalized)
+
+    def test_exact_hit_on_claimed_page(self):
+        match = ev.find_quote(self.index, _PdfFixture.P1_EXACT, 1)
+        self.assertEqual(match.quote_status, "verified_exact")
+        self.assertEqual(match.page_status, "match")
+        self.assertEqual(match.matched_page, 1)
+        self.assertEqual(match.match_method, "exact")
+
+    def test_line_break_hyphen_needs_normalized_match(self):
+        match = ev.find_quote(self.index, _PdfFixture.P1_HYPHEN_QUOTE, 1)
+        self.assertEqual(match.quote_status, "verified_normalized")
+        self.assertEqual(match.page_status, "match")
+        self.assertEqual(match.matched_quote, _PdfFixture.P1_HYPHEN_RAW)
+
+    def test_wrong_claimed_page_is_mismatch_not_silent_fix(self):
+        match = ev.find_quote(self.index, _PdfFixture.P2_LONG, 1)
+        self.assertEqual(match.quote_status, "verified_exact")
+        self.assertEqual(match.page_status, "mismatch")
+        self.assertEqual(match.matched_page, 2)
+
+    def test_missing_claimed_page_is_derived(self):
+        match = ev.find_quote(self.index, _PdfFixture.P2_LONG, None)
+        self.assertEqual(match.page_status, "derived")
+        self.assertEqual(match.matched_page, 2)
+
+    def test_out_of_range_claimed_page(self):
+        match = ev.find_quote(self.index, _PdfFixture.P2_LONG, 99)
+        self.assertEqual(match.quote_status, "verified_exact")
+        self.assertEqual(match.page_status, "invalid_page")
+
+    def test_duplicate_quote_is_ambiguous(self):
+        match = ev.find_quote(self.index, _PdfFixture.DUPLICATE, None)
+        self.assertEqual(match.quote_status, "ambiguous")
+        self.assertIsNotNone(match.failure_detail)
+
+    def test_empty_quote_is_no_quote(self):
+        self.assertEqual(ev.find_quote(self.index, "", 1).quote_status, "no_quote")
+        self.assertEqual(ev.find_quote(self.index, "   ", None).quote_status, "no_quote")
+
+    def test_forged_number_is_not_found_not_partial(self):
+        match = ev.find_quote(self.index, "The samples were annealed at 900 °C for 2 h.", 1)
+        self.assertEqual(match.quote_status, "not_found")
+
+    def test_partial_match_is_reported_but_never_verified(self):
+        match = ev.find_quote(self.index, _PdfFixture.P2_PARTIAL_QUOTE, 2)
+        self.assertEqual(match.quote_status, "partial_match")
+        self.assertGreaterEqual(match.match_ratio or 0.0, 0.6)
+        self.assertNotEqual(
+            ev.derive_display_status(match.quote_status, match.page_status, "value_in_quote"),
+            "VERIFIED",
+        )
+
+    def test_bbox_is_lower_left_origin_and_positive_area(self):
+        with fitz.open(self.pdf_path) as doc:
+            bbox = ev.locate_bbox(doc[0], _PdfFixture.P1_EXACT)
+            height = doc[0].rect.height
+        self.assertIsNotNone(bbox)
+        assert bbox is not None
+        self.assertEqual(len(bbox), 4)
+        self.assertLess(bbox[0], bbox[2])
+        self.assertLess(bbox[1], bbox[3])
+        self.assertGreater(bbox[1], height / 2)  # 페이지 상단 텍스트 → 좌하단 원점에서 y가 크다
+
+    def test_bbox_of_unknown_text_is_none(self):
+        with fitz.open(self.pdf_path) as doc:
+            self.assertIsNone(ev.locate_bbox(doc[0], "no such text in this document at all"))
+
+
+class RecipeParameterIterationTests(unittest.TestCase):
+    def test_index_alignment_matches_frontend_parser_rules(self):
+        recipe = {
+            "parameters": [
+                {"name": "a", "value": "1"},
+                "Temperature: 500 C",
+                42,                       # 프론트가 건너뛰는 타입 — 백엔드도 건너뛴다
+                {"parameter": "b", "val": "2"},
+                None,                     # 프론트의 p !== null 가드와 동일
+            ]
+        }
+        parsed = ev.iter_recipe_parameters(recipe)
+        self.assertEqual([index for index, _ in parsed], [0, 1, 2])
+        self.assertEqual([param["name"] for _, param in parsed], ["a", "Temperature", "b"])
+        self.assertEqual(parsed[1][1]["value"], "500 C")
+        self.assertEqual(ev.count_recipe_parameters(recipe), 3)
+
+    def test_no_parameters_returns_empty(self):
+        self.assertEqual(ev.iter_recipe_parameters({}), [])
+        self.assertEqual(ev.iter_recipe_parameters({"parameters": "nope"}), [])
+
+
+class VerifyRecipeParametersTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        handle = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+        handle.close()
+        cls.pdf_path = handle.name
+        _PdfFixture.write(cls.pdf_path)
+
+        blank = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+        blank.close()
+        cls.blank_path = blank.name
+        _PdfFixture.write_blank(cls.blank_path)
+
+    @classmethod
+    def tearDownClass(cls):
+        os.unlink(cls.pdf_path)
+        os.unlink(cls.blank_path)
+
+    def _drafts(self, parameters):
+        return ev.verify_recipe_parameters({"parameters": parameters}, self.pdf_path)
+
+    def test_happy_path_is_verified_with_bbox(self):
+        drafts = self._drafts([
+            {"name": "annealing_temperature", "value": "500", "unit": "°C",
+             "source_tag": "explicit", "evidence_quote": _PdfFixture.P1_EXACT, "evidence_page": 1},
+        ])
+        draft = drafts[0]
+        self.assertEqual(draft.display_status, "VERIFIED")
+        self.assertEqual(draft.quote_status, "verified_exact")
+        self.assertEqual(draft.value_status, "value_in_quote")
+        self.assertEqual(draft.target_key, "p000:annealing-temperature")
+        self.assertEqual(draft.target_label, "annealing_temperature")
+        self.assertEqual(draft.corpus, "pdf_text")
+        self.assertIsNotNone(draft.bbox_json)
+        self.assertEqual(len(json.loads(draft.bbox_json)), 4)
+
+    def test_value_not_in_quote_blocks_verification(self):
+        drafts = self._drafts([
+            {"name": "annealing_temperature", "value": "900", "unit": "°C",
+             "source_tag": "explicit", "evidence_quote": _PdfFixture.P1_EXACT, "evidence_page": 1},
+        ])
+        self.assertEqual(drafts[0].quote_status, "verified_exact")
+        self.assertEqual(drafts[0].value_status, "value_missing")
+        self.assertEqual(drafts[0].display_status, "UNVERIFIED_VALUE_MISMATCH")
+
+    def test_inferred_parameter_is_never_verified(self):
+        drafts = self._drafts([
+            {"name": "power_density", "value": "500", "source_tag": "inferred",
+             "evidence_quote": _PdfFixture.P1_EXACT, "evidence_page": 1},
+        ])
+        self.assertEqual(drafts[0].display_status, "UNVERIFIED_INFERRED")
+        self.assertEqual(drafts[0].matched_page, 1)  # 계산 근거 위치는 그래도 제공한다
+
+    def test_missing_quote_is_no_quote(self):
+        drafts = self._drafts([{"name": "x", "value": "1", "source_tag": "explicit"}])
+        self.assertEqual(drafts[0].display_status, "UNVERIFIED_NO_QUOTE")
+
+    def test_forged_quotes_produce_zero_false_verify(self):
+        forged = [
+            "The samples were annealed at 900 °C for 2 h.",
+            "We used a wavelength of 1560 nm in the setup.",
+            "In this experiment the beam diameter was measured as 12.8 mm "
+            "at the output aperture of the telescope.",
+        ]
+        drafts = self._drafts([
+            {"name": f"p{i}", "value": "1", "source_tag": "explicit", "evidence_quote": quote,
+             "evidence_page": 1}
+            for i, quote in enumerate(forged)
+        ])
+        self.assertEqual([d.display_status for d in drafts if d.display_status == "VERIFIED"], [])
+
+    def test_scanned_pdf_without_text_layer(self):
+        drafts = ev.verify_recipe_parameters(
+            {"parameters": [{"name": "x", "value": "1", "source_tag": "explicit",
+                             "evidence_quote": "anything", "evidence_page": 1}]},
+            self.blank_path,
+        )
+        self.assertEqual(drafts[0].quote_status, "no_text_layer")
+        self.assertEqual(drafts[0].display_status, "UNVERIFIED_NO_TEXT_LAYER")
+
+    def test_missing_pdf_still_produces_one_draft_per_parameter(self):
+        drafts = ev.verify_recipe_parameters(
+            {"parameters": [{"name": "x", "value": "1"}, {"name": "y", "value": "2"}]},
+            "/tmp/definitely-not-a-real-file-8f2a.pdf",
+        )
+        self.assertEqual(len(drafts), 2)
+        self.assertEqual({d.failure_detail for d in drafts}, {"pdf_missing"})
+        self.assertEqual({d.display_status for d in drafts}, {"UNVERIFIED_NO_TEXT_LAYER"})
+
+    def test_every_parameter_gets_exactly_one_draft(self):
+        parameters = [
+            {"name": "a", "value": "500", "source_tag": "explicit",
+             "evidence_quote": _PdfFixture.P1_EXACT, "evidence_page": 1},
+            "Temperature: 500 C",
+            {"name": "c", "value": "1", "source_tag": "explicit",
+             "evidence_quote": "x", "evidence_page": "not-a-number"},
+        ]
+        drafts = self._drafts(parameters)
+        self.assertEqual(len(drafts), 3)
+        self.assertEqual([d.target_index for d in drafts], [0, 1, 2])
+        self.assertTrue(all(d.verifier_version == ev.EVIDENCE_VERIFIER_VERSION for d in drafts))
+        self.assertTrue(all(d.quote_status in ev.QUOTE_STATUSES for d in drafts))
 
 
 if __name__ == "__main__":

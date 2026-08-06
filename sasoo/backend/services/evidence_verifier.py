@@ -10,8 +10,14 @@
 
 from __future__ import annotations
 
+import difflib
+import json
 import re
 import unicodedata
+from dataclasses import dataclass
+from pathlib import Path
+
+import fitz
 
 EVIDENCE_VERIFIER_VERSION = "ev1"
 EVIDENCE_NORMALIZER_VERSION = "norm-v1"
@@ -231,3 +237,451 @@ def check_value_in_quote(
     if normalized_value not in normalized_quote:
         return ("value_missing", f"missing:{normalized_value[:24]}")
     return ("value_in_quote", None)
+
+
+# ---------------------------------------------------------------------------
+# PDF 텍스트층 인덱스
+# ---------------------------------------------------------------------------
+# 대조 원본은 PDF 텍스트층 하나뿐이다. 매니페스트 full_text는 Gemini 경로에서 다른 LLM의
+# 전사본일 수 있어(순환 검증) 쓰지 않는다. 실측: 축자 인용을 full_text로 대조하면 70.7%만
+# 확인되고(ODL 83.0% / Gemini 33.6%), PDF 텍스트층으로 대조하면 91.4%가 확인된다.
+
+
+@dataclass(frozen=True, slots=True)
+class PageText:
+    page_number: int
+    raw: str
+    normalized: str
+    source_map: tuple[int, ...]
+    tokens: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PdfTextIndex:
+    pages: tuple[PageText, ...]
+    page_count: int
+
+    @property
+    def has_text_layer(self) -> bool:
+        return any(page.normalized for page in self.pages)
+
+
+@dataclass(frozen=True, slots=True)
+class QuoteMatch:
+    quote_status: str
+    page_status: str
+    matched_page: int | None = None
+    matched_quote: str | None = None
+    match_method: str | None = None
+    match_ratio: float | None = None
+    failure_detail: str | None = None
+
+
+def _index_from_doc(doc) -> PdfTextIndex:
+    pages: list[PageText] = []
+    for number in range(1, doc.page_count + 1):
+        raw = doc[number - 1].get_text() or ""
+        normalized, source_map = normalize_with_map(raw)
+        pages.append(
+            PageText(
+                page_number=number,
+                raw=raw,
+                normalized=normalized,
+                source_map=tuple(source_map),
+                tokens=tuple(normalized.split(" ")) if normalized else (),
+            )
+        )
+    return PdfTextIndex(pages=tuple(pages), page_count=doc.page_count)
+
+
+def build_pdf_index(pdf_path) -> PdfTextIndex:
+    with fitz.open(str(pdf_path)) as doc:
+        return _index_from_doc(doc)
+
+
+# ---------------------------------------------------------------------------
+# 인용 검색
+# ---------------------------------------------------------------------------
+
+_MIN_PARTIAL_TOKENS = 8
+_MIN_PARTIAL_RATIO = 0.6
+_PARTIAL_PAGE_CANDIDATES = 3
+
+
+def _claim_is_valid(claimed_page, page_count: int) -> bool:
+    return isinstance(claimed_page, int) and not isinstance(claimed_page, bool) and 1 <= claimed_page <= page_count
+
+
+def _unlocated_page_status(claimed_page, page_count: int) -> str:
+    if claimed_page is None or _claim_is_valid(claimed_page, page_count):
+        return "no_page"
+    return "invalid_page"
+
+
+def _located_page_status(claimed_page, found_page: int, page_count: int) -> str:
+    if claimed_page is None:
+        return "derived"
+    if not _claim_is_valid(claimed_page, page_count):
+        return "invalid_page"
+    return "match" if claimed_page == found_page else "mismatch"
+
+
+def _raw_span(page: PageText, start: int, end_exclusive: int) -> str:
+    raw_start = page.source_map[start]
+    raw_end = page.source_map[end_exclusive - 1] + 1
+    return page.raw[raw_start:raw_end]
+
+
+def _exact_on_page(page: PageText, raw_needle: str) -> str | None:
+    return raw_needle if raw_needle and raw_needle in page.raw else None
+
+
+def _normalized_on_page(page: PageText, normalized_needle: str) -> str | None:
+    start = page.normalized.find(normalized_needle)
+    if start < 0:
+        return None
+    return _raw_span(page, start, start + len(normalized_needle))
+
+
+def _token_char_span(tokens: tuple[str, ...], start: int, size: int) -> tuple[int, int]:
+    """정규화 문자열은 토큰을 스페이스 1개로 이은 것이므로 오프셋이 정확히 계산된다."""
+    prefix = sum(len(token) + 1 for token in tokens[:start])
+    length = sum(len(token) + 1 for token in tokens[start : start + size]) - 1
+    return prefix, prefix + length
+
+
+def _best_partial(index: PdfTextIndex, normalized_needle: str):
+    """부분 일치는 '검증'이 아니라 탐색 보조다. 최장 공통 블록 기준으로만 계산한다."""
+    quote_tokens = normalized_needle.split(" ")
+    if len(quote_tokens) < _MIN_PARTIAL_TOKENS:
+        return None
+    quote_set = set(quote_tokens)
+    ranked = sorted(
+        (page for page in index.pages if page.tokens),
+        key=lambda page: (-len(quote_set & set(page.tokens)), page.page_number),
+    )[:_PARTIAL_PAGE_CANDIDATES]
+
+    best = None
+    for page in ranked:
+        matcher = difflib.SequenceMatcher(None, quote_tokens, list(page.tokens), autojunk=False)
+        block = matcher.find_longest_match(0, len(quote_tokens), 0, len(page.tokens))
+        if block.size < _MIN_PARTIAL_TOKENS:
+            continue
+        ratio = block.size / len(quote_tokens)
+        if ratio < _MIN_PARTIAL_RATIO:
+            continue
+        if best is None or ratio > best[2]:
+            start, end = _token_char_span(page.tokens, block.b, block.size)
+            best = (page, _raw_span(page, start, end), ratio)
+    return best
+
+
+def find_quote(index: PdfTextIndex, quote: str, claimed_page: int | None) -> QuoteMatch:
+    """검색 순서(스펙): 주장 페이지 exact → 주장 페이지 normalized → 전문 exact → 전문 normalized → 부분.
+
+    주장 페이지가 틀렸을 때 발견 페이지로 조용히 고쳐 VERIFIED를 주지 않는다 —
+    page_status='mismatch'로 남기고 발견 페이지는 진단 필드로 보존한다.
+    """
+    raw_needle = str(quote or "").strip()
+    normalized_needle = normalize_text(raw_needle)
+    page_count = index.page_count
+
+    if not normalized_needle:
+        return QuoteMatch("no_quote", _unlocated_page_status(claimed_page, page_count))
+    if not index.has_text_layer:
+        return QuoteMatch(
+            "no_text_layer",
+            _unlocated_page_status(claimed_page, page_count),
+            failure_detail="empty_text_layer",
+        )
+
+    if _claim_is_valid(claimed_page, page_count):
+        page = index.pages[claimed_page - 1]
+        hit = _exact_on_page(page, raw_needle)
+        if hit is not None:
+            return QuoteMatch("verified_exact", "match", page.page_number, hit, "exact", 1.0)
+        hit = _normalized_on_page(page, normalized_needle)
+        if hit is not None:
+            return QuoteMatch("verified_normalized", "match", page.page_number, hit, "normalized", 1.0)
+
+    for status, method, finder, needle in (
+        ("verified_exact", "exact", _exact_on_page, raw_needle),
+        ("verified_normalized", "normalized", _normalized_on_page, normalized_needle),
+    ):
+        hits = [(page, finder(page, needle)) for page in index.pages]
+        hits = [(page, hit) for page, hit in hits if hit is not None]
+        if len(hits) == 1:
+            page, hit = hits[0]
+            return QuoteMatch(
+                status,
+                _located_page_status(claimed_page, page.page_number, page_count),
+                page.page_number,
+                hit,
+                method,
+                1.0,
+            )
+        if len(hits) > 1:
+            page, hit = hits[0]
+            return QuoteMatch(
+                "ambiguous",
+                _unlocated_page_status(claimed_page, page_count),
+                page.page_number,
+                hit,
+                method,
+                1.0,
+                failure_detail=f"multi_page:{len(hits)}",
+            )
+
+    partial = _best_partial(index, normalized_needle)
+    if partial is not None:
+        page, matched, ratio = partial
+        return QuoteMatch(
+            "partial_match",
+            _unlocated_page_status(claimed_page, page_count),
+            page.page_number,
+            matched,
+            "partial",
+            round(ratio, 3),
+        )
+
+    return QuoteMatch("not_found", _unlocated_page_status(claimed_page, page_count))
+
+
+# ---------------------------------------------------------------------------
+# bbox
+# ---------------------------------------------------------------------------
+
+
+def locate_bbox(page, matched_quote: str | None) -> list[float] | None:
+    """확인된 원문 span의 bbox를 PDF 포인트·좌하단 원점으로 반환한다.
+
+    첫 매치 rect만 쓴다 — 다단 조판에서 union은 과대 박스가 되어 오히려 오해를 만든다
+    (스펙 §알려진 위험 3). 실패하면 None이고, UI는 페이지 점프로 폴백한다.
+    """
+    needle = str(matched_quote or "").strip()
+    if not needle:
+        return None
+    try:
+        rects = page.search_for(needle)
+        if not rects and len(needle) > 40:
+            rects = page.search_for(needle[:40])
+        if not rects:
+            return None
+        rect = rects[0]
+        height = float(page.rect.height)
+        bbox = [
+            round(float(rect.x0), 2),
+            round(height - float(rect.y1), 2),
+            round(float(rect.x1), 2),
+            round(height - float(rect.y0), 2),
+        ]
+    except Exception:
+        return None
+    if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+        return None
+    return bbox
+
+
+# ---------------------------------------------------------------------------
+# Recipe 파라미터 순회 (프론트 파서와 규칙이 반드시 같아야 한다)
+# ---------------------------------------------------------------------------
+# 프론트는 parameters[] 중 object(null 제외)와 string만 화면 행으로 만든다. 백엔드가 다른
+# 규칙으로 세면 target_index가 밀려 엉뚱한 파라미터에 근거가 붙는다 — 스펙 §5의 fail-closed
+# 조건이 걸리기 전에 애초에 어긋나지 않게 규칙을 맞춘다.
+
+_STRING_PARAM_PATTERN = re.compile(r"^(.+?):\s*(.+)$")
+
+
+def _first_str(source: dict, *keys: str) -> str:
+    """JS의 `a || b || c` 폴백을 그대로 옮긴다(0과 ""는 falsy로 취급)."""
+    for key in keys:
+        value = source.get(key)
+        if value is None or value is False or value == "" or value == 0:
+            continue
+        return str(value)
+    return ""
+
+
+def _param_from_dict(item: dict) -> dict:
+    return {
+        "name": _first_str(item, "name", "Name", "parameter", "key"),
+        "value": _first_str(item, "value", "Value", "val"),
+        "unit": _first_str(item, "unit", "Unit", "units"),
+        "notes": _first_str(item, "notes", "Notes", "note", "context"),
+        "source_tag": _first_str(item, "source_tag"),
+        "evidence_quote": _first_str(item, "evidence_quote"),
+        "evidence_page": item.get("evidence_page"),
+    }
+
+
+def _param_from_string(item: str) -> dict:
+    match = _STRING_PARAM_PATTERN.match(item)
+    if match:
+        name, value = match.group(1).strip(), match.group(2).strip()
+    else:
+        name, value = item, ""
+    return {
+        "name": name,
+        "value": value,
+        "unit": "",
+        "notes": "",
+        "source_tag": "",
+        "evidence_quote": "",
+        "evidence_page": None,
+    }
+
+
+def iter_recipe_parameters(recipe: dict) -> list[tuple[int, dict]]:
+    raw = recipe.get("parameters") if isinstance(recipe, dict) else None
+    if not isinstance(raw, list):
+        return []
+    parsed: list[dict] = []
+    for item in raw:
+        if isinstance(item, dict):
+            parsed.append(_param_from_dict(item))
+        elif isinstance(item, list):
+            parsed.append(_param_from_dict({}))  # JS의 typeof [] === 'object'와 동형
+        elif isinstance(item, str):
+            parsed.append(_param_from_string(item))
+    return list(enumerate(parsed))
+
+
+def count_recipe_parameters(recipe: dict) -> int:
+    return len(iter_recipe_parameters(recipe))
+
+
+# ---------------------------------------------------------------------------
+# 앵커 초안 생성
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceAnchorDraft:
+    target_kind: str
+    target_key: str
+    target_index: int
+    target_label: str
+    source_tag: str | None
+    claimed_quote: str
+    claimed_page: int | None
+    quote_status: str
+    page_status: str
+    value_status: str
+    display_status: str
+    match_method: str | None
+    match_ratio: float | None
+    matched_quote: str | None
+    matched_page: int | None
+    bbox_json: str | None
+    corpus: str
+    failure_detail: str | None
+    verifier_version: str
+    normalizer_version: str
+
+
+def _coerce_page(value) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _draft(
+    param_index: int,
+    param: dict,
+    *,
+    quote_status: str,
+    page_status: str,
+    value_status: str,
+    match_method: str | None = None,
+    match_ratio: float | None = None,
+    matched_quote: str | None = None,
+    matched_page: int | None = None,
+    bbox: list[float] | None = None,
+    failure_detail: str | None = None,
+) -> EvidenceAnchorDraft:
+    name = param.get("name", "")
+    return EvidenceAnchorDraft(
+        target_kind="recipe_parameter",
+        target_key=build_target_key(param_index, name),
+        target_index=param_index,
+        target_label=name,
+        source_tag=param.get("source_tag") or None,
+        claimed_quote=str(param.get("evidence_quote") or ""),
+        claimed_page=_coerce_page(param.get("evidence_page")),
+        quote_status=quote_status,
+        page_status=page_status,
+        value_status=value_status,
+        display_status=derive_display_status(quote_status, page_status, value_status),
+        match_method=match_method,
+        match_ratio=match_ratio,
+        matched_quote=matched_quote,
+        matched_page=matched_page,
+        bbox_json=json.dumps(bbox) if bbox else None,
+        corpus=EVIDENCE_CORPUS_PDF_TEXT,
+        failure_detail=failure_detail,
+        verifier_version=EVIDENCE_VERIFIER_VERSION,
+        normalizer_version=EVIDENCE_NORMALIZER_VERSION,
+    )
+
+
+def _unverifiable(param_index: int, param: dict, quote_status: str, detail: str) -> EvidenceAnchorDraft:
+    value_status, _ = check_value_in_quote(param.get("value", ""), param.get("source_tag"), None)
+    return _draft(
+        param_index,
+        param,
+        quote_status=quote_status,
+        page_status="no_page",
+        value_status=value_status,
+        failure_detail=detail,
+    )
+
+
+def _verify_parameter(doc, index: PdfTextIndex, param_index: int, param: dict) -> EvidenceAnchorDraft:
+    try:
+        match = find_quote(index, param.get("evidence_quote", ""), _coerce_page(param.get("evidence_page")))
+        value_status, value_detail = check_value_in_quote(
+            param.get("value", ""), param.get("source_tag"), match.matched_quote
+        )
+        bbox = None
+        if match.matched_page is not None and match.matched_quote:
+            bbox = locate_bbox(doc[match.matched_page - 1], match.matched_quote)
+        return _draft(
+            param_index,
+            param,
+            quote_status=match.quote_status,
+            page_status=match.page_status,
+            value_status=value_status,
+            match_method=match.match_method,
+            match_ratio=match.match_ratio,
+            matched_quote=match.matched_quote,
+            matched_page=match.matched_page,
+            bbox=bbox,
+            failure_detail=match.failure_detail or value_detail,
+        )
+    except Exception as exc:  # 파라미터 하나의 실패가 나머지를 죽이지 않는다
+        return _unverifiable(param_index, param, "verifier_error", type(exc).__name__)
+
+
+def verify_recipe_parameters(recipe: dict, pdf_path=None) -> list[EvidenceAnchorDraft]:
+    """파라미터마다 앵커 초안을 정확히 1건씩 만든다. 실패도 앵커로 남긴다(침묵 금지)."""
+    parameters = iter_recipe_parameters(recipe)
+    if not parameters:
+        return []
+
+    path = Path(pdf_path) if pdf_path else None
+    if path is None or not path.exists():
+        return [_unverifiable(i, p, "no_text_layer", "pdf_missing") for i, p in parameters]
+
+    try:
+        with fitz.open(str(path)) as doc:
+            index = _index_from_doc(doc)
+            if not index.has_text_layer:
+                return [_unverifiable(i, p, "no_text_layer", "empty_text_layer") for i, p in parameters]
+            return [_verify_parameter(doc, index, i, p) for i, p in parameters]
+    except Exception as exc:
+        return [_unverifiable(i, p, "verifier_error", type(exc).__name__) for i, p in parameters]
