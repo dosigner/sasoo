@@ -554,6 +554,53 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         param_props = captured["response_schema"]["properties"]["parameters"]["items"]["properties"]
         self.assertEqual(param_props["source_tag"]["enum"], ["explicit", "inferred"])
         self.assertIn("score_rationale", captured["response_schema"]["properties"])
+        # Evidence Anchoring: LLM은 후보만 낸다(검증 상태·bbox는 LLM 필드가 아니다)
+        self.assertEqual(param_props["evidence_quote"]["type"], "string")
+        self.assertEqual(param_props["evidence_page"]["type"], "integer")
+        self.assertNotIn("verification_status", param_props)
+        self.assertNotIn("bbox", param_props)
+        self.assertEqual(
+            captured["response_schema"]["properties"]["parameters"]["items"]["required"],
+            ["name", "value", "source_tag"],
+        )
+
+    async def test_recipe_prompt_demands_verbatim_shortest_span_quote(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        captured = {}
+
+        async def _fake_call(prompt, **kwargs):
+            captured["prompt"] = prompt
+            captured.update(kwargs)
+            return {
+                "text": '{"title":"레시피","objective":"목적","parameters":[],"steps":[]}',
+                "model": "gemini", "tokens_in": 10, "tokens_out": 20, "interaction_id": None,
+            }
+
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            await analysis_routes._run_recipe(
+                7, "Recipe context body", status, screening_result_text='{"domain":"optics"}',
+            )
+
+        prompt = captured["prompt"]
+        self.assertIn("evidence_quote", prompt)
+        self.assertIn("evidence_page", prompt)
+        self.assertIn("축자", prompt)
+        self.assertIn("가장 짧은 연속", prompt)
+        self.assertIn("1-based", prompt)
+        # 빈 근거가 지어낸 근거보다 낫다 — 인용을 강제하지 않는다
+        self.assertIn("빈 문자열", prompt)
+
+    def test_chain_cache_version_is_bumped_for_evidence_rollout(self):
+        # 스펙 §결정 4: 롤아웃 시 체인 캐시 1회 무효화
+        self.assertEqual(analysis_routes._CHAIN_CACHE_VERSION, "2026-08-06-ev1")
+        self.assertIn(
+            analysis_routes._CHAIN_CACHE_VERSION,
+            analysis_routes._phase_cache_key(model="m", thinking="t", system_instruction="s", prompt="p"),
+        )
 
     async def test_run_recipe_skips_when_screening_signal_is_weak(self):
         status = AnalysisStatus(

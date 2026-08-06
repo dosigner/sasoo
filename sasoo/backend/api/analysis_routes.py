@@ -174,7 +174,10 @@ _CITATION_PROMPT_VERSION = "2026-07-14"
 
 # Phase 0(2026-08-06): 캐시 키에 프로필·에이전트 지침(system_instruction)·모델·thinking을
 # 포함한다. 값을 올리면 모든 체인 phase 캐시가 무효화된다.
-_CHAIN_CACHE_VERSION = "2026-08-06"
+# Phase 1(2026-08-06, Evidence Anchoring): 스펙 §결정 4에 따라 롤아웃 시 1회 bump한다.
+# recipe 파라미터에 evidence_quote/evidence_page가 생겨 구 스키마 결과를 재사용하면
+# 근거 없는 파라미터가 영구히 남는다. 체인 phase 전체가 1회 재과금되는 것을 알고 하는 선택이다.
+_CHAIN_CACHE_VERSION = "2026-08-06-ev1"
 
 
 def _phase_cache_key(*, model: str, thinking: str, system_instruction: str, prompt: str) -> str:
@@ -832,8 +835,14 @@ _RECIPE_SCHEMA = {
                     "unit": {"type": "string"},
                     "notes": {"type": "string"},
                     "source_tag": {"type": "string", "enum": ["explicit", "inferred"]},
+                    # Evidence Anchoring(Phase 1): LLM은 후보만 낸다.
+                    # verification_status·matched_quote·bbox는 절대 LLM 출력 필드로 두지 않는다.
+                    "evidence_quote": {"type": "string"},
+                    # 1-based PDF 페이지. Gemini structured output이 minimum을 일관되게
+                    # 지원하지 않아 범위 제약은 스키마가 아니라 검증기가 건다(invalid_page).
+                    "evidence_page": {"type": "integer"},
                 },
-                "required": ["name", "value"],
+                "required": ["name", "value", "source_tag"],
             },
         },
         "steps": {"type": "array", "items": {"type": "string"}},
@@ -1335,10 +1344,20 @@ voltages, currents, frequencies, distances, speeds, sizes, ratios, percentages, 
 4. 개수 목표는 없어. 논문에 실제로 있는 항목만 추출하고, 통상 기본값·상식·장비 기본 설정을 논문 값처럼 보충하지 마.
 5. 재현에 필요한데 논문에 없는 항목은 parameters에 넣지 말고 missing_info에 기록해.
 6. reproducibility_score는 explicit 핵심 파라미터의 충족도와 missing_info를 근거로 매기고, 그 근거를 score_rationale에 한 문장으로 적어.
+7. 각 파라미터마다 그 값의 근거가 되는 논문 원문을 그대로(축자) evidence_quote에 옮겨.
+   번역·요약·재작성·말줄임표·떨어져 있는 문장 결합은 금지야. 원문 언어 그대로 써.
+8. evidence_quote는 그 파라미터를 뒷받침하는 가장 짧은 연속 스팬 하나로 해(1~2문장, 최대 300자).
+   source_tag="explicit"이면 그 value가 인용 안에 실제로 들어 있어야 해.
+9. evidence_page는 PDF 파일 기준 1-based 페이지 번호야(표지 포함). 논문에 인쇄된 페이지 번호가 아니야.
+   논문 텍스트만 받은 경우에는 "--- Page N ---" 마커의 N을 써.
+10. 축자로 옮길 수 없으면 evidence_quote를 빈 문자열로 두고 페이지도 추측하지 마.
+    빈 근거가 지어낸 근거보다 나아 — 근거 없음은 화면에 그대로 표시돼.
+11. 인용은 논문 PDF(또는 제공된 논문 텍스트)에서만 가져와. 앞선 단계(스크리닝·시각·인용 분석)
+    결과는 인용 출처가 아니야.
 {domain_hint}
 
 출력 필드: title(레시피 제목, 한국어), objective(실험 목적), materials(재료 리스트, 규격 포함),
-equipment(장비 리스트, 모델번호 포함), parameters(각 항목 name/value/unit/notes/source_tag),
+equipment(장비 리스트, 모델번호 포함), parameters(각 항목 name/value/unit/notes/source_tag/evidence_quote/evidence_page),
 steps(단계별 상세 설명, 온도·시간·속도 등 포함), critical_notes(재현 중요 참고사항),
 expected_results(예상 결과), safety_notes(안전 주의사항), confidence(0.0~1.0),
 missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibility_score(0.0~1.0), score_rationale(점수 근거)."""
