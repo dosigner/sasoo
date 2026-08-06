@@ -73,6 +73,7 @@ from services.document_context import (
     find_cached_phase_result,
     load_or_build_document_context,
 )
+from services.evidence_repo import build_evidence_payload, ensure_recipe_anchors
 from services.pricing import calc_cost
 from services.llm.interactions_client import call_interaction, stream_interaction
 
@@ -160,6 +161,7 @@ async def _get_cached_phase_result(paper_id: int, phase: str, input_text: str) -
         "tokens_out": cached.tokens_out,
         "cost_usd": cached.cost_usd,
         "input_hash": cached.input_hash or compute_input_hash(input_text),
+        "result_id": cached.result_id,
     }
 
 
@@ -311,8 +313,13 @@ async def _insert_analysis_result(
     cost_usd: float,
     input_text: str,
     interaction_id: str | None = None,
-) -> None:
-    await execute_insert(
+) -> int:
+    """analysis_results에 결과를 저장하고 lastrowid를 반환한다.
+
+    반환값은 Evidence 앵커를 이 행에 결속하는 데 쓴다(스펙 §결정 4). 기존 호출부는
+    반환값을 쓰지 않으므로 동작이 바뀌지 않는다.
+    """
+    return await execute_insert(
         """
         INSERT INTO analysis_results
             (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd, input_hash, interaction_id)
@@ -330,6 +337,40 @@ async def _insert_analysis_result(
             interaction_id,
         ),
     )
+
+
+async def _ensure_recipe_evidence(
+    *,
+    paper_id: int,
+    analysis_result_id,
+    recipe_text: str,
+    folder_name: str,
+) -> None:
+    """Recipe 파라미터 근거를 결정론적으로 검증해 evidence_anchors에 기록한다.
+
+    예외를 밖으로 내보내지 않는다 — 검증기 실패가 recipe phase를 죽이면 안 된다.
+    실패하면 앵커가 남지 않고, 앵커 부재는 UI에서 '검증 미실행'으로 정직하게 보인다
+    (부재를 검증됨으로 표시하는 코드 경로는 존재하지 않는다).
+    """
+    if not analysis_result_id or not folder_name:
+        logger.info(
+            "evidence anchoring skipped (paper=%s result_id=%r folder=%r)",
+            paper_id, analysis_result_id, folder_name,
+        )
+        return
+    try:
+        pdf_path = _find_paper_pdf(get_paper_dir(folder_name))
+        await ensure_recipe_anchors(
+            paper_id=paper_id,
+            analysis_result_id=int(analysis_result_id),
+            recipe_text=recipe_text,
+            pdf_path=pdf_path,
+        )
+    except Exception as exc:
+        logger.warning(
+            "evidence anchoring failed (paper=%s result=%s): %s",
+            paper_id, analysis_result_id, exc,
+        )
 
 
 async def _get_visual_contract(
@@ -1263,6 +1304,7 @@ async def _run_recipe(
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
+    folder_name: str = "",
 ) -> dict:
     """Phase 3: Recipe extraction - extract structured experimental procedure."""
     phase_status = PhaseStatus(
@@ -1383,6 +1425,13 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
         status.total_cost_usd += cached["cost_usd"]
         status.total_tokens_in += cached["tokens_in"]
         status.total_tokens_out += cached["tokens_out"]
+        # 캐시 히트도 검증을 태운다 — 옛 결과 백필과 검증기 버전업 재검증의 유일한 통로다.
+        await _ensure_recipe_evidence(
+            paper_id=paper_id,
+            analysis_result_id=cached.get("result_id"),
+            recipe_text=cached["text"],
+            folder_name=folder_name,
+        )
         return cached
 
     result = await _run_chain_stage(
@@ -1408,7 +1457,7 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
 
     cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
-    await _insert_analysis_result(
+    result_id = await _insert_analysis_result(
         paper_id,
         "recipe",
         result["text"],
@@ -1419,6 +1468,16 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
         cache_key,
         interaction_id=result.get("interaction_id"),
     )
+
+    # recipe row 저장(lastrowid 확보) 직후, phase completed 노출 전 동기 검증(스펙 §결정 3).
+    # 41페이지 논문 실측 ~0.4초의 순수 CPU 작업이라 별도 큐·phase를 만들지 않는다.
+    if not _is_error_result(result["text"]):
+        await _ensure_recipe_evidence(
+            paper_id=paper_id,
+            analysis_result_id=result_id,
+            recipe_text=result["text"],
+            folder_name=folder_name,
+        )
 
     if _is_error_result(result["text"]):
         phase_status.status = "error"
@@ -2376,6 +2435,7 @@ async def _run_full_analysis(paper_id: int):
             system_instruction=recipe_system_instruction,
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
+            folder_name=folder_name,
         )
         if pdf_uri:
             chain_prev_id = r3.get("interaction_id")

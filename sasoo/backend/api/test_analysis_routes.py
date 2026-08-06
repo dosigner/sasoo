@@ -23,6 +23,7 @@ import sys
 import threading
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from api import analysis_routes, figure_service
@@ -624,6 +625,87 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"skipped": true', result["text"])
         insert_mock.assert_awaited_once()
 
+    async def test_run_recipe_anchors_evidence_with_inserted_row_id(self):
+        """검증은 recipe row 저장 직후, phase completed 노출 전에 동기 실행된다."""
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+
+        async def _fake_call(prompt, **kwargs):
+            return {
+                "text": '{"title":"r","objective":"o","parameters":[{"name":"a","value":"1"}],"steps":[]}',
+                "model": "gemini", "tokens_in": 1, "tokens_out": 1, "interaction_id": None,
+            }
+
+        ensure_mock = AsyncMock(return_value={"status": "verified", "anchors": 1})
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock(return_value=41)),
+            patch("api.analysis_routes.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
+            patch("api.analysis_routes._find_paper_pdf", return_value=None),
+            patch("api.analysis_routes.ensure_recipe_anchors", new=ensure_mock),
+        ):
+            await analysis_routes._run_recipe(
+                7, "body", status, screening_result_text='{"domain":"optics"}',
+                folder_name="2026_Paper_optics",
+            )
+
+        ensure_mock.assert_awaited_once()
+        self.assertEqual(ensure_mock.await_args.kwargs["analysis_result_id"], 41)
+        self.assertEqual(ensure_mock.await_args.kwargs["paper_id"], 7)
+        self.assertEqual(status.phases[-1].status, "completed")
+
+    async def test_run_recipe_cache_hit_backfills_evidence(self):
+        """캐시 히트도 검증을 태운다 — 옛 결과가 영원히 미검증으로 남지 않게."""
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        cached = {
+            "text": '{"title":"r","parameters":[{"name":"a","value":"1"}]}',
+            "model": "gemini-cache", "tokens_in": 1, "tokens_out": 2, "cost_usd": 0.0,
+            "input_hash": "h", "result_id": 77,
+        }
+
+        ensure_mock = AsyncMock(return_value={"status": "verified", "anchors": 1})
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=cached)),
+            patch("api.analysis_routes.call_interaction", new=AsyncMock(side_effect=AssertionError("no LLM on cache hit"))),
+            patch("api.analysis_routes.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
+            patch("api.analysis_routes._find_paper_pdf", return_value=None),
+            patch("api.analysis_routes.ensure_recipe_anchors", new=ensure_mock),
+        ):
+            await analysis_routes._run_recipe(
+                7, "body", status, screening_result_text='{"domain":"optics"}',
+                folder_name="2026_Paper_optics",
+            )
+
+        ensure_mock.assert_awaited_once()
+        self.assertEqual(ensure_mock.await_args.kwargs["analysis_result_id"], 77)
+
+    async def test_evidence_failure_does_not_kill_recipe_phase(self):
+        """검증기 예외는 격리한다 — recipe 데이터는 보존되고 phase는 completed다."""
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+
+        async def _fake_call(prompt, **kwargs):
+            return {
+                "text": '{"title":"r","objective":"o","parameters":[{"name":"a","value":"1"}],"steps":[]}',
+                "model": "gemini", "tokens_in": 1, "tokens_out": 1, "interaction_id": None,
+            }
+
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock(return_value=41)),
+            patch("api.analysis_routes.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
+            patch("api.analysis_routes._find_paper_pdf", return_value=None),
+            patch("api.analysis_routes.ensure_recipe_anchors",
+                  new=AsyncMock(side_effect=RuntimeError("verifier exploded"))),
+        ):
+            result = await analysis_routes._run_recipe(
+                7, "body", status, screening_result_text='{"domain":"optics"}',
+                folder_name="2026_Paper_optics",
+            )
+
+        self.assertIn('"title": "r"', result["text"].replace('"title":"r"', '"title": "r"'))
+        self.assertEqual(status.phases[-1].status, "completed")
+
     async def test_cached_phase_lookup_records_cache_event(self):
         cached = types.SimpleNamespace(
             result_text='{"summary":"cached"}',
@@ -632,6 +714,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             tokens_out=34,
             cost_usd=0.56,
             input_hash="hash1234",
+            result_id=99,
         )
 
         with (
