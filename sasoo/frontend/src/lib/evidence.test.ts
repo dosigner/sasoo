@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EvidenceAnchor, EvidenceDisplayStatus, RecipeEvidence } from '@/lib/api';
 import {
   attachEvidence,
@@ -76,6 +76,30 @@ describe('attachEvidence — label 불일치는 fail closed', () => {
     const [first] = attachEvidence(rows, evidence([anchor()]));
     expect(first.anchor).toBeNull();
     expect(resolveDisplayStatus(first.anchor)).toBe('UNVERIFIED_NOT_RUN');
+  });
+
+  describe('label 불일치 경고', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('불일치를 조용히 숨기지 않고 콘솔에 남긴다 (드리프트 탐지용)', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const rows = parseRecipeParameters([{ name: 'laser_power', value: '3.2' }]);
+      attachEvidence(rows, evidence([anchor()]));
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith(
+        '[evidence] anchor label mismatch — hiding anchor',
+        expect.objectContaining({ index: 0, expected: 'laser_power', got: 'wavelength' }),
+      );
+    });
+
+    it('label이 일치하면 경고하지 않는다', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const rows = parseRecipeParameters([{ name: 'wavelength', value: '1550' }]);
+      attachEvidence(rows, evidence([anchor()]));
+      expect(warn).not.toHaveBeenCalled();
+    });
   });
 
   it('evidence가 null이면 전 행이 검증 미실행이다', () => {

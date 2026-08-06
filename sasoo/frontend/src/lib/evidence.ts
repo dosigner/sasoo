@@ -66,6 +66,17 @@ export function attachEvidence(
     const anchor = byIndex.get(row.index) ?? null;
     // 인덱스가 밀려 엉뚱한 파라미터에 근거가 붙는 것보다 "근거 없음"이 정직하다.
     if (anchor && (anchor.target_label ?? '').trim() !== row.name.trim()) {
+      // 이 분기가 조용히 자주 타면 백엔드 iter_recipe_parameters와 프론트
+      // parseRecipeParameters의 명명 규칙이 드리프트했다는 신호다 — "이상하게 낮은
+      // verified 수" 말고는 알아챌 방법이 없으므로 개발 중에는 콘솔에 남긴다.
+      // 프로덕션 사용자에게는 소음이라 DEV 빌드에서만 찍는다.
+      if (import.meta.env.DEV) {
+        console.warn('[evidence] anchor label mismatch — hiding anchor', {
+          index: row.index,
+          expected: row.name,
+          got: anchor.target_label,
+        });
+      }
       return { row, anchor: null };
     }
     return { row, anchor };
