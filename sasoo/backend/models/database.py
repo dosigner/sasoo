@@ -511,6 +511,15 @@ async def init_db() -> None:
     except Exception:
         pass
 
+    # evidence_anchors: Recipe 파라미터 근거 앵커(Phase 1 Evidence Anchoring).
+    # 순수 추가 테이블이라 ALTER 반복이 필요 없다.
+    from models.evidence_anchors import EVIDENCE_ANCHORS_DDL
+    try:
+        await _db_connection.executescript(EVIDENCE_ANCHORS_DDL)
+        await _db_connection.commit()
+    except Exception:
+        pass
+
 
 async def get_db() -> aiosqlite.Connection:
     """
