@@ -500,7 +500,11 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
     )
 
     # Update status
-    phase_status.status = "completed"
+    if _is_error_result(result["text"]):
+        phase_status.status = "error"
+        phase_status.error_message = "LLM 응답을 구조화하지 못했습니다 (JSON 파싱 실패, 1회 재시도 포함)"
+    else:
+        phase_status.status = "completed"
     phase_status.completed_at = _utcnow_iso()
     phase_status.model_used = result["model"]
     phase_status.tokens_in = result["tokens_in"]
@@ -1206,7 +1210,11 @@ async def _run_visual(
         interaction_id=result.get("interaction_id"),
     )
 
-    phase_status.status = "completed"
+    if _is_error_result(result["text"]):
+        phase_status.status = "error"
+        phase_status.error_message = "LLM 응답을 구조화하지 못했습니다 (JSON 파싱 실패, 1회 재시도 포함)"
+    else:
+        phase_status.status = "completed"
     phase_status.completed_at = _utcnow_iso()
     phase_status.model_used = result["model"]
     phase_status.tokens_in = result["tokens_in"]
@@ -1372,7 +1380,11 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
         interaction_id=result.get("interaction_id"),
     )
 
-    phase_status.status = "completed"
+    if _is_error_result(result["text"]):
+        phase_status.status = "error"
+        phase_status.error_message = "LLM 응답을 구조화하지 못했습니다 (JSON 파싱 실패, 1회 재시도 포함)"
+    else:
+        phase_status.status = "completed"
     phase_status.completed_at = _utcnow_iso()
     phase_status.model_used = result["model"]
     phase_status.tokens_in = result["tokens_in"]
@@ -1498,7 +1510,11 @@ async def _run_deep_dive(
         interaction_id=result.get("interaction_id"),
     )
 
-    phase_status.status = "completed"
+    if _is_error_result(result["text"]):
+        phase_status.status = "error"
+        phase_status.error_message = "LLM 응답을 구조화하지 못했습니다 (JSON 파싱 실패, 1회 재시도 포함)"
+    else:
+        phase_status.status = "completed"
     phase_status.completed_at = _utcnow_iso()
     phase_status.model_used = result["model"]
     phase_status.tokens_in = result["tokens_in"]

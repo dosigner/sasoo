@@ -1288,6 +1288,24 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(merged["top_cited"][0]["evidence_context"], "이 방법은 [1]을 따른다")
 
 
+class ParseFailurePhaseStatusTest(unittest.IsolatedAsyncioTestCase):
+    """JSON 파싱 실패 phase가 completed로 승격되지 않는다 (Phase 0 P0-2)."""
+
+    async def test_screening_parse_failure_marks_phase_error(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        broken = {"text": "이건 JSON이 아니다 {{{", "model": MODEL_FLASH_LITE,
+                  "tokens_in": 10, "tokens_out": 10, "interaction_id": None}
+        with (
+            patch("api.analysis_routes.call_interaction", new=AsyncMock(return_value=broken)),
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            await analysis_routes._run_screening(7, "본문 내용", status)
+        phase = next(p for p in status.phases if p.phase.value == "screening")
+        self.assertEqual(phase.status, "error")
+        self.assertTrue(phase.error_message)
+
+
 class BudgetParityTests(unittest.IsolatedAsyncioTestCase):
     """결정②: 리컨실러 재개 경로의 read_budget_state()가 /run(analysis_routes.run_analysis)의
     예산 계산과 같은 값을 내야 한다 — 계산식이 갈라지면 예산 한도의 의미가 무너진다.
