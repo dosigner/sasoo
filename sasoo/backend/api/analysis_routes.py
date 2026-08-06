@@ -1415,6 +1415,15 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
 
     cached = await _get_cached_phase_result(paper_id, "recipe", cache_key)
     if cached is not None:
+        # 캐시 히트도 검증을 태운다 — 옛 결과 백필과 검증기 버전업 재검증의 유일한 통로다.
+        # completed로 세팅하기 전에 먼저 끝내야 한다 — await 경계 사이에 폴링이
+        # completed+evidence=None을 볼 수 있다(리뷰 지적 M-3, 비캐시 경로와 순서를 맞춘다).
+        await _ensure_recipe_evidence(
+            paper_id=paper_id,
+            analysis_result_id=cached.get("result_id"),
+            recipe_text=cached["text"],
+            folder_name=folder_name,
+        )
         phase_status.status = "completed"
         phase_status.completed_at = _utcnow_iso()
         phase_status.model_used = cached["model"]
@@ -1425,13 +1434,6 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
         status.total_cost_usd += cached["cost_usd"]
         status.total_tokens_in += cached["tokens_in"]
         status.total_tokens_out += cached["tokens_out"]
-        # 캐시 히트도 검증을 태운다 — 옛 결과 백필과 검증기 버전업 재검증의 유일한 통로다.
-        await _ensure_recipe_evidence(
-            paper_id=paper_id,
-            analysis_result_id=cached.get("result_id"),
-            recipe_text=cached["text"],
-            folder_name=folder_name,
-        )
         return cached
 
     result = await _run_chain_stage(

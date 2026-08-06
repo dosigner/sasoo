@@ -125,6 +125,15 @@ class DisplayStatusTests(unittest.TestCase):
             "UNVERIFIED_VALUE_MISMATCH",
         )
 
+    def test_value_mismatch_wins_over_page_mismatch(self):
+        # 리뷰 지적 I-1: quote는 축자 존재해도 값이 그 안에 없고 페이지도 틀렸으면,
+        # "다른 페이지에서 확인"(경고)이 아니라 "이 인용은 이 값을 뒷받침하지 않는다"
+        # (위험)가 진실이어야 한다. 값 가드가 페이지 검사를 이겨야 한다.
+        self.assertEqual(
+            ev.derive_display_status("verified_exact", "mismatch", "value_missing"),
+            "UNVERIFIED_VALUE_MISMATCH",
+        )
+
     def test_inferred_is_never_verified(self):
         self.assertEqual(
             ev.derive_display_status("verified_exact", "match", "inferred"), "UNVERIFIED_INFERRED"
@@ -454,18 +463,28 @@ class VerifyRecipeParametersTests(unittest.TestCase):
         self.assertEqual(drafts[0].display_status, "UNVERIFIED_NO_QUOTE")
 
     def test_forged_quotes_produce_zero_false_verify(self):
+        # value는 forged 인용에 맞춘 임의 상수("1" 등)가 아니라 원본의 실제 값을 유지한다
+        # — 값 가드가 quote 레이어의 false-verify를 가리면 이 게이트가 공허하게 통과한다
+        # (리뷰 지적 I-5). 판정도 display_status가 아니라 quote_status로 본다 — 스펙 §C의
+        # 불변식은 quote 레이어다.
         forged = [
-            "The samples were annealed at 900 °C for 2 h.",
-            "We used a wavelength of 1560 nm in the setup.",
-            "In this experiment the beam diameter was measured as 12.8 mm "
-            "at the output aperture of the telescope.",
+            ("500", "The samples were annealed at 900 °C for 2 h."),
+            ("1550", "We used a wavelength of 1560 nm in the setup."),
+            (
+                "12.5",
+                "In this experiment the beam diameter was measured as 12.8 mm "
+                "at the output aperture of the telescope.",
+            ),
         ]
         drafts = self._drafts([
-            {"name": f"p{i}", "value": "1", "source_tag": "explicit", "evidence_quote": quote,
+            {"name": f"p{i}", "value": value, "source_tag": "explicit", "evidence_quote": quote,
              "evidence_page": 1}
-            for i, quote in enumerate(forged)
+            for i, (value, quote) in enumerate(forged)
         ])
-        self.assertEqual([d.display_status for d in drafts if d.display_status == "VERIFIED"], [])
+        self.assertEqual(
+            [d.quote_status for d in drafts if d.quote_status in {"verified_exact", "verified_normalized"}],
+            [],
+        )
 
     def test_scanned_pdf_without_text_layer(self):
         drafts = ev.verify_recipe_parameters(

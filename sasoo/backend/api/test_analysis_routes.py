@@ -679,6 +679,37 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         ensure_mock.assert_awaited_once()
         self.assertEqual(ensure_mock.await_args.kwargs["analysis_result_id"], 77)
 
+    async def test_run_recipe_cache_hit_verifies_before_marking_completed(self):
+        """M-3: 캐시 히트 분기는 completed로 세팅하기 전에 검증을 끝내야 한다 — 안 그러면
+        await 경계 사이에서 폴링이 completed+evidence=None을 볼 수 있다."""
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        cached = {
+            "text": '{"title":"r","parameters":[{"name":"a","value":"1"}]}',
+            "model": "gemini-cache", "tokens_in": 1, "tokens_out": 2, "cost_usd": 0.0,
+            "input_hash": "h", "result_id": 77,
+        }
+        status_at_call: list[str | None] = []
+
+        async def _ensure_side_effect(**kwargs):
+            status_at_call.append(status.phases[-1].status if status.phases else None)
+            return {"status": "verified", "anchors": 1}
+
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=cached)),
+            patch("api.analysis_routes.call_interaction", new=AsyncMock(side_effect=AssertionError("no LLM on cache hit"))),
+            patch("api.analysis_routes.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
+            patch("api.analysis_routes._find_paper_pdf", return_value=None),
+            patch("api.analysis_routes.ensure_recipe_anchors", new=AsyncMock(side_effect=_ensure_side_effect)),
+        ):
+            await analysis_routes._run_recipe(
+                7, "body", status, screening_result_text='{"domain":"optics"}',
+                folder_name="2026_Paper_optics",
+            )
+
+        # 검증(ensure_recipe_anchors) 호출 시점에는 아직 completed가 아니어야 한다.
+        self.assertEqual(status_at_call, ["running"])
+        self.assertEqual(status.phases[-1].status, "completed")
+
     async def test_evidence_failure_does_not_kill_recipe_phase(self):
         """검증기 예외는 격리한다 — recipe 데이터는 보존되고 phase는 completed다."""
         status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)

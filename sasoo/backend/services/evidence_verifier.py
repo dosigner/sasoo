@@ -180,12 +180,16 @@ def derive_display_status(quote_status: str, page_status: str, value_status: str
         return mapped
     if quote_status not in {"verified_exact", "verified_normalized"}:
         return "UNVERIFIED_ERROR"  # 알 수 없는 상태는 절대 승격하지 않는다
-    if page_status not in {"match", "derived"}:
-        return "UNVERIFIED_PAGE_MISMATCH"
+    # 값 가드를 페이지 검사보다 먼저 본다 — quote는 축자 존재해도 값이 그 인용 안에
+    # 없으면 "다른 페이지에서 확인"(경고)이 아니라 "이 인용은 이 값을 뒷받침하지
+    # 않는다"(위험)가 진실이다(리뷰 지적 I-1). 페이지도 값도 둘 다 틀렸을 때 값 불일치가
+    # 이겨야 한다.
     if value_status == "inferred":
         return "UNVERIFIED_INFERRED"
     if value_status != "value_in_quote":
         return "UNVERIFIED_VALUE_MISMATCH"
+    if page_status not in {"match", "derived"}:
+        return "UNVERIFIED_PAGE_MISMATCH"
     return "VERIFIED"
 
 

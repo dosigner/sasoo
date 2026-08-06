@@ -178,15 +178,20 @@ def measure_paper(row: dict[str, Any]) -> dict[str, Any]:
                 counter["bbox"] += 1
 
     # 위조 인용 게이트: 확인된 인용의 숫자를 한 자리 바꿔 다시 검증한다.
+    # value는 "0"/"1" 같은 고정값이 아니라 원본 draft의 실제 값을 유지한다 — 안 그러면
+    # 값 가드가 quote 레이어의 false-verify를 가려서 게이트가 공허하게 통과한다
+    # (리뷰 지적 I-5). 판정도 아래에서 quote_status로만 본다.
+    param_by_index = dict(parameters)
     forged_params = []
     for draft in located:
         forged = _forge(draft.claimed_quote or "")
         if forged is None:
             continue
+        original_value = param_by_index.get(draft.target_index, {}).get("value", "")
         forged_params.append(
             {
                 "name": draft.target_label,
-                "value": "0",
+                "value": original_value,
                 "source_tag": "explicit",
                 "evidence_quote": forged,
                 "evidence_page": draft.matched_page,
@@ -215,7 +220,12 @@ def measure_paper(row: dict[str, Any]) -> dict[str, Any]:
         "page_confirmed": sum(1 for d in located if d.page_status == "match"),
         "bbox": sum(1 for d in located if d.bbox_json),
         "forged_attempts": len(forged_params),
-        "forged_false_verify": sum(1 for d in forged_drafts if d.display_status == "VERIFIED"),
+        # display_status가 아니라 quote_status로 판정한다 — 값 가드가 우연히(또는
+        # 원본 값 유지 덕에 필연적으로) 막아도, quote 레이어 자체가 위조본을 축자/정규화
+        # 일치로 잘못 인정했는지가 스펙 §C의 불변식이다(리뷰 지적 I-5).
+        "forged_false_verify": sum(
+            1 for d in forged_drafts if d.quote_status in {"verified_exact", "verified_normalized"}
+        ),
         "elapsed_ms": round(elapsed_ms, 1),
     }
 
