@@ -2306,5 +2306,53 @@ class TestDegenerateRepetitionDetector(unittest.TestCase):
         self.assertIsNone(_stage_result_defect('{"notes": "정상 텍스트"}'))
 
 
+class GetRecipeEvidenceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_recipe_response_carries_evidence_payload(self):
+        row = {
+            "id": 41,
+            "parsed_result": {"title": "레시피", "parameters": []},
+            "model_used": "gemini",
+            "created_at": "2026-08-06 10:00:00",
+        }
+        payload = {
+            "verifier_version": "ev1",
+            "normalizer_version": "norm-v1",
+            "summary": {"total": 1, "verified": 1, "by_display_status": {"VERIFIED": 1}},
+            "anchors": [{"target_index": 0, "display_status": "VERIFIED"}],
+        }
+        build_mock = AsyncMock(return_value=payload)
+        with (
+            patch("api.analysis_routes.get_latest_completed_phase_row", new=AsyncMock(return_value=row)),
+            patch("api.analysis_routes.build_evidence_payload", new=build_mock),
+        ):
+            response = await analysis_routes.get_recipe(12)
+
+        self.assertEqual(response["evidence"], payload)
+        self.assertEqual(response["recipe"], row["parsed_result"])  # 원본 blob 무수정
+        self.assertEqual(build_mock.await_args.args[0], 41)
+
+    async def test_evidence_is_null_when_no_anchor_exists(self):
+        row = {"id": 41, "parsed_result": {"title": "레시피"}, "model_used": "m", "created_at": "t"}
+        with (
+            patch("api.analysis_routes.get_latest_completed_phase_row", new=AsyncMock(return_value=row)),
+            patch("api.analysis_routes.build_evidence_payload", new=AsyncMock(return_value=None)),
+        ):
+            response = await analysis_routes.get_recipe(12)
+
+        self.assertIsNone(response["evidence"])
+
+    async def test_evidence_lookup_failure_does_not_break_recipe(self):
+        row = {"id": 41, "parsed_result": {"title": "레시피"}, "model_used": "m", "created_at": "t"}
+        with (
+            patch("api.analysis_routes.get_latest_completed_phase_row", new=AsyncMock(return_value=row)),
+            patch("api.analysis_routes.build_evidence_payload",
+                  new=AsyncMock(side_effect=RuntimeError("db gone"))),
+        ):
+            response = await analysis_routes.get_recipe(12)
+
+        self.assertIsNone(response["evidence"])
+        self.assertEqual(response["recipe"], row["parsed_result"])
+
+
 if __name__ == "__main__":
     unittest.main()

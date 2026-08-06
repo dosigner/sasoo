@@ -2933,11 +2933,20 @@ async def get_recipe(paper_id: int):
             detail=f"No recipe found for paper {paper_id}. Run analysis first.",
         )
 
+    # LLM 원본 blob은 무수정 유지하고 검증 결과를 형제 필드로 붙인다.
+    # evidence=None은 "검증 기록 없음"이지 "검증됨"이 아니다 — UI는 전 행을 미검증으로 표시한다.
+    try:
+        evidence = await build_evidence_payload(result.get("id"))
+    except Exception as exc:
+        logger.warning("evidence payload build failed for paper %s: %s", paper_id, exc)
+        evidence = None
+
     return {
         "paper_id": paper_id,
         "recipe": result.get("parsed_result"),
         "model_used": result.get("model_used"),
         "created_at": result.get("created_at"),
+        "evidence": evidence,
     }
 
 
