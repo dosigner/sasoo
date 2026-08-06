@@ -12,6 +12,7 @@ import {
   parseRecipeParameters,
   resolveDisplayStatus,
 } from '@/lib/evidence';
+import { generateCsvFromRecipe } from '@/lib/recipeCsv';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,53 +27,6 @@ interface RecipeCardProps {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function generateCsvFromRecipe(recipe: Recipe): string {
-  const data = recipe.recipe as Record<string, unknown>;
-  const rows: string[][] = [];
-
-  // Header info
-  rows.push(['Section', 'Key', 'Value']);
-  rows.push(['Info', 'Title', String(data.title || '')]);
-  rows.push(['Info', 'Objective', String(data.objective || '')]);
-  rows.push(['Info', 'Confidence', data.confidence != null ? `${(Number(data.confidence) * 100).toFixed(0)}%` : '']);
-  rows.push(['Info', 'Reproducibility', data.reproducibility_score != null ? `${(Number(data.reproducibility_score) * 100).toFixed(0)}%` : '']);
-
-  // Materials
-  const materials = (data.materials as string[]) || [];
-  materials.forEach((m, i) => rows.push(['Material', `#${i + 1}`, m]));
-
-  // Equipment
-  const equipment = (data.equipment as string[]) || [];
-  equipment.forEach((e, i) => rows.push(['Equipment', `#${i + 1}`, e]));
-
-  // Parameters
-  const params = (data.parameters as Record<string, string>[]) || [];
-  params.forEach(p => {
-    if (typeof p === 'object' && p.name) {
-      rows.push(['Parameter', p.name, `${p.value || ''}${p.unit ? ' ' + p.unit : ''}${p.notes ? ' (' + p.notes + ')' : ''}`]);
-    }
-  });
-
-  // Steps
-  const steps = (data.steps as string[]) || [];
-  steps.forEach((s, i) => rows.push(['Step', `#${i + 1}`, s]));
-
-  // Critical notes
-  const notes = (data.critical_notes as string[]) || [];
-  notes.forEach((n, i) => rows.push(['Critical Note', `#${i + 1}`, n]));
-
-  if (data.expected_results) rows.push(['Info', 'Expected Results', String(data.expected_results)]);
-  if (data.safety_notes) rows.push(['Info', 'Safety Notes', String(data.safety_notes)]);
-
-  // Escape CSV fields
-  return rows.map(row =>
-    row.map(cell => {
-      const s = String(cell).replace(/"/g, '""');
-      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
-    }).join(',')
-  ).join('\n');
-}
 
 function downloadCsv(content: string, filename: string) {
   const bom = '\uFEFF'; // UTF-8 BOM for Excel compatibility
