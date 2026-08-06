@@ -203,11 +203,65 @@ export interface FigureExplanationResponse {
 }
 
 // Recipe types
+export type EvidenceDisplayStatus =
+  | 'VERIFIED'
+  | 'UNVERIFIED_PAGE_MISMATCH'
+  | 'UNVERIFIED_VALUE_MISMATCH'
+  | 'UNVERIFIED_INFERRED'
+  | 'UNVERIFIED_PARTIAL'
+  | 'UNVERIFIED_AMBIGUOUS'
+  | 'UNVERIFIED_NOT_FOUND'
+  | 'UNVERIFIED_NO_QUOTE'
+  | 'UNVERIFIED_NO_TEXT_LAYER'
+  | 'UNVERIFIED_STALE_SOURCE'
+  | 'UNVERIFIED_ERROR'
+  /** 앵커 자체가 없는 경우. 백엔드는 이 값을 저장하지 않고 프론트가 합성한다. */
+  | 'UNVERIFIED_NOT_RUN';
+
+/** 결정론적 검증기(evidence-verifier)가 만든 파라미터별 근거 앵커. LLM 출력이 아니다. */
+export interface EvidenceAnchor {
+  target_index: number;
+  target_key: string;
+  target_label: string;
+  source_tag: string | null;
+  /** LLM이 주장한 인용 — 확인되지 않았을 수 있다. */
+  claimed_quote: string | null;
+  claimed_page: number | null;
+  quote_status: string;
+  page_status: string;
+  value_status: string;
+  display_status: EvidenceDisplayStatus;
+  match_method: string | null;
+  match_ratio: number | null;
+  /** 원문에서 실제로 확인된 span. 확인 실패 시 null. */
+  matched_quote: string | null;
+  matched_page: number | null;
+  /** [x0, y_bottom, x1, y_top] PDF 포인트, 좌하단 원점. */
+  bbox: [number, number, number, number] | null;
+  corpus: string;
+  failure_detail: string | null;
+  verifier_version: string;
+  normalizer_version: string;
+}
+
+export interface RecipeEvidence {
+  verifier_version: string;
+  normalizer_version: string;
+  summary: {
+    total: number;
+    verified: number;
+    by_display_status: Record<string, number>;
+  };
+  anchors: EvidenceAnchor[];
+}
+
 export interface Recipe {
   paper_id: number;
   recipe: Record<string, unknown>;
   model_used: string | null;
   created_at: string | null;
+  /** null이면 "검증 기록 없음"이지 "검증됨"이 아니다. */
+  evidence?: RecipeEvidence | null;
 }
 
 // Mermaid diagram types
