@@ -16,3 +16,8 @@ sasoo/.codex/
 !.env.example
 !**/.env.example
 .cursor/
+
+# 로컬 전용 내부 문서 — 공개 저장소에 추적하지 않음 (DEC-007)
+AGENTS.md
+PRD_Sasoo_v3.0.md
+docs/marketing/

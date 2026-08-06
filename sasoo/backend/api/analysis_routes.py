@@ -172,6 +172,14 @@ _GATE_CONFIDENCE_FLOOR = 0.6
 # 없고, citation phase의 계약이 실제로 바뀔 때만 이 값을 올려 1회 무효화한다.
 _CITATION_PROMPT_VERSION = "2026-07-14"
 
+# Phase 0(2026-08-06): 캐시 키에 프로필·에이전트 지침(system_instruction)·모델·thinking을
+# 포함한다. 값을 올리면 모든 체인 phase 캐시가 무효화된다.
+_CHAIN_CACHE_VERSION = "2026-08-06"
+
+
+def _phase_cache_key(*, model: str, thinking: str, system_instruction: str, prompt: str) -> str:
+    return "\n\x1f\n".join((_CHAIN_CACHE_VERSION, model, thinking, system_instruction or "", prompt))
+
 
 def _screening_gate_decision(
     screening_result_text: Optional[str], phase: str = "recipe"
@@ -436,7 +444,10 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
 불확실하면 applicable을 성급히 false로 두지 말고 confidence를 낮춰.
 """
 
-    cached = await _get_cached_phase_result(paper_id, "screening", prompt)
+    cache_key = _phase_cache_key(
+        model=MODEL_SCREENING, thinking="minimal", system_instruction="", prompt=prompt,
+    )
+    cached = await _get_cached_phase_result(paper_id, "screening", cache_key)
     if cached is not None:
         phase_status.status = "completed"
         phase_status.completed_at = _utcnow_iso()
@@ -495,12 +506,16 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
         result["tokens_in"],
         result["tokens_out"],
         cost,
-        prompt,
+        cache_key,
         interaction_id=result.get("interaction_id"),
     )
 
     # Update status
-    phase_status.status = "completed"
+    if _is_error_result(result["text"]):
+        phase_status.status = "error"
+        phase_status.error_message = "LLM 응답을 구조화하지 못했습니다 (JSON 파싱 실패, 1회 재시도 포함)"
+    else:
+        phase_status.status = "completed"
     phase_status.completed_at = _utcnow_iso()
     phase_status.model_used = result["model"]
     phase_status.tokens_in = result["tokens_in"]
@@ -1155,7 +1170,12 @@ async def _run_visual(
 
     prompt_chain = f"{instruction}\n\n위 논문 PDF를 직접 보고 시각 요소를 분석해줘.{figure_desc}"
     prompt_fallback = f"논문 관련 텍스트:\n{visual_input}\n{figure_desc}\n\n{instruction}"
-    cache_key = prompt_fallback
+    cache_key = _phase_cache_key(
+        model=_STAGE_MODELS["visual"],
+        thinking=_STAGE_THINKING["visual"],
+        system_instruction=system_instruction,
+        prompt=prompt_fallback,
+    )
 
     cached = await _get_cached_phase_result(paper_id, "visual", cache_key)
     if cached is not None:
@@ -1206,7 +1226,11 @@ async def _run_visual(
         interaction_id=result.get("interaction_id"),
     )
 
-    phase_status.status = "completed"
+    if _is_error_result(result["text"]):
+        phase_status.status = "error"
+        phase_status.error_message = "LLM 응답을 구조화하지 못했습니다 (JSON 파싱 실패, 1회 재시도 포함)"
+    else:
+        phase_status.status = "completed"
     phase_status.completed_at = _utcnow_iso()
     phase_status.model_used = result["model"]
     phase_status.tokens_in = result["tokens_in"]
@@ -1321,7 +1345,12 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
 
     prompt_chain = f"{instruction}\n\n위 논문 PDF와 이전 분석을 바탕으로 실험 레시피를 추출해줘."
     prompt_fallback = f"논문 텍스트:\n{recipe_input}\n\n{instruction}"
-    cache_key = prompt_fallback
+    cache_key = _phase_cache_key(
+        model=_STAGE_MODELS["recipe"],
+        thinking=_STAGE_THINKING["recipe"],
+        system_instruction=system_instruction,
+        prompt=prompt_fallback,
+    )
 
     cached = await _get_cached_phase_result(paper_id, "recipe", cache_key)
     if cached is not None:
@@ -1372,7 +1401,11 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
         interaction_id=result.get("interaction_id"),
     )
 
-    phase_status.status = "completed"
+    if _is_error_result(result["text"]):
+        phase_status.status = "error"
+        phase_status.error_message = "LLM 응답을 구조화하지 못했습니다 (JSON 파싱 실패, 1회 재시도 포함)"
+    else:
+        phase_status.status = "completed"
     phase_status.completed_at = _utcnow_iso()
     phase_status.model_used = result["model"]
     phase_status.tokens_in = result["tokens_in"]
@@ -1439,7 +1472,12 @@ async def _run_deep_dive(
         f"이전 분석 단계의 결과:\n{prev_context[:4000]}\n\n"
         f"{instruction}\n\n위 정보를 바탕으로 포괄적인 심층 분석을 제공해줘."
     )
-    cache_key = prompt_fallback
+    cache_key = _phase_cache_key(
+        model=_STAGE_MODELS["deep_dive"],
+        thinking=_STAGE_THINKING["deep_dive"],
+        system_instruction=system_instruction,
+        prompt=prompt_fallback,
+    )
 
     # 체인 재시작 복원용 컨텍스트는 체인 스테이지(시각·레시피)만 담는다. 스크리닝·인용은
     # 위 prompt_chain에 이미 삽입돼 있으므로 중복 방지를 위해 제외한다.
@@ -1498,7 +1536,11 @@ async def _run_deep_dive(
         interaction_id=result.get("interaction_id"),
     )
 
-    phase_status.status = "completed"
+    if _is_error_result(result["text"]):
+        phase_status.status = "error"
+        phase_status.error_message = "LLM 응답을 구조화하지 못했습니다 (JSON 파싱 실패, 1회 재시도 포함)"
+    else:
+        phase_status.status = "completed"
     phase_status.completed_at = _utcnow_iso()
     phase_status.model_used = result["model"]
     phase_status.tokens_in = result["tokens_in"]
@@ -1746,7 +1788,12 @@ category(experimental_protocol|algorithm_flow|signal_flow|system_architecture|co
         f"{instruction}\n\n--- 분석 결과 (Phase 1-4) ---\n{prev_context[:9000]}\n\n"
         f"--- 관련 텍스트 요약 ---\n{visualization_input}"
     )
-    cache_key = prompt_fallback
+    cache_key = _phase_cache_key(
+        model=_STAGE_MODELS["visualization"],
+        thinking=_STAGE_THINKING["visualization"],
+        system_instruction=system_instruction,
+        prompt=prompt_fallback,
+    )
 
     cached = await _get_cached_phase_result(paper_id, "viz_plan", cache_key)
     if cached is not None:

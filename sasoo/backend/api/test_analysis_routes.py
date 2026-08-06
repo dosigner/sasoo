@@ -1288,6 +1288,24 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(merged["top_cited"][0]["evidence_context"], "이 방법은 [1]을 따른다")
 
 
+class ParseFailurePhaseStatusTest(unittest.IsolatedAsyncioTestCase):
+    """JSON 파싱 실패 phase가 completed로 승격되지 않는다 (Phase 0 P0-2)."""
+
+    async def test_screening_parse_failure_marks_phase_error(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        broken = {"text": "이건 JSON이 아니다 {{{", "model": MODEL_FLASH_LITE,
+                  "tokens_in": 10, "tokens_out": 10, "interaction_id": None}
+        with (
+            patch("api.analysis_routes.call_interaction", new=AsyncMock(return_value=broken)),
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            await analysis_routes._run_screening(7, "본문 내용", status)
+        phase = next(p for p in status.phases if p.phase.value == "screening")
+        self.assertEqual(phase.status, "error")
+        self.assertTrue(phase.error_message)
+
+
 class BudgetParityTests(unittest.IsolatedAsyncioTestCase):
     """결정②: 리컨실러 재개 경로의 read_budget_state()가 /run(analysis_routes.run_analysis)의
     예산 계산과 같은 값을 내야 한다 — 계산식이 갈라지면 예산 한도의 의미가 무너진다.
@@ -1996,6 +2014,25 @@ class CitationPromptTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Introduction", prompt)   # section 라벨 주입
         self.assertIn("Conclusion", prompt)      # 5번째 문맥까지 포함
         self.assertIn("문장5", prompt)
+
+
+class PhaseCacheKeyTest(unittest.TestCase):
+    """캐시 키가 프로필(system_instruction)·모델 변경에 반응한다 (Phase 0 P1)."""
+
+    def test_system_instruction_changes_key(self):
+        base = dict(model="m1", thinking="low", prompt="P")
+        k1 = analysis_routes._phase_cache_key(system_instruction="박사생 대상", **base)
+        k2 = analysis_routes._phase_cache_key(system_instruction="초등학생 대상", **base)
+        self.assertNotEqual(k1, k2)
+
+    def test_model_changes_key(self):
+        k1 = analysis_routes._phase_cache_key(model="m1", thinking="low", system_instruction="s", prompt="P")
+        k2 = analysis_routes._phase_cache_key(model="m2", thinking="low", system_instruction="s", prompt="P")
+        self.assertNotEqual(k1, k2)
+
+    def test_deterministic(self):
+        args = dict(model="m1", thinking="low", system_instruction="s", prompt="P")
+        self.assertEqual(analysis_routes._phase_cache_key(**args), analysis_routes._phase_cache_key(**args))
 
 
 class SystemInstructionContractTests(unittest.TestCase):

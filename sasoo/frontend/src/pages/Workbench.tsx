@@ -185,10 +185,10 @@ export default function Workbench() {
   }, [figures, tables]);
 
   const onConfirmAnalysis = useCallback(async (selection?: AnalysisProfileSelection) => {
-    try {
-      await handleStartAnalysis(selection);
+    const started = await handleStartAnalysis(selection);
+    if (started) {
       toast.success(S.toast.analysisStarted);
-    } catch {
+    } else {
       toast.error(S.error.startAnalysisFailed);
     }
   }, [handleStartAnalysis, toast]);

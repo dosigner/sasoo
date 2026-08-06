@@ -9,7 +9,7 @@ interface UseWorkbenchAnalysisControlsArgs {
   paper: Paper | null;
   status: AnalysisStatus | null;
   isRunning: boolean;
-  startAnalysis: (request?: AnalysisRunRequest) => Promise<void>;
+  startAnalysis: (request?: AnalysisRunRequest) => Promise<boolean>;
 }
 
 export function useWorkbenchAnalysisControls({
@@ -38,12 +38,12 @@ export function useWorkbenchAnalysisControls({
 
   const handleStartAnalysis = useCallback(async (
     selection: AnalysisProfileSelection = analysisProfileSelection
-  ) => {
+  ): Promise<boolean> => {
     const effectiveProfile =
       selection === 'default' ? defaultPaperBananaProfile : selection;
     setTerminalState(null);
     setShowAnalysisConfirm(false);
-    await startAnalysis({ paperbanana_profile: effectiveProfile });
+    return startAnalysis({ paperbanana_profile: effectiveProfile });
   }, [analysisProfileSelection, defaultPaperBananaProfile, startAnalysis]);
 
   const handleCancelAnalysis = useCallback(async () => {
@@ -76,7 +76,7 @@ export function useWorkbenchAnalysisControls({
           setDefaultPaperBananaProfile(settings.paperbanana_profile || 'fast');
           if (settings.auto_analyze) {
             setTerminalState(null);
-            startAnalysis({
+            void startAnalysis({
               paperbanana_profile: settings.paperbanana_profile || 'fast',
             });
           } else {
