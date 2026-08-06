@@ -57,21 +57,40 @@ def normalize_with_map(text: str) -> tuple[str, list[int]]:
     """
     text = str(text or "")
 
-    # 0~4단계: 문자 단위 치환. 각 출력 문자는 자기가 유래한 원문 인덱스를 들고 다닌다.
+    # 0~4단계: 문자 단위가 아니라 "베이스 문자 + 뒤따르는 결합 문자(combining mark)"
+    # 클러스터 단위로 치환한다. 코드포인트 단위 NFKC는 NFD로 분해된 결합 시퀀스
+    # (예: "e" + U+0301)를 재합성하지 못해, 같은 실제 텍스트가 유니코드 표현 형태만
+    # 달라도(NFC vs NFD) 정규화 결과가 갈리는 false negative를 낳는다(리뷰 지적).
+    # 클러스터를 통째로 NFKC에 넣어야 결합 문자가 베이스와 재합성된다.
+    n = len(text)
+    clusters: list[tuple[str, int]] = []  # (클러스터 원문, 클러스터 시작 인덱스)
+    i = 0
+    while i < n:
+        start = i
+        i += 1
+        while i < n and unicodedata.category(text[i])[0] == "M":
+            i += 1
+        clusters.append((text[start:i], start))
+
     pairs: list[tuple[str, int]] = []
-    for index, char in enumerate(text):
-        if char in _STRIP_CHARS:
-            continue
-        if char in _DASHES:
-            folded = "-"
-        elif char in _SINGLE_QUOTES:
-            folded = "'"
-        elif char in _DOUBLE_QUOTES:
-            folded = '"'
-        elif char in _LIGATURES:
-            folded = _LIGATURES[char]
+    for cluster_text, index in clusters:
+        if len(cluster_text) == 1:
+            char = cluster_text
+            if char in _STRIP_CHARS:
+                continue
+            if char in _DASHES:
+                folded = "-"
+            elif char in _SINGLE_QUOTES:
+                folded = "'"
+            elif char in _DOUBLE_QUOTES:
+                folded = '"'
+            elif char in _LIGATURES:
+                folded = _LIGATURES[char]
+            else:
+                folded = unicodedata.normalize("NFKC", char).casefold()
         else:
-            folded = unicodedata.normalize("NFKC", char).casefold()
+            # 베이스+결합문자 클러스터: 특수 치환 대상이 아니므로 통째로 NFKC+casefold.
+            folded = unicodedata.normalize("NFKC", cluster_text).casefold()
         for out_char in folded:
             pairs.append((out_char, index))
 
@@ -168,7 +187,19 @@ def derive_display_status(quote_status: str, page_status: str, value_status: str
 # 값 가드
 # ---------------------------------------------------------------------------
 
-_NUMBER_LITERAL = re.compile(r"\d+(?:\.\d+)?")
+_NUMBER_LITERAL = re.compile(r"(?<!\d)-?\d+(?:\.\d+)?")
+
+
+def _number_boundary_match(needle: str, haystack: str) -> bool:
+    """숫자 needle이 haystack 안에서 더 긴 숫자의 부분문자열로 우연히 걸리지 않게 한다.
+
+    "50"이 "1550"의 substring이라는 이유만으로 매치되면 안 된다(리뷰 지적 Critical #1).
+    needle에 부호가 포함돼 있으면(예: "-40") 그 "-"까지 패턴에 들어가므로, quote 쪽에
+    부호 없는 숫자만 있는 경우("40")는 이 경계 검사에서 자연히 걸러진다(리뷰 지적
+    Critical #2 — 부호가 quote에 실제로 없으면 값이 다른 것이므로 불일치가 맞다).
+    """
+    pattern = rf"(?<![\d.]){re.escape(needle)}(?![\d.])"
+    return re.search(pattern, haystack) is not None
 
 
 def check_value_in_quote(
@@ -191,8 +222,12 @@ def check_value_in_quote(
 
     normalized_quote = normalize_text(matched_quote)
     numbers = _NUMBER_LITERAL.findall(normalized_value)
-    needles = numbers or [normalized_value]
-    for needle in needles:
-        if needle not in normalized_quote:
-            return ("value_missing", f"missing:{needle[:24]}")
+    if numbers:
+        for needle in numbers:
+            if not _number_boundary_match(needle, normalized_quote):
+                return ("value_missing", f"missing:{needle[:24]}")
+        return ("value_in_quote", None)
+
+    if normalized_value not in normalized_quote:
+        return ("value_missing", f"missing:{normalized_value[:24]}")
     return ("value_in_quote", None)

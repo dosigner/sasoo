@@ -5,6 +5,7 @@
 0.0%만 통과했다. 그 0을 회귀 게이트로 고정한다.
 """
 
+import unicodedata
 import unittest
 
 from services import evidence_verifier as ev
@@ -49,6 +50,14 @@ class NormalizerV1Tests(unittest.TestCase):
     def test_map_length_matches_normalized_length(self):
         normalized, source_map = ev.normalize_with_map("  A­ B-\ncd  ")
         self.assertEqual(len(normalized), len(source_map))
+
+    def test_nfc_and_nfd_forms_normalize_identically(self):
+        # 리뷰 지적: 문자 단위 NFKC는 결합 문자 시퀀스(NFD)를 재합성하지 못해, 같은
+        # 실제 텍스트가 유니코드 표현 형태만 달라도 정규화 결과가 갈린다(false negative).
+        nfc = unicodedata.normalize("NFC", "café résumé naïve")
+        nfd = unicodedata.normalize("NFD", "café résumé naïve")
+        self.assertNotEqual(nfc, nfd, "sanity: 입력 자체가 코드포인트 단위로 달라야 한다")
+        self.assertEqual(ev.normalize_text(nfc), ev.normalize_text(nfd))
 
 
 class ForgedQuoteGateTests(unittest.TestCase):
@@ -174,6 +183,31 @@ class ValueGuardTests(unittest.TestCase):
         )
         self.assertEqual(
             ev.check_value_in_quote("1550-1570", "explicit", "from 1550 to 1560 nm")[0], "value_missing"
+        )
+
+    def test_short_number_is_not_matched_as_substring_of_longer_number(self):
+        # 리뷰 지적(Critical #1, 실증): "50"이 "1550"의 부분문자열이라는 이유만으로
+        # value_in_quote가 나오면 안 된다 — false verify.
+        status, detail = ev.check_value_in_quote(
+            "50", "explicit", "A wavelength of 1550 nm was used."
+        )
+        self.assertEqual(status, "value_missing")
+        self.assertIsNotNone(detail)
+
+    def test_negative_value_requires_sign_present_in_quote(self):
+        # 리뷰 지적(Critical #2, 실증): "-40"의 부호가 추출 단계에서 소실되면 안 된다.
+        # quote에 부호 없는 "40"만 있으면 값이 다른 것이므로 value_missing이어야 한다.
+        status, detail = ev.check_value_in_quote(
+            "-40", "explicit", "The device was tested at 40 degrees."
+        )
+        self.assertEqual(status, "value_missing")
+        self.assertIsNotNone(detail)
+
+    def test_negative_value_matches_when_sign_present_in_quote(self):
+        # 위 회귀의 반대 방향 확인: 부호가 quote에도 실제로 있으면 정상적으로 일치해야 한다.
+        self.assertEqual(
+            ev.check_value_in_quote("-40", "explicit", "The device was tested at -40 degrees.")[0],
+            "value_in_quote",
         )
 
 
