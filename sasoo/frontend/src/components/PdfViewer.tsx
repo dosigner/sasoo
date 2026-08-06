@@ -6,6 +6,7 @@ import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { ContentState } from '@/components/ui';
 import { AppIcon } from '@/components/icons';
 import { type PdfNavigationRequest } from '@/lib/api';
+import { bboxToPercentRect } from '@/lib/pdfHighlight';
 import { S } from '@/lib/strings';
 
 const {
@@ -394,6 +395,47 @@ export default function PdfViewer({
 
     const nextPage = clampPage(navigationRequest.page, instances.pdfViewer.pagesCount);
     instances.pdfViewer.currentPageNumber = nextPage;
+
+    // Evidence 하이라이트(스트레치). bbox가 없으면 페이지 이동만 한다.
+    const bbox = navigationRequest.highlight?.bbox ?? null;
+    document.querySelectorAll('.sasoo-evidence-highlight').forEach((node) => node.remove());
+    if (!bbox) return;
+
+    const draw = () => {
+      const pageView = instances.pdfViewer.getPageView?.(nextPage - 1);
+      const pageDiv: HTMLElement | undefined = pageView?.div;
+      if (!pageView?.viewport || !pageDiv) return;
+      const rect = bboxToPercentRect(bbox, pageView.viewport);
+      if (!rect) return;
+      document.querySelectorAll('.sasoo-evidence-highlight').forEach((node) => node.remove());
+      const overlay = document.createElement('div');
+      overlay.className = 'sasoo-evidence-highlight';
+      overlay.style.position = 'absolute';
+      overlay.style.left = `${rect.leftPct}%`;
+      overlay.style.top = `${rect.topPct}%`;
+      overlay.style.width = `${rect.widthPct}%`;
+      overlay.style.height = `${rect.heightPct}%`;
+      overlay.style.background = 'rgba(250, 204, 21, 0.32)';
+      overlay.style.outline = '1px solid rgba(250, 204, 21, 0.85)';
+      overlay.style.pointerEvents = 'none';
+      overlay.style.zIndex = '3';
+      if (getComputedStyle(pageDiv).position === 'static') {
+        pageDiv.style.position = 'relative';
+      }
+      pageDiv.appendChild(overlay);
+    };
+
+    // 페이지가 아직 렌더되지 않았을 수 있어 pagerendered를 한 번 기다린다.
+    draw();
+    const onRendered = (event: { pageNumber?: number }) => {
+      if (event?.pageNumber !== nextPage) return;
+      draw();
+    };
+    instances.eventBus.on('pagerendered', onRendered);
+    return () => {
+      instances.eventBus.off('pagerendered', onRendered);
+      document.querySelectorAll('.sasoo-evidence-highlight').forEach((node) => node.remove());
+    };
   }, [navigationRequest]);
 
   useEffect(() => {

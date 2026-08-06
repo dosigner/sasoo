@@ -4,10 +4,12 @@ import {
   getPaper,
   getPdfUrl,
   updatePaper,
+  type EvidenceAnchor,
   type Paper,
   type PaperBananaProfile,
   type PdfNavigationRequest,
 } from '@/lib/api';
+import { evidenceTarget } from '@/lib/evidence';
 import { useAnalysis } from '@/hooks/useAnalysis';
 import { useToast } from '@/components/Toast';
 import { S } from '@/lib/strings';
@@ -417,6 +419,16 @@ export default function Workbench() {
                     page: table.page_number,
                     requestId: `${table.id ?? table.table_num ?? 'table'}-${Date.now()}`,
                     source: 'table',
+                  });
+                }}
+                onJumpToEvidence={(anchor: EvidenceAnchor) => {
+                  const target = evidenceTarget(anchor);
+                  if (!target) return;
+                  setNavigationRequest({
+                    page: target.page,
+                    requestId: `evidence-${anchor.target_key}-${Date.now()}`,
+                    source: 'recipe',
+                    highlight: anchor.bbox ? { bbox: anchor.bbox } : null,
                   });
                 }}
               />

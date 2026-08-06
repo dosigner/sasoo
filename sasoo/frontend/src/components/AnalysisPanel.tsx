@@ -17,6 +17,7 @@ import {
   regenerateVisualization,
   type AnalysisResults,
   type AnalysisStatus,
+  type EvidenceAnchor,
   type FigureListResponse,
   type TableListResponse,
   type Recipe,
@@ -59,6 +60,7 @@ interface AnalysisPanelProps {
   paperLevel?: string | null;
   onJumpToFigurePage?: (figure: Figure) => void;
   onJumpToTablePage?: (table: Table) => void;
+  onJumpToEvidence?: (anchor: EvidenceAnchor) => void;
   citationFocus?: CitationFocus | null;
   terminalState?: 'cancelled' | null;
 }
@@ -985,6 +987,7 @@ export default function AnalysisPanel({
   paperId,
   onJumpToFigurePage,
   onJumpToTablePage,
+  onJumpToEvidence,
   citationFocus,
   terminalState,
 }: AnalysisPanelProps) {
@@ -1257,6 +1260,7 @@ export default function AnalysisPanel({
             <RecipeCard
               recipe={recipe}
               loading={getPhaseStatus('recipe') === 'running'}
+              onJumpToEvidence={onJumpToEvidence}
             />
           </div>
         )}

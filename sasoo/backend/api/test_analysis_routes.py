@@ -23,6 +23,7 @@ import sys
 import threading
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from api import analysis_routes, figure_service
@@ -554,6 +555,53 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         param_props = captured["response_schema"]["properties"]["parameters"]["items"]["properties"]
         self.assertEqual(param_props["source_tag"]["enum"], ["explicit", "inferred"])
         self.assertIn("score_rationale", captured["response_schema"]["properties"])
+        # Evidence Anchoring: LLM은 후보만 낸다(검증 상태·bbox는 LLM 필드가 아니다)
+        self.assertEqual(param_props["evidence_quote"]["type"], "string")
+        self.assertEqual(param_props["evidence_page"]["type"], "integer")
+        self.assertNotIn("verification_status", param_props)
+        self.assertNotIn("bbox", param_props)
+        self.assertEqual(
+            captured["response_schema"]["properties"]["parameters"]["items"]["required"],
+            ["name", "value", "source_tag"],
+        )
+
+    async def test_recipe_prompt_demands_verbatim_shortest_span_quote(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        captured = {}
+
+        async def _fake_call(prompt, **kwargs):
+            captured["prompt"] = prompt
+            captured.update(kwargs)
+            return {
+                "text": '{"title":"레시피","objective":"목적","parameters":[],"steps":[]}',
+                "model": "gemini", "tokens_in": 10, "tokens_out": 20, "interaction_id": None,
+            }
+
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            await analysis_routes._run_recipe(
+                7, "Recipe context body", status, screening_result_text='{"domain":"optics"}',
+            )
+
+        prompt = captured["prompt"]
+        self.assertIn("evidence_quote", prompt)
+        self.assertIn("evidence_page", prompt)
+        self.assertIn("축자", prompt)
+        self.assertIn("가장 짧은 연속", prompt)
+        self.assertIn("1-based", prompt)
+        # 빈 근거가 지어낸 근거보다 낫다 — 인용을 강제하지 않는다
+        self.assertIn("빈 문자열", prompt)
+
+    def test_chain_cache_version_is_bumped_for_evidence_rollout(self):
+        # 스펙 §결정 4: 롤아웃 시 체인 캐시 1회 무효화
+        self.assertEqual(analysis_routes._CHAIN_CACHE_VERSION, "2026-08-06-ev1")
+        self.assertIn(
+            analysis_routes._CHAIN_CACHE_VERSION,
+            analysis_routes._phase_cache_key(model="m", thinking="t", system_instruction="s", prompt="p"),
+        )
 
     async def test_run_recipe_skips_when_screening_signal_is_weak(self):
         status = AnalysisStatus(
@@ -577,6 +625,118 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"skipped": true', result["text"])
         insert_mock.assert_awaited_once()
 
+    async def test_run_recipe_anchors_evidence_with_inserted_row_id(self):
+        """검증은 recipe row 저장 직후, phase completed 노출 전에 동기 실행된다."""
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+
+        async def _fake_call(prompt, **kwargs):
+            return {
+                "text": '{"title":"r","objective":"o","parameters":[{"name":"a","value":"1"}],"steps":[]}',
+                "model": "gemini", "tokens_in": 1, "tokens_out": 1, "interaction_id": None,
+            }
+
+        ensure_mock = AsyncMock(return_value={"status": "verified", "anchors": 1})
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock(return_value=41)),
+            patch("api.analysis_routes.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
+            patch("api.analysis_routes._find_paper_pdf", return_value=None),
+            patch("api.analysis_routes.ensure_recipe_anchors", new=ensure_mock),
+        ):
+            await analysis_routes._run_recipe(
+                7, "body", status, screening_result_text='{"domain":"optics"}',
+                folder_name="2026_Paper_optics",
+            )
+
+        ensure_mock.assert_awaited_once()
+        self.assertEqual(ensure_mock.await_args.kwargs["analysis_result_id"], 41)
+        self.assertEqual(ensure_mock.await_args.kwargs["paper_id"], 7)
+        self.assertEqual(status.phases[-1].status, "completed")
+
+    async def test_run_recipe_cache_hit_backfills_evidence(self):
+        """캐시 히트도 검증을 태운다 — 옛 결과가 영원히 미검증으로 남지 않게."""
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        cached = {
+            "text": '{"title":"r","parameters":[{"name":"a","value":"1"}]}',
+            "model": "gemini-cache", "tokens_in": 1, "tokens_out": 2, "cost_usd": 0.0,
+            "input_hash": "h", "result_id": 77,
+        }
+
+        ensure_mock = AsyncMock(return_value={"status": "verified", "anchors": 1})
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=cached)),
+            patch("api.analysis_routes.call_interaction", new=AsyncMock(side_effect=AssertionError("no LLM on cache hit"))),
+            patch("api.analysis_routes.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
+            patch("api.analysis_routes._find_paper_pdf", return_value=None),
+            patch("api.analysis_routes.ensure_recipe_anchors", new=ensure_mock),
+        ):
+            await analysis_routes._run_recipe(
+                7, "body", status, screening_result_text='{"domain":"optics"}',
+                folder_name="2026_Paper_optics",
+            )
+
+        ensure_mock.assert_awaited_once()
+        self.assertEqual(ensure_mock.await_args.kwargs["analysis_result_id"], 77)
+
+    async def test_run_recipe_cache_hit_verifies_before_marking_completed(self):
+        """M-3: 캐시 히트 분기는 completed로 세팅하기 전에 검증을 끝내야 한다 — 안 그러면
+        await 경계 사이에서 폴링이 completed+evidence=None을 볼 수 있다."""
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        cached = {
+            "text": '{"title":"r","parameters":[{"name":"a","value":"1"}]}',
+            "model": "gemini-cache", "tokens_in": 1, "tokens_out": 2, "cost_usd": 0.0,
+            "input_hash": "h", "result_id": 77,
+        }
+        status_at_call: list[str | None] = []
+
+        async def _ensure_side_effect(**kwargs):
+            status_at_call.append(status.phases[-1].status if status.phases else None)
+            return {"status": "verified", "anchors": 1}
+
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=cached)),
+            patch("api.analysis_routes.call_interaction", new=AsyncMock(side_effect=AssertionError("no LLM on cache hit"))),
+            patch("api.analysis_routes.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
+            patch("api.analysis_routes._find_paper_pdf", return_value=None),
+            patch("api.analysis_routes.ensure_recipe_anchors", new=AsyncMock(side_effect=_ensure_side_effect)),
+        ):
+            await analysis_routes._run_recipe(
+                7, "body", status, screening_result_text='{"domain":"optics"}',
+                folder_name="2026_Paper_optics",
+            )
+
+        # 검증(ensure_recipe_anchors) 호출 시점에는 아직 completed가 아니어야 한다.
+        self.assertEqual(status_at_call, ["running"])
+        self.assertEqual(status.phases[-1].status, "completed")
+
+    async def test_evidence_failure_does_not_kill_recipe_phase(self):
+        """검증기 예외는 격리한다 — recipe 데이터는 보존되고 phase는 completed다."""
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+
+        async def _fake_call(prompt, **kwargs):
+            return {
+                "text": '{"title":"r","objective":"o","parameters":[{"name":"a","value":"1"}],"steps":[]}',
+                "model": "gemini", "tokens_in": 1, "tokens_out": 1, "interaction_id": None,
+            }
+
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock(return_value=41)),
+            patch("api.analysis_routes.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
+            patch("api.analysis_routes._find_paper_pdf", return_value=None),
+            patch("api.analysis_routes.ensure_recipe_anchors",
+                  new=AsyncMock(side_effect=RuntimeError("verifier exploded"))),
+        ):
+            result = await analysis_routes._run_recipe(
+                7, "body", status, screening_result_text='{"domain":"optics"}',
+                folder_name="2026_Paper_optics",
+            )
+
+        self.assertIn('"title": "r"', result["text"].replace('"title":"r"', '"title": "r"'))
+        self.assertEqual(status.phases[-1].status, "completed")
+
     async def test_cached_phase_lookup_records_cache_event(self):
         cached = types.SimpleNamespace(
             result_text='{"summary":"cached"}',
@@ -585,6 +745,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             tokens_out=34,
             cost_usd=0.56,
             input_hash="hash1234",
+            result_id=99,
         )
 
         with (
@@ -2174,6 +2335,54 @@ class TestDegenerateRepetitionDetector(unittest.TestCase):
             "degenerate repetition detected",
         )
         self.assertIsNone(_stage_result_defect('{"notes": "정상 텍스트"}'))
+
+
+class GetRecipeEvidenceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_recipe_response_carries_evidence_payload(self):
+        row = {
+            "id": 41,
+            "parsed_result": {"title": "레시피", "parameters": []},
+            "model_used": "gemini",
+            "created_at": "2026-08-06 10:00:00",
+        }
+        payload = {
+            "verifier_version": "ev1",
+            "normalizer_version": "norm-v1",
+            "summary": {"total": 1, "verified": 1, "by_display_status": {"VERIFIED": 1}},
+            "anchors": [{"target_index": 0, "display_status": "VERIFIED"}],
+        }
+        build_mock = AsyncMock(return_value=payload)
+        with (
+            patch("api.analysis_routes.get_latest_completed_phase_row", new=AsyncMock(return_value=row)),
+            patch("api.analysis_routes.build_evidence_payload", new=build_mock),
+        ):
+            response = await analysis_routes.get_recipe(12)
+
+        self.assertEqual(response["evidence"], payload)
+        self.assertEqual(response["recipe"], row["parsed_result"])  # 원본 blob 무수정
+        self.assertEqual(build_mock.await_args.args[0], 41)
+
+    async def test_evidence_is_null_when_no_anchor_exists(self):
+        row = {"id": 41, "parsed_result": {"title": "레시피"}, "model_used": "m", "created_at": "t"}
+        with (
+            patch("api.analysis_routes.get_latest_completed_phase_row", new=AsyncMock(return_value=row)),
+            patch("api.analysis_routes.build_evidence_payload", new=AsyncMock(return_value=None)),
+        ):
+            response = await analysis_routes.get_recipe(12)
+
+        self.assertIsNone(response["evidence"])
+
+    async def test_evidence_lookup_failure_does_not_break_recipe(self):
+        row = {"id": 41, "parsed_result": {"title": "레시피"}, "model_used": "m", "created_at": "t"}
+        with (
+            patch("api.analysis_routes.get_latest_completed_phase_row", new=AsyncMock(return_value=row)),
+            patch("api.analysis_routes.build_evidence_payload",
+                  new=AsyncMock(side_effect=RuntimeError("db gone"))),
+        ):
+            response = await analysis_routes.get_recipe(12)
+
+        self.assertIsNone(response["evidence"])
+        self.assertEqual(response["recipe"], row["parsed_result"])
 
 
 if __name__ == "__main__":

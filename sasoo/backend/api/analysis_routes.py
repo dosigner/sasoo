@@ -73,6 +73,7 @@ from services.document_context import (
     find_cached_phase_result,
     load_or_build_document_context,
 )
+from services.evidence_repo import build_evidence_payload, ensure_recipe_anchors
 from services.pricing import calc_cost
 from services.llm.interactions_client import call_interaction, stream_interaction
 
@@ -160,6 +161,7 @@ async def _get_cached_phase_result(paper_id: int, phase: str, input_text: str) -
         "tokens_out": cached.tokens_out,
         "cost_usd": cached.cost_usd,
         "input_hash": cached.input_hash or compute_input_hash(input_text),
+        "result_id": cached.result_id,
     }
 
 
@@ -174,7 +176,10 @@ _CITATION_PROMPT_VERSION = "2026-07-14"
 
 # Phase 0(2026-08-06): 캐시 키에 프로필·에이전트 지침(system_instruction)·모델·thinking을
 # 포함한다. 값을 올리면 모든 체인 phase 캐시가 무효화된다.
-_CHAIN_CACHE_VERSION = "2026-08-06"
+# Phase 1(2026-08-06, Evidence Anchoring): 스펙 §결정 4에 따라 롤아웃 시 1회 bump한다.
+# recipe 파라미터에 evidence_quote/evidence_page가 생겨 구 스키마 결과를 재사용하면
+# 근거 없는 파라미터가 영구히 남는다. 체인 phase 전체가 1회 재과금되는 것을 알고 하는 선택이다.
+_CHAIN_CACHE_VERSION = "2026-08-06-ev1"
 
 
 def _phase_cache_key(*, model: str, thinking: str, system_instruction: str, prompt: str) -> str:
@@ -308,8 +313,13 @@ async def _insert_analysis_result(
     cost_usd: float,
     input_text: str,
     interaction_id: str | None = None,
-) -> None:
-    await execute_insert(
+) -> int:
+    """analysis_results에 결과를 저장하고 lastrowid를 반환한다.
+
+    반환값은 Evidence 앵커를 이 행에 결속하는 데 쓴다(스펙 §결정 4). 기존 호출부는
+    반환값을 쓰지 않으므로 동작이 바뀌지 않는다.
+    """
+    return await execute_insert(
         """
         INSERT INTO analysis_results
             (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd, input_hash, interaction_id)
@@ -327,6 +337,40 @@ async def _insert_analysis_result(
             interaction_id,
         ),
     )
+
+
+async def _ensure_recipe_evidence(
+    *,
+    paper_id: int,
+    analysis_result_id,
+    recipe_text: str,
+    folder_name: str,
+) -> None:
+    """Recipe 파라미터 근거를 결정론적으로 검증해 evidence_anchors에 기록한다.
+
+    예외를 밖으로 내보내지 않는다 — 검증기 실패가 recipe phase를 죽이면 안 된다.
+    실패하면 앵커가 남지 않고, 앵커 부재는 UI에서 '검증 미실행'으로 정직하게 보인다
+    (부재를 검증됨으로 표시하는 코드 경로는 존재하지 않는다).
+    """
+    if not analysis_result_id or not folder_name:
+        logger.info(
+            "evidence anchoring skipped (paper=%s result_id=%r folder=%r)",
+            paper_id, analysis_result_id, folder_name,
+        )
+        return
+    try:
+        pdf_path = _find_paper_pdf(get_paper_dir(folder_name))
+        await ensure_recipe_anchors(
+            paper_id=paper_id,
+            analysis_result_id=int(analysis_result_id),
+            recipe_text=recipe_text,
+            pdf_path=pdf_path,
+        )
+    except Exception as exc:
+        logger.warning(
+            "evidence anchoring failed (paper=%s result=%s): %s",
+            paper_id, analysis_result_id, exc,
+        )
 
 
 async def _get_visual_contract(
@@ -832,8 +876,14 @@ _RECIPE_SCHEMA = {
                     "unit": {"type": "string"},
                     "notes": {"type": "string"},
                     "source_tag": {"type": "string", "enum": ["explicit", "inferred"]},
+                    # Evidence Anchoring(Phase 1): LLM은 후보만 낸다.
+                    # verification_status·matched_quote·bbox는 절대 LLM 출력 필드로 두지 않는다.
+                    "evidence_quote": {"type": "string"},
+                    # 1-based PDF 페이지. Gemini structured output이 minimum을 일관되게
+                    # 지원하지 않아 범위 제약은 스키마가 아니라 검증기가 건다(invalid_page).
+                    "evidence_page": {"type": "integer"},
                 },
-                "required": ["name", "value"],
+                "required": ["name", "value", "source_tag"],
             },
         },
         "steps": {"type": "array", "items": {"type": "string"}},
@@ -1254,6 +1304,7 @@ async def _run_recipe(
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
+    folder_name: str = "",
 ) -> dict:
     """Phase 3: Recipe extraction - extract structured experimental procedure."""
     phase_status = PhaseStatus(
@@ -1335,10 +1386,20 @@ voltages, currents, frequencies, distances, speeds, sizes, ratios, percentages, 
 4. 개수 목표는 없어. 논문에 실제로 있는 항목만 추출하고, 통상 기본값·상식·장비 기본 설정을 논문 값처럼 보충하지 마.
 5. 재현에 필요한데 논문에 없는 항목은 parameters에 넣지 말고 missing_info에 기록해.
 6. reproducibility_score는 explicit 핵심 파라미터의 충족도와 missing_info를 근거로 매기고, 그 근거를 score_rationale에 한 문장으로 적어.
+7. 각 파라미터마다 그 값의 근거가 되는 논문 원문을 그대로(축자) evidence_quote에 옮겨.
+   번역·요약·재작성·말줄임표·떨어져 있는 문장 결합은 금지야. 원문 언어 그대로 써.
+8. evidence_quote는 그 파라미터를 뒷받침하는 가장 짧은 연속 스팬 하나로 해(1~2문장, 최대 300자).
+   source_tag="explicit"이면 그 value가 인용 안에 실제로 들어 있어야 해.
+9. evidence_page는 PDF 파일 기준 1-based 페이지 번호야(표지 포함). 논문에 인쇄된 페이지 번호가 아니야.
+   논문 텍스트만 받은 경우에는 "--- Page N ---" 마커의 N을 써.
+10. 축자로 옮길 수 없으면 evidence_quote를 빈 문자열로 두고 페이지도 추측하지 마.
+    빈 근거가 지어낸 근거보다 나아 — 근거 없음은 화면에 그대로 표시돼.
+11. 인용은 논문 PDF(또는 제공된 논문 텍스트)에서만 가져와. 앞선 단계(스크리닝·시각·인용 분석)
+    결과는 인용 출처가 아니야.
 {domain_hint}
 
 출력 필드: title(레시피 제목, 한국어), objective(실험 목적), materials(재료 리스트, 규격 포함),
-equipment(장비 리스트, 모델번호 포함), parameters(각 항목 name/value/unit/notes/source_tag),
+equipment(장비 리스트, 모델번호 포함), parameters(각 항목 name/value/unit/notes/source_tag/evidence_quote/evidence_page),
 steps(단계별 상세 설명, 온도·시간·속도 등 포함), critical_notes(재현 중요 참고사항),
 expected_results(예상 결과), safety_notes(안전 주의사항), confidence(0.0~1.0),
 missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibility_score(0.0~1.0), score_rationale(점수 근거)."""
@@ -1354,6 +1415,15 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
 
     cached = await _get_cached_phase_result(paper_id, "recipe", cache_key)
     if cached is not None:
+        # 캐시 히트도 검증을 태운다 — 옛 결과 백필과 검증기 버전업 재검증의 유일한 통로다.
+        # completed로 세팅하기 전에 먼저 끝내야 한다 — await 경계 사이에 폴링이
+        # completed+evidence=None을 볼 수 있다(리뷰 지적 M-3, 비캐시 경로와 순서를 맞춘다).
+        await _ensure_recipe_evidence(
+            paper_id=paper_id,
+            analysis_result_id=cached.get("result_id"),
+            recipe_text=cached["text"],
+            folder_name=folder_name,
+        )
         phase_status.status = "completed"
         phase_status.completed_at = _utcnow_iso()
         phase_status.model_used = cached["model"]
@@ -1389,7 +1459,7 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
 
     cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
-    await _insert_analysis_result(
+    result_id = await _insert_analysis_result(
         paper_id,
         "recipe",
         result["text"],
@@ -1400,6 +1470,16 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
         cache_key,
         interaction_id=result.get("interaction_id"),
     )
+
+    # recipe row 저장(lastrowid 확보) 직후, phase completed 노출 전 동기 검증(스펙 §결정 3).
+    # 41페이지 논문 실측 ~0.4초의 순수 CPU 작업이라 별도 큐·phase를 만들지 않는다.
+    if not _is_error_result(result["text"]):
+        await _ensure_recipe_evidence(
+            paper_id=paper_id,
+            analysis_result_id=result_id,
+            recipe_text=result["text"],
+            folder_name=folder_name,
+        )
 
     if _is_error_result(result["text"]):
         phase_status.status = "error"
@@ -2357,6 +2437,7 @@ async def _run_full_analysis(paper_id: int):
             system_instruction=recipe_system_instruction,
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
+            folder_name=folder_name,
         )
         if pdf_uri:
             chain_prev_id = r3.get("interaction_id")
@@ -2854,11 +2935,20 @@ async def get_recipe(paper_id: int):
             detail=f"No recipe found for paper {paper_id}. Run analysis first.",
         )
 
+    # LLM 원본 blob은 무수정 유지하고 검증 결과를 형제 필드로 붙인다.
+    # evidence=None은 "검증 기록 없음"이지 "검증됨"이 아니다 — UI는 전 행을 미검증으로 표시한다.
+    try:
+        evidence = await build_evidence_payload(result.get("id"))
+    except Exception as exc:
+        logger.warning("evidence payload build failed for paper %s: %s", paper_id, exc)
+        evidence = None
+
     return {
         "paper_id": paper_id,
         "recipe": result.get("parsed_result"),
         "model_used": result.get("model_used"),
         "created_at": result.get("created_at"),
+        "evidence": evidence,
     }
 
 
