@@ -428,6 +428,7 @@ export default function Workbench() {
                     page: target.page,
                     requestId: `evidence-${anchor.target_key}-${Date.now()}`,
                     source: 'recipe',
+                    highlight: anchor.bbox ? { bbox: anchor.bbox } : null,
                   });
                 }}
               />
