@@ -41,4 +41,15 @@ describe('bboxToPercentRect', () => {
     expect(bboxToPercentRect([Number.NaN, 1, 2, 3], viewport())).toBeNull();
     expect(bboxToPercentRect([1, 2, 3], viewport())).toBeNull();
   });
+
+  it('convertToViewportRectangle이 던지면 null을 반환한다 (하이라이트만 생략, 점프는 유지)', () => {
+    const throwingViewport: ViewportLike = {
+      width: 595,
+      height: 842,
+      convertToViewportRectangle(): number[] {
+        throw new Error('pdf.js internal failure');
+      },
+    };
+    expect(bboxToPercentRect([59.5, 421, 297.5, 505.2], throwingViewport)).toBeNull();
+  });
 });

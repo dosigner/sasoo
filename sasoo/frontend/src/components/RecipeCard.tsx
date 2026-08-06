@@ -7,10 +7,12 @@ import { Badge, Tooltip } from '@/components/ui';
 import {
   attachEvidence,
   evidenceBadge,
+  evidenceSummaryTone,
   evidenceTarget,
   evidenceTooltip,
   parseRecipeParameters,
   resolveDisplayStatus,
+  summarizeAnchoredEvidence,
 } from '@/lib/evidence';
 import { generateCsvFromRecipe } from '@/lib/recipeCsv';
 
@@ -120,6 +122,9 @@ export default function RecipeCard({
   const parameters = parseRecipeParameters(data.parameters);
   const anchored = attachEvidence(parameters, recipe.evidence ?? null);
   const evidenceSummary = recipe.evidence?.summary ?? null;
+  // 배지는 백엔드 summary 원본이 아니라 화면에 실제 붙은 anchored 결과로 센다 —
+  // fail-closed로 숨겨진 앵커가 있으면 백엔드 summary와 표 숫자가 어긋난다.
+  const evidenceCounts = summarizeAnchoredEvidence(anchored);
 
   return (
     <div>
@@ -204,8 +209,8 @@ export default function RecipeCard({
               {S.recipe.parameters} ({parameters.length})
             </h4>
             {evidenceSummary && (
-              <Badge variant={evidenceSummary.verified > 0 ? 'success' : 'neutral'}>
-                {S.recipe.evidence.summaryBadge(evidenceSummary.verified, evidenceSummary.total)}
+              <Badge variant={evidenceSummaryTone(evidenceCounts.verified, evidenceCounts.total)}>
+                {S.recipe.evidence.summaryBadge(evidenceCounts.verified, evidenceCounts.total)}
               </Badge>
             )}
           </div>

@@ -26,7 +26,14 @@ export function bboxToPercentRect(
   if (!Array.isArray(bbox) || bbox.length !== 4 || bbox.some((n) => !Number.isFinite(n))) {
     return null;
   }
-  const converted = viewport.convertToViewportRectangle([bbox[0], bbox[1], bbox[2], bbox[3]]);
+  let converted: number[];
+  try {
+    converted = viewport.convertToViewportRectangle([bbox[0], bbox[1], bbox[2], bbox[3]]);
+  } catch {
+    // pdf.js 뷰포트 변환 실패는 하이라이트만 조용히 생략한다 — 페이지 이동/렌더 이벤트를
+    // 죽이면 안 된다(리뷰 지적 I-3).
+    return null;
+  }
   if (!converted || converted.length !== 4 || converted.some((n) => !Number.isFinite(n))) {
     return null;
   }

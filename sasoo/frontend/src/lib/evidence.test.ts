@@ -3,10 +3,12 @@ import type { EvidenceAnchor, EvidenceDisplayStatus, RecipeEvidence } from '@/li
 import {
   attachEvidence,
   evidenceBadge,
+  evidenceSummaryTone,
   evidenceTarget,
   evidenceTooltip,
   parseRecipeParameters,
   resolveDisplayStatus,
+  summarizeAnchoredEvidence,
 } from '@/lib/evidence';
 
 function anchor(overrides: Partial<EvidenceAnchor> = {}): EvidenceAnchor {
@@ -142,6 +144,41 @@ describe('evidenceBadge — VERIFIED만 검증 표시', () => {
 
   it('부분 일치는 성공 톤을 쓰지 않는다', () => {
     expect(evidenceBadge('UNVERIFIED_PARTIAL').tone).not.toBe('success');
+  });
+});
+
+describe('summarizeAnchoredEvidence / evidenceSummaryTone — 배지는 화면 실제 결과로 센다 (I-2)', () => {
+  it('전부 VERIFIED면 total과 verified가 같다', () => {
+    const rows = parseRecipeParameters([{ name: 'wavelength', value: '1550' }]);
+    const attached = attachEvidence(rows, evidence([anchor()]));
+    expect(summarizeAnchoredEvidence(attached)).toEqual({ verified: 1, total: 1 });
+  });
+
+  it('fail-closed로 숨겨진 앵커는 미검증으로 잡히고 total에는 남는다', () => {
+    // 라벨 불일치로 앵커가 숨겨져도 그 파라미터 행 자체는 여전히 화면에 남는다 —
+    // 분모(total)는 유지하고 분자(verified)만 0으로 세야 배지와 표가 일치한다.
+    const rows = parseRecipeParameters([{ name: 'laser_power', value: '3.2' }]);
+    const attached = attachEvidence(rows, evidence([anchor()]));
+    expect(summarizeAnchoredEvidence(attached)).toEqual({ verified: 0, total: 1 });
+  });
+
+  it('일부만 VERIFIED면 verified < total이다', () => {
+    const rows = parseRecipeParameters([
+      { name: 'wavelength', value: '1550' },
+      { name: 'power', value: '3.2' },
+    ]);
+    const attached = attachEvidence(
+      rows,
+      evidence([anchor(), anchor({ target_index: 1, target_label: 'power', display_status: 'UNVERIFIED_NOT_FOUND' })]),
+    );
+    expect(summarizeAnchoredEvidence(attached)).toEqual({ verified: 1, total: 2 });
+  });
+
+  it('evidenceSummaryTone: 전부 검증돼야만 success다 (1/N은 warning)', () => {
+    expect(evidenceSummaryTone(1, 1)).toBe('success');
+    expect(evidenceSummaryTone(1, 20)).toBe('warning');
+    expect(evidenceSummaryTone(0, 5)).toBe('neutral');
+    expect(evidenceSummaryTone(0, 0)).toBe('neutral');
   });
 });
 

@@ -88,6 +88,30 @@ export function resolveDisplayStatus(anchor: EvidenceAnchor | null): EvidenceDis
 }
 
 // ---------------------------------------------------------------------------
+// 요약 배지 (fail-closed로 숨겨진 앵커까지 반영한 화면 실제 수치)
+// ---------------------------------------------------------------------------
+// 백엔드 evidence.summary는 attachEvidence의 label 불일치 fail-closed를 모른다 — 그
+// 분모·분자를 그대로 배지에 쓰면 표에 실제로 보이는 검증 수와 배지가 어긋난다. 항상
+// 화면에 붙은 anchored 결과에서 다시 센다.
+
+export interface EvidenceSummaryCounts {
+  verified: number;
+  total: number;
+}
+
+export function summarizeAnchoredEvidence(anchored: AnchoredParameter[]): EvidenceSummaryCounts {
+  const verified = anchored.filter((item) => resolveDisplayStatus(item.anchor) === 'VERIFIED').length;
+  return { verified, total: anchored.length };
+}
+
+/** 부분 검증(1/N)은 절대 success 톤을 쓰지 않는다 — 전부 검증됐을 때만 초록이다. */
+export function evidenceSummaryTone(verified: number, total: number): 'success' | 'warning' | 'neutral' {
+  if (total > 0 && verified === total) return 'success';
+  if (verified > 0) return 'warning';
+  return 'neutral';
+}
+
+// ---------------------------------------------------------------------------
 // 배지 / 툴팁 / 이동 대상
 // ---------------------------------------------------------------------------
 
