@@ -2016,6 +2016,25 @@ class CitationPromptTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("문장5", prompt)
 
 
+class PhaseCacheKeyTest(unittest.TestCase):
+    """캐시 키가 프로필(system_instruction)·모델 변경에 반응한다 (Phase 0 P1)."""
+
+    def test_system_instruction_changes_key(self):
+        base = dict(model="m1", thinking="low", prompt="P")
+        k1 = analysis_routes._phase_cache_key(system_instruction="박사생 대상", **base)
+        k2 = analysis_routes._phase_cache_key(system_instruction="초등학생 대상", **base)
+        self.assertNotEqual(k1, k2)
+
+    def test_model_changes_key(self):
+        k1 = analysis_routes._phase_cache_key(model="m1", thinking="low", system_instruction="s", prompt="P")
+        k2 = analysis_routes._phase_cache_key(model="m2", thinking="low", system_instruction="s", prompt="P")
+        self.assertNotEqual(k1, k2)
+
+    def test_deterministic(self):
+        args = dict(model="m1", thinking="low", system_instruction="s", prompt="P")
+        self.assertEqual(analysis_routes._phase_cache_key(**args), analysis_routes._phase_cache_key(**args))
+
+
 class SystemInstructionContractTests(unittest.TestCase):
     def test_language_contract_preserves_machine_values(self):
         from services.llm.interactions_client import _SYSTEM_INSTRUCTION_KO
