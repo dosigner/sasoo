@@ -31,6 +31,13 @@
     - source_tag(explicit/inferred/computed 등) → by_source_tag. inferred 파라미터는
       구조적으로 VERIFIED 불가(값 가드가 "inferred"면 value_status="inferred"로 항상
       막힌다)이므로 explicit과 뭉치면 verified_rate가 오염된다 — 반드시 따로 본다.
+
+by_engine·by_source_tag 둘 다 parameter_verified_rate 외에 value_present_rate·
+page_confirm_rate·bbox_rate까지 n/N과 함께 JSON에 낸다(콘솔 출력은 parameter_verified_rate만
+찍는다 — JSON이 기록용, 콘솔은 한눈에 보는 요약용). forged_false_verify는 축 분해하지
+않는다 — "0이어야 하는 불변식"이라 축별로 쪼개도 판정 기준이 달라지지 않고(어느 축에서든
+하나라도 나오면 전체가 실패), 실패 시 원인 추적은 축 집계가 아니라 papers[] 안의 논문별
+원본 레코드(folder_name·engine·source_tag를 이미 담고 있다)를 직접 봐야 하기 때문이다.
 """
 
 from __future__ import annotations
@@ -149,15 +156,26 @@ def measure_paper(row: dict[str, Any]) -> dict[str, Any]:
     located = [d for d in drafts if d.quote_status in {"verified_exact", "verified_normalized"}]
 
     # source_tag별 분모 분리 — inferred 파라미터는 구조적으로 VERIFIED 불가하므로
-    # explicit과 뭉치면 verified_rate가 오염된다(설계 스펙 §회귀 지표).
+    # explicit과 뭉치면 verified_rate가 오염된다(설계 스펙 §회귀 지표). value_present/
+    # page_confirmed/bbox도 같은 이유로 함께 쪼갠다 — located(=exact+normalized) 모수
+    # 자체가 source_tag마다 다르므로 전체 합산 비율만 보면 어느 축이 끌어내렸는지 안 보인다.
     by_source_tag: dict[str, Counter] = defaultdict(Counter)
     for draft in drafts:
         tag = draft.source_tag or "unspecified"
-        by_source_tag[tag]["parameters"] += 1
-        if draft.claimed_quote.strip():
-            by_source_tag[tag]["offered"] += 1
+        counter = by_source_tag[tag]
+        counter["parameters"] += 1
+        if str(draft.claimed_quote or "").strip():
+            counter["offered"] += 1
         if draft.display_status == "VERIFIED":
-            by_source_tag[tag]["verified"] += 1
+            counter["verified"] += 1
+        if draft.quote_status in {"verified_exact", "verified_normalized"}:
+            counter["located"] += 1
+            if draft.value_status == "value_in_quote":
+                counter["value_present"] += 1
+            if draft.page_status == "match":
+                counter["page_confirmed"] += 1
+            if draft.bbox_json:
+                counter["bbox"] += 1
 
     # 위조 인용 게이트: 확인된 인용의 숫자를 한 자리 바꿔 다시 검증한다.
     forged_params = []
@@ -221,16 +239,24 @@ def aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
     located = totals["exact"] + totals["normalized"]
     by_engine: dict[str, Counter] = defaultdict(Counter)
     for result in results:
-        by_engine[result["engine"]]["parameters"] += result["parameters"]
-        by_engine[result["engine"]]["verified"] += result["verified"]
-        by_engine[result["engine"]]["offered"] += result["offered"]
+        counter = by_engine[result["engine"]]
+        counter["parameters"] += result["parameters"]
+        counter["verified"] += result["verified"]
+        counter["offered"] += result["offered"]
+        counter["located"] += result["exact"] + result["normalized"]
+        counter["value_present"] += result["value_present"]
+        counter["page_confirmed"] += result["page_confirmed"]
+        counter["bbox"] += result["bbox"]
 
     by_source_tag: dict[str, Counter] = defaultdict(Counter)
     for result in results:
-        for tag, counter in result["by_source_tag"].items():
-            by_source_tag[tag]["parameters"] += counter.get("parameters", 0)
-            by_source_tag[tag]["offered"] += counter.get("offered", 0)
-            by_source_tag[tag]["verified"] += counter.get("verified", 0)
+        for tag, tag_counter in result["by_source_tag"].items():
+            counter = by_source_tag[tag]
+            for key in (
+                "parameters", "offered", "verified", "located",
+                "value_present", "page_confirmed", "bbox",
+            ):
+                counter[key] += tag_counter.get(key, 0)
 
     return {
         "verifier_version": EVIDENCE_VERIFIER_VERSION,
@@ -253,7 +279,14 @@ def aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
                 "parameters": counter["parameters"],
                 "offered": counter["offered"],
                 "verified": counter["verified"],
+                "located": counter["located"],
+                "value_present": counter["value_present"],
+                "page_confirmed": counter["page_confirmed"],
+                "bbox": counter["bbox"],
                 "parameter_verified_rate": _ratio(counter["verified"], counter["parameters"]),
+                "value_present_rate": _ratio(counter["value_present"], counter["located"]),
+                "page_confirm_rate": _ratio(counter["page_confirmed"], counter["located"]),
+                "bbox_rate": _ratio(counter["bbox"], counter["located"]),
             }
             for engine, counter in sorted(by_engine.items())
         },
@@ -262,7 +295,14 @@ def aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
                 "parameters": counter["parameters"],
                 "offered": counter["offered"],
                 "verified": counter["verified"],
+                "located": counter["located"],
+                "value_present": counter["value_present"],
+                "page_confirmed": counter["page_confirmed"],
+                "bbox": counter["bbox"],
                 "parameter_verified_rate": _ratio(counter["verified"], counter["parameters"]),
+                "value_present_rate": _ratio(counter["value_present"], counter["located"]),
+                "page_confirm_rate": _ratio(counter["page_confirmed"], counter["located"]),
+                "bbox_rate": _ratio(counter["bbox"], counter["located"]),
             }
             for tag, counter in sorted(by_source_tag.items())
         },
