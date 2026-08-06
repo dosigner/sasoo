@@ -158,6 +158,7 @@ function getPhaseStatusInfo(phaseStatus: PhaseStatusValue): {
 interface PhaseSectionProps {
   phaseName: AnalysisPhase;
   phaseStatus: PhaseStatusValue;
+  errorMessage?: string | null;
   content: string | null;
   defaultExpanded: boolean;
   summaryLine?: string | null;
@@ -171,6 +172,7 @@ interface PhaseSectionProps {
 function PhaseSection({
   phaseName,
   phaseStatus,
+  errorMessage,
   content,
   defaultExpanded,
   summaryLine,
@@ -246,6 +248,11 @@ function PhaseSection({
           <div className="mt-1 text-2xs text-fg-muted">
             {expanded ? meta.description : statusInfo.label}
           </div>
+          {phaseStatus === 'error' && errorMessage && (
+            <div className="mt-1 text-2xs text-danger">
+              {errorMessage}
+            </div>
+          )}
           {!expanded && collapsedMeta.length > 0 && (
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               {collapsedMeta.map((item) => {
@@ -1006,6 +1013,12 @@ export default function AnalysisPanel({
     return phase?.status || 'pending';
   };
 
+  const getPhaseErrorMessage = (phaseName: AnalysisPhase): string | null => {
+    if (!status) return null;
+    const phase = status.phases.find((p) => p.phase === phaseName);
+    return phase?.error_message ?? null;
+  };
+
   // Get phase content as formatted markdown
   const getPhaseContent = (phaseName: AnalysisPhase): string | null => {
     if (!results) return null;
@@ -1131,6 +1144,7 @@ export default function AnalysisPanel({
               <PhaseSection
                 phaseName="screening"
                 phaseStatus={getPhaseStatus('screening')}
+                errorMessage={getPhaseErrorMessage('screening')}
                 content={getPhaseContent('screening')}
                 defaultExpanded={true}
                 summaryLine={screeningSummary.summaryLine}
@@ -1143,6 +1157,7 @@ export default function AnalysisPanel({
               <PhaseSection
                 phaseName="citation"
                 phaseStatus={getPhaseStatus('citation')}
+                errorMessage={getPhaseErrorMessage('citation')}
                 content={getPhaseContent('citation')}
                 defaultExpanded={false}
                 summaryLine={citationSummary.summaryLine}
@@ -1154,6 +1169,7 @@ export default function AnalysisPanel({
               <PhaseSection
                 phaseName="deep_dive"
                 phaseStatus={getPhaseStatus('deep_dive')}
+                errorMessage={getPhaseErrorMessage('deep_dive')}
                 content={getPhaseContent('deep_dive')}
                 defaultExpanded={false}
                 summaryLine={deepDiveSummary.summaryLine}
