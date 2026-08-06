@@ -76,7 +76,7 @@ export function useWorkbenchAnalysisControls({
           setDefaultPaperBananaProfile(settings.paperbanana_profile || 'fast');
           if (settings.auto_analyze) {
             setTerminalState(null);
-            startAnalysis({
+            void startAnalysis({
               paperbanana_profile: settings.paperbanana_profile || 'fast',
             });
           } else {
