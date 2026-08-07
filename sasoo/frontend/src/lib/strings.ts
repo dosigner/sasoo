@@ -563,6 +563,20 @@ export const S = {
     title: '재현성 레시피',
     noRecipe: '아직 레시피를 만들지 않았어요. 분석을 실행하면 파라미터를 뽑아요.',
     exportCsv: 'CSV',
+    // CSV 열 이름. 엑셀에서 사용자가 그대로 읽는 문자열이라 여기 둔다. 순서 계약은
+    // lib/recipeCsv.ts의 RECIPE_CSV_HEADER가 쥔다. 이름은 검증 여부를 단정하지 않는다 —
+    // "발견/주장"은 출처를 가리킬 뿐이고 검증 결과는 '검증 상태' 열 하나가 말한다(DEC-012).
+    csvHeader: {
+      section: '구분',
+      key: '항목',
+      value: '값',
+      status: '검증 상태',
+      method: '검증 방법',
+      foundQuote: '발견 인용',
+      foundPage: '발견 페이지',
+      claimedQuote: '주장 인용',
+      claimedPage: '주장 페이지',
+    },
     exported: '내보냄',
     confidence: '신뢰도',
     reproducibility: '재현성',
@@ -581,6 +595,8 @@ export const S = {
       summaryBadge: (verified: number, total: number) => `근거 확인 ${verified}/${total}`,
       notRunNotice: '이 분석 결과에는 근거 검증 기록이 없어요. 다시 분석하면 근거를 모아요.',
       verifiedQuote: '확인된 원문',
+      // DEC-012 — 페이지만 어긋난 near-miss용. 검증 도장 대신 "발견"이라는 문구만 쓴다.
+      foundQuote: (page: number | null) => (page != null ? `발견된 원문 (p.${page})` : '발견된 원문'),
       claimedQuote: 'LLM이 주장한 인용 (원문에서 확인되지 않음)',
       confirmedPage: (page: number) => `p.${page}에서 확인`,
       candidatePage: (page: number) => `후보 위치 p.${page}`,
@@ -593,7 +609,7 @@ export const S = {
       },
       status: {
         VERIFIED: '원문 확인',
-        UNVERIFIED_PAGE_MISMATCH: '다른 페이지에서 확인',
+        UNVERIFIED_PAGE_MISMATCH: '다른 페이지에서 발견',
         UNVERIFIED_VALUE_MISMATCH: '인용에 값이 없음',
         UNVERIFIED_INFERRED: '추론값',
         UNVERIFIED_PARTIAL: '부분 일치 — 미검증',
