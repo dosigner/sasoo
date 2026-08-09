@@ -145,6 +145,11 @@ describe('evidenceBadge — VERIFIED만 검증 표시', () => {
   it('부분 일치는 성공 톤을 쓰지 않는다', () => {
     expect(evidenceBadge('UNVERIFIED_PARTIAL').tone).not.toBe('success');
   });
+
+  it('PAGE_MISMATCH 배지는 "확인"이 아니라 "발견"이라고 쓴다 (DEC-012)', () => {
+    // "다른 페이지에서 확인"은 검증 도장으로 읽힌다. 확인한 것은 위치가 아니라 존재다.
+    expect(evidenceBadge('UNVERIFIED_PAGE_MISMATCH').label).toBe('다른 페이지에서 발견');
+  });
 });
 
 describe('summarizeAnchoredEvidence / evidenceSummaryTone — 배지는 화면 실제 결과로 센다 (I-2)', () => {
@@ -218,5 +223,52 @@ describe('evidenceTooltip — 확인된 인용과 주장된 인용을 라벨로 
 
   it('앵커가 없으면 검증 미실행을 알린다', () => {
     expect(evidenceTooltip(null)).toContain('검증 미실행');
+  });
+
+  it('검증 방법은 CSV와 같은 헬퍼로 적고, 모르는 코드도 조용히 버리지 않는다', () => {
+    expect(evidenceTooltip(anchor())).toContain('표기 정규화 일치');
+    expect(evidenceTooltip(anchor({ match_method: 'future_method' }))).toContain('future_method');
+  });
+
+  // DEC-012 — 페이지만 어긋난 near-miss는 "인용이 원문에 축자로 있다"가 보장되는 유일한
+  // 미검증 버킷이다. 검증 도장 없이 문구로만 노출한다.
+  it('PAGE_MISMATCH는 발견된 원문을 발견 페이지와 함께 보여준다', () => {
+    const text = evidenceTooltip(
+      anchor({
+        display_status: 'UNVERIFIED_PAGE_MISMATCH',
+        matched_page: 7,
+        matched_quote: 'a wavelength of 1550 nm',
+      }),
+    );
+    expect(text).toContain('발견된 원문 (p.7)');
+    expect(text).toContain('a wavelength of 1550 nm');
+  });
+
+  it('PAGE_MISMATCH는 주장 페이지를 함께 적고 검증 문구는 쓰지 않는다', () => {
+    const text = evidenceTooltip(
+      anchor({ display_status: 'UNVERIFIED_PAGE_MISMATCH', matched_page: 7 }),
+    );
+    expect(text).toContain('LLM 주장 p.4');
+    expect(text).not.toContain('확인된 원문');
+    // 같은 페이지 번호를 "발견된 원문 (p.7)"과 "후보 위치 p.7"로 두 번 적지 않는다.
+    expect(text).not.toContain('후보 위치');
+  });
+
+  it('PAGE_MISMATCH 외 미검증 상태는 matched_quote를 노출하지 않는다', () => {
+    // partial은 위조 인용 81%가 통과한 실측이 있다 — 어떤 표면에서도 원문처럼 보이면 안 된다.
+    const hidden: EvidenceDisplayStatus[] = [
+      'UNVERIFIED_PARTIAL',
+      'UNVERIFIED_AMBIGUOUS',
+      'UNVERIFIED_VALUE_MISMATCH',
+      'UNVERIFIED_INFERRED',
+      'UNVERIFIED_STALE_SOURCE',
+    ];
+    for (const status of hidden) {
+      const text = evidenceTooltip(
+        anchor({ display_status: status, matched_quote: '위조된 원문 조각', matched_page: 9 }),
+      );
+      expect(text).not.toContain('위조된 원문 조각');
+      expect(text).not.toContain('발견된 원문');
+    }
   });
 });

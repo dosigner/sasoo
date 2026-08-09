@@ -165,6 +165,30 @@ const METHOD_LABEL: Record<string, string> = {
   partial: S.recipe.evidence.method.partial,
 };
 
+/** 화면과 CSV가 같은 어휘를 쓰게 한다. 모르는 코드는 버리지 않고 원본을 그대로 돌려준다. */
+export function evidenceMethodLabel(method: string | null | undefined): string {
+  if (!method) return '';
+  return METHOD_LABEL[method] ?? method;
+}
+
+// ---------------------------------------------------------------------------
+// 원문에서 찾은 인용의 노출 범위 (DEC-012)
+// ---------------------------------------------------------------------------
+// 검증기가 "인용이 원문에 축자 또는 표기 정규화로 존재한다"를 보장하는 버킷만 들어간다.
+// PAGE_MISMATCH는 페이지만 어긋났을 뿐 인용 자체는 원문에서 찾은 것이라 노출해도 된다.
+// partial은 위조 인용 81%가 통과한 실측이 있으니 이 집합을 절대 넓히지 마라 —
+// 툴팁과 CSV가 같은 집합을 보므로 여기 한 줄이 두 표면을 동시에 무너뜨린다.
+const FOUND_QUOTE_STATUSES: ReadonlySet<EvidenceDisplayStatus> = new Set([
+  'VERIFIED',
+  'UNVERIFIED_PAGE_MISMATCH',
+]);
+
+/** matched_quote를 사용자에게 보여도 되는가. 검증 도장 여부는 별개다. */
+export function canShowFoundQuote(anchor: EvidenceAnchor | null): boolean {
+  if (!anchor?.matched_quote) return false;
+  return FOUND_QUOTE_STATUSES.has(resolveDisplayStatus(anchor));
+}
+
 export function evidenceTooltip(anchor: EvidenceAnchor | null): string {
   const status = resolveDisplayStatus(anchor);
   const label = evidenceBadge(status).label;
@@ -174,14 +198,21 @@ export function evidenceTooltip(anchor: EvidenceAnchor | null): string {
 
   const lines: string[] = [label];
 
+  // DEC-012 — 검증 도장 없이 원문 인용만 보여주는 near-miss 경로.
+  const nearMissQuote = canShowFoundQuote(anchor) && anchor.display_status !== 'VERIFIED';
+
   if (anchor.display_status === 'VERIFIED' && anchor.matched_quote) {
     lines.push(`${S.recipe.evidence.verifiedQuote}: "${anchor.matched_quote}"`);
+  } else if (nearMissQuote) {
+    // 검증 도장은 붙이지 않는다. 발견 페이지를 라벨에 넣어 아래 주장 페이지와 나란히 읽히게 한다.
+    lines.push(`${S.recipe.evidence.foundQuote(anchor.matched_page)}: "${anchor.matched_quote}"`);
   } else if (anchor.claimed_quote) {
     // 확인되지 않은 인용을 확인된 근거처럼 보이게 하지 않는다.
     lines.push(`${S.recipe.evidence.claimedQuote}: "${anchor.claimed_quote}"`);
   }
 
-  if (typeof anchor.matched_page === 'number') {
+  // 발견 인용 라벨이 이미 페이지를 달고 있으면 같은 번호를 두 번 적지 않는다.
+  if (typeof anchor.matched_page === 'number' && !nearMissQuote) {
     lines.push(
       anchor.display_status === 'VERIFIED'
         ? S.recipe.evidence.confirmedPage(anchor.matched_page)
@@ -191,8 +222,10 @@ export function evidenceTooltip(anchor: EvidenceAnchor | null): string {
   if (typeof anchor.claimed_page === 'number' && anchor.claimed_page !== anchor.matched_page) {
     lines.push(S.recipe.evidence.claimedPageNote(anchor.claimed_page));
   }
-  if (anchor.match_method && METHOD_LABEL[anchor.match_method]) {
-    lines.push(METHOD_LABEL[anchor.match_method]);
+  // 툴팁과 CSV가 같은 헬퍼를 쓴다. 모르는 코드를 툴팁만 조용히 버리면 두 표면의 어휘가 갈린다.
+  const method = evidenceMethodLabel(anchor.match_method);
+  if (method) {
+    lines.push(method);
   }
 
   lines.push(S.recipe.evidence.disclaimer);
