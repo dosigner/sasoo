@@ -225,6 +225,165 @@ class ValueGuardTests(unittest.TestCase):
         )
 
 
+class NormalizerDashConsistencyTests(unittest.TestCase):
+    """위첨자 마이너스와 일반 마이너스가 같은 글자로 접혀야 한다.
+
+    NFKC는 U+207B(위첨자 -)를 U+2212(minus sign)로 펼치는데, 대시 폴딩이 그보다 먼저
+    끝나서 "10⁻³"는 U+2212로, "10−3"은 ASCII "-"로 갈렸다. 같은 뜻이 두 글자로 남으면
+    값 가드뿐 아니라 정규화 인용 매칭도 어긋난다.
+    """
+
+    def test_superscript_and_plain_minus_normalize_alike(self):
+        forms = ["4.5 × 10⁻³", "4.5 × 10−3", "4.5 × 10-3"]
+        normalized = {ev.normalize_text(form) for form in forms}
+        self.assertEqual(len(normalized), 1, normalized)
+        self.assertNotIn("\u2212", normalized.pop())
+
+    def test_offset_map_stays_aligned_after_dash_folding(self):
+        # 대시 폴딩은 1:1 치환이라 오프셋 맵 길이가 흔들리면 안 된다 — 흔들리면 bbox가 밀린다.
+        text = "a BER of 4.5 × 10⁻³ here"
+        normalized, mapping = ev.normalize_with_map(text)
+        self.assertEqual(len(normalized), len(mapping))
+        self.assertTrue(all(0 <= index < len(text) for index in mapping))
+
+
+class ScientificNotationValueGuardTests(unittest.TestCase):
+    """값 가드는 표기가 아니라 수를 본다. 단, 허용 범위는 정확히 같은 수뿐이다."""
+
+    def test_decimal_value_matches_scientific_notation_in_quote(self):
+        # 첫 실측에서 나온 실제 사례: pre_fec_ber_threshold=0.0045인데 원문은
+        # "FEC-correctable BER of 4.5 × 10⁻³"라 인용·페이지가 맞는데도 미검증이 됐다.
+        self.assertEqual(
+            ev.check_value_in_quote("0.0045", "explicit", "a FEC-correctable BER of 4.5 × 10⁻³")[0],
+            "value_in_quote",
+        )
+
+    def test_scientific_value_matches_decimal_quote(self):
+        self.assertEqual(
+            ev.check_value_in_quote("4.5e-3", "explicit", "a BER of 0.0045 was measured")[0],
+            "value_in_quote",
+        )
+
+    def test_notation_variants_all_match(self):
+        for quote in [
+            "the BER of 4.5 × 10⁻³ was",
+            "the BER of 4.5 x 10^-3 was",
+            "the BER of 4.5·10⁻³ was",
+            "the BER of 4.5e-3 was",
+            "the BER of 4.5E-3 was",
+        ]:
+            with self.subTest(quote=quote):
+                self.assertEqual(
+                    ev.check_value_in_quote("0.0045", "explicit", quote)[0], "value_in_quote"
+                )
+
+    def test_digit_forgery_still_fails_across_notations(self):
+        # 표기 동치를 허용해도 수가 다르면 통과하면 안 된다. 오차 허용은 없다.
+        for value in ["0.0046", "4.6e-3", "0.045", "4.5e-4"]:
+            with self.subTest(value=value):
+                status, detail = ev.check_value_in_quote(value, "explicit", "a BER of 4.5 × 10⁻³")
+                self.assertEqual(status, "value_missing")
+                self.assertIsNotNone(detail)
+
+    def test_exponent_parts_are_not_matchable_on_their_own(self):
+        # "4.5 × 10⁻³"의 10과 3은 독립된 수가 아니다. 값 "10"이 여기 걸리면 원문이
+        # 뒷받침하지 않는 파라미터가 검증으로 올라간다.
+        for value in ["10", "3", "-3"]:
+            with self.subTest(value=value):
+                self.assertEqual(
+                    ev.check_value_in_quote(value, "explicit", "a BER of 4.5 × 10⁻³")[0],
+                    "value_missing",
+                )
+
+    def test_trailing_zero_is_the_same_number(self):
+        self.assertEqual(
+            ev.check_value_in_quote("500", "explicit", "annealed at 500.0 °C")[0], "value_in_quote"
+        )
+
+    def test_unsigned_value_does_not_match_negative_quote(self):
+        # 옛 경계 검사는 "-40" 안의 "40"에 걸려 통과했다. 부호가 다르면 다른 값이다.
+        status, detail = ev.check_value_in_quote("40", "explicit", "tested at -40 degrees")
+        self.assertEqual(status, "value_missing")
+        self.assertIsNotNone(detail)
+
+    def test_grouped_thousands_are_one_number(self):
+        self.assertEqual(
+            ev.check_value_in_quote("1000", "explicit", "a pulse energy of 1,000 nJ")[0],
+            "value_in_quote",
+        )
+        # 자릿수 구분 쉼표를 모르면 "1,000"에서 "1"만 떼어 매치된다 — false verify다.
+        self.assertEqual(
+            ev.check_value_in_quote("1", "explicit", "a pulse energy of 1,000 nJ")[0],
+            "value_missing",
+        )
+
+    def test_figure_and_section_numbers_are_not_decimals(self):
+        # "fig.5"의 ".5"를 소수로 읽으면 원문이 뒷받침하지 않는 값이 VERIFIED로 올라간다.
+        # 앞자리 숫자 없는 소수 대안을 두면 논문에 흔한 fig./p./sec. 표기가 전부 수가 된다.
+        for value, quote in [
+            ("0.5", "as shown in fig.5 the device works"),
+            ("0.45", "see p.45 for the full derivation"),
+            ("0.12", "the sample was placed in the chamber.12"),
+            ("0.3", "described in sec.3 of the supplement"),
+        ]:
+            with self.subTest(quote=quote):
+                status, detail = ev.check_value_in_quote(value, "explicit", quote)
+                self.assertEqual(status, "value_missing")
+                self.assertIsNotNone(detail)
+
+    def test_flattened_superscript_offers_no_number_at_all(self):
+        # NFKC가 "10⁻³"를 "10-3"으로 납작하게 만들면 지수인지 범위인지 구분할 수 없다.
+        # 뜻을 정할 수 없으면 근거로 내놓지 않는다 — 10과 3을 독립 수로 흘리면 원문이
+        # 말하지 않은 값이 검증으로 올라간다.
+        for value in ["10", "3", "-3", "0.001"]:
+            for quote in ["a BER below 10⁻³ at all times", "a BER below 10-3 at all times"]:
+                with self.subTest(value=value, quote=quote):
+                    self.assertEqual(
+                        ev.check_value_in_quote(value, "explicit", quote)[0], "value_missing"
+                    )
+
+    def test_spaced_exponent_is_discarded_not_leaked(self):
+        # "4.5 × 10 -3"처럼 지수 앞이 벌어진 표기는 지수로 읽지 않는다. 대신 10과 -3을
+        # 남기지도 않는다(fail closed).
+        quote = "a BER of 4.5 × 10 -3 was measured"
+        for value in ["10", "-3"]:
+            with self.subTest(value=value):
+                self.assertEqual(ev.check_value_in_quote(value, "explicit", quote)[0], "value_missing")
+
+    def test_multiplier_does_not_swallow_separate_numbers(self):
+        # "10 x 10 5"는 배열 치수지 지수가 아니다. 지수 마커가 공백 너머까지 삼키면
+        # 진짜 수가 사라지고(5) 있지도 않은 수가 생긴다(1e6).
+        quote = "an array of 10 x 10 5 mm cells"
+        self.assertEqual(ev.check_value_in_quote("5", "explicit", quote)[0], "value_in_quote")
+        self.assertEqual(ev.check_value_in_quote("1000000", "explicit", quote)[0], "value_missing")
+
+    def test_e_marker_requires_no_spacing(self):
+        # "1 e 2"는 100이 아니다.
+        self.assertEqual(
+            ev.check_value_in_quote("100", "explicit", "case 1 e 2 of the table")[0], "value_missing"
+        )
+
+    def test_hyphen_range_starting_with_ten_falls_back_to_literal(self):
+        # "10-20"은 범위지만 납작해진 "10⁻²⁰"과 글자가 같다. 수로는 읽지 않되,
+        # 인용이 같은 표기를 그대로 담고 있으면 리터럴 대조가 받아준다.
+        self.assertEqual(
+            ev.check_value_in_quote("10-20", "explicit", "a range of 10-20 nm was swept")[0],
+            "value_in_quote",
+        )
+        # 인용이 표기를 바꿔 쓰면 못 잡는다 — 애매한 입력에서는 놓치는 쪽을 택한다.
+        self.assertEqual(
+            ev.check_value_in_quote("10-20", "explicit", "swept from 10 to 20 nm")[0],
+            "value_missing",
+        )
+
+    def test_bare_power_of_ten_is_left_alone(self):
+        # 가수 없는 "10⁻³"은 범위·식별자와 구분이 안 되므로 지수로 읽지 않는다.
+        # 지금은 의도적으로 못 잡는 경계다(실측에서 사례가 나오면 재검토).
+        self.assertEqual(
+            ev.check_value_in_quote("0.001", "explicit", "a BER below 10⁻³")[0], "value_missing"
+        )
+
+
 class _PdfFixture:
     """검증기 테스트용 합성 PDF. 실제 라이브러리 논문 없이 CI에서 돌아야 한다.
 

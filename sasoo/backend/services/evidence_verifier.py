@@ -14,13 +14,18 @@ import difflib
 import json
 import re
 import unicodedata
+from decimal import Decimal, InvalidOperation
 from dataclasses import dataclass
 from pathlib import Path
 
 import fitz
 
-EVIDENCE_VERIFIER_VERSION = "ev1"
-EVIDENCE_NORMALIZER_VERSION = "norm-v1"
+# 규칙이 바뀌면 태그를 올린다 — ensure_anchors가 태그 불일치를 보고 다음 조회 때 자동
+# 재검증한다(로컬 PDF 대조라 LLM 재과금 없음).
+# ev2: 값 가드가 수치 동치로 비교(과학표기 ↔ 소수), 지수부·부호·자릿수 쉼표 오인식 수정.
+# norm-v2: NFKC가 만들어낸 대시도 접어 "10⁻³"와 "10−3"이 같은 문자열이 되게 했다.
+EVIDENCE_VERIFIER_VERSION = "ev2"
+EVIDENCE_NORMALIZER_VERSION = "norm-v2"
 EVIDENCE_CORPUS_PDF_TEXT = "pdf_text"
 
 QUOTE_STATUSES = frozenset(
@@ -40,10 +45,12 @@ PAGE_STATUSES = frozenset({"match", "mismatch", "invalid_page", "no_page", "deri
 VALUE_STATUSES = frozenset({"value_in_quote", "value_missing", "inferred", "not_applicable"})
 
 # ---------------------------------------------------------------------------
-# normalizer-v1
+# normalizer-v2
 # ---------------------------------------------------------------------------
 # 스펙의 규칙 순서: NFKC → 소문자 → 대시 통일 → 리거처 해제 → 줄바꿈 하이픈 결합 →
 # 공백 축약 → 스마트 따옴표 통일.
+# v2 개정: 대시 통일을 NFKC 결과에도 적용한다(위/아래첨자 마이너스가 NFKC를 거쳐
+# U+2212가 되는 경로를 v1이 놓쳤다).
 # 스펙에 없지만 추가한 0단계: 제로폭/소프트하이픈 제거. 소프트하이픈(U+00AD)은 NFKC가
 # 제거하지 않는데, 이걸 남기면 줄바꿈 하이픈 결합이 소프트하이픈 케이스를 놓친다.
 # (표기 정규화일 뿐 수치 의미를 바꾸지 않으므로 스펙과 충돌하지 않는다.)
@@ -98,6 +105,12 @@ def normalize_with_map(text: str) -> tuple[str, list[int]]:
             # 베이스+결합문자 클러스터: 특수 치환 대상이 아니므로 통째로 NFKC+casefold.
             folded = unicodedata.normalize("NFKC", cluster_text).casefold()
         for out_char in folded:
+            # NFKC가 펼쳐낸 대시도 접는다. 위첨자 마이너스(U+207B)는 NFKC를 거치면
+            # U+2212가 되는데, 위 대시 폴딩은 원문 글자만 보므로 그때 놓친다. 그러면
+            # "10⁻³"는 U+2212로, "10−3"은 "-"로 남아 같은 뜻이 두 글자로 갈린다.
+            # 1:1 치환이라 오프셋 맵 정합은 그대로다.
+            if out_char in _DASHES:
+                out_char = "-"
             pairs.append((out_char, index))
 
     # 5단계: 줄바꿈 하이픈 결합 — '-' + (공백) + '\n' + (공백)을 통째로 제거한다.
@@ -197,19 +210,57 @@ def derive_display_status(quote_status: str, page_status: str, value_status: str
 # 값 가드
 # ---------------------------------------------------------------------------
 
-_NUMBER_LITERAL = re.compile(r"(?<!\d)-?\d+(?:\.\d+)?")
+# 값 가드는 문자열이 아니라 수를 본다. 원문은 "4.5 × 10⁻³"라고 쓰고 파라미터는
+# "0.0045"라고 적히는 일이 흔한데(첫 실측에서 실제로 나왔다), 리터럴 대조로는 영영
+# 이어지지 않는다. 그래서 양쪽에서 수 토큰을 뽑아 값으로 비교한다.
+#
+# 토큰을 통째로 소비하는 것이 경계 검사를 겸한다. "1550"은 한 토큰이라 "50"과 같아질 수
+# 없고(리뷰 지적 Critical #1), 부호도 토큰에 포함돼 "-40"과 "40"이 갈린다(Critical #2).
+# 지수부를 함께 삼키므로 "4.5 × 10⁻³"의 10과 3이 독립 숫자로 새지도 않는다.
+#
+# 허용하는 것은 표기 차이뿐이고 오차 허용은 없다 — 0.0045와 0.0046은 끝까지 다른 수다.
+# 지수 마커는 공백을 건너뛰지 않는다. "10 x 10 5"는 배열 치수지 1e6이 아니고,
+# "1 e 2"도 100이 아니다. 애매하면 지수로 읽지 않고, 읽지 않은 조각은 버린다.
+# 앞자리 숫자 없는 소수(".5")는 받지 않는다. 논문에 흔한 "fig.5", "p.45", "sec.3"이
+# 전부 수가 되어 원문이 말하지 않은 값을 검증으로 올린다(적대적 리뷰 실증).
+# 뒤로도 경계를 둔다 — "10.5"가 "version 10.5.3"에 걸리면 안 된다. 다만 문장 끝
+# 마침표는 숫자가 아니므로 "4.5. 다음 문장"은 통과시킨다.
+_NUMBER_TOKEN = re.compile(
+    r"(?<![\d.])"
+    r"(?:"
+    r"(?P<discarded>10\s*[-+]\d+)"
+    r"|"
+    r"(?P<mantissa>-?\d+(?:,\d{3})*(?:\.\d+)?)"
+    r"(?:e(?P<exp_e>-?\d+)|\s*[×x*·⋅]\s*10\^?(?P<exp_ten>-?\d+))?"
+    r")"
+    r"(?!\.?\d)"
+)
 
 
-def _number_boundary_match(needle: str, haystack: str) -> bool:
-    """숫자 needle이 haystack 안에서 더 긴 숫자의 부분문자열로 우연히 걸리지 않게 한다.
+def _token_number(match: "re.Match[str]") -> Decimal | None:
+    # NFKC가 위/아래첨자를 납작하게 만들면 "10⁻³"와 범위 "10-3"이 같은 글자가 된다.
+    # 뜻을 정할 수 없으므로 근거로 내놓지 않는다 — 10과 3을 독립 수로 흘리면 원문이
+    # 말하지 않은 값이 검증으로 올라간다. 인용이 같은 표기를 그대로 담고 있으면
+    # 아래 리터럴 대조가 받아준다.
+    if match.group("discarded") is not None:
+        return None
+    mantissa = match.group("mantissa").replace(",", "")
+    exponent = match.group("exp_e") or match.group("exp_ten")
+    literal = mantissa if exponent is None else f"{mantissa}E{exponent}"
+    try:
+        return Decimal(literal)
+    except (InvalidOperation, ValueError):
+        return None
 
-    "50"이 "1550"의 substring이라는 이유만으로 매치되면 안 된다(리뷰 지적 Critical #1).
-    needle에 부호가 포함돼 있으면(예: "-40") 그 "-"까지 패턴에 들어가므로, quote 쪽에
-    부호 없는 숫자만 있는 경우("40")는 이 경계 검사에서 자연히 걸러진다(리뷰 지적
-    Critical #2 — 부호가 quote에 실제로 없으면 값이 다른 것이므로 불일치가 맞다).
-    """
-    pattern = rf"(?<![\d.]){re.escape(needle)}(?![\d.])"
-    return re.search(pattern, haystack) is not None
+
+def _numeric_tokens(text: str) -> list[tuple[Decimal, str]]:
+    """(수, 원래 표기) 목록. 표기는 실패 사유에 그대로 남겨 디버깅을 살린다."""
+    tokens: list[tuple[Decimal, str]] = []
+    for match in _NUMBER_TOKEN.finditer(text):
+        number = _token_number(match)
+        if number is not None:
+            tokens.append((number, match.group(0)))
+    return tokens
 
 
 def check_value_in_quote(
@@ -231,11 +282,12 @@ def check_value_in_quote(
         return ("value_missing", "no_matched_quote")
 
     normalized_quote = normalize_text(matched_quote)
-    numbers = _NUMBER_LITERAL.findall(normalized_value)
-    if numbers:
-        for needle in numbers:
-            if not _number_boundary_match(needle, normalized_quote):
-                return ("value_missing", f"missing:{needle[:24]}")
+    value_numbers = _numeric_tokens(normalized_value)
+    if value_numbers:
+        quote_numbers = [number for number, _ in _numeric_tokens(normalized_quote)]
+        for number, literal in value_numbers:
+            if number not in quote_numbers:
+                return ("value_missing", f"missing:{literal[:24]}")
         return ("value_in_quote", None)
 
     if normalized_value not in normalized_quote:
