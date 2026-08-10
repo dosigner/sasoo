@@ -76,12 +76,6 @@ export type UploadResponse = Paper;
 export type AnalysisPhase = 'screening' | 'citation' | 'visual' | 'recipe' | 'deep_dive';
 export type PhaseStatusValue = 'pending' | 'running' | 'completed' | 'error';
 export type VisualState = 'ready' | 'running' | 'error' | 'partial';
-export type PaperBananaProfile = 'fast' | 'balanced' | 'quality';
-
-export interface AnalysisRunRequest {
-  paperbanana_profile?: PaperBananaProfile;
-}
-
 export interface PhaseInfo {
   phase: AnalysisPhase;
   status: PhaseStatusValue;
@@ -288,7 +282,6 @@ export interface GeneratePaperBananaRequest {
   language?: 'ko' | 'en';
   include_recipe?: boolean;
   include_figures?: boolean;
-  paperbanana_profile?: PaperBananaProfile;
 }
 
 // Visualization plan types (Gemini Pro 3 → up to 5 items)
@@ -334,7 +327,6 @@ export interface Settings {
   auto_analyze: boolean;
   language: string;
   max_concurrent_analyses: number;
-  paperbanana_profile: PaperBananaProfile;
   pdf_parser_mode: 'java';
   extraction_pipeline_version: 'resolver_v1';
   pdf_visual_engine: 'gemini' | 'odl';
@@ -613,14 +605,10 @@ export async function updatePaper(
 // Analysis endpoints
 // ---------------------------------------------------------------------------
 
-export async function runAnalysis(
-  paperId: string,
-  data: AnalysisRunRequest = {}
-): Promise<AnalysisStatus> {
-  return request<AnalysisStatus>(`/analysis/${paperId}/run`, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
+// 백엔드 /run은 본문을 받지 않는다(analysis_routes.run_analysis 시그니처에 body 인자가 없다).
+// 본문을 실어 보내면 FastAPI가 조용히 버리므로, 보내는 쪽에서 아예 만들지 않는다.
+export async function runAnalysis(paperId: string): Promise<AnalysisStatus> {
+  return request<AnalysisStatus>(`/analysis/${paperId}/run`, { method: 'POST' });
 }
 
 export async function getAnalysisStatus(
@@ -708,14 +696,9 @@ export async function generatePaperBanana(
   paperId: string,
   data: GeneratePaperBananaRequest = {}
 ): Promise<PaperBanana> {
-  const payload: GeneratePaperBananaRequest = {
-    paperbanana_profile: 'fast',
-    ...data,
-  };
-
   return request<PaperBanana>(`/analysis/${paperId}/paperbanana`, {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify(data),
   });
 }
 

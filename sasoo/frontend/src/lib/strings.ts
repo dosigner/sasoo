@@ -198,9 +198,6 @@ export const S = {
     recipeTab: '레시피',
     experimentTab: '실험 계획',
     experimentPending: '레시피가 준비되면 실험 계획서를 만들 수 있어요.',
-    paperbananaProfile: '분석 프로필',
-    useDefaultProfile: (label: string) => `기본값 사용 (${label})`,
-    paperbananaProfileHelp: 'Figure와 시각화의 품질과 속도를 어떻게 맞출지 골라요.',
   },
 
   // ── PDF Viewer ──
@@ -357,9 +354,6 @@ export const S = {
     pdfVisualEngineHelp: 'AI 판독은 그림·수식을 정확히 읽지만 논문당 API 비용이 들어요. 빠른 추출은 무료지만 수식·표를 놓칠 수 있어요.',
     pdfVisualEngineGemini: 'AI 판독 (정확, 유료)',
     pdfVisualEngineOdl: '빠른 추출 (무료)',
-    profileFast: '빠름',
-    profileBalanced: '균형',
-    profileQuality: '고품질',
     // Appearance
     appearance: '테마',
     dark: '다크',
