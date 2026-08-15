@@ -100,6 +100,9 @@ from api.report_service import (
     _generate_paperbanana_image,
 )
 from api.figure_service import explain_figure_handler
+# 함수 안에서 import하면 모듈 스텁이 깔린 테스트 구성에서 api.settings를 부분 import 상태로
+# 오염시킨다(이 파일 상단 주석의 격리 사고와 같은 계열). 상단에서 한 번만 묶는다.
+from api.settings import _get_all_settings
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
@@ -184,6 +187,43 @@ _CHAIN_CACHE_VERSION = "2026-08-06-ev1"
 
 def _phase_cache_key(*, model: str, thinking: str, system_instruction: str, prompt: str) -> str:
     return "\n\x1f\n".join((_CHAIN_CACHE_VERSION, model, thinking, system_instruction or "", prompt))
+
+
+def _visualization_cache_input(
+    *,
+    visualization_input,
+    previous_results,
+    recipe_result,
+    deep_dive_result,
+    image_provider: str,
+    image_quality: str,
+) -> str:
+    """시각화 phase의 캐시 키.
+
+    이 phase는 캐시가 히트하면 계획뿐 아니라 **생성된 이미지까지** 통째로 재사용한다.
+    그래서 이미지 공급사와 품질이 키에 들어가야 한다 — 빠지면 사용자가 설정에서 품질을
+    바꿔도 예전 이미지가 그대로 나오고, 고른 값이 결과를 바꾸지 않는다(DEC-013이 걷어낸
+    거짓 통제와 같은 종류다). 체인 버전도 다른 phase와 같이 담는다.
+    """
+    return json.dumps(
+        {
+            "chain_version": _CHAIN_CACHE_VERSION,
+            "visualization_input": visualization_input,
+            "previous_results": previous_results,
+            "recipe_result": recipe_result,
+            "deep_dive_result": deep_dive_result,
+            "image_provider": image_provider,
+            "image_quality": image_quality,
+            # 이 바깥 캐시는 _phase_cache_key를 거치지 않으므로 모델을 직접 담아야 한다.
+            # 담지 않으면 모델을 갈아도 옛 모델이 만든 계획과 이미지가 그대로 나온다.
+            # 이미지 모델 ID는 담지 않는다(공급사와 품질로 대신한다) — 이미지 모델 자체를
+            # 바꿀 때는 _CHAIN_CACHE_VERSION을 올려라.
+            "plan_model": MODEL_VIZ_PLANNING,
+            "mermaid_model": MODEL_MERMAID,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
 
 
 def _screening_gate_decision(
@@ -2102,15 +2142,14 @@ async def _run_visualizations(
     2. Generate each (Mermaid or PaperBanana) in parallel
     3. Store results in DB
     """
-    visualization_cache_input = json.dumps(
-        {
-            "visualization_input": visualization_input,
-            "previous_results": previous_results,
-            "recipe_result": recipe_result,
-            "deep_dive_result": deep_dive_result,
-        },
-        ensure_ascii=False,
-        sort_keys=True,
+    _image_settings = await _get_all_settings()
+    visualization_cache_input = _visualization_cache_input(
+        visualization_input=visualization_input,
+        previous_results=previous_results,
+        recipe_result=recipe_result,
+        deep_dive_result=deep_dive_result,
+        image_provider=_image_settings.get("image_provider", "openai"),
+        image_quality=_image_settings.get("image_quality", "high"),
     )
     cached = await _get_cached_phase_result(paper_id, "visualization", visualization_cache_input)
     if cached is not None:

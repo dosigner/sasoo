@@ -1070,6 +1070,11 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             ),
             patch("api.analysis_routes._plan_visualizations", new=AsyncMock(return_value=[])) as plan_mock,
             patch("api.analysis_routes._store_visualization_progress", new=AsyncMock()) as store_mock,
+            # 캐시 키가 이미지 설정을 읽으므로 DB 접근을 막는다.
+            patch(
+                "api.analysis_routes._get_all_settings",
+                new=AsyncMock(return_value={"image_provider": "openai", "image_quality": "high"}),
+            ),
         ):
             result = await analysis_routes._run_visualizations(
                 7, "viz input", "folder", [], "recipe result", "deep dive result", status,
@@ -1723,6 +1728,55 @@ class MermaidRepairAndRegenerateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(getattr(ctx.exception, "status_code", None), 400)
 
 
+class VisualizationCacheKeyTests(unittest.TestCase):
+    """시각화 캐시 키는 이미지 설정까지 담아야 한다.
+
+    이 phase의 캐시 히트는 계획뿐 아니라 생성된 이미지까지 통째로 재사용한다. 키가
+    텍스트 입력만 보면 사용자가 설정에서 품질이나 공급사를 바꿔도 예전 이미지가 그대로
+    나온다. 고른 값이 결과를 바꾸지 않는다는 점에서 DEC-013이 걷어낸 거짓 통제와 같다.
+    """
+
+    def _key(self, **overrides):
+        args = dict(
+            visualization_input="본문",
+            previous_results={"recipe": "r"},
+            recipe_result="recipe",
+            deep_dive_result="deep",
+            image_provider="openai",
+            image_quality="high",
+        )
+        args.update(overrides)
+        return analysis_routes._visualization_cache_input(**args)
+
+    def test_same_inputs_give_same_key(self):
+        self.assertEqual(self._key(), self._key())
+
+    def test_image_quality_changes_the_key(self):
+        self.assertNotEqual(self._key(), self._key(image_quality="low"))
+
+    def test_image_provider_changes_the_key(self):
+        self.assertNotEqual(self._key(), self._key(image_provider="gemini"))
+
+    def test_text_inputs_still_change_the_key(self):
+        self.assertNotEqual(self._key(), self._key(visualization_input="다른 본문"))
+        self.assertNotEqual(self._key(), self._key(recipe_result="다른 레시피"))
+
+    def test_stage_models_change_the_key(self):
+        # 모델을 바꾸면 다른 phase는 _phase_cache_key가 알아서 무효화하는데, 이 phase의
+        # 바깥 캐시는 그 키를 거치지 않는다. 모델을 담지 않으면 모델 교체 후에도 옛 모델이
+        # 만든 계획과 이미지가 그대로 나온다.
+        base = self._key()
+        with patch.object(analysis_routes, "MODEL_VIZ_PLANNING", "other-plan-model"):
+            self.assertNotEqual(base, self._key())
+        with patch.object(analysis_routes, "MODEL_MERMAID", "other-mermaid-model"):
+            self.assertNotEqual(base, self._key())
+
+    def test_chain_version_is_part_of_the_key(self):
+        # 다른 phase는 전부 _CHAIN_CACHE_VERSION을 키에 담는데 이 phase만 빠져 있었다.
+        # 버전을 올려도 시각화만 옛 결과를 재사용하면 체인이 서로 어긋난다.
+        self.assertIn(analysis_routes._CHAIN_CACHE_VERSION, self._key())
+
+
 class SanitizeMermaidCodeTests(unittest.TestCase):
     def test_strips_fences_frontmatter_and_acc_lines(self):
         raw = (
@@ -2063,6 +2117,10 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         stack.enter_context(patch("api.analysis_routes._run_citation", new=citation_mock))
         stack.enter_context(patch("api.analysis_routes._get_visual_contract",
                                   new=AsyncMock(return_value=visual_ready_contract)))
+        # 시각화 캐시 키가 이미지 설정을 읽는다(_visualization_cache_input) — DB에 닿지 않게 막는다.
+        stack.enter_context(patch("api.analysis_routes._get_all_settings",
+                                  new=AsyncMock(return_value={"image_provider": "openai",
+                                                             "image_quality": "high"})))
         stack.enter_context(patch("api.analysis_routes._get_cached_phase_result", new=cache_fake))
         stack.enter_context(patch("api.analysis_routes.call_interaction", new=call_fake))
         if visual_result is not None:
