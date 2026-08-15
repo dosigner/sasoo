@@ -187,19 +187,27 @@ describe('summarizeAnchoredEvidence / evidenceSummaryTone — 배지는 화면 �
   });
 });
 
-describe('evidenceTarget — 확인 페이지와 후보 페이지를 구분한다', () => {
+describe('evidenceTarget — 확인·발견·후보 세 어휘를 구분한다', () => {
   it('확인된 페이지를 우선한다', () => {
-    expect(evidenceTarget(anchor())).toEqual({ page: 4, confirmed: true });
+    expect(evidenceTarget(anchor())).toEqual({ page: 4, kind: 'confirmed' });
   });
 
-  it('page_mismatch는 이동은 가능하지만 confirmed가 아니다', () => {
+  it('page_mismatch는 "발견"이다 — 배지와 같은 어휘를 쓴다 (DEC-012 후속)', () => {
+    // 배지는 "다른 페이지에서 발견"인데 점프 버튼만 "후보 위치"라고 부르면 같은 행에서
+    // 두 어휘가 갈린다. 원문에서 실제로 찾은 위치이므로 후보가 아니다.
     const target = evidenceTarget(anchor({ display_status: 'UNVERIFIED_PAGE_MISMATCH', matched_page: 7 }));
-    expect(target).toEqual({ page: 7, confirmed: false });
+    expect(target).toEqual({ page: 7, kind: 'found' });
+  });
+
+  it('부분 일치는 "발견" 어휘를 빌리지 못한다', () => {
+    // 인용을 못 보여주는 상태가 위치만 "발견"이라고 부르면 같은 과대표현이 된다.
+    const target = evidenceTarget(anchor({ display_status: 'UNVERIFIED_PARTIAL', matched_page: 7 }));
+    expect(target).toEqual({ page: 7, kind: 'candidate' });
   });
 
   it('확인 페이지가 없으면 LLM 주장 페이지를 후보로 준다', () => {
     const target = evidenceTarget(anchor({ display_status: 'UNVERIFIED_NOT_FOUND', matched_page: null }));
-    expect(target).toEqual({ page: 4, confirmed: false });
+    expect(target).toEqual({ page: 4, kind: 'candidate' });
   });
 
   it('페이지가 전혀 없으면 null이다', () => {

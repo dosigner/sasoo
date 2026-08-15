@@ -257,9 +257,11 @@ export default function RecipeCard({
                               className="btn-ghost text-2xs px-1.5 py-0.5"
                               title={S.recipe.evidence.jump}
                             >
-                              {target.confirmed
+                              {target.kind === 'confirmed'
                                 ? S.recipe.evidence.confirmedPage(target.page)
-                                : S.recipe.evidence.candidatePage(target.page)}
+                                : target.kind === 'found'
+                                  ? S.recipe.evidence.foundPage(target.page)
+                                  : S.recipe.evidence.candidatePage(target.page)}
                             </button>
                           )}
                         </div>

@@ -593,6 +593,7 @@ export const S = {
       foundQuote: (page: number | null) => (page != null ? `발견된 원문 (p.${page})` : '발견된 원문'),
       claimedQuote: 'LLM이 주장한 인용 (원문에서 확인되지 않음)',
       confirmedPage: (page: number) => `p.${page}에서 확인`,
+      foundPage: (page: number) => `발견 위치 p.${page}`,
       candidatePage: (page: number) => `후보 위치 p.${page}`,
       claimedPageNote: (page: number) => `LLM 주장 p.${page}`,
       jump: '이 페이지로 이동',
