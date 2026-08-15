@@ -6,7 +6,6 @@ import {
   updatePaper,
   type EvidenceAnchor,
   type Paper,
-  type PaperBananaProfile,
   type PdfNavigationRequest,
 } from '@/lib/api';
 import { evidenceTarget } from '@/lib/evidence';
@@ -17,14 +16,12 @@ import { buildChatStarterPrompts, buildWorkbenchStatusSummary } from '@/lib/work
 import WorkbenchHeader from '@/components/workbench/WorkbenchHeader';
 import type { CitationFocus } from '@/components/AnalysisPanel';
 import type { CitationTarget } from '@/components/ChatPanel';
-import { ContentState, Modal, Select } from '@/components/ui';
+import { ContentState, Modal } from '@/components/ui';
 import { useWorkbenchLayout } from '@/hooks/useWorkbenchLayout';
 import { useWorkbenchAnalysisControls } from '@/hooks/useWorkbenchAnalysisControls';
 import { getAgentMeta, getAllAgents, type AgentMeta } from '@/lib/agents';
 import { AppIcon } from '@/components/icons';
 
-const ANALYSIS_PROFILE_OPTIONS: PaperBananaProfile[] = ['fast', 'balanced', 'quality'];
-type AnalysisProfileSelection = 'default' | PaperBananaProfile;
 const PdfViewer = lazy(() => import('@/components/PdfViewer'));
 const AnalysisPanel = lazy(() => import('@/components/AnalysisPanel'));
 const ChatPanel = lazy(() => import('@/components/ChatPanel'));
@@ -87,10 +84,6 @@ export default function Workbench() {
   const {
     showAnalysisConfirm,
     setShowAnalysisConfirm,
-    defaultPaperBananaProfile,
-    analysisProfileSelection,
-    setAnalysisProfileSelection,
-    getProfileLabel,
     openAnalysisConfirm,
     handleStartAnalysis,
     handleCancelAnalysis,
@@ -186,8 +179,8 @@ export default function Workbench() {
     }
   }, [figures, tables]);
 
-  const onConfirmAnalysis = useCallback(async (selection?: AnalysisProfileSelection) => {
-    const started = await handleStartAnalysis(selection);
+  const onConfirmAnalysis = useCallback(async () => {
+    const started = await handleStartAnalysis();
     if (started) {
       toast.success(S.toast.analysisStarted);
     } else {
@@ -277,24 +270,6 @@ export default function Workbench() {
           논문 분석에 Gemini API를 사용해요.
           예상 비용: <span className="font-medium text-accent">$0.5 ~ $2.0</span> / 논문
         </p>
-        <div className="mb-4">
-          <label className="mb-1.5 block text-xs text-fg-muted">
-            {S.workbench.paperbananaProfile}
-          </label>
-          <Select
-            value={analysisProfileSelection}
-            onValueChange={(value) => setAnalysisProfileSelection(value as AnalysisProfileSelection)}
-            className="w-full"
-            aria-label={S.workbench.paperbananaProfile}
-            options={[
-              { value: 'default', label: S.workbench.useDefaultProfile(getProfileLabel(defaultPaperBananaProfile)) },
-              ...ANALYSIS_PROFILE_OPTIONS.map((profile) => ({ value: profile, label: getProfileLabel(profile) })),
-            ]}
-          />
-          <p className="mt-1 text-2xs text-fg-muted">
-            {S.workbench.paperbananaProfileHelp}
-          </p>
-        </div>
         <div className="flex gap-2">
           <button
             onClick={() => void onConfirmAnalysis()}
