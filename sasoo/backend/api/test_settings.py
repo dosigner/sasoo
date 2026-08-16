@@ -21,6 +21,39 @@ def _foreign_library_path() -> str:
     return r"C:\Users\dongj\Documents\sasoo\library"
 
 
+class ObsoleteSettingsCleanupTests(unittest.IsolatedAsyncioTestCase):
+    """배선이 끊긴 설정 키는 행까지 지운다.
+
+    DEC-013으로 워크벤치 분석 프로필을 걷어냈지만 settings 테이블에는
+    paperbanana_profile 행이 그대로 남았다. 아무도 읽지 않아 무해하지만, 남겨 두면
+    다음 사람이 "쓰이는 설정인가 보다"라고 읽는다.
+    """
+
+    async def test_ensure_defaults_deletes_obsolete_keys(self) -> None:
+        db = AsyncMock()
+        with (
+            patch("api.settings.get_db", new=AsyncMock(return_value=db)),
+            patch("api.settings.fetch_one", new=AsyncMock(return_value={"key": "k", "value": "v"})),
+            patch("api.settings._ensure_library_path", new=AsyncMock()),
+        ):
+            await settings._ensure_defaults()
+
+        deletes = [
+            call for call in db.execute.await_args_list
+            if "DELETE FROM settings" in str(call.args[0])
+        ]
+        self.assertTrue(deletes, "고아 키 삭제 쿼리가 실행되지 않았다")
+        deleted = {call.args[1][0] for call in deletes}
+        self.assertIn("paperbanana_profile", deleted)
+
+    def test_obsolete_keys_never_overlap_live_defaults(self) -> None:
+        # 살아 있는 키가 목록에 섞이면 기동할 때마다 사용자 설정이 지워진다.
+        self.assertEqual(
+            settings.OBSOLETE_SETTINGS & set(settings.DEFAULT_SETTINGS),
+            set(),
+        )
+
+
 class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
     """
     The settings API always speaks of a single "library_path" -- the path for

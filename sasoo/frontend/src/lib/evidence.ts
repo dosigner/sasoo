@@ -147,14 +147,23 @@ export function evidenceBadge(status: EvidenceDisplayStatus): EvidenceBadge {
   };
 }
 
-/** 이동 가능한 페이지와 그 페이지가 확인된 위치인지 여부. 확인되지 않은 페이지는 "후보"다. */
-export function evidenceTarget(anchor: EvidenceAnchor | null): { page: number; confirmed: boolean } | null {
+/** 이동 대상 페이지와 그 위치를 뭐라고 부를지. 배지와 같은 어휘를 쓴다(DEC-012).
+ *  confirmed = 검증된 위치, found = 원문에서 찾았으나 주장 페이지와 어긋난 위치,
+ *  candidate = 그 밖의 미확인 위치. found를 partial까지 넓히면 배지에서 막은 과대표현이
+ *  점프 버튼으로 새어 나온다. */
+export type EvidenceTargetKind = 'confirmed' | 'found' | 'candidate';
+
+export function evidenceTarget(
+  anchor: EvidenceAnchor | null,
+): { page: number; kind: EvidenceTargetKind } | null {
   if (!anchor) return null;
   if (typeof anchor.matched_page === 'number' && anchor.matched_page > 0) {
-    return { page: anchor.matched_page, confirmed: anchor.display_status === 'VERIFIED' };
+    const kind: EvidenceTargetKind =
+      anchor.display_status === 'VERIFIED' ? 'confirmed' : canShowFoundQuote(anchor) ? 'found' : 'candidate';
+    return { page: anchor.matched_page, kind };
   }
   if (typeof anchor.claimed_page === 'number' && anchor.claimed_page > 0) {
-    return { page: anchor.claimed_page, confirmed: false };
+    return { page: anchor.claimed_page, kind: 'candidate' };
   }
   return null;
 }

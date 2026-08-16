@@ -268,22 +268,6 @@ export interface MermaidDiagram {
   description: string | null;
 }
 
-// PaperBanana types (visual summary)
-export interface PaperBanana {
-  paper_id: number;
-  image_path: string;
-  image_url: string;
-  width: number;
-  height: number;
-}
-
-export interface GeneratePaperBananaRequest {
-  style?: 'default' | 'minimal' | 'detailed';
-  language?: 'ko' | 'en';
-  include_recipe?: boolean;
-  include_figures?: boolean;
-}
-
 // Visualization plan types (Gemini Pro 3 → up to 5 items)
 export interface VisualizationItem {
   id: number;
@@ -690,16 +674,6 @@ export async function getVisualizations(
   paperId: string
 ): Promise<VisualizationPlan> {
   return request<VisualizationPlan>(`/analysis/${paperId}/visualizations`);
-}
-
-export async function generatePaperBanana(
-  paperId: string,
-  data: GeneratePaperBananaRequest = {}
-): Promise<PaperBanana> {
-  return request<PaperBanana>(`/analysis/${paperId}/paperbanana`, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
 }
 
 // ---------------------------------------------------------------------------
