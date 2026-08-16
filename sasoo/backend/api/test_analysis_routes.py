@@ -1780,6 +1780,72 @@ class VisualizationCacheKeyTests(unittest.TestCase):
         self.assertIn(analysis_routes._CHAIN_CACHE_VERSION, self._key())
 
 
+class ChainStageSalvageTests(unittest.TestCase):
+    """꼬리만 잘린 응답은 되살려 쓰고 재시도하지 않는다.
+
+    상한 절단은 결정론적이다. 같은 요청을 그대로 다시 보내면 같은 자리에서 또
+    잘린다(실측 2026-08-16: recipe가 65522 토큰 x 2로 상한을 두 번 쳤다). 앞부분이
+    온전하면 그걸 쓰고 재시도를 건너뛰는 것이 결과도 낫고 값도 절반이다.
+    """
+
+    SCHEMA = {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "steps": {"type": "array", "items": {"type": "string"}},
+            "tail": {"type": "string"},
+        },
+        "required": ["title", "steps"],
+    }
+
+    TRUNCATED = '{"title": "T", "steps": ["a", "b"], "tail": "닫지 못했다. Done. Fin. OK.'
+
+    def _run(self, texts):
+        calls = {"n": 0}
+
+        async def fake_call(*args, **kwargs):
+            i = calls["n"]
+            calls["n"] += 1
+            return {"text": texts[min(i, len(texts) - 1)], "model": "m",
+                    "tokens_in": 10, "tokens_out": 20, "interaction_id": None}
+
+        import asyncio
+
+        with patch.object(analysis_routes, "call_interaction", fake_call):
+            result = asyncio.run(analysis_routes._run_chain_stage(
+                phase="recipe",
+                prompt_chain="c",
+                prompt_fallback="f",
+                system_instruction="s",
+                previous_interaction_id=None,
+                pdf_uri=None,
+                response_schema=self.SCHEMA,
+            ))
+        return result, calls["n"]
+
+    def test_truncated_tail_is_salvaged_without_a_retry(self):
+        result, n = self._run([self.TRUNCATED])
+        self.assertEqual(n, 1, "되살릴 수 있는데도 재시도했다")
+        parsed = json.loads(result["text"])
+        self.assertEqual(parsed["title"], "T")
+        self.assertEqual(parsed["steps"], ["a", "b"])
+        self.assertNotIn("tail", parsed)  # 쓰다 만 값은 채우지 않는다
+
+    def test_unsalvageable_output_still_retries_once(self):
+        # 필수 키가 나오기 전에 잘렸다. 되살리면 안 되고 기존대로 1회 재시도한다.
+        broken = '{"title": "T", "ste'
+        good = '{"title": "T", "steps": ["a"]}'
+        result, n = self._run([broken, good])
+        self.assertEqual(n, 2)
+        self.assertEqual(json.loads(result["text"])["steps"], ["a"])
+
+    def test_valid_output_is_left_alone(self):
+        good = '{"title": "T", "steps": ["a"]}'
+        result, n = self._run([good])
+        self.assertEqual(n, 1)
+        self.assertEqual(result["text"], good)
+
+
 class StageThinkingLevelTests(unittest.TestCase):
     """체인 단계의 thinking_level은 3.7 Flash가 받는 값이어야 한다.
 

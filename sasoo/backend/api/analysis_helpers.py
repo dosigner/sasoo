@@ -97,6 +97,102 @@ def _stage_result_defect(text: str) -> Optional[str]:
     return None
 
 
+def _last_complete_value_cut(text: str):
+    """값 경계에서 자를 수 있는 마지막 위치와 그때 열려 있던 컨테이너를 찾는다.
+
+    반환: (cut_index, open_stack) 또는 None. cut_index 앞까지가 온전한 JSON 조각이고,
+    open_stack을 뒤에서부터 닫으면 파싱 가능한 문서가 된다.
+    """
+    stack: list[str] = []
+    in_string = False
+    escape = False
+    best: tuple[int, list[str]] | None = None
+
+    for i, ch in enumerate(text):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch in "{[":
+            stack.append(ch)
+        elif ch in "}]":
+            if not stack:
+                return None
+            stack.pop()
+            # 컨테이너 하나가 온전히 닫혔다 — 여기까지는 확실히 유효하다
+            best = (i + 1, list(stack))
+        elif ch == ",":
+            # 직전 값이 끝났다는 뜻 — 쉼표 앞에서 자른다
+            best = (i, list(stack))
+    return best
+
+
+def _prune_incomplete_items(value, schema):
+    """스키마의 required를 못 채운 배열 항목을 버린다. 값을 채워 넣지는 않는다."""
+    if not isinstance(schema, dict):
+        return value
+    if schema.get("type") == "array" and isinstance(value, list):
+        item_schema = schema.get("items") or {}
+        required = item_schema.get("required") or []
+        kept = []
+        for item in value:
+            if required and not (isinstance(item, dict) and all(k in item for k in required)):
+                continue
+            kept.append(_prune_incomplete_items(item, item_schema))
+        return kept
+    if schema.get("type") == "object" and isinstance(value, dict):
+        props = schema.get("properties") or {}
+        return {k: _prune_incomplete_items(v, props.get(k, {})) for k, v in value.items()}
+    return value
+
+
+def salvage_truncated_json(text: str, schema: dict) -> Optional[str]:
+    """출력 상한에 걸려 잘린 JSON에서 온전히 끝난 부분만 되살린다.
+
+    되살릴 수 없으면 None. 그때는 호출부가 기존처럼 재시도하거나 실패로 둔다.
+
+    규칙 하나뿐이다. **쓰다 만 값은 절대 채우지 않는다.** 값 경계에서만 자르고,
+    스키마의 required를 못 채운 항목은 버린다. 필수 필드가 잘려 나갔거나 필수
+    배열이 비면 되살리지 않는다 — 빈 껍데기를 성공으로 저장하는 게 실패보다 나쁘다.
+    """
+    cleaned = _clean_llm_json(text or "")
+    if not cleaned.strip():
+        return None
+    try:
+        json.loads(cleaned)
+        return None  # 멀쩡하다. 되살릴 게 없다.
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    cut = _last_complete_value_cut(cleaned)
+    if cut is None:
+        return None
+    index, stack = cut
+    closers = "".join("}" if ch == "{" else "]" for ch in reversed(stack))
+    try:
+        parsed = json.loads(cleaned[:index] + closers)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+
+    parsed = _prune_incomplete_items(parsed, schema)
+
+    props = (schema or {}).get("properties") or {}
+    for key in (schema or {}).get("required") or []:
+        if key not in parsed:
+            return None
+        if (props.get(key, {}).get("type") == "array") and not parsed[key]:
+            return None
+    return json.dumps(parsed, ensure_ascii=False)
+
+
 def _is_error_result(text: str) -> bool:
     """Check if an LLM result text indicates an error."""
     if not text or not text.strip():

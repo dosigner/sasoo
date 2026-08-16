@@ -82,6 +82,7 @@ from api.analysis_helpers import (
     _clean_llm_json,
     _is_error_result,
     _stage_result_defect,
+    salvage_truncated_json,
     _SYSTEM_INSTRUCTION_KO,
 )
 from services.models import (
@@ -558,15 +559,23 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
     result = await _invoke()
     defect = _stage_result_defect(result.get("text") or "")
     if defect:
-        logger.warning(
-            "screening %s (tokens_out=%s); retrying once",
-            defect, result.get("tokens_out"),
-        )
-        retry = await _invoke()
-        # 재시도 사용량을 합산해 비용 추적이 실사용을 반영하게 한다
-        retry["tokens_in"] = (result.get("tokens_in") or 0) + (retry.get("tokens_in") or 0)
-        retry["tokens_out"] = (result.get("tokens_out") or 0) + (retry.get("tokens_out") or 0)
-        result = retry
+        salvaged = salvage_truncated_json(result.get("text") or "", _SCREENING_SCHEMA)
+        if salvaged is not None:
+            logger.warning(
+                "screening %s (tokens_out=%s); 잘린 앞부분을 살려 재시도를 건너뛴다",
+                defect, result.get("tokens_out"),
+            )
+            result["text"] = salvaged
+        else:
+            logger.warning(
+                "screening %s (tokens_out=%s); retrying once",
+                defect, result.get("tokens_out"),
+            )
+            retry = await _invoke()
+            # 재시도 사용량을 합산해 비용 추적이 실사용을 반영하게 한다
+            retry["tokens_in"] = (result.get("tokens_in") or 0) + (retry.get("tokens_in") or 0)
+            retry["tokens_out"] = (result.get("tokens_out") or 0) + (retry.get("tokens_out") or 0)
+            result = retry
 
     # structured output 실패 대비 안전망: 마크다운 펜스 제거 후 JSON 검증
     cleaned_text = _clean_llm_json(result["text"])
@@ -1134,6 +1143,17 @@ async def _run_chain_stage(
     result = await _invoke()
     defect = _stage_result_defect(result.get("text") or "")
     if defect:
+        # 상한에 걸려 꼬리만 잘린 경우가 있다. 앞부분이 온전하면 그걸 쓰고 재시도를
+        # 건너뛴다. 같은 요청을 그대로 다시 보내면 같은 자리에서 또 잘리므로
+        # (실측 2026-08-16: 65522 토큰 x 2) 재시도는 값만 두 배가 된다.
+        salvaged = salvage_truncated_json(result.get("text") or "", response_schema or {})
+        if salvaged is not None:
+            logger.warning(
+                "chain stage %s %s (tokens_out=%s); 잘린 앞부분을 살려 재시도를 건너뛴다",
+                phase, defect, result.get("tokens_out"),
+            )
+            result["text"] = salvaged
+            return result
         logger.warning(
             "chain stage %s %s (tokens_out=%s); retrying once",
             phase, defect, result.get("tokens_out"),
