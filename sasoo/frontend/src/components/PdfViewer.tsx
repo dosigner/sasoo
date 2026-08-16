@@ -12,7 +12,6 @@ import { S } from '@/lib/strings';
 const {
   EventBus,
   FindState,
-  NullL10n,
   PDFFindController,
   PDFLinkService,
   PDFViewer,
@@ -24,7 +23,6 @@ const {
     WRAPPED: number;
     PENDING: number;
   };
-  NullL10n: any;
   PDFFindController: new (options: { eventBus: any; linkService: any }) => any;
   PDFLinkService: new (options?: { eventBus: any }) => any;
   PDFViewer: new (options: any) => any;
@@ -290,7 +288,8 @@ export default function PdfViewer({
       findController,
       linkService,
       removePageBorders: true,
-      l10n: NullL10n,
+      // pdfjs v6에서 이 헬퍼가 사라졌다. l10n은 선택 항목이고 넘기지 않으면
+      // PDFViewer가 GenericL10n을 스스로 채운다(this.l10n ||= new GenericL10n()).
     });
 
     linkService.setViewer(pdfViewer);
@@ -343,7 +342,9 @@ export default function PdfViewer({
     loadingTask.promise
       .then((pdfDocument) => {
         if (cancelled) {
-          void pdfDocument.destroy();
+          // pdfjs v6부터 destroy()는 PDFDocumentProxy가 아니라 로딩 태스크에 있다.
+          // 아래 cleanup과 같은 호출이며 destroyed 플래그로 멱등하다.
+          void loadingTask?.destroy();
           return;
         }
 
