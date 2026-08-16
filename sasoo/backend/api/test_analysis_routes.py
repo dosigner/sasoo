@@ -1385,7 +1385,10 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
     def test_stage_models_match_constants_and_effective_values(self):
         from services import models as m
         # 상수 파일이 실효 동작(Flash)과 일치해야 한다 (Pro 승격은 A/B 후 별도 결정)
-        self.assertEqual(m.MODEL_RECIPE, MODEL_FLASH_HQ)
+        # recipe만 예외다. 3.7 Flash 폭주 반복 때문에 이전 세대에 묶여 있다.
+        # 왜 묶었는지와 재승격 조건은 services/test_model_pins.py에 있다.
+        self.assertEqual(m.MODEL_RECIPE, m.MODEL_FLASH_PREV)
+        self.assertNotEqual(m.MODEL_RECIPE, MODEL_FLASH_HQ)
         self.assertEqual(m.MODEL_DEEP_DIVE, MODEL_FLASH_HQ)
         self.assertEqual(m.MODEL_VIZ_PLANNING, MODEL_FLASH_HQ)
         self.assertEqual(m.MODEL_MERMAID, MODEL_FLASH_HQ)
@@ -1775,6 +1778,130 @@ class VisualizationCacheKeyTests(unittest.TestCase):
         # 다른 phase는 전부 _CHAIN_CACHE_VERSION을 키에 담는데 이 phase만 빠져 있었다.
         # 버전을 올려도 시각화만 옛 결과를 재사용하면 체인이 서로 어긋난다.
         self.assertIn(analysis_routes._CHAIN_CACHE_VERSION, self._key())
+
+
+class ChainStageSalvageTests(unittest.TestCase):
+    """꼬리만 잘린 응답은 되살려 쓰고 재시도하지 않는다.
+
+    상한 절단은 결정론적이다. 같은 요청을 그대로 다시 보내면 같은 자리에서 또
+    잘린다(실측 2026-08-16: recipe가 65522 토큰 x 2로 상한을 두 번 쳤다). 앞부분이
+    온전하면 그걸 쓰고 재시도를 건너뛰는 것이 결과도 낫고 값도 절반이다.
+    """
+
+    SCHEMA = {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "steps": {"type": "array", "items": {"type": "string"}},
+            "tail": {"type": "string"},
+        },
+        "required": ["title", "steps"],
+    }
+
+    TRUNCATED = '{"title": "T", "steps": ["a", "b"], "tail": "닫지 못했다. Done. Fin. OK.'
+
+    def _run(self, texts):
+        calls = {"n": 0}
+
+        async def fake_call(*args, **kwargs):
+            i = calls["n"]
+            calls["n"] += 1
+            return {"text": texts[min(i, len(texts) - 1)], "model": "m",
+                    "tokens_in": 10, "tokens_out": 20, "interaction_id": None}
+
+        import asyncio
+
+        with patch.object(analysis_routes, "call_interaction", fake_call):
+            result = asyncio.run(analysis_routes._run_chain_stage(
+                phase="recipe",
+                prompt_chain="c",
+                prompt_fallback="f",
+                system_instruction="s",
+                previous_interaction_id=None,
+                pdf_uri=None,
+                response_schema=self.SCHEMA,
+            ))
+        return result, calls["n"]
+
+    def test_truncated_tail_is_salvaged_without_a_retry(self):
+        result, n = self._run([self.TRUNCATED])
+        self.assertEqual(n, 1, "되살릴 수 있는데도 재시도했다")
+        parsed = json.loads(result["text"])
+        self.assertEqual(parsed["title"], "T")
+        self.assertEqual(parsed["steps"], ["a", "b"])
+        self.assertNotIn("tail", parsed)  # 쓰다 만 값은 채우지 않는다
+
+    def test_unsalvageable_output_still_retries_once(self):
+        # 필수 키가 나오기 전에 잘렸다. 되살리면 안 되고 기존대로 1회 재시도한다.
+        broken = '{"title": "T", "ste'
+        good = '{"title": "T", "steps": ["a"]}'
+        result, n = self._run([broken, good])
+        self.assertEqual(n, 2)
+        self.assertEqual(json.loads(result["text"])["steps"], ["a"])
+
+    def test_valid_output_is_left_alone(self):
+        good = '{"title": "T", "steps": ["a"]}'
+        result, n = self._run([good])
+        self.assertEqual(n, 1)
+        self.assertEqual(result["text"], good)
+
+
+class StageThinkingLevelTests(unittest.TestCase):
+    """체인 단계의 thinking_level은 3.7 Flash가 받는 값이어야 한다.
+
+    3.7 Flash가 지원하는 값은 low, medium, high뿐이다. minimal을 명시하면 API가
+    검증 에러를 돌려준다. 체인 단계는 전부 MODEL_FLASH_HQ로 도니까 여기에 minimal이
+    섞이면 그 단계가 통째로 죽는다. screening은 flash-lite에서 minimal을 쓰므로
+    이 규칙 밖이고, _STAGE_THINKING에도 들어 있지 않다.
+    """
+
+    SUPPORTED = frozenset({"low", "medium", "high"})
+
+    def test_chain_stages_use_levels_flash_hq_accepts(self):
+        bad = {
+            stage: level
+            for stage, level in analysis_routes._STAGE_THINKING.items()
+            if level not in self.SUPPORTED
+        }
+        self.assertEqual(bad, {}, f"MODEL_FLASH_HQ가 받지 않는 thinking_level: {bad}")
+
+
+class CitationCacheKeyTests(unittest.TestCase):
+    """인용 phase 캐시 키도 모델을 담아야 한다.
+
+    이 키는 _phase_cache_key를 거치지 않고 콘텐츠와 프롬프트 버전만 본다. 모델을
+    담지 않으면 모델을 갈아도 옛 모델이 만든 인용 분석이 계속 나온다. 시각화 phase의
+    바깥 캐시에서 고친 것과 같은 종류다.
+    """
+
+    def _key(self):
+        local_result = {
+            "total_references": 3,
+            "citation_style": "numeric",
+            "self_citation_count": 1,
+            "top_cited": [
+                {
+                    "ref_id": "R1",
+                    "cite_count": 2,
+                    "cite_contexts": [{"sentence": "인용 문장", "section": "Introduction"}],
+                }
+            ],
+        }
+        return analysis_routes._citation_cache_key(local_result, "인용 본문")
+
+    def test_same_inputs_give_same_key(self):
+        self.assertEqual(self._key(), self._key())
+
+    def test_model_change_invalidates_the_key(self):
+        base = self._key()
+        with patch.object(analysis_routes, "MODEL_CITATION", "other-citation-model"):
+            self.assertNotEqual(base, self._key())
+
+    def test_content_still_changes_the_key(self):
+        local_result = {"total_references": 9, "citation_style": "author-year", "top_cited": []}
+        self.assertNotEqual(
+            self._key(), analysis_routes._citation_cache_key(local_result, "인용 본문")
+        )
 
 
 class SanitizeMermaidCodeTests(unittest.TestCase):

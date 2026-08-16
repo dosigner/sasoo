@@ -176,7 +176,8 @@ If no sub-figures are detected, return:
                 ],
                 lane="pipeline",
                 model=MODEL_FLASH_HQ,
-                thinking_level="minimal",
+                # 3.7 Flash는 minimal을 거부한다(400). low가 이 모델의 최저치다.
+                thinking_level="low",
                 store=False,
                 response_schema=_SUBFIGURE_RESPONSE_SCHEMA,
             )

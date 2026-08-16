@@ -64,8 +64,9 @@ RENDER_DPI = _env_int("SASOO_GEMINI_PARSER_DPI", 150)  # 페이지 래스터화 
 # 8 -> 12: 2026-08-04 실측(스펙 2026-08-04-pipeline-concurrency-12-design.md 참조).
 PAGE_CONCURRENCY = _env_int("SASOO_GEMINI_PARSER_PAGE_CONCURRENCY", 12)
 _PAGE_RETRIES = 1              # 페이지 호출 실패 시 추가 재시도 횟수(총 2회 시도)
-# thinking 토큰은 출력 단가로 과금됨. ThinkingLevel 허용값 minimal<low<medium<high 중 최저치.
-_THINKING_LEVEL = _env_str("SASOO_GEMINI_PARSER_THINKING", "minimal")
+# thinking 토큰은 출력 단가로 과금됨. MODEL_VISUAL(=3.7 Flash)이 받는 허용값은
+# low<medium<high뿐이고 minimal은 400으로 거부되므로 low가 최저치다.
+_THINKING_LEVEL = _env_str("SASOO_GEMINI_PARSER_THINKING", "low")
 # 이미지 파트별 media_resolution(low/medium/high/ultra_high). 빈 문자열이면 미지정(SDK 기본).
 # 저해상일수록 이미지 입력 토큰이 줄지만 작은 수식/캡션 OCR이 깨질 수 있다 — DPI와 함께 조절.
 _MEDIA_RESOLUTION = _env_str("SASOO_GEMINI_PARSER_MEDIA_RESOLUTION", "low")

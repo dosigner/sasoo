@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GPT-5.6 Luna vs Gemini 3.6 Flash 출력 성향 비교.
+"""GPT-5.6 Luna vs 프로덕션 Gemini(MODEL_FLASH_HQ) 출력 성향 비교.
 
 sasoo의 실제 프롬프트·스키마를 그대로 써서 같은 논문을 두 공급사에 넣고,
 출력을 나란히 저장한다. 판단은 하지 않는다 — 원자료만 만든다.
@@ -19,6 +19,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# 아래 두 임포트는 sys.path를 손본 뒤라야 해결된다. 그래서 상단 블록에 못 올린다.
+from services.models import MODEL_FLASH_HQ  # noqa: E402
+from services.pricing import calc_cost  # noqa: E402
+
 DEFAULT_PAPER_ID = 43  # Saliency Optimization — 그림 33개·표 13개로 vision 비교에 적합
 OUT_DIR = Path(__file__).resolve().parents[1] / "outputs" / "provider_compare"
 
@@ -30,8 +34,11 @@ STAGES = {
     "deep_dive": {"gemini_thinking": "high", "openai_effort": "xhigh"},
 }
 
-GEMINI_MODEL = "gemini-3.6-flash"
+# 프로덕션이 쓰는 Gemini를 그대로 따라간다. 박아두면 모델을 갈 때 이 도구만
+# 옛 모델을 재서 비교가 조용히 무의미해진다.
+GEMINI_MODEL = MODEL_FLASH_HQ
 OPENAI_MODEL = "gpt-5.6-luna"
+OPENAI_RATES = (0.20, 1.20)  # 2026-07-30 인하 후. sasoo 단가표에 없는 모델이라 여기 둔다.
 
 SYSTEM_KO = (
     "너는 Sasoo(사수)라는 한국어 AI Co-Scientist야.\n"
@@ -224,11 +231,14 @@ def run_openai(pdf: Path, prompt: str, schema: dict, effort: str, key: str) -> d
 
 
 def cost_of(model: str, tokens_in: int, tokens_out: int) -> float:
-    rates = {
-        GEMINI_MODEL: (1.50, 7.50),
-        OPENAI_MODEL: (0.20, 1.20),  # 2026-07-30 인하 후
-    }[model]
-    return tokens_in / 1_000_000 * rates[0] + tokens_out / 1_000_000 * rates[1]
+    if model == GEMINI_MODEL:
+        # Gemini 단가 출처는 services/pricing.py 하나로 둔다(한시 도입가와
+        # 만료일까지 거기서 처리한다).
+        return calc_cost(model, tokens_in, tokens_out)
+    if model != OPENAI_MODEL:
+        raise ValueError(f"단가를 모르는 모델: {model}")
+    rate_in, rate_out = OPENAI_RATES
+    return tokens_in / 1_000_000 * rate_in + tokens_out / 1_000_000 * rate_out
 
 
 def main() -> None:

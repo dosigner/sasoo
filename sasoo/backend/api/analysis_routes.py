@@ -82,6 +82,7 @@ from api.analysis_helpers import (
     _clean_llm_json,
     _is_error_result,
     _stage_result_defect,
+    salvage_truncated_json,
     _SYSTEM_INSTRUCTION_KO,
 )
 from services.models import (
@@ -558,15 +559,23 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
     result = await _invoke()
     defect = _stage_result_defect(result.get("text") or "")
     if defect:
-        logger.warning(
-            "screening %s (tokens_out=%s); retrying once",
-            defect, result.get("tokens_out"),
-        )
-        retry = await _invoke()
-        # 재시도 사용량을 합산해 비용 추적이 실사용을 반영하게 한다
-        retry["tokens_in"] = (result.get("tokens_in") or 0) + (retry.get("tokens_in") or 0)
-        retry["tokens_out"] = (result.get("tokens_out") or 0) + (retry.get("tokens_out") or 0)
-        result = retry
+        salvaged = salvage_truncated_json(result.get("text") or "", _SCREENING_SCHEMA)
+        if salvaged is not None:
+            logger.warning(
+                "screening %s (tokens_out=%s); 잘린 앞부분을 살려 재시도를 건너뛴다",
+                defect, result.get("tokens_out"),
+            )
+            result["text"] = salvaged
+        else:
+            logger.warning(
+                "screening %s (tokens_out=%s); retrying once",
+                defect, result.get("tokens_out"),
+            )
+            retry = await _invoke()
+            # 재시도 사용량을 합산해 비용 추적이 실사용을 반영하게 한다
+            retry["tokens_in"] = (result.get("tokens_in") or 0) + (retry.get("tokens_in") or 0)
+            retry["tokens_out"] = (result.get("tokens_out") or 0) + (retry.get("tokens_out") or 0)
+            result = retry
 
     # structured output 실패 대비 안전망: 마크다운 펜스 제거 후 JSON 검증
     cleaned_text = _clean_llm_json(result["text"])
@@ -634,7 +643,11 @@ def _build_top_by_norm(top_cited: list) -> dict:
 def _citation_cache_key(local_result: dict, citation_body: str) -> str:
     """인용 phase 캐시 키: 프롬프트 문구가 아닌 안정 콘텐츠 + _CITATION_PROMPT_VERSION.
 
-    문구를 고쳐도 재과금이 없고, 계약이 실제로 바뀔 때 _CITATION_PROMPT_VERSION을 올려 1회 무효화한다."""
+    문구를 고쳐도 재과금이 없고, 계약이 실제로 바뀔 때 _CITATION_PROMPT_VERSION을 올려 1회 무효화한다.
+
+    이 키는 _phase_cache_key를 거치지 않으므로 모델을 직접 담아야 한다. 담지 않으면
+    모델을 갈아도 이 phase만 옛 모델이 만든 인용 분석을 계속 내놓는다. thinking_level은
+    호출부에 "low"로 고정돼 있어 담지 않는다. 단계별로 고를 수 있게 바뀌면 같이 담아라."""
     top = [
         {
             "ref_id": r.get("ref_id"),
@@ -649,6 +662,7 @@ def _citation_cache_key(local_result: dict, citation_body: str) -> str:
     payload = {
         "v": _CITATION_PROMPT_VERSION,
         "phase": "citation",
+        "model": MODEL_CITATION,
         "total_references": local_result.get("total_references", 0),
         "citation_style": local_result.get("citation_style", ""),
         "self_citation_count": local_result.get("self_citation_count", 0),
@@ -860,7 +874,7 @@ async def _run_citation(
 
 
 # ---------------------------------------------------------------------------
-# Stateful chain: Visual -> Recipe -> Deep Dive -> Viz planning (gemini-3.6-flash)
+# Stateful chain: Visual -> Recipe -> Deep Dive -> Viz planning (MODEL_FLASH_HQ)
 # ---------------------------------------------------------------------------
 
 # 단계별 thinking_level (visual=low, recipe=medium, deep_dive=high, visualization=medium)
@@ -1129,6 +1143,17 @@ async def _run_chain_stage(
     result = await _invoke()
     defect = _stage_result_defect(result.get("text") or "")
     if defect:
+        # 상한에 걸려 꼬리만 잘린 경우가 있다. 앞부분이 온전하면 그걸 쓰고 재시도를
+        # 건너뛴다. 같은 요청을 그대로 다시 보내면 같은 자리에서 또 잘리므로
+        # (실측 2026-08-16: 65522 토큰 x 2) 재시도는 값만 두 배가 된다.
+        salvaged = salvage_truncated_json(result.get("text") or "", response_schema or {})
+        if salvaged is not None:
+            logger.warning(
+                "chain stage %s %s (tokens_out=%s); 잘린 앞부분을 살려 재시도를 건너뛴다",
+                phase, defect, result.get("tokens_out"),
+            )
+            result["text"] = salvaged
+            return result
         logger.warning(
             "chain stage %s %s (tokens_out=%s); retrying once",
             phase, defect, result.get("tokens_out"),
