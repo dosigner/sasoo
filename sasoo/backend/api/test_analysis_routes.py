@@ -1777,6 +1777,64 @@ class VisualizationCacheKeyTests(unittest.TestCase):
         self.assertIn(analysis_routes._CHAIN_CACHE_VERSION, self._key())
 
 
+class StageThinkingLevelTests(unittest.TestCase):
+    """체인 단계의 thinking_level은 3.7 Flash가 받는 값이어야 한다.
+
+    3.7 Flash가 지원하는 값은 low, medium, high뿐이다. minimal을 명시하면 API가
+    검증 에러를 돌려준다. 체인 단계는 전부 MODEL_FLASH_HQ로 도니까 여기에 minimal이
+    섞이면 그 단계가 통째로 죽는다. screening은 flash-lite에서 minimal을 쓰므로
+    이 규칙 밖이고, _STAGE_THINKING에도 들어 있지 않다.
+    """
+
+    SUPPORTED = frozenset({"low", "medium", "high"})
+
+    def test_chain_stages_use_levels_flash_hq_accepts(self):
+        bad = {
+            stage: level
+            for stage, level in analysis_routes._STAGE_THINKING.items()
+            if level not in self.SUPPORTED
+        }
+        self.assertEqual(bad, {}, f"MODEL_FLASH_HQ가 받지 않는 thinking_level: {bad}")
+
+
+class CitationCacheKeyTests(unittest.TestCase):
+    """인용 phase 캐시 키도 모델을 담아야 한다.
+
+    이 키는 _phase_cache_key를 거치지 않고 콘텐츠와 프롬프트 버전만 본다. 모델을
+    담지 않으면 모델을 갈아도 옛 모델이 만든 인용 분석이 계속 나온다. 시각화 phase의
+    바깥 캐시에서 고친 것과 같은 종류다.
+    """
+
+    def _key(self):
+        local_result = {
+            "total_references": 3,
+            "citation_style": "numeric",
+            "self_citation_count": 1,
+            "top_cited": [
+                {
+                    "ref_id": "R1",
+                    "cite_count": 2,
+                    "cite_contexts": [{"sentence": "인용 문장", "section": "Introduction"}],
+                }
+            ],
+        }
+        return analysis_routes._citation_cache_key(local_result, "인용 본문")
+
+    def test_same_inputs_give_same_key(self):
+        self.assertEqual(self._key(), self._key())
+
+    def test_model_change_invalidates_the_key(self):
+        base = self._key()
+        with patch.object(analysis_routes, "MODEL_CITATION", "other-citation-model"):
+            self.assertNotEqual(base, self._key())
+
+    def test_content_still_changes_the_key(self):
+        local_result = {"total_references": 9, "citation_style": "author-year", "top_cited": []}
+        self.assertNotEqual(
+            self._key(), analysis_routes._citation_cache_key(local_result, "인용 본문")
+        )
+
+
 class SanitizeMermaidCodeTests(unittest.TestCase):
     def test_strips_fences_frontmatter_and_acc_lines(self):
         raw = (

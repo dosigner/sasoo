@@ -634,7 +634,11 @@ def _build_top_by_norm(top_cited: list) -> dict:
 def _citation_cache_key(local_result: dict, citation_body: str) -> str:
     """인용 phase 캐시 키: 프롬프트 문구가 아닌 안정 콘텐츠 + _CITATION_PROMPT_VERSION.
 
-    문구를 고쳐도 재과금이 없고, 계약이 실제로 바뀔 때 _CITATION_PROMPT_VERSION을 올려 1회 무효화한다."""
+    문구를 고쳐도 재과금이 없고, 계약이 실제로 바뀔 때 _CITATION_PROMPT_VERSION을 올려 1회 무효화한다.
+
+    이 키는 _phase_cache_key를 거치지 않으므로 모델을 직접 담아야 한다. 담지 않으면
+    모델을 갈아도 이 phase만 옛 모델이 만든 인용 분석을 계속 내놓는다. thinking_level은
+    호출부에 "low"로 고정돼 있어 담지 않는다. 단계별로 고를 수 있게 바뀌면 같이 담아라."""
     top = [
         {
             "ref_id": r.get("ref_id"),
@@ -649,6 +653,7 @@ def _citation_cache_key(local_result: dict, citation_body: str) -> str:
     payload = {
         "v": _CITATION_PROMPT_VERSION,
         "phase": "citation",
+        "model": MODEL_CITATION,
         "total_references": local_result.get("total_references", 0),
         "citation_style": local_result.get("citation_style", ""),
         "self_citation_count": local_result.get("self_citation_count", 0),
@@ -860,7 +865,7 @@ async def _run_citation(
 
 
 # ---------------------------------------------------------------------------
-# Stateful chain: Visual -> Recipe -> Deep Dive -> Viz planning (gemini-3.6-flash)
+# Stateful chain: Visual -> Recipe -> Deep Dive -> Viz planning (MODEL_FLASH_HQ)
 # ---------------------------------------------------------------------------
 
 # 단계별 thinking_level (visual=low, recipe=medium, deep_dive=high, visualization=medium)
