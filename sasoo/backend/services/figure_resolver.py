@@ -349,7 +349,8 @@ async def _maybe_select_candidate(
             ],
             lane="pipeline",
             model=MODEL_FLASH_HQ,
-            thinking_level="minimal",
+            # 3.7 Flash는 minimal을 거부한다(400). low가 이 모델의 최저치다.
+            thinking_level="low",
             store=False,
         )
         payload = json.loads(_clean_llm_json(result["text"]))
@@ -419,7 +420,8 @@ async def _maybe_rerank_caption(
             ],
             lane="pipeline",
             model=MODEL_FLASH_HQ,
-            thinking_level="minimal",
+            # 3.7 Flash는 minimal을 거부한다(400). low가 이 모델의 최저치다.
+            thinking_level="low",
             store=False,
         )
         payload = json.loads(_clean_llm_json(result["text"]))

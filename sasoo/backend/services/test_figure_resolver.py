@@ -62,7 +62,7 @@ class MaybeSelectCandidateCallInteractionTests(unittest.IsolatedAsyncioTestCase)
             self.assertEqual(base64.b64decode(contents[0]["data"]), image_bytes)
             self.assertEqual(contents[1]["type"], "text")
             self.assertEqual(kwargs["model"], MODEL_FLASH_HQ)
-            self.assertEqual(kwargs["thinking_level"], "minimal")
+            self.assertEqual(kwargs["thinking_level"], "low")
             self.assertIs(kwargs["store"], False)
 
             self.assertEqual(chosen["id"], "cand:2")
@@ -170,7 +170,7 @@ class MaybeRerankCaptionCallInteractionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(base64.b64decode(contents[0]["data"]), image_bytes)
             self.assertEqual(contents[1]["type"], "text")
             self.assertEqual(kwargs["model"], MODEL_FLASH_HQ)
-            self.assertEqual(kwargs["thinking_level"], "minimal")
+            self.assertEqual(kwargs["thinking_level"], "low")
             self.assertIs(kwargs["store"], False)
 
             self.assertEqual(selected, "cap:2")

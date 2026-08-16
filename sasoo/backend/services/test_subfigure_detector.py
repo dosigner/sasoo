@@ -71,7 +71,7 @@ class SubFigureDetectorCallInteractionTests(unittest.IsolatedAsyncioTestCase):
 
             # 모델/thinking/store 계약
             self.assertEqual(kwargs["model"], MODEL_FLASH_HQ)
-            self.assertEqual(kwargs["thinking_level"], "minimal")
+            self.assertEqual(kwargs["thinking_level"], "low")
             self.assertIs(kwargs["store"], False)
             self.assertIn("response_schema", kwargs)
 
