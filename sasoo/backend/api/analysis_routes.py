@@ -82,6 +82,7 @@ from api.analysis_helpers import (
     _clean_llm_json,
     _is_error_result,
     _stage_result_defect,
+    drop_degenerate_fields,
     salvage_truncated_json,
     _SYSTEM_INSTRUCTION_KO,
 )
@@ -880,6 +881,17 @@ async def _run_citation(
 # 단계별 thinking_level (visual=low, recipe=medium, deep_dive=high, visualization=medium)
 _STAGE_THINKING = {"visual": "low", "recipe": "medium", "deep_dive": "high", "visualization": "medium"}
 
+# 폭주 반복이 뚫렸을 때의 손해 상한. 스키마 쪽 조치(마지막 속성을 숫자로)가 1차
+# 방어고, 이건 그게 뚫려도 비용이 유한하게 끝나도록 하는 2차 방어다.
+# 값 근거: 실측 최대 정상 recipe 본문이 12,416자(파라미터 26개 완성)였고, 폭주는
+# 모델 상한 65,536까지 갔다. 이 상한은 **thinking 토큰을 포함해서 센다**(문서에 없어
+# 실호출로 확인. 상한 2,000 -> tokens_out 1,986, 그중 thinking 1,213). recipe의
+# medium thinking이 실측 600~4,000이라 24,000이면 본문에 최소 20,000이 남는다.
+# 상한에 걸리면 status가 incomplete로 오고 꼬리가 잘리는데, 그건 이미
+# salvage_truncated_json이 값 경계에서 되살린다.
+# 잠금: api/test_recipe_output_bounds.py
+_STAGE_MAX_OUTPUT_TOKENS = {"recipe": 24_000}
+
 _STAGE_MODELS = {
     "visual": MODEL_VISUAL,
     "recipe": MODEL_RECIPE,
@@ -946,8 +958,12 @@ _RECIPE_SCHEMA = {
         "safety_notes": {"type": "string"},
         "confidence": {"type": "number"},
         "missing_info": {"type": "array", "items": {"type": "string"}},
+        # 마지막 속성은 자유서술 문자열로 두지 않는다. 구조화 출력은 JSON 문법을
+        # 강제하지만 문자열 값 안에서는 어떤 토큰도 합법이라, 모델이 "끝났다"고
+        # 판단하고도 종료 토큰을 못 내면 그 안에 갇혀 상한까지 필러를 뱉는다.
+        # 여기 있던 score_rationale이 정확히 그 자리였다(3.6·3.7 공통).
+        # 잠금: api/test_recipe_output_bounds.py
         "reproducibility_score": {"type": "number"},
-        "score_rationale": {"type": "string"},
     },
     "required": ["title", "objective", "parameters", "steps"],
 }
@@ -1129,6 +1145,7 @@ async def _run_chain_stage(
                 previous_interaction_id=previous_interaction_id,
                 response_schema=response_schema,
                 store=True,
+                max_output_tokens=_STAGE_MAX_OUTPUT_TOKENS.get(phase),
             )
         return await call_interaction(
             prompt_fallback,
@@ -1138,6 +1155,7 @@ async def _run_chain_stage(
             thinking_level=_STAGE_THINKING[phase],
             response_schema=response_schema,
             store=False,
+            max_output_tokens=_STAGE_MAX_OUTPUT_TOKENS.get(phase),
         )
 
     result = await _invoke()
@@ -1163,6 +1181,25 @@ async def _run_chain_stage(
         retry["tokens_in"] = (result.get("tokens_in") or 0) + (retry.get("tokens_in") or 0)
         retry["tokens_out"] = (result.get("tokens_out") or 0) + (retry.get("tokens_out") or 0)
         result = retry
+        # 재시도 결과도 검사한다. 파싱 실패는 _raw/_parse_error 경로가 받아 주지만,
+        # 파싱은 되면서 값만 오염된 출력은 받아 줄 경로가 없어 그대로 저장됐다.
+        # 실측 2026-08-17: DB에 그렇게 저장된 recipe 행이 3개(전부 3.6-flash) 있었고
+        # 그중 하나는 화면에 나가는 프로덕션 행이었다.
+        retry_defect = _stage_result_defect(result.get("text") or "")
+        if retry_defect == "degenerate repetition detected":
+            pruned = drop_degenerate_fields(result.get("text") or "", response_schema or {})
+            if pruned is not None:
+                logger.warning(
+                    "chain stage %s 재시도도 %s; 오염 필드를 떨어내고 나머지를 저장한다",
+                    phase, retry_defect,
+                )
+                result["text"] = pruned
+            else:
+                # 오염된 값이 required라 떨어내면 빈 껍데기가 된다. 기존 경로에 맡긴다.
+                logger.warning(
+                    "chain stage %s 재시도도 %s; 필수 필드가 오염돼 떨어낼 수 없다",
+                    phase, retry_defect,
+                )
     return result
 
 
@@ -1450,7 +1487,7 @@ voltages, currents, frequencies, distances, speeds, sizes, ratios, percentages, 
    - "inferred": 논문에 명시된 다른 값에서 계산·추론 가능 — notes에 근거와 계산을 적어.
 4. 개수 목표는 없어. 논문에 실제로 있는 항목만 추출하고, 통상 기본값·상식·장비 기본 설정을 논문 값처럼 보충하지 마.
 5. 재현에 필요한데 논문에 없는 항목은 parameters에 넣지 말고 missing_info에 기록해.
-6. reproducibility_score는 explicit 핵심 파라미터의 충족도와 missing_info를 근거로 매기고, 그 근거를 score_rationale에 한 문장으로 적어.
+6. reproducibility_score는 explicit 핵심 파라미터의 충족도와 missing_info를 근거로 매겨.
 7. 각 파라미터마다 그 값의 근거가 되는 논문 원문을 그대로(축자) evidence_quote에 옮겨.
    번역·요약·재작성·말줄임표·떨어져 있는 문장 결합은 금지야. 원문 언어 그대로 써.
 8. evidence_quote는 그 파라미터를 뒷받침하는 가장 짧은 연속 스팬 하나로 해(1~2문장, 최대 300자).
@@ -1467,7 +1504,7 @@ voltages, currents, frequencies, distances, speeds, sizes, ratios, percentages, 
 equipment(장비 리스트, 모델번호 포함), parameters(각 항목 name/value/unit/notes/source_tag/evidence_quote/evidence_page),
 steps(단계별 상세 설명, 온도·시간·속도 등 포함), critical_notes(재현 중요 참고사항),
 expected_results(예상 결과), safety_notes(안전 주의사항), confidence(0.0~1.0),
-missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibility_score(0.0~1.0), score_rationale(점수 근거)."""
+missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibility_score(0.0~1.0)."""
 
     prompt_chain = f"{instruction}\n\n위 논문 PDF와 이전 분석을 바탕으로 실험 레시피를 추출해줘."
     prompt_fallback = f"논문 텍스트:\n{recipe_input}\n\n{instruction}"
