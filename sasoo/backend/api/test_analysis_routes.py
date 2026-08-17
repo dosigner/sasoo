@@ -1476,10 +1476,9 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
     def test_stage_models_match_constants_and_effective_values(self):
         from services import models as m
         # 상수 파일이 실효 동작(Flash)과 일치해야 한다 (Pro 승격은 A/B 후 별도 결정)
-        # recipe만 예외다. 3.7 Flash 폭주 반복 때문에 이전 세대에 묶여 있다.
-        # 왜 묶었는지와 재승격 조건은 services/test_model_pins.py에 있다.
-        self.assertEqual(m.MODEL_RECIPE, m.MODEL_FLASH_PREV)
-        self.assertNotEqual(m.MODEL_RECIPE, MODEL_FLASH_HQ)
+        # recipe도 2026-08-17부터 예외가 아니다. 이전 세대에 묶었던 핀은 전제가
+        # 사실이 아니어서 풀었다 — 근거는 services/test_model_pins.py에 있다.
+        self.assertEqual(m.MODEL_RECIPE, MODEL_FLASH_HQ)
         self.assertEqual(m.MODEL_DEEP_DIVE, MODEL_FLASH_HQ)
         self.assertEqual(m.MODEL_VIZ_PLANNING, MODEL_FLASH_HQ)
         self.assertEqual(m.MODEL_MERMAID, MODEL_FLASH_HQ)
