@@ -554,7 +554,12 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         # 스키마 보강
         param_props = captured["response_schema"]["properties"]["parameters"]["items"]["properties"]
         self.assertEqual(param_props["source_tag"]["enum"], ["explicit", "inferred"])
-        self.assertIn("score_rationale", captured["response_schema"]["properties"])
+        # score_rationale은 뺐다. 읽는 곳이 하나도 없으면서 마지막 자유서술 문자열
+        # 자리를 차지해 폭주 반복을 유발했다(3.6·3.7 공통). 프롬프트에서도 뺀다 —
+        # 안 빼면 모델이 스키마에 없는 필드를 쓰려다 다시 같은 자리로 간다.
+        # 계약 잠금은 api/test_recipe_output_bounds.py.
+        self.assertNotIn("score_rationale", captured["response_schema"]["properties"])
+        self.assertNotIn("score_rationale", prompt)
         # Evidence Anchoring: LLM은 후보만 낸다(검증 상태·bbox는 LLM 필드가 아니다)
         self.assertEqual(param_props["evidence_quote"]["type"], "string")
         self.assertEqual(param_props["evidence_page"]["type"], "integer")
@@ -987,6 +992,92 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                 response_schema={"type": "object"},
             )
         self.assertEqual(result["text"], "not json")  # 기존 _parse_error 경로가 이어받음
+
+    async def test_chain_stage_drops_polluted_field_when_retry_is_also_degenerate(self):
+        """재시도도 오염되면 오염 필드만 떨어내고 나머지를 살린다.
+
+        2026-08-17 조사에서 나온 자리다. 가드는 오염을 정확히 잡아 재시도를 걸지만,
+        재시도 결과를 **다시 검사하지 않고** 그대로 반환한다. 파싱 실패는
+        `_raw`/`_parse_error` 경로가 받아 주는데 파싱되는 오염 출력은 받을 경로가
+        없어 정상 결과로 저장됐다. 실제로 그렇게 저장된 행이 DB에 3개 있었고
+        (전부 gemini-3.6-flash recipe), id=355는 지금도 화면에 나가는 행이다.
+        """
+        filler = "점수는 0.82임 명확함 인정함임 " + "하겠음임 " * 400
+        schema = {
+            "type": "object",
+            "properties": {
+                "parameters": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {"name": {"type": "string"}, "value": {"type": "string"}},
+                        "required": ["name", "value"],
+                    },
+                },
+                "score_rationale": {"type": "string"},
+            },
+            "required": ["parameters"],
+        }
+        payload = json.dumps(
+            {
+                "parameters": [{"name": "wavelength", "value": "1550"}],
+                "score_rationale": filler,
+            },
+            ensure_ascii=False,
+        )
+        calls = []
+
+        async def _fake_call(prompt, **kwargs):
+            calls.append(kwargs)
+            return {
+                "text": payload, "model": "m", "tokens_in": 10,
+                "tokens_out": 900, "interaction_id": f"i{len(calls)}",
+            }
+
+        with patch("api.analysis_routes.call_interaction", new=_fake_call):
+            result = await analysis_routes._run_chain_stage(
+                phase="recipe",
+                prompt_chain="지시",
+                prompt_fallback="폴백",
+                system_instruction="si",
+                previous_interaction_id=None,
+                pdf_uri=None,
+                response_schema=schema,
+            )
+
+        self.assertEqual(len(calls), 2)  # 재시도는 그대로 1회
+        stored = json.loads(result["text"])
+        self.assertNotIn("score_rationale", stored)
+        self.assertEqual(stored["parameters"], [{"name": "wavelength", "value": "1550"}])
+        self.assertEqual(result["tokens_out"], 1800)  # 실패분 합산은 유지
+
+    async def test_chain_stage_keeps_result_when_pollution_cannot_be_dropped(self):
+        """오염된 값이 required면 떨어내지 않는다 — 빈 껍데기보다 기존 경로가 낫다."""
+        filler = "Score. " + "(Fin). (End). Done! " * 300
+        schema = {
+            "type": "object",
+            "properties": {"title": {"type": "string"}},
+            "required": ["title"],
+        }
+        payload = json.dumps({"title": filler}, ensure_ascii=False)
+
+        async def _fake_call(prompt, **kwargs):
+            return {
+                "text": payload, "model": "m", "tokens_in": 1,
+                "tokens_out": 2, "interaction_id": None,
+            }
+
+        with patch("api.analysis_routes.call_interaction", new=_fake_call):
+            result = await analysis_routes._run_chain_stage(
+                phase="recipe",
+                prompt_chain="지시",
+                prompt_fallback="폴백",
+                system_instruction="si",
+                previous_interaction_id=None,
+                pdf_uri=None,
+                response_schema=schema,
+            )
+        self.assertEqual(result["text"], payload)
 
     async def test_store_visualization_progress_updates_existing_row(self):
         items = [
