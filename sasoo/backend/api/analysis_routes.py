@@ -884,8 +884,9 @@ _STAGE_THINKING = {"visual": "low", "recipe": "medium", "deep_dive": "high", "vi
 # 폭주 반복이 뚫렸을 때의 손해 상한. 스키마 쪽 조치(마지막 속성을 숫자로)가 1차
 # 방어고, 이건 그게 뚫려도 비용이 유한하게 끝나도록 하는 2차 방어다.
 # 값 근거: 실측 최대 정상 recipe 본문이 12,416자(파라미터 26개 완성)였고, 폭주는
-# 모델 상한 65,536까지 갔다. thinking 토큰이 이 상한에 포함되는지는 문서에 없어
-# (ai.google.dev/static/api/interactions.md.txt, 2026-08-17) 여유를 크게 뒀다.
+# 모델 상한 65,536까지 갔다. 이 상한은 **thinking 토큰을 포함해서 센다**(문서에 없어
+# 실호출로 확인. 상한 2,000 -> tokens_out 1,986, 그중 thinking 1,213). recipe의
+# medium thinking이 실측 600~4,000이라 24,000이면 본문에 최소 20,000이 남는다.
 # 상한에 걸리면 status가 incomplete로 오고 꼬리가 잘리는데, 그건 이미
 # salvage_truncated_json이 값 경계에서 되살린다.
 # 잠금: api/test_recipe_output_bounds.py
