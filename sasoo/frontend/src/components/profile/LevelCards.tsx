@@ -32,7 +32,9 @@ export function LevelCards({ value, onChange }: Props) {
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     const count = LEVEL_ORDER.length;
-    let nextIndex: number | null = null;
+    // switch의 default가 return이라 아래로 내려오는 모든 경로가 값을 대입한다.
+    // 초기값 null은 읽히지 않는다(eslint no-useless-assignment).
+    let nextIndex: number;
 
     switch (event.key) {
       case 'ArrowDown':
