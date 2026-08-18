@@ -22,7 +22,10 @@ export default defineConfig({
   plugins: [react(), patchPdfViewerCss()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      // Vite 8이 __dirname을 쓰는 설정에 경고를 낸다. configLoader가 'native'로
+      // 기본 전환되면 동작하지 않는다. import.meta.dirname은 Node 20.11+에서 쓸 수 있고
+      // CI는 Node 24다.
+      '@': path.resolve(import.meta.dirname, './src'),
     },
   },
   server: {
