@@ -1,81 +1,921 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
 
-@font-face {
-  font-family: 'Pretendard Variable';
-  src: url('/fonts/PretendardVariable.woff2') format('woff2-variations');
-  font-weight: 45 920;
-  font-style: normal;
-  font-display: swap;
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-bg: rgb(var(--bg));
+  --color-border: rgb(var(--border));
+
+  --color-fg: rgb(var(--fg));
+  --color-fg-secondary: rgb(var(--fg-secondary));
+  --color-fg-muted: rgb(var(--fg-muted));
+
+  --color-accent: rgb(var(--accent));
+  --color-accent-hover: rgb(var(--accent-hover));
+  --color-accent-fg: rgb(var(--accent-fg));
+
+  --color-danger: rgb(var(--danger));
+  --color-warning: rgb(var(--warning));
+  --color-success: rgb(var(--success));
+
+  --color-surface: rgb(var(--surface));
+  --color-surface-hover: rgb(var(--surface-hover));
+
+  --font-sans:
+    'Pretendard Variable', -apple-system, BlinkMacSystemFont,
+    'Apple SD Gothic Neo', 'Noto Sans KR', 'Segoe UI', 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-mono:
+    'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, monospace;
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.9375rem;
+  --text-base--line-height: 1.375rem;
+  --text-lg: 1.0625rem;
+  --text-lg--line-height: 1.625rem;
+
+  --tracking-apple-body: -0.01em;
+
+  --animate-fade-in: fadeIn 0.15s cubic-bezier(0.23, 1, 0.32, 1);
+  --animate-fade-out: fadeOut 0.15s cubic-bezier(0.23, 1, 0.32, 1);
+  --animate-slide-in-right: slideInRight 0.15s cubic-bezier(0.23, 1, 0.32, 1);
+  --animate-slide-in-left: slideInLeft 0.15s cubic-bezier(0.23, 1, 0.32, 1);
+  --animate-slide-up: slideUp 0.15s cubic-bezier(0.23, 1, 0.32, 1);
+  --animate-pop-in: popIn 0.15s cubic-bezier(0.23, 1, 0.32, 1);
+  --animate-pulse-subtle: pulseSubtle 2s ease-in-out infinite;
+
+  --radius-4xl: 2rem;
+  --radius-control: var(--radius-control);
+  --radius-surface: var(--radius-surface);
+
+  --backdrop-blur-xs: 2px;
+
+  @keyframes fadeIn {
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+  @keyframes fadeOut {
+    0% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes slideInRight {
+    0% {
+      transform: translateX(1rem);
+      opacity: 0;
+    }
+    100% {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+  @keyframes slideInLeft {
+    0% {
+      transform: translateX(-1rem);
+      opacity: 0;
+    }
+    100% {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+  @keyframes slideUp {
+    0% {
+      transform: translateY(0.5rem);
+      opacity: 0;
+    }
+    100% {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+  @keyframes popIn {
+    0% {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  @keyframes pulseSubtle {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.7;
+    }
+  }
 }
 
-:root {
-  /* Semantic color tokens — RGB channels; ref docs/04-design/design-tokens.md §1 */
-  /* Light (default) — design system v2 */
-  --bg: 247 247 248;
-  --surface: 255 255 255;
-  --surface-hover: 239 239 241;
-  --border: 228 228 231;
-  --fg: 24 24 27;
-  --fg-secondary: 82 82 91;
-  --fg-muted: 112 112 122;
-  --accent: 104 61 204;
-  --accent-hover: 82 33 182;
-  --accent-fg: 255 255 255;
-  --danger: 220 38 38;
-  --warning: 217 119 6;
-  --success: 22 163 74;
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
 
-  /* Layout */
-  --sidebar-width: 13rem;
-  --sidebar-collapsed-width: 4.5rem;
-  --header-height: 3rem;
-
-  /* Motion */
-  --transition-speed: 150ms;
-  /* Strong custom curves — built-in easings are too weak for deliberate UI motion */
-  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
-
-  /* Icons */
-  --icon-stroke: 1.7;
-  --icon-highlight-opacity: 0.24;
-  --icon-surface-border: rgba(15, 23, 42, 0.08);
-  --icon-surface-tint: rgba(255, 255, 255, 0.78);
-  --icon-surface-shadow: none;
-
-  /* Agent tinting (color-mix opacity stops; ref §agent-tinted below) */
-  --agent-tint-bg-opacity: 8%;
-  --agent-tint-border-opacity: 30%;
-
-  /* Radius */
-  --radius-control: 6px;
-  --radius-surface: 12px;
-  --radius-pill: 9999px;
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
 }
 
-.dark {
-  --bg: 10 10 11;
-  --surface: 23 23 26;
-  --surface-hover: 32 32 36;
-  --border: 42 42 48;
-  --fg: 244 244 245;
-  --fg-secondary: 161 161 170;
-  --fg-muted: 112 112 122;
-  --accent: 124 90 232;
-  --accent-hover: 145 121 240;
-  --accent-fg: 255 255 255;
-  --danger: 239 90 90;
-  --warning: 245 158 11;
-  --success: 52 199 123;
+@utility card {
+  /* Reusable card component */
+  @apply border border-border bg-surface px-4;
+  padding-top: 1.25rem;
+  padding-bottom: 1.25rem;
+  border-radius: var(--radius-surface);
+}
 
-  --icon-surface-border: rgba(255, 255, 255, 0.08);
-  --icon-surface-tint: rgba(255, 255, 255, 0.05);
-  --icon-surface-shadow: none;
+@utility card-hover {
+  @apply card transition-colors duration-200 ease-out hover:border-border hover:bg-surface-hover;
+}
 
-  --agent-tint-bg-opacity: 14%;
-  --agent-tint-border-opacity: 40%;
+@utility app-shell {
+  @apply flex h-screen flex-col bg-bg text-fg;
+}
+
+@utility app-sidebar {
+  width: var(--sidebar-width);
+  @apply flex shrink-0 flex-col border-r border-border bg-surface px-3 py-4;
+}
+
+@utility app-sidebar-collapsed {
+  width: var(--sidebar-collapsed-width);
+  @apply items-center px-2;
+
+  & .app-sidebar-brand {
+    @apply justify-center px-0;
+  }
+
+  & .app-sidebar-section {
+    @apply items-center;
+  }
+
+  & .app-sidebar-link {
+    @apply h-10 w-10 justify-center gap-0 px-0 py-0;
+  }
+
+  & .app-sidebar-collapse-btn {
+    @apply self-center;
+  }
+}
+
+@utility app-sidebar-brand {
+  @apply flex items-center gap-2.5 px-2 pb-4;
+
+  .app-sidebar-collapsed & {
+    @apply justify-center px-0;
+  }
+}
+
+@utility app-sidebar-brand-name {
+  @apply text-sm font-semibold tracking-tight text-fg;
+}
+
+@utility app-sidebar-nav {
+  @apply flex flex-1 flex-col gap-5 overflow-y-auto;
+}
+
+@utility app-sidebar-section {
+  @apply flex flex-col gap-0.5;
+
+  .app-sidebar-collapsed & {
+    @apply items-center;
+  }
+}
+
+@utility app-sidebar-section-title {
+  @apply px-2 pb-1.5 text-2xs font-semibold uppercase tracking-[0.08em] text-fg-muted;
+}
+
+@utility app-sidebar-link {
+  @apply flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-sm text-fg-secondary transition-colors duration-150 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
+
+  .app-sidebar-collapsed & {
+    @apply h-10 w-10 justify-center gap-0 px-0 py-0;
+  }
+
+  &:hover {
+    @apply bg-surface-hover text-fg;
+  }
+}
+
+@utility app-sidebar-link-active {
+  @apply bg-accent/10 text-accent;
+}
+
+@utility app-sidebar-collapse-btn {
+  @apply mt-2 flex h-8 w-8 items-center justify-center self-end rounded-control text-fg-muted transition-colors duration-150 hover:bg-surface-hover hover:text-fg focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
+
+  .app-sidebar-collapsed & {
+    @apply self-center;
+  }
+}
+
+@utility page-container-wide {
+  @apply mx-auto min-h-full w-full px-4 py-4 md:px-6 md:py-5 xl:px-8;
+  max-width: 120rem;
+}
+
+@utility page-container-compact {
+  @apply mx-auto min-h-full w-full px-4 py-4 md:px-6 md:py-5 xl:px-8;
+  max-width: 96rem;
+}
+
+@utility page-container-settings {
+  @apply mx-auto min-h-full w-full px-4 py-4 md:px-6 md:py-5 xl:px-8;
+  max-width: 44rem;
+}
+
+@utility page-scaffold {
+  @apply h-full overflow-y-auto;
+}
+
+@utility scroll-stable {
+  /* Reserve scrollbar gutter on primary vertical-scroll containers to avoid
+     layout shift when content grows past the viewport. */
+  scrollbar-gutter: stable;
+}
+
+@utility page-scaffold-default {
+  @apply bg-bg;
+}
+
+@utility page-scaffold-archive {
+  @apply bg-bg;
+}
+
+@utility page-scaffold-control {
+  @apply bg-bg;
+}
+
+@utility archive-panel {
+  @apply border border-border/60 bg-surface;
+  border-radius: var(--radius-surface);
+}
+
+@utility archive-kicker {
+  @apply text-2xs uppercase tracking-[0.24em] text-fg-muted;
+}
+
+@utility panel-compact {
+  @apply px-4 py-4 md:px-5 md:py-4;
+}
+
+@utility page-header-dense {
+  @apply flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between;
+}
+
+@utility page-status-strip {
+  @apply flex flex-wrap items-center gap-2 text-xs text-fg-muted;
+}
+
+@utility archive-inline-status {
+  @apply inline-flex items-center gap-2 rounded-full border border-border/60 bg-surface/60 px-3 py-1.5 text-2xs;
+}
+
+@utility archive-inline-status-muted {
+  @apply text-fg-muted;
+}
+
+@utility archive-inline-status-success {
+  @apply text-success;
+  border-color: rgb(var(--success) / 0.2);
+  background: rgb(var(--success) / 0.08);
+}
+
+@utility archive-inline-status-error {
+  @apply text-warning;
+  border-color: rgb(var(--warning) / 0.2);
+  background: rgb(var(--warning) / 0.08);
+}
+
+@utility settings-panel-title {
+  @apply text-fg;
+}
+
+@utility settings-panel-description {
+  @apply text-fg-muted;
+}
+
+@utility settings-hero-body {
+  @apply text-fg-muted;
+}
+
+@utility settings-hero-title {
+  @apply text-fg;
+}
+
+@utility settings-appearance-option {
+  border-radius: var(--radius-control);
+}
+
+@utility settings-appearance-option-inactive {
+  @apply border-border bg-surface text-fg-muted hover:border-border hover:bg-surface-hover hover:text-fg;
+}
+
+@utility provider-card {
+  /* 공급사 선택 카드. 이 페이지에서 가장 중요한 결정이라 시각적 비중을
+     여기 한 곳에만 준다. */
+  @apply flex flex-col gap-1 border p-4 text-left transition-[border-color,background-color] duration-150;
+  border-radius: var(--radius-surface);
+}
+
+@utility provider-card-active {
+  @apply border-accent bg-accent/5;
+}
+
+@utility provider-card-inactive {
+  @apply border-border bg-surface hover:border-border hover:bg-surface-hover;
+}
+
+@utility provider-card-disabled {
+  @apply cursor-not-allowed border-border bg-surface opacity-50;
+}
+
+@utility level-card {
+  /* 설명 수준 단계 카드. provider-card와 같은 형태 체계(테두리·radius 토큰·
+     transition)를 쓴다 - 프로필 페이지에서 프리뷰 문장을 주인공으로 올린다. */
+  @apply flex w-full flex-col gap-1 border p-3 text-left transition-[border-color,background-color] duration-150;
+  border-radius: var(--radius-surface);
+}
+
+@utility level-card-active {
+  @apply border-accent bg-accent/5;
+}
+
+@utility level-card-inactive {
+  @apply border-border bg-surface hover:border-border hover:bg-surface-hover;
+}
+
+@utility area-chip {
+  /* 연구 분야 아이콘 칩. 8개뿐이라 검색 팝오버 없이 전부 펼친다.
+     provider-card/level-card와 같은 형태 체계지만 칩 크기라 radius는
+     --radius-control을 쓴다. */
+  @apply flex items-center gap-2 border px-3 py-2 text-sm transition-[border-color,background-color] duration-150;
+  border-radius: var(--radius-control);
+}
+
+@utility area-chip-active {
+  @apply border-accent bg-accent/5 text-fg;
+}
+
+@utility area-chip-inactive {
+  @apply border-border bg-surface text-fg-secondary hover:border-border hover:bg-surface-hover;
+}
+
+@utility area-chip-disabled {
+  @apply cursor-not-allowed border-border bg-surface text-fg-muted opacity-50;
+}
+
+@utility settings-savebar {
+  /* 변경이 있을 때만 나타나는 저장바.
+     fixed가 아니라 sticky인 이유: 스크롤 주체가 .page-scaffold이고 콘텐츠가
+     44rem 컬럼이라, sticky면 사이드바 폭(--sidebar-width, 접히면
+     --sidebar-collapsed-width)을 알 필요가 없고 폭도 저절로 맞는다.
+     z-20은 패널 내부 sticky 대역이다 — 토스트(z-50)가 덮어야 맞다. */
+  @apply sticky bottom-0 z-20 mt-4 flex flex-wrap items-center justify-between gap-3
+           border-t border-border/80 bg-surface/95 px-4 py-3 backdrop-blur-lg;
+  border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+  animation: savebar-in 120ms var(--ease-out-strong);
+}
+
+@utility toast-surface {
+  @apply bg-surface/90 backdrop-blur-lg;
+}
+
+@utility btn {
+  /* Button variants */
+  @apply inline-flex items-center justify-center gap-2 px-4 text-sm font-medium transition-[color,background-color,border-color,opacity,transform] duration-150 ease-out focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50 disabled:pointer-events-none;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-radius: var(--radius-control);
+
+  /* Press feedback — the interface confirms it heard the press */
+  &:active {
+    transform: scale(0.97);
+  }
+}
+
+@utility btn-icon-subtle {
+  &:active {
+    transform: scale(0.97);
+  }
+  @apply inline-flex h-8 w-8 items-center justify-center border border-transparent text-fg-muted transition-[color,background-color,border-color,transform] duration-150 ease-out hover:border-border hover:bg-surface-hover hover:text-fg focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent;
+  border-radius: var(--radius-control);
+}
+
+@utility pdf-toolbar-btn {
+  &:active {
+    transform: scale(0.97);
+  }
+}
+
+@utility chat-send-button {
+  &:active {
+    transform: scale(0.97);
+  }
+}
+
+@utility btn-primary {
+  @apply btn bg-fg text-bg font-semibold hover:bg-fg/85;
+}
+
+@utility btn-secondary {
+  @apply btn bg-surface text-fg hover:bg-surface-hover border border-border;
+}
+
+@utility btn-ghost {
+  @apply btn bg-transparent text-fg-secondary hover:bg-surface-hover hover:text-fg;
+}
+
+@utility btn-danger {
+  @apply btn bg-danger text-accent-fg hover:bg-danger/90 focus-visible:ring-danger;
+}
+
+@utility input {
+  /* Input styles */
+  @apply w-full border border-border bg-surface px-3 text-sm text-fg placeholder-fg-muted transition-colors duration-150 ease-out focus:border-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-radius: var(--radius-control);
+}
+
+@utility badge {
+  /* Badge */
+  @apply inline-flex items-center px-2 py-0.5 text-xs font-medium;
+  border-radius: var(--radius-pill);
+}
+
+@utility badge-primary {
+  @apply badge bg-accent/10 text-accent;
+}
+
+@utility badge-success {
+  @apply badge bg-success/10 text-success;
+}
+
+@utility badge-warning {
+  @apply badge bg-warning/10 text-warning;
+}
+
+@utility badge-error {
+  @apply badge bg-danger/10 text-danger;
+}
+
+@utility toolbar-shell {
+  @apply border border-border/50 bg-surface;
+  border-radius: var(--radius-surface);
+}
+
+@utility toolbar-group {
+  @apply inline-flex items-center gap-1 border border-border/50 bg-surface/40 px-1.5 py-1;
+  border-radius: var(--radius-control);
+}
+
+@utility panel-section {
+  @apply border border-border/50 bg-surface/40 transition-colors duration-200;
+  border-radius: var(--radius-surface);
+}
+
+@utility skeleton {
+  /* Skeleton loader */
+  @apply animate-pulse rounded-sm bg-surface-hover;
+}
+
+@utility phase-dot {
+  /* Phase status dots */
+  @apply w-3 h-3 rounded-full border-2;
+}
+
+@utility phase-dot-pending {
+  @apply phase-dot border-border bg-transparent;
+}
+
+@utility phase-dot-running {
+  @apply phase-dot border-accent bg-accent animate-pulse-subtle;
+}
+
+@utility phase-dot-done {
+  @apply phase-dot border-success bg-success;
+}
+
+@utility phase-dot-error {
+  @apply phase-dot border-danger bg-danger;
+}
+
+@utility icon-surface {
+  border-radius: var(--radius-control);
+  border: 1px solid rgb(var(--fg) / 0.06);
+  background: rgb(var(--fg) / 0.04);
+  @apply inline-flex items-center justify-center;
+}
+
+@utility segmented-control {
+  @apply flex items-center gap-1 overflow-x-auto border-b border-border/50 pb-1;
+}
+
+@utility segmented-control__item {
+  @apply inline-flex min-h-9 items-center justify-center border-b-2 border-transparent px-2.5 py-2 text-xs font-medium text-fg-muted transition-[color] duration-150;
+  border-radius: var(--radius-control);
+
+  &:hover {
+    @apply text-fg;
+  }
+}
+
+@utility segmented-control__item-active {
+  @apply rounded-none border-accent text-fg font-[650];
+}
+
+@utility segmented-control__item-disabled {
+  @apply cursor-not-allowed text-fg-muted opacity-50;
+}
+
+@utility status-pill {
+  @apply inline-flex items-center gap-1.5 border px-2.5 py-1 text-2xs font-medium;
+  border-radius: var(--radius-pill);
+}
+
+@utility chip-tint {
+  /* 워크벤치 공용 틴트 칩 — 보더 없는 저채도 배경 + 시맨틱 색 텍스트.
+     워크벤치 헤더·우측 패널·질문 도우미 전용, 이 표면 밖의 status-pill/Badge는 무수정. */
+  @apply inline-flex items-center whitespace-nowrap font-medium;
+  border-radius: var(--radius-pill);
+  padding: 2px 10px;
+  font-size: 12px;
+  background: rgb(var(--accent) / 0.1);
+  color: rgb(var(--accent));
+
+  .dark & {
+    background: rgb(var(--accent) / 0.16);
+  }
+}
+
+@utility chip-soft {
+  /* 정보성 메타용 조용한 칩 — 틴트 칩(상태성)과 짝. 변수 기반이라 다크 모드 자동 적응. */
+  @apply inline-flex items-center whitespace-nowrap font-medium;
+  border-radius: var(--radius-pill);
+  padding: 2px 10px;
+  font-size: 12px;
+  background: rgb(var(--surface-hover));
+  color: rgb(var(--fg-secondary));
+}
+
+@utility chip-tint-success {
+  background: rgb(var(--success) / 0.1);
+  color: rgb(var(--success));
+
+  .dark & {
+    background: rgb(var(--success) / 0.16);
+  }
+}
+
+@utility chip-tint-danger {
+  background: rgb(var(--danger) / 0.1);
+  color: rgb(var(--danger));
+
+  .dark & {
+    background: rgb(var(--danger) / 0.16);
+  }
+}
+
+@utility dark {
+  & .chip-tint {
+    background: rgb(var(--accent) / 0.16);
+  }
+
+  & .chip-tint-success {
+    background: rgb(var(--success) / 0.16);
+  }
+
+  & .chip-tint-danger {
+    background: rgb(var(--danger) / 0.16);
+  }
+}
+
+@utility library-archive-header {
+  @apply bg-surface;
+}
+
+@utility library-controlbar {
+  @apply grid gap-2.5 pt-3;
+}
+
+@utility library-filter-panel {
+  @apply rounded-surface border border-border/50 bg-surface/90 p-4;
+}
+
+@utility library-shelf {
+  @apply overflow-hidden rounded-surface border border-border/60 bg-surface/90;
+}
+
+@utility library-shelf-row--completed {
+  background-color: rgb(var(--success) / 0.06);
+
+  & .library-status-badge {
+    @apply border-success/20 bg-success/10 text-success;
+  }
+
+  & .library-status-dot {
+    @apply bg-success;
+  }
+}
+
+@utility library-shelf-row--analyzing {
+  background-color: rgb(var(--accent) / 0.07);
+
+  & .library-status-badge {
+    @apply border-accent/20 bg-accent/10 text-accent;
+  }
+
+  & .library-status-dot {
+    @apply bg-accent;
+  }
+}
+
+@utility library-shelf-row--pending {
+  background-color: rgb(var(--warning) / 0.06);
+
+  & .library-status-badge {
+    @apply border-warning/20 bg-warning/10 text-warning;
+  }
+
+  & .library-status-dot {
+    @apply bg-warning;
+  }
+}
+
+@utility library-shelf-row--error {
+  background-color: rgb(var(--danger) / 0.07);
+
+  & .library-status-badge {
+    @apply border-danger/20 bg-danger/10 text-danger;
+  }
+
+  & .library-status-dot {
+    @apply bg-danger;
+  }
+}
+
+@utility library-status-badge {
+  .library-shelf-row--completed & {
+    @apply border-success/20 bg-success/10 text-success;
+  }
+
+  .library-shelf-row--analyzing & {
+    @apply border-accent/20 bg-accent/10 text-accent;
+  }
+
+  .library-shelf-row--pending & {
+    @apply border-warning/20 bg-warning/10 text-warning;
+  }
+
+  .library-shelf-row--error & {
+    @apply border-danger/20 bg-danger/10 text-danger;
+  }
+  @apply inline-flex items-center gap-1 rounded-full border px-2 py-1 text-2xs;
+}
+
+@utility library-status-dot {
+  @apply h-1.5 w-1.5 rounded-full;
+
+  .library-shelf-row--completed & {
+    @apply bg-success;
+  }
+
+  .library-shelf-row--analyzing & {
+    @apply bg-accent;
+  }
+
+  .library-shelf-row--pending & {
+    @apply bg-warning;
+  }
+
+  .library-shelf-row--error & {
+    @apply bg-danger;
+  }
+}
+
+@utility library-record-title {
+  @apply text-base font-semibold leading-snug tracking-[-0.02em] text-fg;
+}
+
+@utility library-record-meta {
+  @apply mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm leading-5 text-fg-muted;
+}
+
+@utility library-meta-label {
+  @apply text-2xs font-medium uppercase tracking-[0.14em] text-fg-muted;
+}
+
+@utility library-meta-value {
+  @apply text-base leading-6 text-fg;
+}
+
+@utility library-agent-label {
+  @apply inline-flex items-center gap-2 text-base leading-6 text-fg-secondary;
+}
+
+@utility library-archive-card {
+  @apply relative overflow-hidden rounded-surface border border-border/50 bg-surface/40 p-4 transition-colors;
+
+  &:hover {
+    @apply bg-surface/60;
+  }
+}
+
+@utility library-table {
+  /* 데이터 테이블 (연구 보관함 리스트 뷰) */
+  @apply w-full border-collapse text-left;
+
+  & thead th {
+    @apply whitespace-nowrap border-b border-border/70 px-4 py-2.5 text-2xs font-medium uppercase tracking-[0.12em] text-fg-muted;
+  }
+
+  & tbody td {
+    @apply border-b border-border/40 px-4 py-3 align-middle text-sm text-fg-secondary;
+  }
+
+  & tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  & tbody tr {
+    @apply cursor-pointer transition-colors hover:bg-surface-hover/25 focus:outline-hidden focus-visible:bg-surface-hover/25;
+  }
+}
+
+@utility library-th-sortable {
+  @apply cursor-pointer select-none transition-colors hover:text-fg-secondary;
+}
+
+@utility library-cell-num {
+  @apply whitespace-nowrap tabular-nums text-fg-muted;
+}
+
+@utility library-row-action {
+  @apply flex h-8 w-8 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-danger/10 hover:text-danger focus-visible:bg-danger/10 focus-visible:text-danger;
+}
+
+@utility library-soft-card {
+  /* Refined Soft UI 카드 (연구 보관함 그리드 뷰) */
+  @apply flex h-full min-h-34 cursor-pointer flex-col rounded-surface border border-border/55 bg-surface/70 p-4 shadow-xs transition-all duration-200 ease-out;
+
+  &:hover {
+    @apply -translate-y-0.5 border-border bg-surface shadow-lg;
+  }
+
+  &:focus-visible {
+    @apply -translate-y-0.5 outline-hidden ring-2 ring-accent/40 ring-offset-2 ring-offset-bg;
+  }
+}
+
+@utility library-soft-pill {
+  @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border/60 bg-bg/40 px-2 py-1 text-2xs text-fg-secondary;
+}
+
+@utility library-archive-card--completed {
+  background-color: rgb(var(--success) / 0.07);
+}
+
+@utility library-archive-card--analyzing {
+  background-color: rgb(var(--accent) / 0.08);
+}
+
+@utility library-archive-card--pending {
+  background-color: rgb(var(--warning) / 0.07);
+}
+
+@utility library-archive-card--error {
+  background-color: rgb(var(--danger) / 0.08);
+}
+
+@utility agent-tinted {
+  background: color-mix(
+    in srgb,
+    var(--agent-color) var(--agent-tint-bg-opacity),
+    transparent
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--agent-color) var(--agent-tint-border-opacity),
+    transparent
+  );
+}
+
+@utility agent-dot {
+  @apply inline-block h-2 w-2 shrink-0 rounded-full;
+  background: var(--agent-color);
+}
+
+@utility citation-chip {
+  /* Citation click-back chip rendered inside chat markdown */
+  @apply mx-0.5 inline cursor-pointer rounded-control border-0 bg-accent/10 px-1 py-0.5 align-baseline font-mono font-medium text-accent transition-colors;
+
+  &:hover {
+    @apply bg-accent/20;
+  }
+}
+
+@layer utilities {
+  @font-face {
+    font-family: 'Pretendard Variable';
+    src: url('/fonts/PretendardVariable.woff2') format('woff2-variations');
+    font-weight: 45 920;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  :root {
+    /* Semantic color tokens — RGB channels; ref docs/04-design/design-tokens.md §1 */
+    /* Light (default) — design system v2 */
+    --bg: 247 247 248;
+    --surface: 255 255 255;
+    --surface-hover: 239 239 241;
+    --border: 228 228 231;
+    --fg: 24 24 27;
+    --fg-secondary: 82 82 91;
+    --fg-muted: 112 112 122;
+    --accent: 104 61 204;
+    --accent-hover: 82 33 182;
+    --accent-fg: 255 255 255;
+    --danger: 220 38 38;
+    --warning: 217 119 6;
+    --success: 22 163 74;
+
+    /* Layout */
+    --sidebar-width: 13rem;
+    --sidebar-collapsed-width: 4.5rem;
+    --header-height: 3rem;
+
+    /* Motion */
+    --transition-speed: 150ms;
+    /* Strong custom curves — built-in easings are too weak for deliberate UI motion */
+    --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
+
+    /* Icons */
+    --icon-stroke: 1.7;
+    --icon-highlight-opacity: 0.24;
+    --icon-surface-border: rgba(15, 23, 42, 0.08);
+    --icon-surface-tint: rgba(255, 255, 255, 0.78);
+    --icon-surface-shadow: none;
+
+    /* Agent tinting (color-mix opacity stops; ref §agent-tinted below) */
+    --agent-tint-bg-opacity: 8%;
+    --agent-tint-border-opacity: 30%;
+
+    /* Radius */
+    --radius-control: 6px;
+    --radius-surface: 12px;
+    --radius-pill: 9999px;
+  }
+
+  .dark {
+    --bg: 10 10 11;
+    --surface: 23 23 26;
+    --surface-hover: 32 32 36;
+    --border: 42 42 48;
+    --fg: 244 244 245;
+    --fg-secondary: 161 161 170;
+    --fg-muted: 112 112 122;
+    --accent: 124 90 232;
+    --accent-hover: 145 121 240;
+    --accent-fg: 255 255 255;
+    --danger: 239 90 90;
+    --warning: 245 158 11;
+    --success: 52 199 123;
+
+    --icon-surface-border: rgba(255, 255, 255, 0.08);
+    --icon-surface-tint: rgba(255, 255, 255, 0.05);
+    --icon-surface-shadow: none;
+
+    --agent-tint-bg-opacity: 14%;
+    --agent-tint-border-opacity: 40%;
+  }
 }
 
 @layer base {
@@ -125,249 +965,6 @@
 }
 
 @layer components {
-  /* Reusable card component */
-  .card {
-    @apply border border-border bg-surface px-4;
-    padding-top: 1.25rem;
-    padding-bottom: 1.25rem;
-    border-radius: var(--radius-surface);
-  }
-
-  .card-hover {
-    @apply card transition-colors duration-200 ease-out hover:border-border hover:bg-surface-hover;
-  }
-
-  .app-shell {
-    @apply flex h-screen flex-col bg-bg text-fg;
-  }
-
-  .app-sidebar {
-    width: var(--sidebar-width);
-    @apply flex shrink-0 flex-col border-r border-border bg-surface px-3 py-4;
-  }
-
-  .app-sidebar-collapsed {
-    width: var(--sidebar-collapsed-width);
-    @apply items-center px-2;
-  }
-
-  .app-sidebar-brand {
-    @apply flex items-center gap-2.5 px-2 pb-4;
-  }
-
-  .app-sidebar-collapsed .app-sidebar-brand {
-    @apply justify-center px-0;
-  }
-
-  .app-sidebar-brand-name {
-    @apply text-sm font-semibold tracking-tight text-fg;
-  }
-
-  .app-sidebar-nav {
-    @apply flex flex-1 flex-col gap-5 overflow-y-auto;
-  }
-
-  .app-sidebar-section {
-    @apply flex flex-col gap-0.5;
-  }
-
-  .app-sidebar-collapsed .app-sidebar-section {
-    @apply items-center;
-  }
-
-  .app-sidebar-section-title {
-    @apply px-2 pb-1.5 text-2xs font-semibold uppercase tracking-[0.08em] text-fg-muted;
-  }
-
-  .app-sidebar-link {
-    @apply flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-sm text-fg-secondary transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
-  }
-
-  .app-sidebar-collapsed .app-sidebar-link {
-    @apply h-10 w-10 justify-center gap-0 px-0 py-0;
-  }
-
-  .app-sidebar-link:hover {
-    @apply bg-surface-hover text-fg;
-  }
-
-  .app-sidebar-link-active {
-    @apply bg-accent/10 text-accent;
-  }
-
-  .app-sidebar-collapse-btn {
-    @apply mt-2 flex h-8 w-8 items-center justify-center self-end rounded-control text-fg-muted transition-colors duration-150 hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
-  }
-
-  .app-sidebar-collapsed .app-sidebar-collapse-btn {
-    @apply self-center;
-  }
-
-  .page-container-wide {
-    @apply mx-auto min-h-full w-full px-4 py-4 md:px-6 md:py-5 xl:px-8;
-    max-width: 120rem;
-  }
-
-  .page-container-compact {
-    @apply mx-auto min-h-full w-full px-4 py-4 md:px-6 md:py-5 xl:px-8;
-    max-width: 96rem;
-  }
-
-  .page-container-settings {
-    @apply mx-auto min-h-full w-full px-4 py-4 md:px-6 md:py-5 xl:px-8;
-    max-width: 44rem;
-  }
-
-  .page-scaffold {
-    @apply h-full overflow-y-auto;
-  }
-
-  /* Reserve scrollbar gutter on primary vertical-scroll containers to avoid
-     layout shift when content grows past the viewport. */
-  .scroll-stable {
-    scrollbar-gutter: stable;
-  }
-
-  .page-scaffold-default {
-    @apply bg-bg;
-  }
-
-  .page-scaffold-archive {
-    @apply bg-bg;
-  }
-
-  .page-scaffold-control {
-    @apply bg-bg;
-  }
-
-  .archive-panel {
-    @apply border border-border/60 bg-surface;
-    border-radius: var(--radius-surface);
-  }
-
-  .archive-kicker {
-    @apply text-2xs uppercase tracking-[0.24em] text-fg-muted;
-  }
-
-  .panel-compact {
-    @apply px-4 py-4 md:px-5 md:py-4;
-  }
-
-  .page-header-dense {
-    @apply flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between;
-  }
-
-  .page-status-strip {
-    @apply flex flex-wrap items-center gap-2 text-xs text-fg-muted;
-  }
-
-  .archive-inline-status {
-    @apply inline-flex items-center gap-2 rounded-full border border-border/60 bg-surface/60 px-3 py-1.5 text-2xs;
-  }
-
-  .archive-inline-status-muted {
-    @apply text-fg-muted;
-  }
-
-  .archive-inline-status-success {
-    @apply text-success;
-    border-color: rgb(var(--success) / 0.2);
-    background: rgb(var(--success) / 0.08);
-  }
-
-  .archive-inline-status-error {
-    @apply text-warning;
-    border-color: rgb(var(--warning) / 0.2);
-    background: rgb(var(--warning) / 0.08);
-  }
-
-  .settings-panel-title {
-    @apply text-fg;
-  }
-
-  .settings-panel-description,
-  .settings-hero-body {
-    @apply text-fg-muted;
-  }
-
-  .settings-hero-title {
-    @apply text-fg;
-  }
-
-  .settings-appearance-option {
-    border-radius: var(--radius-control);
-  }
-
-  .settings-appearance-option-inactive {
-    @apply border-border bg-surface text-fg-muted hover:border-border hover:bg-surface-hover hover:text-fg;
-  }
-
-  /* 공급사 선택 카드. 이 페이지에서 가장 중요한 결정이라 시각적 비중을
-     여기 한 곳에만 준다. */
-  .provider-card {
-    @apply flex flex-col gap-1 border p-4 text-left transition-[border-color,background-color] duration-150;
-    border-radius: var(--radius-surface);
-  }
-
-  .provider-card-active {
-    @apply border-accent bg-accent/5;
-  }
-
-  .provider-card-inactive {
-    @apply border-border bg-surface hover:border-border hover:bg-surface-hover;
-  }
-
-  .provider-card-disabled {
-    @apply cursor-not-allowed border-border bg-surface opacity-50;
-  }
-
-  /* 설명 수준 단계 카드. provider-card와 같은 형태 체계(테두리·radius 토큰·
-     transition)를 쓴다 - 프로필 페이지에서 프리뷰 문장을 주인공으로 올린다. */
-  .level-card {
-    @apply flex w-full flex-col gap-1 border p-3 text-left transition-[border-color,background-color] duration-150;
-    border-radius: var(--radius-surface);
-  }
-
-  .level-card-active {
-    @apply border-accent bg-accent/5;
-  }
-
-  .level-card-inactive {
-    @apply border-border bg-surface hover:border-border hover:bg-surface-hover;
-  }
-
-  /* 연구 분야 아이콘 칩. 8개뿐이라 검색 팝오버 없이 전부 펼친다.
-     provider-card/level-card와 같은 형태 체계지만 칩 크기라 radius는
-     --radius-control을 쓴다. */
-  .area-chip {
-    @apply flex items-center gap-2 border px-3 py-2 text-sm transition-[border-color,background-color] duration-150;
-    border-radius: var(--radius-control);
-  }
-
-  .area-chip-active {
-    @apply border-accent bg-accent/5 text-fg;
-  }
-
-  .area-chip-inactive {
-    @apply border-border bg-surface text-fg-secondary hover:border-border hover:bg-surface-hover;
-  }
-
-  .area-chip-disabled {
-    @apply cursor-not-allowed border-border bg-surface text-fg-muted opacity-50;
-  }
-
-  /* 변경이 있을 때만 나타나는 저장바.
-     fixed가 아니라 sticky인 이유: 스크롤 주체가 .page-scaffold이고 콘텐츠가
-     44rem 컬럼이라, sticky면 사이드바 폭(--sidebar-width, 접히면
-     --sidebar-collapsed-width)을 알 필요가 없고 폭도 저절로 맞는다.
-     z-20은 패널 내부 sticky 대역이다 — 토스트(z-50)가 덮어야 맞다. */
-  .settings-savebar {
-    @apply sticky bottom-0 z-20 mt-4 flex flex-wrap items-center justify-between gap-3
-           border-t border-border/80 bg-surface/95 px-4 py-3 backdrop-blur-lg;
-    border-radius: var(--radius-surface) var(--radius-surface) 0 0;
-    animation: savebar-in 120ms var(--ease-out-strong);
-  }
-
   @keyframes savebar-in {
     from {
       opacity: 0;
@@ -378,363 +975,10 @@
       transform: translateY(0);
     }
   }
-
-  .toast-surface {
-    @apply bg-surface/90 backdrop-blur-lg;
-  }
-
-  /* Button variants */
-  .btn {
-    @apply inline-flex items-center justify-center gap-2 px-4 text-sm font-medium transition-[color,background-color,border-color,opacity,transform] duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50 disabled:pointer-events-none;
-    padding-top: 0.5rem;
-    padding-bottom: 0.5rem;
-    border-radius: var(--radius-control);
-  }
-
-  /* Press feedback — the interface confirms it heard the press */
-  .btn:active,
-  .btn-icon-subtle:active,
-  .pdf-toolbar-btn:active,
-  .chat-send-button:active {
-    transform: scale(0.97);
-  }
-
-  .btn-primary {
-    @apply btn bg-fg text-bg font-semibold hover:bg-fg/85;
-  }
-
-  .btn-secondary {
-    @apply btn bg-surface text-fg hover:bg-surface-hover border border-border;
-  }
-
-  .btn-ghost {
-    @apply btn bg-transparent text-fg-secondary hover:bg-surface-hover hover:text-fg;
-  }
-
-  .btn-danger {
-    @apply btn bg-danger text-accent-fg hover:bg-danger/90 focus-visible:ring-danger;
-  }
-
-  .btn-icon-subtle {
-    @apply inline-flex h-8 w-8 items-center justify-center border border-transparent text-fg-muted transition-[color,background-color,border-color,transform] duration-150 ease-out hover:border-border hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent;
-    border-radius: var(--radius-control);
-  }
-
-  /* Input styles */
-  .input {
-    @apply w-full border border-border bg-surface px-3 text-sm text-fg placeholder-fg-muted transition-colors duration-150 ease-out focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent;
-    padding-top: 0.5rem;
-    padding-bottom: 0.5rem;
-    border-radius: var(--radius-control);
-  }
-
-  /* Badge */
-  .badge {
-    @apply inline-flex items-center px-2 py-0.5 text-xs font-medium;
-    border-radius: var(--radius-pill);
-  }
-
-  .badge-primary {
-    @apply badge bg-accent/10 text-accent;
-  }
-
-  .badge-success {
-    @apply badge bg-success/10 text-success;
-  }
-
-  .badge-warning {
-    @apply badge bg-warning/10 text-warning;
-  }
-
-  .badge-error {
-    @apply badge bg-danger/10 text-danger;
-  }
-
-  .toolbar-shell {
-    @apply border border-border/50 bg-surface;
-    border-radius: var(--radius-surface);
-  }
-
-  .toolbar-group {
-    @apply inline-flex items-center gap-1 border border-border/50 bg-surface/40 px-1.5 py-1;
-    border-radius: var(--radius-control);
-  }
-
-  .panel-section {
-    @apply border border-border/50 bg-surface/40 transition-colors duration-200;
-    border-radius: var(--radius-surface);
-  }
-
-  /* Skeleton loader */
-  .skeleton {
-    @apply animate-pulse rounded bg-surface-hover;
-  }
-
-  /* Phase status dots */
-  .phase-dot {
-    @apply w-3 h-3 rounded-full border-2;
-  }
-
-  .phase-dot-pending {
-    @apply phase-dot border-border bg-transparent;
-  }
-
-  .phase-dot-running {
-    @apply phase-dot border-accent bg-accent animate-pulse-subtle;
-  }
-
-  .phase-dot-done {
-    @apply phase-dot border-success bg-success;
-  }
-
-  .phase-dot-error {
-    @apply phase-dot border-danger bg-danger;
-  }
-
-  .icon-surface {
-    border-radius: var(--radius-control);
-    border: 1px solid rgb(var(--fg) / 0.06);
-    background: rgb(var(--fg) / 0.04);
-    @apply inline-flex items-center justify-center;
-  }
-
-  .segmented-control {
-    @apply flex items-center gap-1 overflow-x-auto border-b border-border/50 pb-1;
-  }
-
-  .segmented-control__item {
-    @apply inline-flex min-h-[2.25rem] items-center justify-center border-b-2 border-transparent px-2.5 py-2 text-xs font-medium text-fg-muted transition-[color] duration-150;
-    border-radius: var(--radius-control);
-  }
-
-  .segmented-control__item:hover {
-    @apply text-fg;
-  }
-
-  .segmented-control__item-active {
-    @apply rounded-none border-accent text-fg font-[650];
-  }
-
-  .segmented-control__item-disabled {
-    @apply cursor-not-allowed text-fg-muted opacity-50;
-  }
-
-  .status-pill {
-    @apply inline-flex items-center gap-1.5 border px-2.5 py-1 text-2xs font-medium;
-    border-radius: var(--radius-pill);
-  }
-
-  /* 워크벤치 공용 틴트 칩 — 보더 없는 저채도 배경 + 시맨틱 색 텍스트.
-     워크벤치 헤더·우측 패널·질문 도우미 전용, 이 표면 밖의 status-pill/Badge는 무수정. */
-  .chip-tint {
-    @apply inline-flex items-center whitespace-nowrap font-medium;
-    border-radius: var(--radius-pill);
-    padding: 2px 10px;
-    font-size: 12px;
-    background: rgb(var(--accent) / 0.10);
-    color: rgb(var(--accent));
-  }
-
-  /* 정보성 메타용 조용한 칩 — 틴트 칩(상태성)과 짝. 변수 기반이라 다크 모드 자동 적응. */
-  .chip-soft {
-    @apply inline-flex items-center whitespace-nowrap font-medium;
-    border-radius: var(--radius-pill);
-    padding: 2px 10px;
-    font-size: 12px;
-    background: rgb(var(--surface-hover));
-    color: rgb(var(--fg-secondary));
-  }
-
-  .chip-tint-success {
-    background: rgb(var(--success) / 0.10);
-    color: rgb(var(--success));
-  }
-
-  .chip-tint-danger {
-    background: rgb(var(--danger) / 0.10);
-    color: rgb(var(--danger));
-  }
-
-  .dark .chip-tint {
-    background: rgb(var(--accent) / 0.16);
-  }
-
-  .dark .chip-tint-success {
-    background: rgb(var(--success) / 0.16);
-  }
-
-  .dark .chip-tint-danger {
-    background: rgb(var(--danger) / 0.16);
-  }
-
-  .library-archive-header {
-    @apply bg-surface;
-  }
-
-  .library-controlbar {
-    @apply grid gap-2.5 pt-3;
-  }
-
-  .library-filter-panel {
-    @apply rounded-surface border border-border/50 bg-surface/90 p-4;
-  }
-
-  .library-shelf {
-    @apply overflow-hidden rounded-surface border border-border/60 bg-surface/90;
-  }
-
-  .library-shelf-row--completed {
-    background-color: rgb(var(--success) / 0.06);
-  }
-
-  .library-shelf-row--analyzing {
-    background-color: rgb(var(--accent) / 0.07);
-  }
-
-  .library-shelf-row--pending {
-    background-color: rgb(var(--warning) / 0.06);
-  }
-
-  .library-shelf-row--error {
-    background-color: rgb(var(--danger) / 0.07);
-  }
-
-  .library-shelf-row--completed .library-status-badge {
-    @apply border-success/20 bg-success/10 text-success;
-  }
-
-  .library-shelf-row--analyzing .library-status-badge {
-    @apply border-accent/20 bg-accent/10 text-accent;
-  }
-
-  .library-shelf-row--pending .library-status-badge {
-    @apply border-warning/20 bg-warning/10 text-warning;
-  }
-
-  .library-shelf-row--error .library-status-badge {
-    @apply border-danger/20 bg-danger/10 text-danger;
-  }
-
-  .library-status-badge {
-    @apply inline-flex items-center gap-1 rounded-full border px-2 py-1 text-2xs;
-  }
-
-  .library-status-dot {
-    @apply h-1.5 w-1.5 rounded-full;
-  }
-
-  .library-shelf-row--completed .library-status-dot {
-    @apply bg-success;
-  }
-
-  .library-shelf-row--analyzing .library-status-dot {
-    @apply bg-accent;
-  }
-
-  .library-shelf-row--pending .library-status-dot {
-    @apply bg-warning;
-  }
-
-  .library-shelf-row--error .library-status-dot {
-    @apply bg-danger;
-  }
-
-  .library-record-title {
-    @apply text-base font-semibold leading-snug tracking-[-0.02em] text-fg;
-  }
-
-  .library-record-meta {
-    @apply mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm leading-5 text-fg-muted;
-  }
-
-  .library-meta-label {
-    @apply text-2xs font-medium uppercase tracking-[0.14em] text-fg-muted;
-  }
-
-  .library-meta-value {
-    @apply text-base leading-6 text-fg;
-  }
-
-  .library-agent-label {
-    @apply inline-flex items-center gap-2 text-base leading-6 text-fg-secondary;
-  }
-
-  .library-archive-card {
-    @apply relative overflow-hidden rounded-surface border border-border/50 bg-surface/40 p-4 transition-colors;
-  }
-
-  .library-archive-card:hover {
-    @apply bg-surface/60;
-  }
-
-  /* 데이터 테이블 (연구 보관함 리스트 뷰) */
-  .library-table {
-    @apply w-full border-collapse text-left;
-  }
-
-  .library-table thead th {
-    @apply whitespace-nowrap border-b border-border/70 px-4 py-2.5 text-2xs font-medium uppercase tracking-[0.12em] text-fg-muted;
-  }
-
-  .library-th-sortable {
-    @apply cursor-pointer select-none transition-colors hover:text-fg-secondary;
-  }
-
-  .library-table tbody td {
-    @apply border-b border-border/40 px-4 py-3 align-middle text-sm text-fg-secondary;
-  }
-
-  .library-table tbody tr:last-child td {
-    @apply border-b-0;
-  }
-
-  .library-table tbody tr {
-    @apply cursor-pointer transition-colors hover:bg-surface-hover/25 focus:outline-none focus-visible:bg-surface-hover/25;
-  }
-
-  .library-cell-num {
-    @apply whitespace-nowrap tabular-nums text-fg-muted;
-  }
-
-  .library-row-action {
-    @apply flex h-8 w-8 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-danger/10 hover:text-danger focus-visible:bg-danger/10 focus-visible:text-danger;
-  }
-
-  /* Refined Soft UI 카드 (연구 보관함 그리드 뷰) */
-  .library-soft-card {
-    @apply flex h-full min-h-[8.5rem] cursor-pointer flex-col rounded-surface border border-border/55 bg-surface/70 p-4 shadow-sm transition-all duration-200 ease-out;
-  }
-
-  .library-soft-card:hover {
-    @apply -translate-y-0.5 border-border bg-surface shadow-lg;
-  }
-
-  .library-soft-card:focus-visible {
-    @apply -translate-y-0.5 outline-none ring-2 ring-accent/40 ring-offset-2 ring-offset-bg;
-  }
-
-  .library-soft-pill {
-    @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border/60 bg-bg/40 px-2 py-1 text-2xs text-fg-secondary;
-  }
-
-  .library-archive-card--completed {
-    background-color: rgb(var(--success) / 0.07);
-  }
-
-  .library-archive-card--analyzing {
-    background-color: rgb(var(--accent) / 0.08);
-  }
-
-  .library-archive-card--pending {
-    background-color: rgb(var(--warning) / 0.07);
-  }
-
-  .library-archive-card--error {
-    background-color: rgb(var(--danger) / 0.08);
-  }
 }
 
-/* Utilities (unlayered to avoid @apply circular dependency with custom colors) */
+@layer utilities {
+  /* Utilities (unlayered to avoid @apply circular dependency with custom colors) */
   /* Same-plane panel surface (formerly a backdrop-blur "glass" treatment) */
   .glass {
     @apply bg-surface border border-border/40;
@@ -776,7 +1020,11 @@
     transform: translate(-50%, -50%);
     width: 2px;
     height: 20px;
-    background-image: radial-gradient(circle, currentColor 1px, transparent 1px);
+    background-image: radial-gradient(
+      circle,
+      currentColor 1px,
+      transparent 1px
+    );
     background-size: 2px 7px;
     background-repeat: repeat-y;
     opacity: 0;
@@ -792,24 +1040,30 @@
   /* Hover state: color + glow (no width change — avoids adjacent-pane reflow) */
   .resize-handle:hover {
     @apply bg-accent/70;
-    box-shadow: -2px 0 8px rgb(var(--accent) / 0.1), 2px 0 8px rgb(var(--accent) / 0.1);
+    box-shadow:
+      -2px 0 8px rgb(var(--accent) / 0.1),
+      2px 0 8px rgb(var(--accent) / 0.1);
   }
 
   /* Active/dragging state */
   .resize-handle.active {
     @apply bg-accent;
-    box-shadow: -3px 0 12px rgb(var(--accent) / 0.2), 3px 0 12px rgb(var(--accent) / 0.2);
+    box-shadow:
+      -3px 0 12px rgb(var(--accent) / 0.2),
+      3px 0 12px rgb(var(--accent) / 0.2);
   }
 
   /* Snap indicator */
   .resize-handle.snapping {
     @apply bg-accent;
-    box-shadow: -4px 0 16px rgb(var(--accent) / 0.3), 4px 0 16px rgb(var(--accent) / 0.3);
+    box-shadow:
+      -4px 0 16px rgb(var(--accent) / 0.3),
+      4px 0 16px rgb(var(--accent) / 0.3);
   }
 
   /* Focus visible for keyboard users */
   .resize-handle:focus-visible {
-    @apply bg-accent outline-none;
+    @apply bg-accent outline-hidden;
     box-shadow: 0 0 0 2px rgb(var(--accent) / 0.5);
   }
 
@@ -870,7 +1124,7 @@
   }
 
   .analysis-content code {
-    @apply text-xs bg-surface text-accent rounded px-1.5 py-0.5;
+    @apply text-xs bg-surface text-accent rounded-sm px-1.5 py-0.5;
   }
 
   .analysis-content pre {
@@ -945,7 +1199,7 @@
   }
 
   .figure-explanation-content code {
-    @apply text-xs bg-surface/80 text-accent rounded px-1.5 py-0.5;
+    @apply text-xs bg-surface/80 text-accent rounded-sm px-1.5 py-0.5;
   }
 
   .figure-explanation-content blockquote {
@@ -976,9 +1230,15 @@
     @apply font-semibold text-fg mt-4 mb-2 first:mt-0;
   }
 
-  .chat-markdown h1 { @apply text-sm; }
-  .chat-markdown h2 { @apply text-xs; }
-  .chat-markdown h3 { @apply text-xs text-fg; }
+  .chat-markdown h1 {
+    @apply text-sm;
+  }
+  .chat-markdown h2 {
+    @apply text-xs;
+  }
+  .chat-markdown h3 {
+    @apply text-xs text-fg;
+  }
 
   .chat-markdown ul {
     @apply list-disc list-outside ml-4 mb-3 space-y-1.5;
@@ -1001,7 +1261,7 @@
   }
 
   .chat-markdown code {
-    @apply text-2xs bg-surface text-accent rounded px-1 py-0.5;
+    @apply text-2xs bg-surface text-accent rounded-sm px-1 py-0.5;
   }
 
   .chat-markdown pre {
@@ -1045,7 +1305,7 @@
   }
 
   .pdf-toolbar-btn {
-    @apply inline-flex h-8 min-w-[2rem] items-center justify-center border border-transparent bg-transparent px-2 text-fg-muted transition-[color,background-color,border-color,transform] duration-150 hover:border-border/70 hover:bg-surface-hover/70 hover:text-fg disabled:pointer-events-none disabled:opacity-35;
+    @apply inline-flex h-8 min-w-8 items-center justify-center border border-transparent bg-transparent px-2 text-fg-muted transition-[color,background-color,border-color,transform] duration-150 hover:border-border/70 hover:bg-surface-hover/70 hover:text-fg disabled:pointer-events-none disabled:opacity-35;
     border-radius: var(--radius-control);
   }
 
@@ -1136,7 +1396,7 @@
   }
 
   .chat-composer-input {
-    @apply min-h-[2rem] max-h-[112px] flex-1 resize-none bg-transparent px-1 py-1 text-xs text-fg placeholder:text-fg-muted focus:outline-none;
+    @apply min-h-8 max-h-[112px] flex-1 resize-none bg-transparent px-1 py-1 text-xs text-fg placeholder:text-fg-muted focus:outline-hidden;
   }
 
   .chat-send-button {
@@ -1148,7 +1408,7 @@
   }
 
   .chat-launcher {
-    @apply flex min-h-[4rem] items-center gap-3 rounded-surface border border-border/60 bg-surface/90 px-3.5 py-2.5 shadow-[0_18px_48px_rgba(0,0,0,0.22)] backdrop-blur-xl transition-[transform,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:border-border/70;
+    @apply flex min-h-16 items-center gap-3 rounded-surface border border-border/60 bg-surface/90 px-3.5 py-2.5 shadow-[0_18px_48px_rgba(0,0,0,0.22)] backdrop-blur-xl transition-[transform,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:border-border/70;
     width: min(20rem, calc(100vw - 1.5rem));
   }
 
@@ -1175,7 +1435,9 @@
   .chat-floating-header {
     @apply flex items-start justify-between gap-3 px-4 py-4;
     border-bottom: 1px solid transparent;
-    transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+    transition:
+      border-color 150ms ease-out,
+      box-shadow 150ms ease-out;
   }
 
   .chat-floating-header[data-scrolled] {
@@ -1231,7 +1493,9 @@
      panel content has actually scrolled behind the header. */
   .figure-modal-header {
     border-bottom: 1px solid transparent;
-    transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+    transition:
+      border-color 150ms ease-out,
+      box-shadow 150ms ease-out;
   }
 
   .figure-modal-header[data-scrolled] {
@@ -1243,231 +1507,234 @@
     box-shadow: 0 4px 12px rgb(0 0 0 / 0.18);
   }
 
-/* ── Missing keyframes ── */
-/* Note: slideInRight/slideUp/fadeIn keyframes + .animate-slide-in-right/
+  /* ── Missing keyframes ── */
+  /* Note: slideInRight/slideUp/fadeIn keyframes + .animate-slide-in-right/
    .animate-slide-up/.animate-fade-in utilities are defined once in
    tailwind.config.js (0.15s, per docs/04-design/design-tokens.md §5) —
    do not redefine them here (an unlayered redefinition wins the cascade
    and silently overrides the config's duration cap). */
 
-/* pulseSubtle keyframe + .animate-pulse-subtle utility live solely in
+  /* pulseSubtle keyframe + .animate-pulse-subtle utility live solely in
    tailwind.config.js (opacity-only, single source). `.phase-dot-running`
    consumes it via @apply animate-pulse-subtle. */
 
-/* ── Custom titlebar ── */
+  /* ── Custom titlebar ── */
 
-.titlebar-drag {
-  -webkit-app-region: drag;
-}
-
-.titlebar-no-drag {
-  -webkit-app-region: no-drag;
-}
-
-/* ── UI Animation keyframes ── */
-
-@keyframes pageEnter {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
+  .titlebar-drag {
+    -webkit-app-region: drag;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
-@keyframes backdropFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes modalScaleIn {
-  from {
-    opacity: 0;
-    transform: scale(0.96);
+  .titlebar-no-drag {
+    -webkit-app-region: no-drag;
   }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
 
-@keyframes backdropFadeOut {
-  from { opacity: 1; }
-  to { opacity: 0; }
-}
+  /* ── UI Animation keyframes ── */
 
-@keyframes modalFadeOut {
-  from {
-    opacity: 1;
-    transform: scale(1);
+  @keyframes pageEnter {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
-  to {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-}
 
-/* Modal enter — centering baked into the keyframe so it survives the
+  @keyframes backdropFadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes modalScaleIn {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes backdropFadeOut {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes modalFadeOut {
+    from {
+      opacity: 1;
+      transform: scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+
+  /* Modal enter — centering baked into the keyframe so it survives the
    animation. A bare `translateY` keyframe (e.g. slideUp) would replace the
    `-translate-x/y-1/2` centering transform and shove the box off-center for
    the whole run; interpolating between two centered transforms keeps it
    centered at every frame and after completion (fill-mode both). */
-@keyframes modalSlideUp {
-  from {
-    opacity: 0;
-    transform: translate(-50%, calc(-50% + 0.5rem));
+  @keyframes modalSlideUp {
+    from {
+      opacity: 0;
+      transform: translate(-50%, calc(-50% + 0.5rem));
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, -50%);
+    }
   }
-  to {
-    opacity: 1;
-    transform: translate(-50%, -50%);
+
+  /* Reduced-motion fallback: fade in place, keep centering, no vertical travel. */
+  @keyframes modalSlideUpReduced {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -50%);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, -50%);
+    }
   }
-}
 
-/* Reduced-motion fallback: fade in place, keep centering, no vertical travel. */
-@keyframes modalSlideUpReduced {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -50%);
+  @keyframes sidebarLabelEnter {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
   }
-  to {
-    opacity: 1;
-    transform: translate(-50%, -50%);
+
+  @keyframes filterItemIn {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
-}
 
-@keyframes sidebarLabelEnter {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes filterItemIn {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
+  .animate-page-enter {
+    animation: pageEnter 0.2s var(--ease-out-strong) both;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+
+  .animate-backdrop-in {
+    animation: backdropFadeIn 0.2s var(--ease-out-strong) both;
   }
-}
 
-.animate-page-enter {
-  animation: pageEnter 0.2s var(--ease-out-strong) both;
-}
+  .animate-modal-in {
+    animation: modalScaleIn 0.2s var(--ease-out-strong) both;
+  }
 
-.animate-backdrop-in {
-  animation: backdropFadeIn 0.2s var(--ease-out-strong) both;
-}
+  .animate-backdrop-out {
+    animation: backdropFadeOut 0.18s var(--ease-out-strong) both;
+  }
 
-.animate-modal-in {
-  animation: modalScaleIn 0.2s var(--ease-out-strong) both;
-}
+  .animate-modal-out {
+    animation: modalFadeOut 0.18s var(--ease-out-strong) both;
+  }
 
-.animate-backdrop-out {
-  animation: backdropFadeOut 0.18s var(--ease-out-strong) both;
-}
+  .animate-modal-slide-up {
+    animation: modalSlideUp 0.15s var(--ease-out-strong) both;
+  }
 
-.animate-modal-out {
-  animation: modalFadeOut 0.18s var(--ease-out-strong) both;
-}
+  .sidebar-label-enter {
+    animation: sidebarLabelEnter 0.15s var(--ease-out-strong) both;
+  }
 
-.animate-modal-slide-up {
-  animation: modalSlideUp 0.15s var(--ease-out-strong) both;
-}
+  .filter-stagger > *:nth-child(1) {
+    animation: filterItemIn 0.2s var(--ease-out-strong) both;
+  }
+  .filter-stagger > *:nth-child(2) {
+    animation: filterItemIn 0.2s var(--ease-out-strong) 0.05s both;
+  }
+  .filter-stagger > *:nth-child(3) {
+    animation: filterItemIn 0.2s var(--ease-out-strong) 0.1s both;
+  }
+  .filter-stagger > *:nth-child(4) {
+    animation: filterItemIn 0.2s var(--ease-out-strong) 0.15s both;
+  }
+  .filter-stagger > *:nth-child(5) {
+    animation: filterItemIn 0.2s var(--ease-out-strong) 0.2s both;
+  }
 
-.sidebar-label-enter {
-  animation: sidebarLabelEnter 0.15s var(--ease-out-strong) both;
-}
+  /* ── Accessibility: reduced motion ── */
 
-.filter-stagger > *:nth-child(1) { animation: filterItemIn 0.2s var(--ease-out-strong) both; }
-.filter-stagger > *:nth-child(2) { animation: filterItemIn 0.2s var(--ease-out-strong) 0.05s both; }
-.filter-stagger > *:nth-child(3) { animation: filterItemIn 0.2s var(--ease-out-strong) 0.1s both; }
-.filter-stagger > *:nth-child(4) { animation: filterItemIn 0.2s var(--ease-out-strong) 0.15s both; }
-.filter-stagger > *:nth-child(5) { animation: filterItemIn 0.2s var(--ease-out-strong) 0.2s both; }
-
-/* ── Accessibility: reduced motion ── */
-
-@media (prefers-reduced-motion: reduce) {
-  /* One-shot movement + decorative looping animations → stop entirely.
+  @media (prefers-reduced-motion: reduce) {
+    /* One-shot movement + decorative looping animations → stop entirely.
      (Pure opacity one-shots like .animate-fade-in/.animate-fade-out stay,
      and .animate-spin loading spinners are intentionally left running.) */
-  .animate-page-enter,
-  .animate-backdrop-in,
-  .animate-modal-in,
-  .animate-backdrop-out,
-  .animate-modal-out,
-  .sidebar-label-enter,
-  .filter-stagger > *,
-  .animate-pulse-subtle {
-    animation: none !important;
+    .animate-page-enter,
+    .animate-backdrop-in,
+    .animate-modal-in,
+    .animate-backdrop-out,
+    .animate-modal-out,
+    .sidebar-label-enter,
+    .filter-stagger > *,
+    .animate-pulse-subtle {
+      animation: none !important;
+    }
+
+    /* Movement + fade utilities → keep the opacity fade, drop the travel/scale. */
+    .animate-slide-up,
+    .animate-slide-in-right,
+    .animate-slide-in-left,
+    .animate-pop-in,
+    .fade-in-up,
+    .settings-savebar,
+    .home-stagger > * {
+      animation: fadeIn 0.15s ease-out both !important;
+      animation-delay: 0s !important;
+    }
+
+    /* Modal must stay centered — fade in place, no vertical travel. */
+    .animate-modal-slide-up {
+      animation: modalSlideUpReduced 0.15s ease-out both !important;
+    }
+
+    /* Remove hover-lift transforms. */
+    .card-hover,
+    .chat-launcher {
+      transform: none !important;
+    }
+
+    /* Press-scale feedback is movement too — disable it. */
+    .btn:active,
+    .btn-icon-subtle:active,
+    .pdf-toolbar-btn:active,
+    .chat-send-button:active {
+      transform: none !important;
+    }
+
+    /* I4: Figure/Table 카드 press-scale(active:scale-[0.96])도 movement이므로 끈다. */
+    [role='button']:active {
+      transform: none !important;
+    }
+
+    /* I4: 워크벤치 상태부 진행 레일의 width 전환은 즉시 완료로 처리한다. */
+    .transition-\[width\] {
+      transition: none !important;
+    }
   }
 
-  /* Movement + fade utilities → keep the opacity fade, drop the travel/scale. */
-  .animate-slide-up,
-  .animate-slide-in-right,
-  .animate-slide-in-left,
-  .animate-pop-in,
-  .fade-in-up,
-  .settings-savebar,
-  .home-stagger > * {
-    animation: fadeIn 0.15s ease-out both !important;
-    animation-delay: 0s !important;
-  }
-
-  /* Modal must stay centered — fade in place, no vertical travel. */
-  .animate-modal-slide-up {
-    animation: modalSlideUpReduced 0.15s ease-out both !important;
-  }
-
-  /* Remove hover-lift transforms. */
-  .card-hover,
-  .chat-launcher {
-    transform: none !important;
-  }
-
-  /* Press-scale feedback is movement too — disable it. */
-  .btn:active,
-  .btn-icon-subtle:active,
-  .pdf-toolbar-btn:active,
-  .chat-send-button:active {
-    transform: none !important;
-  }
-
-  /* I4: Figure/Table 카드 press-scale(active:scale-[0.96])도 movement이므로 끈다. */
-  [role="button"]:active {
-    transform: none !important;
-  }
-
-  /* I4: 워크벤치 상태부 진행 레일의 width 전환은 즉시 완료로 처리한다. */
-  .transition-\[width\] {
-    transition: none !important;
-  }
-}
-
-/* ── Agent tinting (color-mix, theme-aware) ──────────────────────────── */
-/* Consumers inject `--agent-color: <hex>` inline; contrast is resolved in
+  /* ── Agent tinting (color-mix, theme-aware) ──────────────────────────── */
+  /* Consumers inject `--agent-color: <hex>` inline; contrast is resolved in
    CSS so no theme branch is needed in JS. Chromium 111+ (Electron 28) OK. */
-@layer components {
-  .agent-tinted {
-    background: color-mix(in srgb, var(--agent-color) var(--agent-tint-bg-opacity), transparent);
-    border-color: color-mix(in srgb, var(--agent-color) var(--agent-tint-border-opacity), transparent);
-  }
-
-  .agent-dot {
-    @apply inline-block h-2 w-2 shrink-0 rounded-full;
-    background: var(--agent-color);
-  }
-
-  /* Citation click-back chip rendered inside chat markdown */
-  .citation-chip {
-    @apply mx-0.5 inline cursor-pointer rounded-control border-0 bg-accent/10 px-1 py-0.5 align-baseline font-mono font-medium text-accent transition-colors;
-  }
-
-  .citation-chip:hover {
-    @apply bg-accent/20;
-  }
 }
 
 /* ── Level Slider (설명 수준 6단계) — design system v2 tokens ── */

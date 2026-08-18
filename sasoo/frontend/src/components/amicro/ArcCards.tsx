@@ -17,7 +17,7 @@ export default function ArcCards({ hovered, className = '' }: ArcCardsProps) {
   const active = hovered && !reduceMotion;
 
   return (
-    <div className={`pointer-events-none relative flex h-[4.5rem] w-[3.4rem] items-center justify-center ${className}`}>
+    <div className={`pointer-events-none relative flex h-18 w-[3.4rem] items-center justify-center ${className}`}>
       {[0, 1, 2, 3, 4].map((i) => {
         const dist = i - CENTER;
         let y = 0;

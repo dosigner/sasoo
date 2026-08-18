@@ -651,7 +651,7 @@ export default function PdfViewer({
           <AppIcon name="minimize" className="h-4 w-4" />
         </button>
 
-        <span className="min-w-[3.5rem] text-center text-xs font-medium text-fg-secondary">
+        <span className="min-w-14 text-center text-xs font-medium text-fg-secondary">
           {scalePercent}%
         </span>
 
@@ -675,7 +675,7 @@ export default function PdfViewer({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-b border-border/80 bg-surface/88 px-3 py-2">
-        <div className="relative min-w-[14rem] flex-1">
+        <div className="relative min-w-56 flex-1">
           <AppIcon
             name="search"
             className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted"
@@ -727,7 +727,7 @@ export default function PdfViewer({
           <AppIcon name="chevron-right" className="h-4 w-4" />
         </button>
 
-        <div className="min-w-[7rem] text-right text-xs font-medium text-fg-muted">
+        <div className="min-w-28 text-right text-xs font-medium text-fg-muted">
           {matchCount.total > 0 ? `${matchCount.current} / ${matchCount.total}` : searchStatusLabel}
         </div>
       </div>

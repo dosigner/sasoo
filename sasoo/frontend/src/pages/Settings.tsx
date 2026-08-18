@@ -31,7 +31,7 @@ function SettingSection({
 }) {
   return (
     <section className="archive-panel panel-compact">
-      <h2 className="text-sm font-semibold tracking-[-0.01em] text-fg">{title}</h2>
+      <h2 className="text-sm font-semibold tracking-apple-body text-fg">{title}</h2>
       {description && (
         <p className="mt-1 text-xs text-fg-muted">{description}</p>
       )}
@@ -380,7 +380,7 @@ export default function Settings() {
         <div className="page-header-dense gap-4 lg:flex lg:items-start lg:justify-between">
           <div>
             <div className="archive-kicker">{S.settings.heroKicker}</div>
-            <h1 className="settings-hero-title mt-2 text-[1.8rem] font-semibold tracking-[-0.05em]">
+            <h1 className="settings-hero-title mt-2 text-[1.8rem] font-semibold tracking-tighter">
               {S.settings.title}
             </h1>
             <p className="settings-hero-body mt-2 text-sm leading-6">
@@ -449,15 +449,15 @@ export default function Settings() {
             label={S.settings.openaiKey}
             badge={
               openaiKeyStatus ? (
-                <span className="text-2xs text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded">
+                <span className="text-2xs text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-sm">
                   {S.settings.keyConfigured} ({openaiKeyStatus})
                 </span>
               ) : openaiKeyUnreadable ? (
-                <span className="text-2xs text-danger bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded">
+                <span className="text-2xs text-danger bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded-sm">
                   {S.settings.keyUnreadable}
                 </span>
               ) : (
-                <span className="text-2xs text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded">
+                <span className="text-2xs text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded-sm">
                   {S.settings.keyNotConfigured}
                 </span>
               )
@@ -515,15 +515,15 @@ export default function Settings() {
             label={S.settings.geminiKey}
             badge={
               geminiKeyStatus ? (
-                <span className="text-2xs text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded">
+                <span className="text-2xs text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-sm">
                   {S.settings.keyConfigured} ({geminiKeyStatus})
                 </span>
               ) : geminiKeyUnreadable ? (
-                <span className="text-2xs text-danger bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded">
+                <span className="text-2xs text-danger bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded-sm">
                   {S.settings.keyUnreadable}
                 </span>
               ) : (
-                <span className="text-2xs text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded">
+                <span className="text-2xs text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded-sm">
                   {S.settings.keyNotConfigured}
                 </span>
               )

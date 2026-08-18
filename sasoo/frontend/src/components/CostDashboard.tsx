@@ -114,7 +114,7 @@ function MonthBars({
             )}
             {/* Tooltip */}
             <div className="absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 group-hover:block">
-              <div className="whitespace-nowrap rounded border border-border bg-surface px-2 py-1 shadow-lg">
+              <div className="whitespace-nowrap rounded-sm border border-border bg-surface px-2 py-1 shadow-lg">
                 <div className="text-2xs text-fg-muted">
                   {S.cost.monthLabel(month.month.slice(5))}
                 </div>
@@ -244,9 +244,9 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
     return (
       <div className="space-y-4 animate-pulse">
         <div className="card">
-          <div className="mb-3 h-3 w-20 rounded bg-border" />
-          <div className="mb-2 h-9 w-32 rounded bg-border" />
-          <div className="h-3 w-48 rounded bg-border" />
+          <div className="mb-3 h-3 w-20 rounded-sm bg-border" />
+          <div className="mb-2 h-9 w-32 rounded-sm bg-border" />
+          <div className="h-3 w-48 rounded-sm bg-border" />
         </div>
         <div className="h-10 rounded-surface bg-border/40" />
         <div className="space-y-2">
@@ -428,12 +428,12 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
                     {Object.entries(paper.phases).map(([phase, cost]) => (
                       <span
                         key={phase}
-                        className="text-2xs text-fg-secondary bg-surface-hover px-1.5 py-0.5 rounded"
+                        className="text-2xs text-fg-secondary bg-surface-hover px-1.5 py-0.5 rounded-sm"
                       >
                         {phase}: {formatCurrency(cost)}
                       </span>
                     ))}
-                    <span className="text-2xs text-fg-secondary bg-surface-hover px-1.5 py-0.5 rounded">
+                    <span className="text-2xs text-fg-secondary bg-surface-hover px-1.5 py-0.5 rounded-sm">
                       {formatTokens(paper.tokens_in + paper.tokens_out)} tokens
                     </span>
                   </div>

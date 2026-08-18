@@ -236,10 +236,10 @@ function MermaidSkeleton() {
   return (
     <div className="card animate-pulse">
       <div className="flex items-center gap-2 mb-4">
-        <div className="h-4 w-4 bg-border rounded" />
-        <div className="h-4 bg-border rounded w-36" />
+        <div className="h-4 w-4 bg-border rounded-sm" />
+        <div className="h-4 bg-border rounded-sm w-36" />
       </div>
-      <div className="aspect-[16/9] bg-border rounded-lg" />
+      <div className="aspect-video bg-border rounded-lg" />
     </div>
   );
 }

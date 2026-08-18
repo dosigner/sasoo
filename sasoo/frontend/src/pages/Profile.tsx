@@ -83,7 +83,7 @@ function SegmentGroup({
             onClick={() => onChange(opt.key)}
             className={`rounded-control px-3.5 py-2 text-sm transition-all duration-150 ease-out motion-safe:active:scale-[0.97] ${
               active
-                ? 'bg-surface font-medium text-fg shadow-sm'
+                ? 'bg-surface font-medium text-fg shadow-xs'
                 : 'text-fg-muted hover:text-fg-secondary'
             }`}
           >
@@ -234,7 +234,7 @@ export default function Profile() {
         <div className="page-header-dense gap-4 lg:flex lg:items-start lg:justify-between">
           <div>
             <div className="archive-kicker">{S.profile.heroKicker}</div>
-            <h1 className="settings-hero-title mt-2 text-[1.8rem] font-semibold tracking-[-0.05em]">
+            <h1 className="settings-hero-title mt-2 text-[1.8rem] font-semibold tracking-tighter">
               {S.settings.researcherProfile}
             </h1>
             <p className="settings-hero-body mt-2 text-sm leading-6">

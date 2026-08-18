@@ -119,7 +119,7 @@ export default function Home() {
               {recentPapers.length > 0 && (
                 <Link
                   to="/library"
-                  className="text-sm text-accent transition-colors hover:text-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+                  className="text-sm text-accent transition-colors hover:text-accent-hover focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
                 >
                   {S.home.viewAll}
                 </Link>
@@ -148,7 +148,7 @@ export default function Home() {
                 <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-fg-muted">
                   {S.home.costTitle}
                 </div>
-                <div className="mt-2 font-mono text-[1.7rem] leading-none tracking-[-0.01em] text-fg tabular-nums">
+                <div className="mt-2 font-mono text-[1.7rem] leading-none tracking-apple-body text-fg tabular-nums">
                   ${cost.costUsd.toFixed(2)}
                 </div>
                 {costMetaLine && (
@@ -156,7 +156,7 @@ export default function Home() {
                 )}
                 <Link
                   to="/settings#cost"
-                  className="mt-3 inline-flex text-sm text-accent transition-colors hover:text-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+                  className="mt-3 inline-flex text-sm text-accent transition-colors hover:text-accent-hover focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
                 >
                   {S.home.costOpenSettings}
                 </Link>
@@ -173,7 +173,7 @@ export default function Home() {
                   {S.home.libraryTitle}
                 </div>
                 <div className="mt-2 flex items-end justify-between gap-2">
-                  <div className="text-[1.7rem] font-semibold leading-none tracking-[-0.01em] text-fg tabular-nums">
+                  <div className="text-[1.7rem] font-semibold leading-none tracking-apple-body text-fg tabular-nums">
                     {papersTotal}
                     <span className="ml-1 text-base font-normal text-fg-muted">
                       {S.home.libraryUnit}
@@ -183,7 +183,7 @@ export default function Home() {
                 </div>
                 <Link
                   to="/library"
-                  className="mt-3 inline-flex text-sm text-accent transition-colors hover:text-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+                  className="mt-3 inline-flex text-sm text-accent transition-colors hover:text-accent-hover focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
                 >
                   {S.home.libraryOpen}
                 </Link>

@@ -120,10 +120,10 @@ function buildFigureGroups(figures: Figure[]): FigureGroup[] {
 function FigureSkeleton() {
   return (
     <div className="card p-0 overflow-hidden animate-pulse">
-      <div className="aspect-[4/3] bg-border" />
+      <div className="aspect-4/3 bg-border" />
       <div className="p-3 space-y-2">
-        <div className="h-3 bg-border rounded w-3/4" />
-        <div className="h-3 bg-border rounded w-1/2" />
+        <div className="h-3 bg-border rounded-sm w-3/4" />
+        <div className="h-3 bg-border rounded-sm w-1/2" />
       </div>
     </div>
   );
@@ -133,28 +133,28 @@ function ExplanationSkeleton() {
   return (
     <div className="space-y-4 animate-pulse p-6">
       <div className="flex items-center gap-2 mb-6">
-        <div className="w-5 h-5 bg-accent/20 rounded" />
-        <div className="h-5 bg-border rounded w-48" />
+        <div className="w-5 h-5 bg-accent/20 rounded-sm" />
+        <div className="h-5 bg-border rounded-sm w-48" />
       </div>
       <div className="space-y-3">
-        <div className="h-4 bg-border rounded w-full" />
-        <div className="h-4 bg-border rounded w-5/6" />
-        <div className="h-4 bg-border rounded w-4/5" />
+        <div className="h-4 bg-border rounded-sm w-full" />
+        <div className="h-4 bg-border rounded-sm w-5/6" />
+        <div className="h-4 bg-border rounded-sm w-4/5" />
       </div>
-      <div className="h-5 bg-border rounded w-36 mt-6" />
+      <div className="h-5 bg-border rounded-sm w-36 mt-6" />
       <div className="space-y-3">
-        <div className="h-4 bg-border rounded w-full" />
-        <div className="h-4 bg-border rounded w-11/12" />
-        <div className="h-4 bg-border rounded w-4/5" />
-        <div className="h-4 bg-border rounded w-full" />
-        <div className="h-4 bg-border rounded w-3/4" />
+        <div className="h-4 bg-border rounded-sm w-full" />
+        <div className="h-4 bg-border rounded-sm w-11/12" />
+        <div className="h-4 bg-border rounded-sm w-4/5" />
+        <div className="h-4 bg-border rounded-sm w-full" />
+        <div className="h-4 bg-border rounded-sm w-3/4" />
       </div>
-      <div className="h-5 bg-border rounded w-44 mt-6" />
+      <div className="h-5 bg-border rounded-sm w-44 mt-6" />
       <div className="space-y-3">
-        <div className="h-4 bg-border rounded w-full" />
-        <div className="h-4 bg-border rounded w-5/6" />
-        <div className="h-4 bg-border rounded w-full" />
-        <div className="h-4 bg-border rounded w-2/3" />
+        <div className="h-4 bg-border rounded-sm w-full" />
+        <div className="h-4 bg-border rounded-sm w-5/6" />
+        <div className="h-4 bg-border rounded-sm w-full" />
+        <div className="h-4 bg-border rounded-sm w-2/3" />
       </div>
       <div className="flex items-center gap-2 mt-8 text-fg-muted">
         <Loader2 className="w-4 h-4 animate-spin" />
@@ -328,7 +328,7 @@ function Lightbox({
       >
         {/* Header bar */}
         <div
-          className="figure-modal-header absolute top-0 left-0 right-0 h-12 flex items-center justify-between px-4 bg-surface/95 backdrop-blur z-10"
+          className="figure-modal-header absolute top-0 left-0 right-0 h-12 flex items-center justify-between px-4 bg-surface/95 backdrop-blur-sm z-10"
           data-scrolled={scrolled || undefined}
         >
           <div className="flex items-center gap-3">
@@ -541,7 +541,7 @@ function FigureCard({
 
   return (
     <div
-      className="group relative overflow-hidden rounded-[12px] bg-surface p-0 shadow-[0_1px_2px_rgba(0,0,0,.04),0_2px_8px_rgba(0,0,0,.04)] transition-transform duration-150 active:scale-[0.96] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent dark:shadow-none"
+      className="group relative overflow-hidden rounded-[12px] bg-surface p-0 shadow-[0_1px_2px_rgba(0,0,0,.04),0_2px_8px_rgba(0,0,0,.04)] transition-transform duration-150 active:scale-[0.96] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent dark:shadow-none"
       data-citation-anchor={citationAnchor(figure)}
       role="button"
       tabIndex={0}
@@ -554,7 +554,7 @@ function FigureCard({
       }}
       aria-label={S.figures.viewDetail(figure.figure_num || 'Figure')}
     >
-      <div className="relative aspect-[4/3] overflow-hidden bg-surface">
+      <div className="relative aspect-4/3 overflow-hidden bg-surface">
         <img
           src={getFigureImageUrl(figure)}
           alt={figure.caption || `Figure ${figure.figure_num}`}
