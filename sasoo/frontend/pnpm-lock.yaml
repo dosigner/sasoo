@@ -112,8 +112,8 @@ importers:
         specifier: ^17.11.0
         version: 17.11.0
       postcss:
-        specifier: ^8.5.23
-        version: 8.5.23
+        specifier: ^8.5.26
+        version: 8.5.26
       sharp:
         specifier: ^0.35.3
         version: 0.35.3(@types/node@26.2.0)
