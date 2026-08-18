@@ -32,9 +32,8 @@ export function Markdown({
   headingAnchors,
 }: MarkdownProps) {
   const source = normalizeMathDelimiters(children);
-  return (
+  const markdown = (
     <ReactMarkdown
-      className={className}
       remarkPlugins={REMARK_PLUGINS}
       rehypePlugins={headingAnchors ? REHYPE_PLUGINS_WITH_IDS : REHYPE_PLUGINS}
       components={components}
@@ -42,4 +41,8 @@ export function Markdown({
       {source}
     </ReactMarkdown>
   );
+  // react-markdown v10이 className prop을 없앴다. v9는 className이 있을 때만 결과를
+  // <div class=...>로 감쌌으므로 같은 조건으로 감싸 DOM 구조를 그대로 유지한다.
+  // 무조건 감싸면 className을 안 주는 호출부(표 셀 등)에 없던 블록 요소가 생긴다.
+  return className ? <div className={className}>{markdown}</div> : markdown;
 }
