@@ -29,6 +29,7 @@ from services.document_manifest import build_document_manifest, resolve_paper_jo
 from services.figure_candidates import build_figure_candidates
 from services.figure_resolver import resolve_figure_candidates
 from services.model_registry import active_provider
+from services.provider_state import key_env_for
 from services.table_candidates import build_table_candidates
 from services.table_resolver import resolve_table_candidates
 
@@ -868,38 +869,43 @@ def _run_convert(
     mode: str,
     engine: str | None = None,
     stage: str = "text",
+    provider: str | None = None,
 ) -> tuple[dict[str, Any], str, str]:
     """엔진 디스패처. 반환 계약 (root_json, markdown_text, actual_engine)은 엔진 불문 동일.
 
     스테이지(text/visual)별로 _resolve_stage_engine이 엔진을 고른다. gemini로 결정됐지만
-    GEMINI_API_KEY가 없으면 조용히 ODL로 내려간다(경고 1줄) — 페이지별 재시도 폭주를 피한다.
+    활성 provider의 API 키가 없으면 조용히 ODL로 내려간다(경고 1줄) — 페이지별 재시도 폭주를 피한다.
     gemini 실행 실패는 _run_convert_gemini가 OdlParserError로 변환한다(상위 폴백 체인이 처리).
     이 저수준 디스패처는 자동 폴백을 하지 않는다 — 폴백은 프로덕션 경로(ensure_visual_artifacts)가 담당.
     """
     selected = _resolve_stage_engine(stage, engine)
-    if selected == GEMINI_ENGINE_NAME and not (os.environ.get("GEMINI_API_KEY") or "").strip():
-        logger.warning(
-            "GEMINI_API_KEY not set; %s stage falling back to ODL parser engine.", stage
-        )
-        selected = "odl"
     if selected == GEMINI_ENGINE_NAME:
-        return _run_convert_gemini(pdf_path, output_dir, figures_dir)
+        resolved = provider or _resolve_visual_provider()
+        key_env = key_env_for(resolved)
+        if not (os.environ.get(key_env) or "").strip():
+            logger.warning(
+                "%s not set; %s stage falling back to ODL parser engine.", key_env, stage
+            )
+        else:
+            return _run_convert_gemini(pdf_path, output_dir, figures_dir, resolved)
     return _run_convert_odl(pdf_path, output_dir, figures_dir, mode)
 
 
-def _visual_runtime_unavailable_message() -> str:
+def _visual_runtime_unavailable_message(provider: str) -> str:
+    key_env = key_env_for(provider)
+    label = "OpenAI" if provider == "openai" else "Gemini"
     return (
-        "표·그림 추출에 Java 실행 환경 또는 Gemini API 키가 필요합니다. "
-        "동작하는 Java 런타임(backend/java-runtime)이 없고 GEMINI_API_KEY도 설정돼 있지 않습니다."
+        f"표·그림 추출에 Java 실행 환경 또는 {label} API 키가 필요합니다. "
+        f"동작하는 Java 런타임(backend/java-runtime)이 없고 {key_env}도 설정돼 있지 않습니다."
     )
 
 
-def _plan_visual_engines() -> list[str]:
+def _plan_visual_engines(provider: str) -> list[str]:
     """visual 단계에서 시도할 엔진을 우선순위대로 반환한다(빈 리스트 = 가용 엔진 없음).
 
     - 스테이지 기본 엔진(_resolve_stage_engine("visual"))을 먼저, 실패 대비로 반대 엔진을 뒤에.
-    - gemini는 GEMINI_API_KEY가 있을 때만 후보에 넣는다. (없으면 _run_convert가 내부적으로
-      ODL로 downgrade해 스텁 java 에러를 만들 뿐이므로 애초에 시도하지 않는다.)
+    - gemini는 활성 provider의 API 키가 있을 때만 후보에 넣는다. (없으면 _run_convert가
+      내부적으로 ODL로 downgrade해 스텁 java 에러를 만들 뿐이므로 애초에 시도하지 않는다.)
     - odl은 ensure_java_runtime 검증이 통과할 때만 후보에 넣는다. (스텁 오탐지 시 굳이
       시도해 java.com 에러를 만들지 말고 건너뛰어 Gemini로 넘어간다.)
 
@@ -909,12 +915,14 @@ def _plan_visual_engines() -> list[str]:
     ordered = [stage_default] + [
         engine for engine in (GEMINI_ENGINE_NAME, "odl") if engine != stage_default
     ]
-    gemini_ok = bool((os.environ.get("GEMINI_API_KEY") or "").strip())
+    # 비전 엔진은 활성 provider의 키가 있을 때만 후보에 넣는다. GEMINI_ENGINE_NAME은
+    # 공급사가 아니라 "LLM 비전 경로"를 가리키는 레거시 이름이다(provider_state 참조).
+    vision_ok = bool((os.environ.get(key_env_for(provider)) or "").strip())
     java_ok = _java_runtime_available()
 
     plan: list[str] = []
     for engine in ordered:
-        if engine == GEMINI_ENGINE_NAME and not gemini_ok:
+        if engine == GEMINI_ENGINE_NAME and not vision_ok:
             continue
         if engine == "odl" and not java_ok:
             continue
@@ -950,7 +958,9 @@ def _run_convert_odl(pdf_path: Path, output_dir: Path, figures_dir: Path, mode: 
     return root, markdown_text, actual_engine
 
 
-def _run_convert_gemini(pdf_path: Path, output_dir: Path, figures_dir: Path) -> tuple[dict[str, Any], str, str]:
+def _run_convert_gemini(
+    pdf_path: Path, output_dir: Path, figures_dir: Path, provider: str = "gemini"
+) -> tuple[dict[str, Any], str, str]:
     """Gemini 비전 엔진 어댑터. 비동기 run_convert_gemini를 기존 동기 브리지로 감싸고,
     실패는 OdlParserError로 변환해 폴백이 ODL 실패와 동일하게 동작하도록 한다.
 
@@ -963,7 +973,9 @@ def _run_convert_gemini(pdf_path: Path, output_dir: Path, figures_dir: Path) -> 
     usage_out = getattr(_visual_parse_usage_channel, "usage", None)
     try:
         return _run_coroutine_sync(
-            run_convert_gemini(pdf_path, output_dir, figures_dir, usage_out=usage_out)
+            run_convert_gemini(
+                pdf_path, output_dir, figures_dir, usage_out=usage_out, provider=provider
+            )
         )
     except GeminiParserError as exc:
         raise OdlParserError(f"Gemini parser engine failed: {exc}") from exc
@@ -1038,6 +1050,18 @@ def _run_coroutine_sync(coro):
     if error:
         raise error["value"]
     return result.get("value")
+
+
+def _resolve_visual_provider() -> str:
+    """LLM 비전 경로가 쓸 공급사. 호출부가 provider를 안 넘긴 경우의 폴백이다.
+
+    동기 함수에서 async active_provider()를 부르므로 기존 브리지를 재사용한다. 문서당
+    한 번만 타는 경로라(페이지별이 아니다) 설정 DB 조회 비용은 무시할 수 있다. 모듈
+    상단에서 이미 import한 active_provider를 그대로 쓴다 — 기존 테스트들이
+    patch("services.odl_parser.active_provider", ...)로 이 이름을 가로채므로, 여기서
+    다시 지연 import하면 그 패치를 우회해 실제 설정 DB를 조회하게 된다.
+    """
+    return _run_coroutine_sync(active_provider())
 
 
 def _merge_page_scoped_items(
@@ -1464,6 +1488,10 @@ def ensure_visual_artifacts(
         if output_file.exists():
             output_file.unlink()
 
+    # 이 문서의 visual 스테이지 전체에서 쓸 provider를 한 번만 확정한다(스펙 R6: 스테이지
+    # 진입 확정 원칙) — 아래 계획/디스패처/에러 메시지 호출부가 모두 같은 값을 본다.
+    visual_provider = _resolve_visual_provider()
+
     # visual 단계 Gemini 파서의 usage를 담을 빈 dict를 채널에 심는다. 실제 gemini 변환이
     # 일어날 때만 채워지고, ODL 폴백/키 부재/캐시 히트에선 빈 채로 남는다(→ 미기록).
     _visual_parse_usage_channel.usage = {}
@@ -1474,9 +1502,9 @@ def ensure_visual_artifacts(
         #   - Gemini가 안 되면(키 부재/변환 실패) Java(검증 통과 시)로 넘어간다.
         # _run_convert 저수준 디스패처는 불변 — 여기서만 engine을 명시해 엔진을 강제한다.
         # 스테이지 기본 엔진은 engine=None으로 넘겨 _resolve_stage_engine 의미를 그대로 태운다.
-        engine_plan = _plan_visual_engines()
+        engine_plan = _plan_visual_engines(visual_provider)
         if not engine_plan:
-            raise OdlRuntimeError(_visual_runtime_unavailable_message())
+            raise OdlRuntimeError(_visual_runtime_unavailable_message(visual_provider))
         stage_default = _resolve_stage_engine("visual")
         root = markdown_text = actual_engine = None  # type: ignore[assignment]
         last_error: Exception | None = None
@@ -1494,6 +1522,7 @@ def ensure_visual_artifacts(
                     requested_mode,
                     stage="visual",
                     engine=engine_override,
+                    provider=visual_provider,
                 )
                 break
             except (OdlParserError, OdlRuntimeError) as exc:
@@ -1508,7 +1537,7 @@ def ensure_visual_artifacts(
             # 계획한 모든 엔진이 실패 → 마지막 예외를 그대로 던진다(사용자 대면 메시지는
             # _run_convert/_convert_error_message가 Java 미탐지면 한국어로 이미 변환).
             raise last_error if last_error is not None else OdlRuntimeError(
-                _visual_runtime_unavailable_message()
+                _visual_runtime_unavailable_message(visual_provider)
             )
     finally:
         visual_parse_usage = getattr(_visual_parse_usage_channel, "usage", None)

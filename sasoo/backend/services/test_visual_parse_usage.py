@@ -193,7 +193,7 @@ class ChannelCaptureTests(unittest.TestCase):
 
     def test_channel_stays_empty_when_engine_is_odl(self):
         # visual 엔진을 ODL로 강제하면 gemini 파서가 안 돌아 usage 키가 없어야 한다.
-        def _all_odl(pdf_path, output_dir, figures_dir, mode, engine=None, stage="text"):
+        def _all_odl(pdf_path, output_dir, figures_dir, mode, engine=None, stage="text", provider=None):
             return copy.deepcopy(_root("ODL TEXT")), "ODL TEXT", "odl-java"
 
         with tempfile.TemporaryDirectory() as tmp_dir:
