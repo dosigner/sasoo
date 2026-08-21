@@ -78,11 +78,16 @@ def load_gold() -> dict[str, dict]:
     return json.loads(GOLD_PATH.read_text(encoding="utf-8"))["papers"]
 
 
-def iter_papers(filter_substring: str | None = None) -> list[Path]:
+def iter_papers(filter_substring: str | None = None, *, require_manifest: bool = True) -> list[Path]:
+    """정답셋 후보 논문 디렉터리를 고른다.
+
+    `require_manifest=False`(재파싱 모드)에서는 저장된 매니페스트가 필요 없으므로
+    `*.pdf`만 있으면 후보로 인정한다.
+    """
     papers = sorted(
         directory
         for directory in LIBRARY.iterdir()
-        if (directory / ".odl_manifest.json").exists() and any(directory.glob("*.pdf"))
+        if (not require_manifest or (directory / ".odl_manifest.json").exists()) and any(directory.glob("*.pdf"))
     )
     if filter_substring:
         papers = [p for p in papers if filter_substring.lower() in p.name.lower()]
@@ -108,6 +113,38 @@ def prepare_manifest(paper_dir: Path, pdf_path: Path) -> dict[str, Any]:
     for key in ("figures", "tables", "figure_candidates", "table_candidates", "audit"):
         manifest.pop(key, None)
     return manifest
+
+
+async def _reparse_manifest(pdf_path: Path, scratch: Path, provider: str) -> dict[str, Any]:
+    """비전 엔진으로 매니페스트를 새로 만든다(저장된 산출물을 쓰지 않는다).
+
+    프로덕션 경로(_build_resolver_v1_manifest)와 같은 인자로 build_document_manifest를
+    부르는 것이 핵심이다 — 여기서 인자가 어긋나면 "제품이 이렇게 뽑는다"가 아니라
+    "감사 도구가 이렇게 뽑는다"를 재게 된다.
+    """
+    from services.document_manifest import build_document_manifest
+    from services.gemini_parser import run_convert_gemini
+    from services.odl_parser import (
+        RESOLVER_PARSER_VERSION,
+        RESOLVER_PIPELINE_VERSION,
+    )
+
+    figures_dir = scratch / "figures"
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    root, markdown_text, actual_engine = await run_convert_gemini(
+        pdf_path, scratch, figures_dir, provider=provider
+    )
+    return build_document_manifest(
+        pdf_path=pdf_path,
+        paper_dir=scratch,
+        root=root,
+        markdown_text=markdown_text,
+        actual_engine=actual_engine,
+        requested_mode="fast",
+        extraction_pipeline_version=RESOLVER_PIPELINE_VERSION,
+        parser_version=RESOLVER_PARSER_VERSION,
+        resolver_version="audit",
+    )
 
 
 def make_scratch_dir(paper_dir: Path, manifest: dict[str, Any] | None = None, pdf_path: Path | None = None) -> Path:
@@ -161,7 +198,7 @@ class VlmCache:
         self.original = table_resolver._repair_with_vlm
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-    def _key(self, candidate: dict[str, Any], pdf_digest: str) -> str:
+    def _key(self, candidate: dict[str, Any], pdf_digest: str, provider: str) -> str:
         payload = json.dumps(
             {
                 "pdf": pdf_digest,
@@ -169,6 +206,7 @@ class VlmCache:
                 "bbox": [round(float(v), 2) for v in (candidate.get("bbox") or [])],
                 "grid": candidate.get("text_grid"),
                 "prompt": VLM_PROMPT_VERSION,
+                "provider": provider,
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -178,16 +216,16 @@ class VlmCache:
     def install(self, pdf_digest: str) -> None:
         original = self.original
 
-        async def wrapper(candidate, manifest, paper_dir):  # noqa: ANN001
+        async def wrapper(candidate, manifest, paper_dir, *, provider: str = "gemini"):  # noqa: ANN001
             self.calls += 1
-            cache_path = CACHE_DIR / f"{self._key(candidate, pdf_digest)}.json"
+            cache_path = CACHE_DIR / f"{self._key(candidate, pdf_digest, provider)}.json"
             if self.enabled and cache_path.exists():
                 self.hits += 1
                 cached = json.loads(cache_path.read_text(encoding="utf-8"))
                 result = (cached["rows"], cached["model"], cached["confidence"])
             else:
                 self.misses += 1
-                result = await original(candidate, manifest, paper_dir)
+                result = await original(candidate, manifest, paper_dir, provider=provider)
                 if self.enabled:
                     cache_path.write_text(
                         json.dumps(
@@ -396,8 +434,8 @@ def candidate_diagnostics(
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-async def load_production_key() -> bool:
-    """DB에서 gemini 키를 읽어 환경변수에 넣는다.
+async def load_production_key(provider: str = "gemini") -> bool:
+    """DB에서 VLM 키를 읽어 환경변수에 넣는다.
 
     `worker=True`가 필수다. worker=False는 credential store 락을 잡고 사용자 DB에
     마이그레이션 UPDATE를 친다 — 측정 하네스가 사용자 데이터를 건드리면 안 된다.
@@ -410,29 +448,38 @@ async def load_production_key() -> bool:
 
     from models.database import DB_PATH
     from services.api_key_runtime import load_api_keys_from_settings
+    from services.provider_state import key_env_for
 
-    # 라이브러리 12편은 개발 DB(backend/library) 쪽인데, 개발 DB의 gemini_api_key는 비어
+    # 라이브러리 12편은 개발 DB(backend/library) 쪽인데, 개발 DB의 *_api_key는 비어
     # 있고 실제 키는 패키지 앱 DB에만 들어 있다. 키만 그쪽에서 읽는다(읽기 전용).
     candidates = [DB_PATH, Path.home() / "Library" / "Application Support" / "sasoo" / "sasoo.db"]
+    env_var = key_env_for(provider)
     for db_path in candidates:
         if not db_path.exists():
             continue
         connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         try:
-            rows = connection.execute("SELECT key, value FROM settings WHERE key = 'gemini_api_key'").fetchall()
+            rows = connection.execute(
+                "SELECT key, value FROM settings WHERE key IN ('gemini_api_key', 'openai_api_key')"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            # 스키마가 없는 빈 db(개발 worktree의 껍데기 sasoo.db 등) — 다음 후보로 넘어간다.
+            continue
         finally:
             connection.close()
         settings = {key: value for key, value in rows if value}
         if not settings:
             continue
         await load_api_keys_from_settings(settings, worker=True)
-        if os.environ.get("GEMINI_API_KEY"):
-            print(f"[audit] gemini 키 출처: {db_path}")
+        if os.environ.get(env_var):
+            print(f"[audit] {provider} 키 출처: {db_path}")
             return True
     return False
 
 
-async def run_lane(lane: str, papers: list[Path], gold: dict, *, use_cache: bool) -> dict[str, Any]:
+async def run_lane(
+    lane: str, papers: list[Path], gold: dict, *, use_cache: bool, reparse: str | None = None
+) -> dict[str, Any]:
     saved_key = os.environ.get("GEMINI_API_KEY")
     if lane == "deterministic":
         os.environ.pop("GEMINI_API_KEY", None)
@@ -451,8 +498,14 @@ async def run_lane(lane: str, papers: list[Path], gold: dict, *, use_cache: bool
         markdown_text = markdown_candidates[0].read_text(encoding="utf-8", errors="ignore") if markdown_candidates else ""
         paper_gold = gold.get(paper_dir.name, {"labels": [], "numbers": [], "evidence": []})
 
-        manifest = prepare_manifest(paper_dir, pdf_path)
-        scratch = make_scratch_dir(paper_dir, manifest, pdf_path)
+        if reparse:
+            # 저장된 매니페스트를 쓰지 않는다 — 스크래치를 먼저 만들고 페이지 비전
+            # 파싱부터 다시 돌린다(래스터도 스크래치에 새로 생긴다).
+            scratch = Path(tempfile.mkdtemp(prefix="tblaudit_"))
+            manifest = await _reparse_manifest(pdf_path, scratch, reparse)
+        else:
+            manifest = prepare_manifest(paper_dir, pdf_path)
+            scratch = make_scratch_dir(paper_dir, manifest, pdf_path)
         cache.install(hashlib.sha1(pdf_path.read_bytes()).hexdigest()[:16])
         try:
             outcome = await run_pipeline(manifest, pdf_path=pdf_path, scratch=scratch)
@@ -520,13 +573,22 @@ def print_lane(report: dict[str, Any]) -> None:
 
 async def main_async(args: argparse.Namespace) -> None:
     gold = load_gold()
-    papers = iter_papers(args.papers)
+    papers = iter_papers(args.papers, require_manifest=args.reparse is None)
     lanes = ["deterministic", "production"] if args.lane == "both" else [args.lane]
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
+    if args.reparse:
+        from services.provider_state import key_env_for
+
+        env_var = key_env_for(args.reparse)
+        if not os.environ.get(env_var) and not await load_production_key(args.reparse):
+            raise SystemExit(
+                f"{env_var}를 DB에서 읽지 못했다 — --reparse {args.reparse}로는 측정을 시작할 수 없다."
+            )
+
     for repeat in range(args.repeat):
         for lane in lanes:
-            report = await run_lane(lane, papers, gold, use_cache=not args.no_cache)
+            report = await run_lane(lane, papers, gold, use_cache=not args.no_cache, reparse=args.reparse)
             print_lane(report)
             suffix = f"_{repeat + 1}" if args.repeat > 1 else ""
             out_path = OUT_DIR / f"measure_{lane}{suffix}{args.tag}.json"
@@ -539,6 +601,12 @@ def main() -> None:
     parser.add_argument("--lane", choices=["deterministic", "production", "both"], default="both")
     parser.add_argument("--repeat", type=int, default=1, help="노이즈 바닥 측정용 반복 횟수")
     parser.add_argument("--no-cache", action="store_true", help="VLM 캐시를 끈다(노이즈 측정)")
+    parser.add_argument(
+        "--reparse",
+        choices=["gemini", "openai"],
+        default=None,
+        help="저장된 매니페스트 대신 이 공급사의 비전 엔진으로 다시 파싱해 측정한다",
+    )
     parser.add_argument("--papers", default=None, help="논문 이름 부분 문자열 필터")
     parser.add_argument("--tag", default="", help="원장 파일명 접미사")
     asyncio.run(main_async(parser.parse_args()))
