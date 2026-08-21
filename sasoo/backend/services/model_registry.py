@@ -30,6 +30,7 @@ from services.models import (
     MODEL_IMAGE_OPENAI,
     MODEL_LUNA,
     MODEL_PRO,
+    MODEL_VISUAL,
 )
 
 Provider = Literal["openai", "gemini"]
@@ -45,6 +46,9 @@ _REGISTRY: dict[str, dict[str, ModelChoice]] = {
     "gemini": {
         "screening": ModelChoice(MODEL_FLASH_LITE, "minimal"),
         "visual": ModelChoice(MODEL_FLASH_HQ, "low"),
+        # 페이지 전체 비전 파싱(gemini_parser). 그림 판독 단계인 "visual"과 별개 role이다 —
+        # 페이지 파서는 thinking을 최소로 쓰는 축자 전사 작업이라 effort가 minimal이다.
+        "pdf_parse": ModelChoice(MODEL_VISUAL, "minimal"),
         "citation": ModelChoice(MODEL_FLASH_HQ, "low"),
         "recipe": ModelChoice(MODEL_FLASH_HQ, "medium"),
         "deep_dive": ModelChoice(MODEL_FLASH_HQ, "high"),
@@ -62,6 +66,9 @@ _REGISTRY: dict[str, dict[str, ModelChoice]] = {
     "openai": {
         "screening": ModelChoice(MODEL_LUNA, "low"),
         "visual": ModelChoice(MODEL_LUNA, "low"),
+        # OpenAI는 minimal 미지원(플랜 Task 0 실측) — 최저치가 low다.
+        # box_2d 규약 준수는 2026-08-21 실측으로 확인(tools/openai_vision_spike.py).
+        "pdf_parse": ModelChoice(MODEL_LUNA, "low"),
         "citation": ModelChoice(MODEL_LUNA, "low"),
         "recipe": ModelChoice(MODEL_LUNA, "medium"),
         "deep_dive": ModelChoice(MODEL_LUNA, "high"),

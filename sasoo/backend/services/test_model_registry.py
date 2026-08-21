@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from services.model_registry import ModelChoice, ROLES, active_provider, resolve
+from services.models import MODEL_VISUAL
 
 
 class TestGeminiColumnMatchesProduction(unittest.TestCase):
@@ -86,6 +87,24 @@ class TestOpenAIColumn(unittest.TestCase):
         for role in ROLES:
             with self.subTest(role=role):
                 self.assertNotEqual(resolve(role, "openai").effort, "xhigh")
+
+
+class TestPdfParseRole(unittest.TestCase):
+    def test_gemini_pdf_parse_matches_current_parser_defaults(self):
+        """Gemini 경로는 현행 페이지 파서와 바이트 동일해야 한다 — 모델은 MODEL_VISUAL,
+        effort는 minimal. 기존 role "visual"(low)을 재사용하면 이 테스트가 막는다."""
+        choice = resolve("pdf_parse", "gemini")
+        self.assertEqual(choice.model, MODEL_VISUAL)
+        self.assertEqual(choice.effort, "minimal")
+
+    def test_openai_pdf_parse_uses_luna_low(self):
+        """OpenAI는 minimal을 BadRequestError로 거부한다(플랜 Task 0 실측). low가 최저치."""
+        choice = resolve("pdf_parse", "openai")
+        self.assertEqual(choice.model, "gpt-5.6-luna")
+        self.assertEqual(choice.effort, "low")
+
+    def test_pdf_parse_is_declared_in_roles(self):
+        self.assertIn("pdf_parse", ROLES)
 
 
 class TestRegistryShape(unittest.TestCase):
