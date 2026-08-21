@@ -28,7 +28,6 @@ from typing import Any
 import fitz  # PyMuPDF
 
 from services.llm.interactions_client import call_interaction
-from services.models import MODEL_VISUAL
 from services.pricing import calc_cost
 
 logger = logging.getLogger(__name__)
@@ -534,7 +533,7 @@ async def run_convert_gemini(
         usage_out.update(
             {
                 "engine": GEMINI_ENGINE_NAME,
-                "model": MODEL_VISUAL,
+                "model": model,
                 "pages": success_pages,
                 "tokens_in": totals["tokens_in"],
                 "tokens_out": totals["tokens_out"],

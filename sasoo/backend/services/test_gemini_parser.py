@@ -564,7 +564,7 @@ class PartialFailureToleranceTests(unittest.IsolatedAsyncioTestCase):
 class TestParserProviderRouting(unittest.TestCase):
     """페이지 호출이 provider에 따라 올바른 모델·effort로 나가는지."""
 
-    def _run(self, provider: str) -> dict:
+    def _run(self, provider: str, usage_out: dict | None = None) -> dict:
         """1페이지 PDF를 파싱하고 call_interaction에 실제로 넘어간 kwargs를 돌려준다."""
         page_json = json.dumps({
             "markdown": "# T",
@@ -584,7 +584,7 @@ class TestParserProviderRouting(unittest.TestCase):
             doc.close()
             with patch.object(gemini_parser, "call_interaction", new=AsyncMock(side_effect=_fake_call)):
                 asyncio.run(run_convert_gemini(
-                    pdf, Path(tmp), Path(tmp), provider=provider
+                    pdf, Path(tmp), Path(tmp), provider=provider, usage_out=usage_out
                 ))
         return captured
 
@@ -600,6 +600,19 @@ class TestParserProviderRouting(unittest.TestCase):
         kwargs = self._run("openai")
         self.assertEqual(kwargs["model"], MODEL_LUNA)
         self.assertEqual(kwargs["thinking_level"], "low")
+
+    def test_usage_out_model_label_matches_provider(self):
+        """usage_out["model"]이 실제로 호출한 모델과 일치해야 한다(회귀 방어: gemini).
+
+        OpenAI로 판독해도 원장에 gemini-3.6-flash로 남으면 Task 4의 provider별
+        모델/비용 기록이 스스로를 반박한다."""
+        gemini_usage: dict = {}
+        self._run("gemini", usage_out=gemini_usage)
+        self.assertEqual(gemini_usage["model"], MODEL_VISUAL)
+
+        openai_usage: dict = {}
+        self._run("openai", usage_out=openai_usage)
+        self.assertEqual(openai_usage["model"], MODEL_LUNA)
 
     def test_env_thinking_override_still_wins(self):
         """SASOO_GEMINI_PARSER_THINKING 레버는 베이스라인 재현 절차가 의존한다."""
