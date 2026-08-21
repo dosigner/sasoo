@@ -25,9 +25,9 @@
 | 입력 토큰비 | 전 페이지 2.01배 (`media_resolution`이 OpenAI에서 no-op) |
 | 지연 | Gemini 7.3~18.8초, OpenAI 8.4~11.4초 |
 
-**비용 단서:** 스파이크는 양쪽 모두 role `visual`(Gemini effort `low`)로 돌렸다. 프로덕션 페이지 파서는 `minimal`이므로 측정된 Gemini 비용($0.0772/7p)은 프로덕션보다 비싸다. 따라서 "OpenAI가 5.4배 저렴"이라는 스파이크 수치를 그대로 인용하지 말 것. 확정 수치는 Task 4의 감사 lane에서 나온다.
+**비용 단서:** 스파이크는 양쪽 모두 role `visual`(Gemini effort `low`)로 돌렸다. 프로덕션 페이지 파서는 `minimal`이므로 측정된 Gemini 비용($0.0772/7p)은 프로덕션보다 비싸다. 따라서 "OpenAI가 5.4배 저렴"이라는 스파이크 수치를 그대로 인용하지 말 것. 확정 수치는 Task 5의 감사 lane에서 나온다.
 
-**미해결 관찰:** OpenAI가 요소를 더 많이 방출한다(p4 4대5, p5 2대3, p6 4대6). 과분할인지 Gemini 누락 포착인지는 Task 4에서 갈린다.
+**미해결 관찰:** OpenAI가 요소를 더 많이 방출한다(p4 4대5, p5 2대3, p6 4대6). 과분할인지 Gemini 누락 포착인지는 Task 5에서 갈린다.
 
 ## Global Constraints
 
@@ -57,7 +57,7 @@ backend/tools/openai_vision_spike.py  신규 — 위 실측 기록을 만든 스
 
 ## Task 0: 스파이크와 플랜을 커밋
 
-위 실측 기록을 만든 도구가 아직 커밋되지 않았다. Task 4의 감사 결과를 나중에 재현하려면 이 도구가 이력에 있어야 한다.
+위 실측 기록을 만든 도구가 아직 커밋되지 않았다. Task 5의 감사 결과를 나중에 재현하려면 이 도구가 이력에 있어야 한다.
 
 **Files:**
 - Commit: `sasoo/backend/tools/openai_vision_spike.py`, `docs/superpowers/plans/2026-08-21-pdf-visual-engine-provider-neutral.md`
@@ -542,56 +542,224 @@ key_env_for(provider)로 교체하고 provider를 ensure_visual_artifacts에서
 
 ---
 
-## Task 4: 정확도 감사 — OpenAI 경로를 정답셋 12편으로 측정
+## Task 4: 감사 도구에 재파싱 모드 추가
 
-Task 1~3이 경로를 열었을 뿐, 쓸 만한지는 아직 모른다. 스파이크는 1편 7페이지였다.
+**이 태스크가 왜 필요한가(플랜 개정, 2026-08-21):** 원래 Task 4는 `measure.py`를 OpenAI 경로로 돌려 12편 정확도를 재라고 지시했다. 그런데 이 도구는 **페이지 비전 파싱을 다시 돌리지 않는다.** `measure.py:94`가 저장된 `.odl_manifest.json`을 읽고, 이후 호출하는 것은 `build_figure_candidates`/`resolve_figure_candidates`(`:215-216`)와 `build_table_candidates`/`resolve_table_candidates`(`:222-224`)뿐이다. `ensure_visual_artifacts`나 `run_convert_gemini`를 부르는 곳이 없다. 도구 docstring도 "저장된 매니페스트는 옛 코드 산출물"이라며 리졸버 단계를 격리해 재는 것이 의도임을 밝힌다. 따라서 원안대로 돌리면 이미 완료된 리졸버 단계의 provider 중립성을 재게 되고, Task 1~3이 새로 연 페이지 비전 경로는 측정되지 않는다.
 
 **Files:**
-- Run: `sasoo/backend/tools/extraction_audit/measure.py`
+- Modify: `sasoo/backend/tools/extraction_audit/measure.py`
+- Setup: `sasoo/backend/library/` (worktree는 비어 있다 — 정답셋 12편 PDF만 복사한다. 46.8 MB)
+
+**Interfaces:**
+- Consumes: Task 2의 `run_convert_gemini(pdf_path, output_dir, figures_dir, *, usage_out=None, provider="gemini")`
+- Produces: `--reparse {gemini,openai}` 플래그. 주면 저장된 매니페스트 대신 그 provider의 비전 엔진으로 매니페스트를 새로 만든 뒤 리졸버를 돌린다. 플래그가 없으면 현행 동작 그대로(회귀 없음).
+
+- [ ] **Step 1: 정답셋 12편 PDF를 worktree 라이브러리에 복사한다**
+
+`measure.py:61`의 `LIBRARY = BACKEND / "library"`는 백엔드 상대 경로다. worktree의 `library/`는 빈 `sasoo.db`만 있는 껍데기이므로 논문을 놓아야 실행조차 되지 않는다. 재파싱 모드는 저장된 매니페스트가 필요 없으니 **PDF만** 복사한다(옛 산출물을 가져오면 재파싱의 의미가 없다).
+
+```bash
+cd "/Users/dongj/dev/논문_사수_개발중"
+"/Users/dongj/dev/논문_사수_개발중/sasoo/backend/.venv/bin/python" - <<'PY'
+import json, shutil
+from pathlib import Path
+
+src_lib = Path("sasoo/backend/library")
+dst_lib = Path(".claude/worktrees/provider-neutral-llm/sasoo/backend/library")
+gold = json.load(open("docs/table_gold.json"))["papers"]
+
+copied = 0
+for key in gold:
+    src = src_lib / key
+    dst = dst_lib / key
+    dst.mkdir(parents=True, exist_ok=True)
+    for pdf in src.glob("*.pdf"):
+        if not (dst / pdf.name).exists():
+            shutil.copy2(pdf, dst / pdf.name)
+            copied += 1
+print(f"복사한 PDF {copied}개 / 정답셋 {len(gold)}편")
+PY
+```
+
+Expected: `복사한 PDF 12개 / 정답셋 12편`
+
+사용자의 원본 라이브러리에는 **쓰지 않는다**. 복사는 한 방향(원본 → worktree)뿐이다.
+
+- [ ] **Step 2: 키 로딩을 두 공급사로 확장한다**
+
+`measure.py`의 키 로딩 함수(`:405-432` 부근, 읽기 전용 sqlite 연결로 `DB_PATH`와 `~/Library/Application Support/sasoo/sasoo.db`를 후보로 훑는다)가 지금은 `gemini_api_key`만 읽는다. `openai_api_key`도 함께 읽어야 재파싱 OpenAI 모드가 돈다.
+
+`SELECT` 절을 두 키로 넓히고, 성공 판정도 요청된 provider의 환경변수를 보도록 바꾼다.
+
+```python
+            rows = connection.execute(
+                "SELECT key, value FROM settings WHERE key IN ('gemini_api_key', 'openai_api_key')"
+            ).fetchall()
+```
+
+성공 판정은 `services.provider_state.key_env_for(provider)`로 한다 — 하드코딩하지 말 것. `init_db()`를 부르지 않고 `mode=ro`를 유지하는 현행 계약(스키마 마이그레이션이 사용자 DB를 바꿀 위험 회피)을 깨지 말 것.
+
+- [ ] **Step 3: 재파싱 헬퍼를 추가한다**
+
+프로덕션(`services/odl_parser.py:1140-1150`)이 매니페스트를 만드는 방식을 그대로 따른다. 인자를 임의로 바꾸면 측정 대상이 프로덕션과 달라진다.
+
+```python
+async def _reparse_manifest(pdf_path: Path, scratch: Path, provider: str) -> dict:
+    """비전 엔진으로 매니페스트를 새로 만든다(저장된 산출물을 쓰지 않는다).
+
+    프로덕션 경로(_build_resolver_v1_manifest)와 같은 인자로 build_document_manifest를
+    부르는 것이 핵심이다 — 여기서 인자가 어긋나면 "제품이 이렇게 뽑는다"가 아니라
+    "감사 도구가 이렇게 뽑는다"를 재게 된다.
+    """
+    from services.document_manifest import build_document_manifest
+    from services.gemini_parser import run_convert_gemini
+    from services.odl_parser import (
+        RESOLVER_PARSER_VERSION,
+        RESOLVER_PIPELINE_VERSION,
+    )
+
+    figures_dir = scratch / "figures"
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    root, markdown_text, actual_engine = await run_convert_gemini(
+        pdf_path, scratch, figures_dir, provider=provider
+    )
+    return build_document_manifest(
+        pdf_path=pdf_path,
+        paper_dir=scratch,
+        root=root,
+        markdown_text=markdown_text,
+        actual_engine=actual_engine,
+        requested_mode="fast",
+        extraction_pipeline_version=RESOLVER_PIPELINE_VERSION,
+        parser_version=RESOLVER_PARSER_VERSION,
+        resolver_version="audit",
+    )
+```
+
+`resolver_version="audit"`는 `measure.py`가 이미 쓰는 값(`:217, 224, 256, 270`)과 맞춘 것이다. `RESOLVER_PARSER_VERSION`은 `"odl-v3"`, `RESOLVER_PIPELINE_VERSION`은 `"resolver_v1"`이다(`services/odl_parser.py:40-41`).
+
+- [ ] **Step 4: 논문 선별과 매니페스트 획득 지점을 분기한다**
+
+`_paper_dirs()`(`:85` 부근)가 후보 조건으로 `.odl_manifest.json` 존재를 요구한다. 재파싱 모드에서는 저장된 매니페스트가 없어도 되므로 `*.pdf`만 요구하도록 분기한다.
+
+매니페스트를 읽는 지점(`:94`의 `json.loads((paper_dir / ".odl_manifest.json").read_text(...))`)도 분기한다. 재파싱 모드면 스크래치를 먼저 만들고 `_reparse_manifest(...)`의 결과를 쓴다. 비재파싱 모드의 코드 경로는 한 줄도 바꾸지 말 것 — 현행 측정의 회귀를 만들면 안 된다.
+
+재파싱 모드에서는 `_prepare_scratch`가 저장된 `.page_rasters`/`.odl_raw_images`를 symlink할 대상이 없다. `build_document_manifest`의 `generate_page_rasters` 기본값이 `True`이므로 래스터는 스크래치에 새로 만들어진다 — 그것이 의도한 동작이다.
+
+- [ ] **Step 5: 플래그를 추가한다**
+
+```python
+    parser.add_argument(
+        "--reparse",
+        choices=["gemini", "openai"],
+        default=None,
+        help="저장된 매니페스트 대신 이 공급사의 비전 엔진으로 다시 파싱해 측정한다",
+    )
+```
+
+`--reparse`를 주면 VLM 키가 필수다. 키가 없으면 측정을 시작하지 말고 명확한 메시지로 즉시 종료하라(부분 결과가 정답처럼 기록되는 것을 막는다).
+
+- [ ] **Step 6: 1편으로 연무 시험(smoke)한다**
+
+전체 12편을 돌리기 전에 한 편으로 경로가 실제로 도는지 확인한다. 이것이 이 태스크의 실행 가능한 검증이다.
+
+```bash
+cd "/Users/dongj/dev/논문_사수_개발중/.claude/worktrees/provider-neutral-llm/sasoo/backend"
+"/Users/dongj/dev/논문_사수_개발중/sasoo/backend/.venv/bin/python" -m tools.extraction_audit.measure \
+    --lane production --reparse gemini --papers 2022_SciRep_CoherentFsoLeo
+```
+
+확인할 것: ① 예외 없이 완주하는가 ② 그림·표 후보 수가 0이 아닌가 ③ 로그나 원장에 기록된 엔진이 `gemini`인가 ④ 사용자 원본 라이브러리(`/Users/dongj/dev/논문_사수_개발중/sasoo/backend/library`)의 파일 수정 시각이 변하지 않았는가.
+
+④는 실행 전후로 확인하라:
+
+```bash
+ls -la --time-style=full-iso "/Users/dongj/dev/논문_사수_개발중/sasoo/backend/library/2022_SciRep_CoherentFsoLeo_optics/" | head
+```
+
+관찰한 출력을 보고서에 그대로 적어라. 하나라도 어긋나면 12편 실행으로 넘어가지 말 것.
+
+- [ ] **Step 7: 백엔드 전체 테스트가 여전히 초록인지 확인한다**
+
+`tools/`는 pytest 스위트에 없지만 import 오류가 없어야 한다.
+
+Run: `cd sasoo/backend && .venv/bin/python -m pytest -q`
+Expected: 641 passed, 3 skipped
+
+- [ ] **Step 8: Commit**
+
+`library/`는 gitignore 대상이므로(`sasoo/.gitignore:21`) 복사한 PDF는 커밋되지 않는다. `measure.py`만 커밋한다.
+
+```bash
+git add sasoo/backend/tools/extraction_audit/measure.py
+git commit -m "tools(audit): 감사 lane에 재파싱 모드 추가
+
+기존 lane은 저장된 .odl_manifest.json을 읽어 리졸버 단계만 격리해 쟀다.
+그래서 페이지 비전 파싱을 provider별로 바꿔도 이 도구로는 아무 차이가
+측정되지 않는다 — 새로 연 OpenAI 비전 경로가 검증 없이 들어갈 참이었다.
+--reparse {gemini,openai}를 주면 프로덕션과 같은 인자로 매니페스트를
+새로 만든 뒤 리졸버를 돌린다. 플래그가 없으면 현행 동작 그대로다.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+```
+
+---
+
+## Task 5: 정확도 실측 — 정답셋 12편, 두 공급사
+
+Task 1~4가 경로를 열고 재는 도구를 만들었을 뿐, 쓸 만한지는 아직 모른다. 스파이크는 1편 7페이지였다.
+
+**Files:**
+- Run: `sasoo/backend/tools/extraction_audit/measure.py` (Task 4가 확장한 것)
 - Create: `docs/superpowers/plans/2026-08-21-openai-vision-audit-record.md`
 - 정답셋: `docs/table_gold.json` (12편, 표 라벨 26개)
 
 **Interfaces:**
-- Consumes: Task 1~3의 provider 배선
+- Consumes: Task 4의 `--reparse {gemini,openai}`
 - Produces: 기록 문서. 게이트가 아니라 **기록**이다(스펙 결정 1). 승격 판단의 근거가 된다.
 
-- [ ] **Step 1: Gemini 기준선을 다시 잰다**
+- [ ] **Step 1: Gemini 기준선을 재파싱 모드로 잰다**
 
-`ai_provider=gemini`로 설정한 뒤 실행한다. 기존 12/12 정확일치가 이 코드 변경 뒤에도 유지되는지가 회귀 게이트다.
+이것이 회귀 게이트다. Task 1~3이 Gemini 동작을 바꾸지 않았다면 기존 12/12 정확일치가 유지되어야 한다.
 
 ```bash
-cd sasoo/backend
-.venv/bin/python -m tools.extraction_audit.measure --no-cache --repeat 3
+cd "/Users/dongj/dev/논문_사수_개발중/.claude/worktrees/provider-neutral-llm/sasoo/backend"
+"/Users/dongj/dev/논문_사수_개발중/sasoo/backend/.venv/bin/python" -m tools.extraction_audit.measure \
+    --lane production --reparse gemini --no-cache --tag reparse-gemini
 ```
 
-Expected: 그림·표 모두 12/12 정확일치. **깨지면 Task 1~3에 회귀가 있다는 뜻이므로 진행하지 말고 원인을 찾는다.**
+**깨지면 Task 1~3에 회귀가 있다는 뜻이므로 다음 단계로 넘어가지 말고 보고하라.**
 
 - [ ] **Step 2: OpenAI 경로를 잰다**
 
-`ai_provider=openai`로 바꾼 뒤 같은 명령을 실행한다.
-
 ```bash
-cd sasoo/backend
-.venv/bin/python -m tools.extraction_audit.measure --no-cache --repeat 3
+cd "/Users/dongj/dev/논문_사수_개발중/.claude/worktrees/provider-neutral-llm/sasoo/backend"
+"/Users/dongj/dev/논문_사수_개발중/sasoo/backend/.venv/bin/python" -m tools.extraction_audit.measure \
+    --lane production --reparse openai --no-cache --tag reparse-openai
 ```
 
 - [ ] **Step 3: 결과를 기록한다**
 
-`docs/superpowers/plans/2026-08-21-openai-vision-audit-record.md`에 아래를 채운다. 추정치를 쓰지 않는다. 실행하지 않은 항목은 "미측정"으로 적는다.
+`docs/superpowers/plans/2026-08-21-openai-vision-audit-record.md`에 아래를 채운다. **추정치를 쓰지 않는다. 실행하지 않은 항목은 "미측정"으로 적는다.**
 
 ```markdown
 # OpenAI 페이지 비전 파싱 정확도 기록 (2026-08-21)
 
-정답셋: docs/table_gold.json, 12편. 명령: tools.extraction_audit.measure --no-cache --repeat 3
+정답셋: docs/table_gold.json, 12편. 도구: tools.extraction_audit.measure --lane production --reparse {gemini,openai} --no-cache
+측정 대상: 페이지 비전 파싱 + 그림·표 후보 생성 + 리졸버 (프로덕션과 같은 인자로 매니페스트 재생성)
 
 | 지표 | Gemini (기준선) | OpenAI | 비고 |
 |---|---|---|---|
 | 그림 정확일치 | __/12 | __/12 | |
 | 표 정확일치 | __/12 | __/12 | |
-| 표 라벨 재현율 | | | |
-| 논문당 평균 비용 | $__ | $__ | Gemini는 effort minimal, OpenAI는 low |
+| 표 라벨 재현율 | | | 정답 26개 기준 |
+| 논문당 평균 비용 | $__ | $__ | Gemini effort minimal, OpenAI low |
 | 논문당 평균 소요 | __초 | __초 | |
 | 요소 과분할 관찰 | | | 스파이크의 p4/p5/p6 관찰이 12편에서도 보이는가 |
+
+## 스파이크(1편 7페이지) 대비
+스파이크에서 본 box_2d IoU 0.98 수준과 비용 우위가 12편에서도 유지되는가. 스파이크는 Gemini를
+effort low로 돌려 프로덕션(minimal)보다 비싸게 측정했으므로 비용 배율은 이 기록의 값을 쓴다.
 
 ## 판정
 - [ ] OpenAI 경로를 기본으로 노출할 수 있는가
@@ -599,19 +767,21 @@ cd sasoo/backend
 - [ ] 남은 위험
 ```
 
-- [ ] **Step 4: 커밋**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-08-21-openai-vision-audit-record.md
 git commit -m "docs: OpenAI 페이지 비전 파싱 정확도 12편 실측 기록
 
 게이트가 아니라 기록이다(스펙 결정 1). Gemini 기준선 회귀 확인 결과와
-OpenAI 경로 정확도·비용을 나란히 남긴다."
+OpenAI 경로 정확도·비용을 나란히 남긴다.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 5: `provider_state` 문서 갱신
+## Task 6: `provider_state` 문서 갱신
 
 코드는 그대로다. docstring이 이제 사실과 다르다.
 
@@ -654,14 +824,14 @@ git commit -m "docs(provider): pdf_visual_engine 설계 설명을 실동작에 �
 - [ ] **Gemini 회귀 완주**: Gemini 키만 있는 환경에서 논문 1편을 `pdf_visual_engine=gemini`로 완주. 페이지별 모델이 `gemini-3.6-flash`, effort가 `minimal`인지 로그로 확인
 - [ ] **OpenAI 완주**: `GEMINI_API_KEY`를 제거한 환경에서 `pdf_visual_engine=gemini`로 완주. `actual_engine`이 `gemini`(=LLM 비전 경로)로 기록되고, 페이지 호출 모델이 `gpt-5.6-luna`인지 확인. 그림 크롭이 실제로 그림을 담고 있는지 육안 확인
 - [ ] **키 없음 폴백**: 두 키를 모두 제거하고 Java 런타임이 있는 환경에서 `odl`로 조용히 내려가는지 확인. 안내 문구가 활성 provider의 키 이름을 말하는지 확인
-- [ ] **Task 4 기록 완료**: 12편 결과가 문서에 실측값으로 채워져 있고 "미측정" 항목이 명시되어 있는지
+- [ ] **Task 5 기록 완료**: 12편 결과가 문서에 실측값으로 채워져 있고 "미측정" 항목이 명시되어 있는지
 - [ ] **스펙 R2 정정**: `docs/superpowers/specs/2026-07-31-ai-provider-selection-design.md`의 R2에 "2026-08-21 실측으로 뒤집힘, 플랜 2026-08-21-pdf-visual-engine-provider-neutral.md 참조"를 추가
 - [ ] **PR 전**: `origin/main` 머지(문서 1건 add/add 충돌 예상 — `2026-08-03-ai-provider-neutral-llm.md`는 feat 쪽이 실측값까지 채워진 최신본이므로 ours 채택). 버전 bump는 `scripts/sync-version.js` 경유. 병합과 publish는 사용자가 수행
 
 ## 이 플랜이 다루지 않는 것
 
 - 설정 값 도메인 확장(`openai`를 제3의 엔진 값으로 노출) — 사용자 결정으로 제외. 엔진은 공급사를 따라간다
-- `media_resolution` 대응(OpenAI 입력 토큰 2배) — DPI나 타일 전략 조정은 Task 4 비용 결과를 보고 별건으로 판단
-- Terra·Sol 승격 — Task 4가 Luna 정확도 부족을 보이면 그때 별건으로
-- 요소 과분할 대응 — Task 4에서 실재가 확인되면 별건으로
+- `media_resolution` 대응(OpenAI 입력 토큰 2배) — DPI나 타일 전략 조정은 Task 5 비용 결과를 보고 별건으로 판단
+- Terra·Sol 승격 — Task 5가 Luna 정확도 부족을 보이면 그때 별건으로
+- 요소 과분할 대응 — Task 5에서 실재가 확인되면 별건으로
 - `GEMINI_ENGINE_NAME` 상수의 개명(`odl_parser.py:47`과 `gemini_parser.py:36`에 중복 정의) — 매니페스트에 저장되는 값이라 개명은 마이그레이션을 부른다. 레거시 이름으로 유지
