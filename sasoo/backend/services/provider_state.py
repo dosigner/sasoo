@@ -12,10 +12,14 @@ image_provider는 삭제하지 않고 쓰기 전용 미러로 남긴다 — 이 
 읽기 권위는 항상 ai_provider에 있다. 레거시 키에 직접 write 하지 말고 반드시
 mirror_legacy_settings()를 거쳐라.
 
-pdf_visual_engine은 미러 대상이 아니다. 값 도메인이 {gemini, odl}이고, 이건
-공급사가 아니라 "LLM 비전으로 판독할까 / 로컬 Java 파서로 뽑을까"라는 독립된
-선택이다. gemini는 공급사 이름이 아니라 LLM 비전 경로를 가리키는 레거시
-이름이다. 공급사 값을 넣으면 api/settings.py의 검증이 400으로 거부한다.
+pdf_visual_engine은 미러 대상이 아니다. 값 도메인은 {gemini, odl} 그대로이고,
+이건 "LLM 비전으로 판독할까 / 로컬 Java 파서로 뽑을까"라는 선택이다. gemini는
+공급사 이름이 아니라 LLM 비전 경로를 가리키는 레거시 이름이다. 어떤 LLM으로
+읽을지는 이 값이 정하지 않고 ai_provider가 정한다(2026-08-21). 공급사 값을
+직접 넣으면 api/settings.py의 검증이 400으로 거부한다.
+
+두 공급사의 실측 정확도는
+docs/superpowers/plans/2026-08-21-openai-vision-audit-record.md 참조.
 """
 
 VALID_PROVIDERS = ("openai", "gemini")
