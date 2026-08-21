@@ -151,7 +151,9 @@ class ChannelCaptureTests(unittest.TestCase):
         return paper_dir
 
     def test_gemini_usage_bubbles_into_manifest_key(self):
-        async def _fake_run_convert_gemini(pdf_path, output_dir, figures_dir, *, usage_out=None):
+        async def _fake_run_convert_gemini(
+            pdf_path, output_dir, figures_dir, *, usage_out=None, provider="gemini"
+        ):
             # 실제 API 대신, 채널이 넘겨준 usage_out을 run_convert_gemini와 동일 계약으로 채운다.
             if usage_out is not None:
                 usage_out.update(
@@ -229,7 +231,9 @@ class FallbackAndTextRootTests(unittest.TestCase):
     def test_run_convert_gemini_wraps_non_gemini_error_as_odl_error(self):
         # F1: gemini 경로가 GeminiParserError가 아닌 raw 예외(예: fitz.open 실패)를 던져도
         # _run_convert_gemini가 OdlParserError로 감싸야 상위 폴백이 동작한다(원인 체이닝 유지).
-        async def _raise_raw(pdf_path, output_dir, figures_dir, *, usage_out=None):
+        async def _raise_raw(
+            pdf_path, output_dir, figures_dir, *, usage_out=None, provider="gemini"
+        ):
             raise RuntimeError("raw fitz explosion")
 
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -244,7 +248,9 @@ class FallbackAndTextRootTests(unittest.TestCase):
     def test_partial_gemini_failure_records_billed_pages_via_odl_fallback(self):
         # F2: 부분 실패로 gemini가 raise하고 ODL 폴백이 일어나도, 이미 과금된 gemini 페이지의
         # usage가 채널을 통해 manifest로 올라와 원장에 기록되게 한다(최종 엔진은 ODL).
-        async def _partial_then_raise(pdf_path, output_dir, figures_dir, *, usage_out=None):
+        async def _partial_then_raise(
+            pdf_path, output_dir, figures_dir, *, usage_out=None, provider="gemini"
+        ):
             from services.gemini_parser import GeminiParserError
 
             if usage_out is not None:

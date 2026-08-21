@@ -11,6 +11,8 @@ call_interaction을 mock해 네트워크 없이 실행한다. 검증 항목:
 
 from __future__ import annotations
 
+import asyncio
+import importlib
 import json
 import os
 import re
@@ -30,6 +32,7 @@ from services.gemini_parser import (
 from services.document_manifest import build_document_manifest
 from services.figure_candidates import build_figure_candidates
 from services.llm.gemini_client import _apply_media_resolution
+from services.models import MODEL_LUNA, MODEL_VISUAL
 
 PAGE_WIDTH = 612.0
 PAGE_HEIGHT = 792.0
@@ -222,8 +225,10 @@ class RunConvertGeminiTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(
                 kwargs.get("media_resolution"), gemini_parser._MEDIA_RESOLUTION or None
             )
+            # provider 기본값(gemini)에서 registry의 pdf_parse effort는 "minimal"이다
+            # (test_gemini_keeps_current_model_and_minimal_effort와 동일한 회귀 방어).
             self.assertEqual(
-                kwargs.get("thinking_level"), gemini_parser._THINKING_LEVEL or None
+                kwargs.get("thinking_level"), gemini_parser._THINKING_OVERRIDE or "minimal"
             )
 
     @unittest.skipUnless(gemini_parser._ELEMENTS_SLIM, "slim 스키마 전용")
@@ -554,3 +559,58 @@ class PartialFailureToleranceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_partial_failure_budget(9), 1)
         self.assertEqual(_partial_failure_budget(20), 4)
         self.assertEqual(_partial_failure_budget(30), 6)
+
+
+class TestParserProviderRouting(unittest.TestCase):
+    """페이지 호출이 provider에 따라 올바른 모델·effort로 나가는지."""
+
+    def _run(self, provider: str) -> dict:
+        """1페이지 PDF를 파싱하고 call_interaction에 실제로 넘어간 kwargs를 돌려준다."""
+        page_json = json.dumps({
+            "markdown": "# T",
+            "elements": [{"type": "image", "box_2d": [10, 10, 200, 200], "text": ""}],
+        })
+        captured: dict = {}
+
+        async def _fake_call(prompt, **kwargs):
+            captured.update(kwargs)
+            return {"text": page_json, "tokens_in": 1, "tokens_out": 1, "model": kwargs["model"]}
+
+        with TemporaryDirectory() as tmp:
+            pdf = Path(tmp) / "one.pdf"
+            doc = fitz.open()
+            doc.new_page()
+            doc.save(str(pdf))
+            doc.close()
+            with patch.object(gemini_parser, "call_interaction", new=AsyncMock(side_effect=_fake_call)):
+                asyncio.run(run_convert_gemini(
+                    pdf, Path(tmp), Path(tmp), provider=provider
+                ))
+        return captured
+
+    def test_gemini_keeps_current_model_and_minimal_effort(self):
+        """회귀 방어: Gemini는 현행과 동일해야 한다."""
+        kwargs = self._run("gemini")
+        self.assertEqual(kwargs["model"], MODEL_VISUAL)
+        self.assertEqual(kwargs["thinking_level"], "minimal")
+
+    def test_openai_uses_luna_and_low_effort(self):
+        """minimal을 그대로 보내면 openai_client가 reasoning.effort=minimal로 전달해
+        BadRequestError가 난다(openai_client.py:130-131). low여야 한다."""
+        kwargs = self._run("openai")
+        self.assertEqual(kwargs["model"], MODEL_LUNA)
+        self.assertEqual(kwargs["thinking_level"], "low")
+
+    def test_env_thinking_override_still_wins(self):
+        """SASOO_GEMINI_PARSER_THINKING 레버는 베이스라인 재현 절차가 의존한다."""
+        # 복원 reload는 with 블록 밖(env가 원상복구된 뒤)에서 해야 한다. patch.dict 안에서
+        # reload하면 THINKING=high가 여전히 걸려 있어 모듈이 override 상태로 계속 오염되고,
+        # unittest는 테스트 메서드를 알파벳 순으로 실행하므로 이 테스트가 먼저 돌면
+        # 이후의 다른 테스트(test_gemini_..., test_openai_...)가 그 오염을 물려받는다.
+        try:
+            with patch.dict(os.environ, {"SASOO_GEMINI_PARSER_THINKING": "high"}):
+                importlib.reload(gemini_parser)
+                kwargs = self._run("openai")
+                self.assertEqual(kwargs["thinking_level"], "high")
+        finally:
+            importlib.reload(gemini_parser)
