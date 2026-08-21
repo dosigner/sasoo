@@ -197,15 +197,17 @@ def _java_executable_works(java_exe: str | Path) -> bool:
     return ok
 
 
-def _java_runtime_unavailable_message() -> str:
+def _java_runtime_unavailable_message(provider: str) -> str:
+    key_env = key_env_for(provider)
+    label = "OpenAI" if provider == "openai" else "Gemini"
     return (
         "표·그림 추출에 필요한 Java 실행 환경을 찾지 못했습니다. "
         "동작하는 Java 11+ 런타임을 설치하거나 `backend/java-runtime`에 번들 런타임을 두세요. "
-        "(GEMINI_API_KEY가 설정돼 있으면 Gemini 엔진으로 자동 대체됩니다.)"
+        f"({key_env}가 설정돼 있으면 {label} 엔진으로 자동 대체됩니다.)"
     )
 
 
-def ensure_java_runtime() -> str:
+def ensure_java_runtime(provider: str = "gemini") -> str:
     """
     Ensure Java is available for OpenDataLoader.
     Returns the java executable path.
@@ -213,6 +215,9 @@ def ensure_java_runtime() -> str:
     후보 java 실행 파일은 반드시 `java -version`으로 실제 동작을 검증한 뒤에만 반환한다.
     검증 없이 반환하면 macOS의 `/usr/bin/java` 스텁을 유효한 java로 오인해, 서드파티
     wrapper가 PATH의 "java"(=스텁)를 실행 → exit 1 + java.com 안내가 표/그림 오류로 노출된다.
+
+    provider는 실패 메시지("...로 대체됩니다")에만 쓰인다 — 호출부가 안 넘기면 기존
+    기본값 "gemini"라 문구가 바이트 단위로 그대로 유지된다.
     """
     _ensure_java_tool_options()
     for candidate in _runtime_candidates():
@@ -235,7 +240,7 @@ def ensure_java_runtime() -> str:
         # 아래 OdlRuntimeError로 떨어진다(그러면 text는 PyMuPDF, visual은 Gemini로 대체).
         return java_on_path
 
-    raise OdlRuntimeError(_java_runtime_unavailable_message())
+    raise OdlRuntimeError(_java_runtime_unavailable_message(provider))
 
 
 def _java_runtime_available() -> bool:
@@ -888,7 +893,9 @@ def _run_convert(
             )
         else:
             return _run_convert_gemini(pdf_path, output_dir, figures_dir, resolved)
-    return _run_convert_odl(pdf_path, output_dir, figures_dir, mode)
+    # provider가 None이면(text 스테이지 기본 경로) 기존 기본값 "gemini"로 떨어져
+    # 아래 java-미탐지 사용자 안내 문구가 바이트 단위로 그대로 유지된다.
+    return _run_convert_odl(pdf_path, output_dir, figures_dir, mode, provider=provider or "gemini")
 
 
 def _visual_runtime_unavailable_message(provider: str) -> str:
@@ -930,8 +937,10 @@ def _plan_visual_engines(provider: str) -> list[str]:
     return plan
 
 
-def _run_convert_odl(pdf_path: Path, output_dir: Path, figures_dir: Path, mode: str) -> tuple[dict[str, Any], str, str]:
-    ensure_java_runtime()
+def _run_convert_odl(
+    pdf_path: Path, output_dir: Path, figures_dir: Path, mode: str, provider: str = "gemini"
+) -> tuple[dict[str, Any], str, str]:
+    ensure_java_runtime(provider)
     odl = _import_odl_module()
 
     params: dict[str, Any] = {
@@ -949,7 +958,7 @@ def _run_convert_odl(pdf_path: Path, output_dir: Path, figures_dir: Path, mode: 
     try:
         odl.convert(**params)
     except Exception as exc:
-        raise OdlParserError(_convert_error_message(exc)) from exc
+        raise OdlParserError(_convert_error_message(exc, provider)) from exc
 
     json_path = _locate_output_file(output_dir, pdf_path.stem, ".json")
     md_path = _locate_output_file(output_dir, pdf_path.stem, ".md")
@@ -1004,20 +1013,26 @@ def _looks_like_java_missing(text: str | None) -> bool:
     return any(signature in lowered for signature in _JAVA_MISSING_SIGNATURES)
 
 
-def _java_missing_user_message() -> str:
+def _java_missing_user_message(provider: str = "gemini") -> str:
+    """provider 기본값 "gemini"는 explain_odl_failure의 두 호출부(:2121, :2124) 등 provider를
+    모르는 컨텍스트를 위한 것이다 — 그 호출부들은 실패한 백그라운드 태스크의 사후 콜백이라
+    당시 활성 provider를 알 방법이 없다(고쳐서 알아내려 하지 말고 기본값으로 문구를
+    바이트 동일하게 유지). _run_convert_odl처럼 provider를 실제로 아는 호출부만 넘긴다."""
+    key_env = key_env_for(provider)
+    label = "OpenAI" if provider == "openai" else "Gemini"
     return (
-        "표·그림 추출에 Java 실행 환경 또는 Gemini API 키가 필요합니다. "
+        f"표·그림 추출에 Java 실행 환경 또는 {label} API 키가 필요합니다. "
         "Java 런타임이 설치돼 있지 않거나 실행되지 않았습니다. "
-        "Java 11+를 설치하거나 GEMINI_API_KEY를 설정하면 표·그림을 추출할 수 있습니다."
+        f"Java 11+를 설치하거나 {key_env}를 설정하면 표·그림을 추출할 수 있습니다."
     )
 
 
-def _convert_error_message(exc: Exception) -> str:
+def _convert_error_message(exc: Exception, provider: str = "gemini") -> str:
     if isinstance(exc, subprocess.CalledProcessError):
         output = exc.stderr or exc.stdout or exc.output
         if _looks_like_java_missing(output if isinstance(output, str) else None):
             # 스텁 java가 exit≠0으로 죽은 경우 — 파싱 실패가 아니라 런타임 부재.
-            return _java_missing_user_message()
+            return _java_missing_user_message(provider)
         details: list[str] = [f"OpenDataLoader convert failed with exit code {exc.returncode}."]
         if output:
             last_line = output.strip().splitlines()[-1][:400]
@@ -1025,7 +1040,7 @@ def _convert_error_message(exc: Exception) -> str:
         return " ".join(details)
     if _looks_like_java_missing(str(exc)):
         # wrapper가 던지는 FileNotFoundError("Error: 'java' command not found ...") 등.
-        return _java_missing_user_message()
+        return _java_missing_user_message(provider)
     return f"OpenDataLoader convert failed: {exc}"
 
 

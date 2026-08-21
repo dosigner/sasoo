@@ -240,6 +240,9 @@ class VisualFallbackTests(unittest.TestCase):
         ):
             if engine == "odl":
                 raise AssertionError("Java 검증 실패 시 odl을 시도하면 안 된다")
+            # 배선 회귀 방어: ensure_visual_artifacts가 확정한 visual_provider가
+            # 실제로 _run_convert까지 실려 오는지 확인한다(active_provider가 "gemini"로 고정됨).
+            self.assertEqual(provider, "gemini")
             # stage_default(gemini)를 engine=None으로 태운 경로.
             return copy.deepcopy(_minimal_root(gemini_text)), gemini_text, "gemini"
 

@@ -268,7 +268,7 @@ class FallbackAndTextRootTests(unittest.TestCase):
                 )
             raise GeminiParserError("2/3 page(s) failed; first error: rate limit")
 
-        def _fake_odl(pdf_path, output_dir, figures_dir, mode):
+        def _fake_odl(pdf_path, output_dir, figures_dir, mode, provider=None):
             return copy.deepcopy(_root("ODL FALLBACK TEXT")), "ODL FALLBACK TEXT", "odl-java"
 
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -630,6 +630,7 @@ def _parser_env(**overrides):
         "SASOO_PDF_TEXT_ENGINE",
         "SASOO_PDF_VISUAL_ENGINE",
         "GEMINI_API_KEY",
+        "OPENAI_API_KEY",
     ]
     saved = {k: os.environ.get(k) for k in keys}
     for k in keys:
@@ -884,25 +885,26 @@ class TestVisualEngineProviderGate(unittest.TestCase):
     def test_openai_key_alone_keeps_vision_engine_in_plan(self):
         """회귀 방어: 이전에는 GEMINI_API_KEY만 봐서 OpenAI 단독 키가 vision 경로에
         전혀 못 들어갔다(로컬 ODL로만 떨어짐)."""
-        env = {"OPENAI_API_KEY": "k", "SASOO_PDF_VISUAL_ENGINE": "gemini"}
-        with patch.dict(os.environ, env, clear=False):
-            os.environ.pop("GEMINI_API_KEY", None)
+        with _parser_env(OPENAI_API_KEY="k", SASOO_PDF_VISUAL_ENGINE="gemini"):
             with patch.object(odl_parser, "_java_runtime_available", return_value=True):
                 plan = odl_parser._plan_visual_engines("openai")
         self.assertEqual(plan[0], odl_parser.GEMINI_ENGINE_NAME)
 
     def test_gemini_provider_without_gemini_key_drops_vision_engine(self):
-        env = {"SASOO_PDF_VISUAL_ENGINE": "gemini"}
-        with patch.dict(os.environ, env, clear=False):
-            os.environ.pop("GEMINI_API_KEY", None)
+        with _parser_env(SASOO_PDF_VISUAL_ENGINE="gemini"):
             with patch.object(odl_parser, "_java_runtime_available", return_value=True):
                 plan = odl_parser._plan_visual_engines("gemini")
         self.assertEqual(plan, ["odl"])
 
     def test_run_convert_downgrades_on_missing_active_provider_key(self):
-        """provider 키가 없으면 조용히 ODL로 내려간다(페이지별 재시도 폭주 방지)."""
-        with patch.dict(os.environ, {"SASOO_PDF_VISUAL_ENGINE": "gemini"}, clear=False):
-            os.environ.pop("OPENAI_API_KEY", None)
+        """provider 키가 없으면 조용히 ODL로 내려간다(페이지별 재시도 폭주 방지).
+
+        GEMINI_API_KEY="k"를 일부러 심어 둔다 — 게이트가 옛 로직(os.environ.get
+        ("GEMINI_API_KEY"))으로 되돌아가면 "키가 있다"고 오판해 _run_convert_gemini를
+        불러버리므로, 이 값이 있어야 아래 gem_mock.assert_not_called()가 실제로
+        "OpenAI provider일 때 Gemini 키를 보지 않는다"를 검증하게 된다.
+        """
+        with _parser_env(SASOO_PDF_VISUAL_ENGINE="gemini", GEMINI_API_KEY="k"):
             with patch.object(odl_parser, "_run_convert_odl", return_value=({}, "", "odl-java")) as odl_mock:
                 with patch.object(odl_parser, "_run_convert_gemini") as gem_mock:
                     odl_parser._run_convert(
