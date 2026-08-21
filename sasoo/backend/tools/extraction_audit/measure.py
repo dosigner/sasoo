@@ -115,12 +115,18 @@ def prepare_manifest(paper_dir: Path, pdf_path: Path) -> dict[str, Any]:
     return manifest
 
 
-async def _reparse_manifest(pdf_path: Path, scratch: Path, provider: str) -> dict[str, Any]:
+async def _reparse_manifest(
+    pdf_path: Path, scratch: Path, provider: str, *, usage_out: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """비전 엔진으로 매니페스트를 새로 만든다(저장된 산출물을 쓰지 않는다).
 
     프로덕션 경로(_build_resolver_v1_manifest)와 같은 인자로 build_document_manifest를
     부르는 것이 핵심이다 — 여기서 인자가 어긋나면 "제품이 이렇게 뽑는다"가 아니라
     "감사 도구가 이렇게 뽑는다"를 재게 된다.
+
+    `usage_out`은 페이지 비전 파싱의 실측 토큰/비용을 기록 문서용으로 빼내는 out-param이다
+    (Task 5: 논문당 평균 비용). 파이프라인 동작에는 영향이 없다 — run_convert_gemini가 이미
+    지원하는 채널을 그대로 노출할 뿐이다.
     """
     from services.document_manifest import build_document_manifest
     from services.gemini_parser import run_convert_gemini
@@ -132,7 +138,7 @@ async def _reparse_manifest(pdf_path: Path, scratch: Path, provider: str) -> dic
     figures_dir = scratch / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
     root, markdown_text, actual_engine = await run_convert_gemini(
-        pdf_path, scratch, figures_dir, provider=provider
+        pdf_path, scratch, figures_dir, provider=provider, usage_out=usage_out
     )
     return build_document_manifest(
         pdf_path=pdf_path,
@@ -498,11 +504,13 @@ async def run_lane(
         markdown_text = markdown_candidates[0].read_text(encoding="utf-8", errors="ignore") if markdown_candidates else ""
         paper_gold = gold.get(paper_dir.name, {"labels": [], "numbers": [], "evidence": []})
 
+        usage: dict[str, Any] = {}
+        paper_started = time.time()
         if reparse:
             # 저장된 매니페스트를 쓰지 않는다 — 스크래치를 먼저 만들고 페이지 비전
             # 파싱부터 다시 돌린다(래스터도 스크래치에 새로 생긴다).
             scratch = Path(tempfile.mkdtemp(prefix="tblaudit_"))
-            manifest = await _reparse_manifest(pdf_path, scratch, reparse)
+            manifest = await _reparse_manifest(pdf_path, scratch, reparse, usage_out=usage)
         else:
             manifest = prepare_manifest(paper_dir, pdf_path)
             scratch = make_scratch_dir(paper_dir, manifest, pdf_path)
@@ -518,6 +526,8 @@ async def run_lane(
             "figures": figure_metrics(outcome["figures"], markdown_text),
             "diagnostics": candidate_diagnostics(manifest, outcome["table_candidates"], paper_gold),
             "gold_labels": paper_gold["labels"],
+            "elapsed_sec": round(time.time() - paper_started, 1),
+            "usage": usage or None,
             "table_rows": [
                 {
                     "table_num": table.get("table_num"),
@@ -529,6 +539,8 @@ async def run_lane(
                 for table in outcome["tables"]
             ],
         }
+    usages = [item["usage"] for item in results.values() if item.get("usage")]
+    cost_total = round(sum(float(u.get("cost_usd") or 0.0) for u in usages), 6)
     return {
         "lane": lane,
         "elapsed_sec": round(time.time() - started, 1),
@@ -538,13 +550,24 @@ async def run_lane(
             "cache_misses": cache.misses,
             "grid_recovered": cache.successes,
         },
+        "cost_summary": {
+            "papers_with_usage": len(usages),
+            "cost_total_usd": cost_total,
+            "cost_avg_usd_per_paper": round(cost_total / len(usages), 6) if usages else None,
+            "elapsed_avg_sec_per_paper": (
+                round(sum(item["elapsed_sec"] for item in results.values()) / len(results), 1) if results else None
+            ),
+        },
         "papers": results,
     }
 
 
 def print_lane(report: dict[str, Any]) -> None:
     lane = report["lane"]
-    print(f"\n{'=' * 118}\n[{lane}] {report['elapsed_sec']}s  VLM {report['vlm']}\n{'=' * 118}")
+    print(
+        f"\n{'=' * 118}\n[{lane}] {report['elapsed_sec']}s  VLM {report['vlm']}  "
+        f"COST {report.get('cost_summary')}\n{'=' * 118}"
+    )
     print(
         f"{'논문':<46} {'gold':>4} {'표':>3} {'FP':>3} {'FN':>3} {'오차':>4} {'캡션연결':>8}  "
         f"{'그림(원문/추출)':>14}  후보"
