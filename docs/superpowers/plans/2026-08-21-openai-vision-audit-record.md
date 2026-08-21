@@ -36,8 +36,8 @@ out-param을 `_reparse_manifest` → `run_lane`까지 그대로 연결해 논문
 | 그림 정확일치 | 12/12 | 12/12 | 부모 그림 번호 집합 기준(서브피겨 제외) |
 | 표 정확일치 | 10/12 | 9/12 | 아래 "표 정확일치 실패 상세" 참조 |
 | 표 라벨 재현율 | 24/26 (92.3%) | 23/26 (88.5%) | 정답 26개 기준, `fn` 합산 |
-| 논문당 평균 비용 | $0.270482 | $0.036959 | Gemini 실효 모델 `gemini-3.6-flash`(pdf_parse effort=minimal), OpenAI 실효 모델 `gpt-5.6-luna`(effort=low, minimal 미지원) |
-| 총 비용(12편) | $3.245781 | $0.443513 | |
+| 논문당 페이지 비전 파싱 비용(격자 복원 VLM 제외) | $0.270482 | $0.036959 | Gemini 실효 모델 `gemini-3.6-flash`(pdf_parse effort=minimal), OpenAI 실효 모델 `gpt-5.6-luna`(effort=low, minimal 미지원). 표 격자 복원(`table_resolver._repair_with_vlm`) 호출 비용은 포함하지 않음 — 아래 "비용 측정 범위" 참조 |
+| 총 페이지 비전 파싱 비용(12편, 격자 복원 VLM 제외) | $3.245781 | $0.443513 | |
 | 논문당 평균 소요 | 144.3초 | 52.0초 | OpenAI가 약 2.8배 빠름 |
 | VLM 호출 수 | 84 | 89 | 표 격자 복원(`table_resolver._repair_with_vlm`) 호출 |
 | 격자 복원 성공 | 39/84 | 43/89 | |
@@ -97,6 +97,27 @@ input 단가 비율 7.5배, output 단가 비율 6.25배로, 실측 비용 비�
 `model_registry`의 OpenAI `pdf_parse` 실효 모델은 Luna(effort=low, minimal 미지원)이고 Terra가
 아니다.
 
+### 비용 측정 범위 — 격자 복원은 양쪽 실행 모두 Gemini로 돌았다
+
+`measure.py`의 `resolve_table_candidates(manifest, paper_dir=scratch, resolver_version="audit")`
+호출은 `provider=`를 넘기지 않으므로 `table_resolver._repair_with_vlm`의 기본값
+`provider: str = "gemini"`가 그대로 적용된다. 반면 프로덕션(`services/odl_parser.py`
+약 1154행)은 `provider = await active_provider()`로 결정한 provider를 그림·표
+리졸버 양쪽에 명시적으로 넘긴다. 즉 이번 `--reparse openai` 실행은 **"OpenAI 페이지
+파싱 + Gemini 표 격자 복원"의 혼합**이었고, `--reparse gemini` 실행은 양쪽 모두
+Gemini였다. 위 결과 표의 비용 두 행은 `usage_out`이 담는 페이지 비전 파싱 비용만이며
+격자 복원 VLM 호출(Gemini 84건, OpenAI 89건, 위 "VLM 호출 수" 행)의 비용을 포함하지
+않는다.
+
+함의:
+1. 표 정확일치 차이(10/12 대 9/12)는 격자 복원이 양쪽 모두 Gemini로 고정된 상태에서
+   나온 값이므로, **차이가 페이지 파싱 단계에 깨끗하게 귀속된다.** 이것은 오히려 좋은
+   격리다.
+2. "OpenAI가 7.3배 싸다"를 **파이프라인 총비용**으로 인용하면 틀리다. 그 수치는 페이지
+   비전 파싱 비용만을 가리키며, 격자 복원 VLM 호출 비용이 빠져 있다. 또한 OpenAI 단독
+   키 사용자가 실제로 쓰게 될 "표 격자 복원까지 Luna로 도는" 경로의 비용은 이번
+   측정에 전혀 포함되지 않았다 — **미측정.**
+
 ### 요소 과분할 관찰
 
 스파이크(1편 7페이지)에서 본 p4/p5/p6류의 과분할이 12편에서도 후보 생성 단계에서 보인다 —
@@ -137,8 +158,10 @@ input 단가 비율 7.5배, output 단가 비율 6.25배로, 실측 비용 비�
 - [x] OpenAI 경로를 기본으로 노출할 수 있는가 — 그림은 두 공급사가 동일(12/12), 표는 OpenAI가
       Gemini보다 약간 낮다(9/12 vs 10/12, 재현율 88.5% vs 92.3%). 1회 측정이라 이 차이가
       노이즈 범위인지 실제 격차인지 판단할 근거가 부족하다. 비용은 OpenAI가 약 7.3배 싸고
-      속도는 약 2.8배 빠르다. **정확도 동등성을 더 신뢰하려면 `--repeat`로 노이즈 바닥을 재는
-      후속 측정이 필요하다.**
+      속도는 약 2.8배 빠르다 — 단, 이 비용 비교는 **페이지 비전 파싱에 한정**되며, 표 격자
+      복원은 이번 실행에서 양쪽 모두 Gemini로 돌아 OpenAI 단독 키 경로의 격자 복원 비용은
+      미측정이다(위 "비용 측정 범위" 참조). **정확도 동등성을 더 신뢰하려면 `--repeat`로
+      노이즈 바닥을 재는 후속 측정이 필요하다.**
 - [x] Terra 승격을 검토해야 하는가 (Luna 입력 단가의 10배) — 이번 측정 범위 밖이다. 측정된
       OpenAI 경로는 Luna(effort=low)이고 Terra가 아니므로, 이 기록만으로는 Terra 승격 여부를
       판단할 근거가 없다. **미측정.**

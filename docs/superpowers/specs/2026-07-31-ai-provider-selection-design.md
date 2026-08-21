@@ -299,6 +299,16 @@ figure/table_resolver, subfigure_detector)까지를 뜻한다. **PDF 전체 비�
 (`pdf_visual_engine=gemini`, `gemini_parser.py`)은 범위 밖이다 — OpenAI 키 단독
 사용자는 로컬 ODL 파서 경로를 쓴다. (병합된 `provider_state.py`의 실동작과 일치)
 
+> **superseded (2026-08-21)**: 위 결론은 실측으로 뒤집혔다. R2가 PDF 전체 비전
+> 파싱을 뺀 이유는 기술적 불가가 아니라 범위 봉쇄였고, 실측에서 OpenAI Luna는
+> `box_2d` 규약을 위반 0건으로 지켰다. 정답셋 12편 기준 그림 정확일치는 두
+> 공급사 모두 12/12, 표는 Gemini 10/12 대 OpenAI 9/12였다. 이제 `pdf_visual_engine`
+> 값 도메인은 그대로 `{gemini, odl}`이지만 어떤 LLM으로 읽을지는 `ai_provider`가
+> 정한다. 괄호의 "병합된 `provider_state.py`의 실동작과 일치"는 더 이상 유효하지
+> 않다(그 docstring이 갱신되었다). 참조:
+> `docs/superpowers/plans/2026-08-21-pdf-visual-engine-provider-neutral.md`,
+> `docs/superpowers/plans/2026-08-21-openai-vision-audit-record.md`
+
 ### R3. deep_dive effort: xhigh → high (원안 §B 수정)
 
 Gemini 사다리(deep_dive=high)와 대칭을 유지하고 플랜 전역 제약("low/medium/high만")
