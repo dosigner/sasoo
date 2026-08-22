@@ -678,3 +678,45 @@ def test_sdk_file_object_upload_requires_mime_type(tmp_path):
     with open(pdf, "rb") as handle:
         with pytest.raises(ValueError, match="mime type"):
             _extra_utils.prepare_resumable_upload(handle)
+
+
+def test_call_interaction_passes_max_output_tokens():
+    """출력 상한을 generation_config에 실어 보낸다.
+
+    폭주 반복(마지막 자유서술 필드에서 종료 토큰을 못 내는 실패)이 나면 모델은
+    64K 출력 상한까지 필러를 뱉는다. 실측 2026-08-16: 시도당 65,522 토큰,
+    그중 92.4%가 `(Fin). (End). Done!` 류 필러였다. 상한을 걸면 그 낭비가
+    결정론적으로 묶인다. API 레퍼런스(ai.google.dev/static/api/interactions.md.txt,
+    2026-08-17 확인)의 GenerationConfig에 max_output_tokens가 있다.
+    """
+    fake_client = MagicMock()
+    fake_client.interactions.create.return_value = _fake_interaction()
+    with patch("services.llm.gemini_client._get_client", return_value=fake_client):
+        asyncio.run(call_interaction(
+            "안녕", lane="pipeline", thinking_level="medium", max_output_tokens=24000,
+        ))
+    generation_config = fake_client.interactions.create.call_args.kwargs["generation_config"]
+    assert generation_config["max_output_tokens"] == 24000
+    assert generation_config["thinking_level"] == "medium"
+
+
+def test_call_interaction_max_output_tokens_alone_builds_generation_config():
+    """thinking_level 없이 상한만 줘도 generation_config이 만들어져야 한다."""
+    fake_client = MagicMock()
+    fake_client.interactions.create.return_value = _fake_interaction()
+    with patch("services.llm.gemini_client._get_client", return_value=fake_client):
+        asyncio.run(call_interaction("안녕", lane="pipeline", max_output_tokens=1000))
+    assert fake_client.interactions.create.call_args.kwargs["generation_config"] == {
+        "max_output_tokens": 1000
+    }
+
+
+def test_call_interaction_omits_max_output_tokens_when_not_given():
+    """상한을 안 주면 키 자체가 없어야 한다 — 기본값을 우리가 정하지 않는다."""
+    fake_client = MagicMock()
+    fake_client.interactions.create.return_value = _fake_interaction()
+    with patch("services.llm.gemini_client._get_client", return_value=fake_client):
+        asyncio.run(call_interaction("안녕", lane="pipeline", thinking_level="low"))
+    assert fake_client.interactions.create.call_args.kwargs["generation_config"] == {
+        "thinking_level": "low"
+    }

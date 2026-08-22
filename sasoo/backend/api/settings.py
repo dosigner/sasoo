@@ -141,8 +141,20 @@ async def _ensure_defaults() -> None:
                     "UPDATE settings SET value = ?, updated_at = ? WHERE key = ?",
                     ("resolver_v1", datetime.utcnow().isoformat(), key),
                 )
+    for obsolete_key in sorted(OBSOLETE_SETTINGS):
+        await db.execute("DELETE FROM settings WHERE key = ?", (obsolete_key,))
+
     await _ensure_library_path(db)
     await db.commit()
+
+
+# 배선이 끊긴 뒤 남은 설정 키. 기동할 때 행까지 지운다 — 아무도 읽지 않는 값이 DB에
+# 남아 있으면 다음 사람이 "쓰이는 설정"으로 읽는다. DEFAULT_SETTINGS와 겹치면 매 기동마다
+# 사용자 설정을 지우게 되므로, 겹치지 않는다는 것을 테스트로 고정한다.
+OBSOLETE_SETTINGS: frozenset[str] = frozenset({
+    # DEC-013 — 워크벤치 분석 프로필. 백엔드에 닿은 적이 없고 응답 모델에도 없었다.
+    "paperbanana_profile",
+})
 
 
 _API_KEY_FIELDS = {"gemini_api_key", "openai_api_key"}

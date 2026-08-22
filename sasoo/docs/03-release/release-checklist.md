@@ -1,5 +1,7 @@
 # Sasoo Release Checklist
 
+> 2026-08-06 현행화: v0.8.0 기준(macOS ZIP+DMG, Windows 미서명 배포)을 반영.
+
 ## Scope
 
 This checklist covers the tagged desktop release flow for Sasoo on macOS ARM and Windows.
@@ -47,7 +49,7 @@ Current local artifact verifiers:
 8. Confirm both previously exposed Google API keys are disabled or deleted at the provider, and review usage, billing, and audit logs.
 9. Confirm the exact release commit passed the Windows `Build Check` workflow.
 10. Immutable releases are optional. To publish immutable releases, enable GitHub's **Immutable Releases** setting and configure `IMMUTABLE_RELEASES_TOKEN` with repository Administration read permission. Without the token the release is published as a mutable release.
-12. Confirm the active `Release` workflow remains macOS-only for v0.7.0. Add `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` before reintroducing Windows public releases.
+12. Confirm the active `Release` workflow builds and publishes both macOS and Windows artifacts. Windows publishes unsigned by default (SmartScreen warning); the workflow's `Detect Windows signing capability` step switches automatically to a signed build when `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` are both configured.
 
 ## Local Smoke Checks
 
@@ -78,14 +80,14 @@ Windows:
 
 ## GitHub Actions Release Flow
 
-Current v0.7.0 tagged release:
+Current v0.8.0 tagged release:
 
 1. Push `main`
 2. Push the tag:
    - `git push origin vX.Y.Z`
 3. GitHub Actions will:
-   - build macOS ARM on `macos-14`
-   - does not publish a Windows build until an Authenticode certificate is configured
+   - build macOS ARM on `macos-14` and Windows on `windows-latest`
+   - publish the Windows build unsigned by default (SmartScreen warning); if `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` are both configured, it builds and publishes a signed Windows release instead
    - use Python `3.12`
    - verify generated artifacts
    - upload assets to the matching GitHub draft release
@@ -100,24 +102,28 @@ The workflow never modifies an existing draft or published release and never rep
 
 ## Signing And Trust
 
-macOS releases are currently distributed as unsigned, unnotarized ZIP files. Every release note and the repository README must disclose this and provide the limited `xattr -dr com.apple.quarantine /Applications/Sasoo.app` installation procedure. Never describe the macOS artifact as signed, notarized, or Gatekeeper-approved.
+macOS releases are currently distributed as unsigned, unnotarized ZIP and DMG files. Every release note and the repository README must disclose this and provide the limited `xattr -dr com.apple.quarantine /Applications/Sasoo.app` installation procedure. Never describe the macOS artifact as signed, notarized, or Gatekeeper-approved.
 
 Only use the `xattr` workaround for an artifact downloaded directly from the official `dosigner/sasoo` GitHub Releases page. It removes quarantine protection; it does not verify the publisher or make the app pass Apple's signing and notarization checks.
 
-Windows Release publishing remains blocked unless Authenticode secrets are configured:
+Windows releases currently publish unsigned by default; Windows SmartScreen will warn that the publisher is unknown. Configuring both secrets switches the workflow to a signed build automatically:
 
 - Windows:
   - `WIN_CSC_LINK`
   - `WIN_CSC_KEY_PASSWORD`
 
-The current release workflow verifies macOS ZIP extraction and update-manifest integrity. A future Windows public release must verify the installer with `Get-AuthenticodeSignature`.
+The current release workflow verifies macOS ZIP extraction and update-manifest integrity, and verifies the Windows installer and update manifest with `verify-win-artifacts.js` — which checks the installer's `Get-AuthenticodeSignature` when signed, and skips that check for the unsigned default build.
 
 ## Release Completion
 
 1. Confirm the draft GitHub release contains:
    - mac ZIP
+   - mac DMG
    - mac blockmap
    - `latest-mac.yml`
+   - Windows installer (`.exe`)
+   - Windows blockmap (if generated)
+   - `latest.yml`
 2. Add release notes explaining that saved API keys migrate automatically when possible, and users must re-enter keys that cannot be migrated or were revoked/deleted with the provider
 3. Publish the draft release
 4. Keep one final manual install check on each target OS before broad distribution

@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 from services.pricing import PRICING, calc_cost
 
@@ -41,3 +43,68 @@ def test_unknown_gemini_model_keeps_existing_fallback():
     from services.pricing import _FALLBACK
     cost = calc_cost("gemini-99-future", 1_000_000, 0)
     assert cost == calc_cost(_FALLBACK, 1_000_000, 0)
+# ---------------------------------------------------------------------------
+# 날짜 조건부 단가
+#
+# Google은 flash 계열 단가를 날짜로 나눠 고시한다(예: "$0.75 through
+# December 31, 2026. $1.50 starting January 1, 2027."). 스칼라 하나로는
+# 표현할 수 없어서, 어느 값을 넣든 한쪽 기간에서 조용히 틀린다.
+# calc_cost가 기준일을 받아 스스로 고르게 한다.
+# ---------------------------------------------------------------------------
+
+def test_gemini_37_flash_uses_intro_price_through_2026():
+    # 도입가 $0.75 in / $3.75 out
+    assert calc_cost(
+        "gemini-3.7-flash", 1_000_000, 1_000_000, as_of=date(2026, 12, 31)
+    ) == pytest.approx(4.50)
+
+
+def test_gemini_37_flash_uses_standard_price_from_2027():
+    # 2027-01-01부터 $1.50 in / $7.50 out
+    assert calc_cost(
+        "gemini-3.7-flash", 1_000_000, 1_000_000, as_of=date(2027, 1, 1)
+    ) == pytest.approx(9.00)
+
+
+def test_gemini_36_flash_shares_the_same_intro_schedule():
+    # 3.7과 동일한 고시. 표준가만 넣어두면 도입가 기간 내내 2배로 과대 계상된다.
+    assert calc_cost(
+        "gemini-3.6-flash", 1_000_000, 1_000_000, as_of=date(2026, 12, 31)
+    ) == pytest.approx(4.50)
+    assert calc_cost(
+        "gemini-3.6-flash", 1_000_000, 1_000_000, as_of=date(2027, 1, 1)
+    ) == pytest.approx(9.00)
+
+
+def test_intro_price_does_not_leak_into_models_without_a_schedule():
+    # 스케줄이 없는 모델은 기준일과 무관하게 표준가다.
+    for day in (date(2026, 12, 31), date(2027, 1, 1)):
+        assert calc_cost("gemini-3.5-flash", 1_000_000, 1_000_000, as_of=day) == pytest.approx(10.50)
+
+
+def test_long_context_override_still_wins_for_pro():
+    # >200K 프롬프트는 PRO_LONG_CONTEXT 단가. 날짜 스케줄 도입이 이 경로를 가리면 안 된다.
+    assert calc_cost(
+        "gemini-3.1-pro-preview", 1_000_000, 0, as_of=date(2026, 12, 31)
+    ) == pytest.approx(4.00)
+
+
+def test_every_model_constant_is_priced():
+    """models.py의 모든 모델 ID는 단가표에 있어야 한다.
+
+    빠지면 calc_cost가 _FALLBACK 단가로 조용히 잘못 계산한다. 사용자에게
+    보이는 비용이 틀리는데 아무도 모른다. 이 저장소에서 가장 싫어하는 버그다.
+    """
+    import services.models as _m
+    from services.pricing import IMAGE_PRICING
+
+    ids = sorted({v for k, v in vars(_m).items() if k.startswith("MODEL_") and isinstance(v, str)})
+    assert ids, "models.py에서 MODEL_* 상수를 하나도 못 찾았다"
+
+    unpriced = [
+        mid for mid in ids
+        if mid not in PRICING
+        and mid not in IMAGE_PRICING
+        and not any(k.split(":", 1)[0] == mid for k in IMAGE_PRICING)
+    ]
+    assert unpriced == [], f"단가표에 없는 모델 ID: {unpriced}"

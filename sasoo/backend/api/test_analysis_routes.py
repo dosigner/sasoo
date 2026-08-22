@@ -30,6 +30,7 @@ from unittest.mock import AsyncMock, patch
 
 from api import analysis_routes, figure_service
 from models.schemas import AnalysisStatus
+from services.model_registry import resolve as resolve_model
 from services.models import MODEL_FLASH_HQ, MODEL_FLASH_LITE
 
 
@@ -730,7 +731,59 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         # 스키마 보강
         param_props = captured["response_schema"]["properties"]["parameters"]["items"]["properties"]
         self.assertEqual(param_props["source_tag"]["enum"], ["explicit", "inferred"])
-        self.assertIn("score_rationale", captured["response_schema"]["properties"])
+        # score_rationale은 뺐다. 읽는 곳이 하나도 없으면서 마지막 자유서술 문자열
+        # 자리를 차지해 폭주 반복을 유발했다(3.6·3.7 공통). 프롬프트에서도 뺀다 —
+        # 안 빼면 모델이 스키마에 없는 필드를 쓰려다 다시 같은 자리로 간다.
+        # 계약 잠금은 api/test_recipe_output_bounds.py.
+        self.assertNotIn("score_rationale", captured["response_schema"]["properties"])
+        self.assertNotIn("score_rationale", prompt)
+        # Evidence Anchoring: LLM은 후보만 낸다(검증 상태·bbox는 LLM 필드가 아니다)
+        self.assertEqual(param_props["evidence_quote"]["type"], "string")
+        self.assertEqual(param_props["evidence_page"]["type"], "integer")
+        self.assertNotIn("verification_status", param_props)
+        self.assertNotIn("bbox", param_props)
+        self.assertEqual(
+            captured["response_schema"]["properties"]["parameters"]["items"]["required"],
+            ["name", "value", "source_tag"],
+        )
+
+    async def test_recipe_prompt_demands_verbatim_shortest_span_quote(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        captured = {}
+
+        async def _fake_call(prompt, **kwargs):
+            captured["prompt"] = prompt
+            captured.update(kwargs)
+            return {
+                "text": '{"title":"레시피","objective":"목적","parameters":[],"steps":[]}',
+                "model": "gemini", "tokens_in": 10, "tokens_out": 20, "interaction_id": None,
+            }
+
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            await analysis_routes._run_recipe(
+                7, "Recipe context body", status, screening_result_text='{"domain":"optics"}',
+            )
+
+        prompt = captured["prompt"]
+        self.assertIn("evidence_quote", prompt)
+        self.assertIn("evidence_page", prompt)
+        self.assertIn("축자", prompt)
+        self.assertIn("가장 짧은 연속", prompt)
+        self.assertIn("1-based", prompt)
+        # 빈 근거가 지어낸 근거보다 낫다 — 인용을 강제하지 않는다
+        self.assertIn("빈 문자열", prompt)
+
+    def test_chain_cache_version_is_bumped_for_evidence_rollout(self):
+        # 스펙 §결정 4: 롤아웃 시 체인 캐시 1회 무효화
+        self.assertEqual(analysis_routes._CHAIN_CACHE_VERSION, "2026-08-06-ev1")
+        self.assertIn(
+            analysis_routes._CHAIN_CACHE_VERSION,
+            analysis_routes._phase_cache_key(model="m", thinking="t", system_instruction="s", prompt="p"),
+        )
 
     async def test_run_recipe_skips_when_screening_signal_is_weak(self):
         status = AnalysisStatus(
@@ -754,6 +807,118 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"skipped": true', result["text"])
         insert_mock.assert_awaited_once()
 
+    async def test_run_recipe_anchors_evidence_with_inserted_row_id(self):
+        """검증은 recipe row 저장 직후, phase completed 노출 전에 동기 실행된다."""
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+
+        async def _fake_call(prompt, **kwargs):
+            return {
+                "text": '{"title":"r","objective":"o","parameters":[{"name":"a","value":"1"}],"steps":[]}',
+                "model": "gemini", "tokens_in": 1, "tokens_out": 1, "interaction_id": None,
+            }
+
+        ensure_mock = AsyncMock(return_value={"status": "verified", "anchors": 1})
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock(return_value=41)),
+            patch("api.analysis_routes.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
+            patch("api.analysis_routes._find_paper_pdf", return_value=None),
+            patch("api.analysis_routes.ensure_recipe_anchors", new=ensure_mock),
+        ):
+            await analysis_routes._run_recipe(
+                7, "body", status, screening_result_text='{"domain":"optics"}',
+                folder_name="2026_Paper_optics",
+            )
+
+        ensure_mock.assert_awaited_once()
+        self.assertEqual(ensure_mock.await_args.kwargs["analysis_result_id"], 41)
+        self.assertEqual(ensure_mock.await_args.kwargs["paper_id"], 7)
+        self.assertEqual(status.phases[-1].status, "completed")
+
+    async def test_run_recipe_cache_hit_backfills_evidence(self):
+        """캐시 히트도 검증을 태운다 — 옛 결과가 영원히 미검증으로 남지 않게."""
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        cached = {
+            "text": '{"title":"r","parameters":[{"name":"a","value":"1"}]}',
+            "model": "gemini-cache", "tokens_in": 1, "tokens_out": 2, "cost_usd": 0.0,
+            "input_hash": "h", "result_id": 77,
+        }
+
+        ensure_mock = AsyncMock(return_value={"status": "verified", "anchors": 1})
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=cached)),
+            patch("api.analysis_routes.call_interaction", new=AsyncMock(side_effect=AssertionError("no LLM on cache hit"))),
+            patch("api.analysis_routes.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
+            patch("api.analysis_routes._find_paper_pdf", return_value=None),
+            patch("api.analysis_routes.ensure_recipe_anchors", new=ensure_mock),
+        ):
+            await analysis_routes._run_recipe(
+                7, "body", status, screening_result_text='{"domain":"optics"}',
+                folder_name="2026_Paper_optics",
+            )
+
+        ensure_mock.assert_awaited_once()
+        self.assertEqual(ensure_mock.await_args.kwargs["analysis_result_id"], 77)
+
+    async def test_run_recipe_cache_hit_verifies_before_marking_completed(self):
+        """M-3: 캐시 히트 분기는 completed로 세팅하기 전에 검증을 끝내야 한다 — 안 그러면
+        await 경계 사이에서 폴링이 completed+evidence=None을 볼 수 있다."""
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        cached = {
+            "text": '{"title":"r","parameters":[{"name":"a","value":"1"}]}',
+            "model": "gemini-cache", "tokens_in": 1, "tokens_out": 2, "cost_usd": 0.0,
+            "input_hash": "h", "result_id": 77,
+        }
+        status_at_call: list[str | None] = []
+
+        async def _ensure_side_effect(**kwargs):
+            status_at_call.append(status.phases[-1].status if status.phases else None)
+            return {"status": "verified", "anchors": 1}
+
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=cached)),
+            patch("api.analysis_routes.call_interaction", new=AsyncMock(side_effect=AssertionError("no LLM on cache hit"))),
+            patch("api.analysis_routes.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
+            patch("api.analysis_routes._find_paper_pdf", return_value=None),
+            patch("api.analysis_routes.ensure_recipe_anchors", new=AsyncMock(side_effect=_ensure_side_effect)),
+        ):
+            await analysis_routes._run_recipe(
+                7, "body", status, screening_result_text='{"domain":"optics"}',
+                folder_name="2026_Paper_optics",
+            )
+
+        # 검증(ensure_recipe_anchors) 호출 시점에는 아직 completed가 아니어야 한다.
+        self.assertEqual(status_at_call, ["running"])
+        self.assertEqual(status.phases[-1].status, "completed")
+
+    async def test_evidence_failure_does_not_kill_recipe_phase(self):
+        """검증기 예외는 격리한다 — recipe 데이터는 보존되고 phase는 completed다."""
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+
+        async def _fake_call(prompt, **kwargs):
+            return {
+                "text": '{"title":"r","objective":"o","parameters":[{"name":"a","value":"1"}],"steps":[]}',
+                "model": "gemini", "tokens_in": 1, "tokens_out": 1, "interaction_id": None,
+            }
+
+        with (
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock(return_value=41)),
+            patch("api.analysis_routes.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
+            patch("api.analysis_routes._find_paper_pdf", return_value=None),
+            patch("api.analysis_routes.ensure_recipe_anchors",
+                  new=AsyncMock(side_effect=RuntimeError("verifier exploded"))),
+        ):
+            result = await analysis_routes._run_recipe(
+                7, "body", status, screening_result_text='{"domain":"optics"}',
+                folder_name="2026_Paper_optics",
+            )
+
+        self.assertIn('"title": "r"', result["text"].replace('"title":"r"', '"title": "r"'))
+        self.assertEqual(status.phases[-1].status, "completed")
+
     async def test_cached_phase_lookup_records_cache_event(self):
         cached = types.SimpleNamespace(
             result_text='{"summary":"cached"}',
@@ -762,6 +927,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             tokens_out=34,
             cost_usd=0.56,
             input_hash="hash1234",
+            result_id=99,
         )
 
         with (
@@ -1035,6 +1201,92 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertEqual(result["text"], "not json")  # 기존 _parse_error 경로가 이어받음
 
+    async def test_chain_stage_drops_polluted_field_when_retry_is_also_degenerate(self):
+        """재시도도 오염되면 오염 필드만 떨어내고 나머지를 살린다.
+
+        2026-08-17 조사에서 나온 자리다. 가드는 오염을 정확히 잡아 재시도를 걸지만,
+        재시도 결과를 **다시 검사하지 않고** 그대로 반환한다. 파싱 실패는
+        `_raw`/`_parse_error` 경로가 받아 주는데 파싱되는 오염 출력은 받을 경로가
+        없어 정상 결과로 저장됐다. 실제로 그렇게 저장된 행이 DB에 3개 있었고
+        (전부 gemini-3.6-flash recipe), id=355는 지금도 화면에 나가는 행이다.
+        """
+        filler = "점수는 0.82임 명확함 인정함임 " + "하겠음임 " * 400
+        schema = {
+            "type": "object",
+            "properties": {
+                "parameters": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {"name": {"type": "string"}, "value": {"type": "string"}},
+                        "required": ["name", "value"],
+                    },
+                },
+                "score_rationale": {"type": "string"},
+            },
+            "required": ["parameters"],
+        }
+        payload = json.dumps(
+            {
+                "parameters": [{"name": "wavelength", "value": "1550"}],
+                "score_rationale": filler,
+            },
+            ensure_ascii=False,
+        )
+        calls = []
+
+        async def _fake_call(prompt, **kwargs):
+            calls.append(kwargs)
+            return {
+                "text": payload, "model": "m", "tokens_in": 10,
+                "tokens_out": 900, "interaction_id": f"i{len(calls)}",
+            }
+
+        with patch("api.analysis_routes.call_interaction", new=_fake_call):
+            result = await analysis_routes._run_chain_stage(
+                phase="recipe",
+                prompt_chain="지시",
+                prompt_fallback="폴백",
+                system_instruction="si",
+                previous_interaction_id=None,
+                pdf_uri=None,
+                response_schema=schema,
+            )
+
+        self.assertEqual(len(calls), 2)  # 재시도는 그대로 1회
+        stored = json.loads(result["text"])
+        self.assertNotIn("score_rationale", stored)
+        self.assertEqual(stored["parameters"], [{"name": "wavelength", "value": "1550"}])
+        self.assertEqual(result["tokens_out"], 1800)  # 실패분 합산은 유지
+
+    async def test_chain_stage_keeps_result_when_pollution_cannot_be_dropped(self):
+        """오염된 값이 required면 떨어내지 않는다 — 빈 껍데기보다 기존 경로가 낫다."""
+        filler = "Score. " + "(Fin). (End). Done! " * 300
+        schema = {
+            "type": "object",
+            "properties": {"title": {"type": "string"}},
+            "required": ["title"],
+        }
+        payload = json.dumps({"title": filler}, ensure_ascii=False)
+
+        async def _fake_call(prompt, **kwargs):
+            return {
+                "text": payload, "model": "m", "tokens_in": 1,
+                "tokens_out": 2, "interaction_id": None,
+            }
+
+        with patch("api.analysis_routes.call_interaction", new=_fake_call):
+            result = await analysis_routes._run_chain_stage(
+                phase="recipe",
+                prompt_chain="지시",
+                prompt_fallback="폴백",
+                system_instruction="si",
+                previous_interaction_id=None,
+                pdf_uri=None,
+                response_schema=schema,
+            )
+        self.assertEqual(result["text"], payload)
+
     async def test_store_visualization_progress_updates_existing_row(self):
         items = [
             {"id": 1, "title": "A", "status": "completed", "cost_usd": 0.02},
@@ -1117,6 +1369,11 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             ),
             patch("api.analysis_routes._plan_visualizations", new=AsyncMock(return_value=[])) as plan_mock,
             patch("api.analysis_routes._store_visualization_progress", new=AsyncMock()) as store_mock,
+            # 캐시 키가 이미지 설정을 읽으므로 DB 접근을 막는다.
+            patch(
+                "api.analysis_routes._get_all_settings",
+                new=AsyncMock(return_value={"image_provider": "openai", "image_quality": "high"}),
+            ),
         ):
             result = await analysis_routes._run_visualizations(
                 7, "viz input", "folder", [], "recipe result", "deep dive result", status,
@@ -1427,6 +1684,8 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
     def test_stage_models_match_constants_and_effective_values(self):
         from services import models as m
         # 상수 파일이 실효 동작(Flash)과 일치해야 한다 (Pro 승격은 A/B 후 별도 결정)
+        # recipe도 2026-08-17부터 예외가 아니다. 이전 세대에 묶었던 핀은 전제가
+        # 사실이 아니어서 풀었다 — 근거는 services/test_model_pins.py에 있다.
         self.assertEqual(m.MODEL_RECIPE, MODEL_FLASH_HQ)
         self.assertEqual(m.MODEL_DEEP_DIVE, MODEL_FLASH_HQ)
         self.assertEqual(m.MODEL_VIZ_PLANNING, MODEL_FLASH_HQ)
@@ -1492,6 +1751,24 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         merged = json.loads(result["text"])
         self.assertEqual(merged["top_cited"][0]["citation_role"], "foundational")
         self.assertEqual(merged["top_cited"][0]["evidence_context"], "이 방법은 [1]을 따른다")
+
+
+class ParseFailurePhaseStatusTest(unittest.IsolatedAsyncioTestCase):
+    """JSON 파싱 실패 phase가 completed로 승격되지 않는다 (Phase 0 P0-2)."""
+
+    async def test_screening_parse_failure_marks_phase_error(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+        broken = {"text": "이건 JSON이 아니다 {{{", "model": MODEL_FLASH_LITE,
+                  "tokens_in": 10, "tokens_out": 10, "interaction_id": None}
+        with (
+            patch("api.analysis_routes.call_interaction", new=AsyncMock(return_value=broken)),
+            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+        ):
+            await analysis_routes._run_screening(7, "본문 내용", status)
+        phase = next(p for p in status.phases if p.phase.value == "screening")
+        self.assertEqual(phase.status, "error")
+        self.assertTrue(phase.error_message)
 
 
 class BudgetParityTests(unittest.IsolatedAsyncioTestCase):
@@ -1814,6 +2091,186 @@ class MermaidRepairAndRegenerateTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(Exception) as ctx:
                 await analysis_routes.regenerate_visualization(7, 1)
         self.assertEqual(getattr(ctx.exception, "status_code", None), 400)
+
+
+class VisualizationCacheKeyTests(unittest.TestCase):
+    """시각화 캐시 키는 이미지 설정까지 담아야 한다.
+
+    이 phase의 캐시 히트는 계획뿐 아니라 생성된 이미지까지 통째로 재사용한다. 키가
+    텍스트 입력만 보면 사용자가 설정에서 품질이나 공급사를 바꿔도 예전 이미지가 그대로
+    나온다. 고른 값이 결과를 바꾸지 않는다는 점에서 DEC-013이 걷어낸 거짓 통제와 같다.
+    """
+
+    def _key(self, **overrides):
+        args = dict(
+            visualization_input="본문",
+            previous_results={"recipe": "r"},
+            recipe_result="recipe",
+            deep_dive_result="deep",
+            image_provider="openai",
+            image_quality="high",
+        )
+        args.update(overrides)
+        return analysis_routes._visualization_cache_input(**args)
+
+    def test_same_inputs_give_same_key(self):
+        self.assertEqual(self._key(), self._key())
+
+    def test_image_quality_changes_the_key(self):
+        self.assertNotEqual(self._key(), self._key(image_quality="low"))
+
+    def test_image_provider_changes_the_key(self):
+        self.assertNotEqual(self._key(), self._key(image_provider="gemini"))
+
+    def test_text_inputs_still_change_the_key(self):
+        self.assertNotEqual(self._key(), self._key(visualization_input="다른 본문"))
+        self.assertNotEqual(self._key(), self._key(recipe_result="다른 레시피"))
+
+    def test_stage_models_change_the_key(self):
+        # 모델을 바꾸면 다른 phase는 _phase_cache_key가 알아서 무효화하는데, 이 phase의
+        # 바깥 캐시는 그 키를 거치지 않는다. 모델을 담지 않으면 모델 교체 후에도 옛 모델이
+        # 만든 계획과 이미지가 그대로 나온다.
+        base = self._key()
+        with patch.object(analysis_routes, "MODEL_VIZ_PLANNING", "other-plan-model"):
+            self.assertNotEqual(base, self._key())
+        with patch.object(analysis_routes, "MODEL_MERMAID", "other-mermaid-model"):
+            self.assertNotEqual(base, self._key())
+
+    def test_chain_version_is_part_of_the_key(self):
+        # 다른 phase는 전부 _CHAIN_CACHE_VERSION을 키에 담는데 이 phase만 빠져 있었다.
+        # 버전을 올려도 시각화만 옛 결과를 재사용하면 체인이 서로 어긋난다.
+        self.assertIn(analysis_routes._CHAIN_CACHE_VERSION, self._key())
+
+
+class ChainStageSalvageTests(unittest.TestCase):
+    """꼬리만 잘린 응답은 되살려 쓰고 재시도하지 않는다.
+
+    상한 절단은 결정론적이다. 같은 요청을 그대로 다시 보내면 같은 자리에서 또
+    잘린다(실측 2026-08-16: recipe가 65522 토큰 x 2로 상한을 두 번 쳤다). 앞부분이
+    온전하면 그걸 쓰고 재시도를 건너뛰는 것이 결과도 낫고 값도 절반이다.
+    """
+
+    SCHEMA = {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "steps": {"type": "array", "items": {"type": "string"}},
+            "tail": {"type": "string"},
+        },
+        "required": ["title", "steps"],
+    }
+
+    TRUNCATED = '{"title": "T", "steps": ["a", "b"], "tail": "닫지 못했다. Done. Fin. OK.'
+
+    def _run(self, texts):
+        calls = {"n": 0}
+
+        async def fake_call(*args, **kwargs):
+            i = calls["n"]
+            calls["n"] += 1
+            return {"text": texts[min(i, len(texts) - 1)], "model": "m",
+                    "tokens_in": 10, "tokens_out": 20, "interaction_id": None}
+
+        import asyncio
+
+        with patch.object(analysis_routes, "call_interaction", fake_call):
+            result = asyncio.run(analysis_routes._run_chain_stage(
+                phase="recipe",
+                prompt_chain="c",
+                prompt_fallback="f",
+                system_instruction="s",
+                previous_interaction_id=None,
+                pdf_uri=None,
+                response_schema=self.SCHEMA,
+            ))
+        return result, calls["n"]
+
+    def test_truncated_tail_is_salvaged_without_a_retry(self):
+        result, n = self._run([self.TRUNCATED])
+        self.assertEqual(n, 1, "되살릴 수 있는데도 재시도했다")
+        parsed = json.loads(result["text"])
+        self.assertEqual(parsed["title"], "T")
+        self.assertEqual(parsed["steps"], ["a", "b"])
+        self.assertNotIn("tail", parsed)  # 쓰다 만 값은 채우지 않는다
+
+    def test_unsalvageable_output_still_retries_once(self):
+        # 필수 키가 나오기 전에 잘렸다. 되살리면 안 되고 기존대로 1회 재시도한다.
+        broken = '{"title": "T", "ste'
+        good = '{"title": "T", "steps": ["a"]}'
+        result, n = self._run([broken, good])
+        self.assertEqual(n, 2)
+        self.assertEqual(json.loads(result["text"])["steps"], ["a"])
+
+    def test_valid_output_is_left_alone(self):
+        good = '{"title": "T", "steps": ["a"]}'
+        result, n = self._run([good])
+        self.assertEqual(n, 1)
+        self.assertEqual(result["text"], good)
+
+
+class StageThinkingLevelTests(unittest.TestCase):
+    """체인 단계의 effort는 그 단계 모델이 받는 값이어야 한다.
+
+    3.7 Flash가 지원하는 값은 low, medium, high뿐이다. minimal을 명시하면 API가
+    검증 에러를 돌려준다. 체인 단계는 전부 MODEL_FLASH_HQ로 도니까 여기에 minimal이
+    섞이면 그 단계가 통째로 죽는다. Luna도 minimal 미지원이라 같은 제약을 받는다.
+    screening은 flash-lite에서 minimal을 쓰므로 이 규칙 밖이고, _PHASE_TO_ROLE에도
+    들어 있지 않다.
+
+    값의 출처는 _STAGE_THINKING 딕셔너리에서 model_registry로 옮겼다. 그래서 이
+    테스트도 딕셔너리가 아니라 레지스트리가 실제로 내주는 값을 본다 — 두 공급사
+    모두 확인하므로 옛 형태보다 넓다.
+    """
+
+    SUPPORTED = frozenset({"low", "medium", "high"})
+
+    def test_chain_stages_use_levels_the_stage_model_accepts(self):
+        bad = {
+            (provider, stage): choice.effort
+            for stage, role in analysis_routes._PHASE_TO_ROLE.items()
+            for provider in ("gemini", "openai")
+            for choice in (resolve_model(role, provider),)
+            if choice.effort not in self.SUPPORTED
+        }
+        self.assertEqual(bad, {}, f"스테이지 모델이 받지 않는 effort: {bad}")
+
+
+class CitationCacheKeyTests(unittest.TestCase):
+    """인용 phase 캐시 키도 모델을 담아야 한다.
+
+    이 키는 _phase_cache_key를 거치지 않고 콘텐츠와 프롬프트 버전만 본다. 모델을
+    담지 않으면 모델을 갈아도 옛 모델이 만든 인용 분석이 계속 나온다. 시각화 phase의
+    바깥 캐시에서 고친 것과 같은 종류다.
+    """
+
+    def _key(self):
+        local_result = {
+            "total_references": 3,
+            "citation_style": "numeric",
+            "self_citation_count": 1,
+            "top_cited": [
+                {
+                    "ref_id": "R1",
+                    "cite_count": 2,
+                    "cite_contexts": [{"sentence": "인용 문장", "section": "Introduction"}],
+                }
+            ],
+        }
+        return analysis_routes._citation_cache_key(local_result, "인용 본문")
+
+    def test_same_inputs_give_same_key(self):
+        self.assertEqual(self._key(), self._key())
+
+    def test_model_change_invalidates_the_key(self):
+        base = self._key()
+        with patch.object(analysis_routes, "MODEL_CITATION", "other-citation-model"):
+            self.assertNotEqual(base, self._key())
+
+    def test_content_still_changes_the_key(self):
+        local_result = {"total_references": 9, "citation_style": "author-year", "top_cited": []}
+        self.assertNotEqual(
+            self._key(), analysis_routes._citation_cache_key(local_result, "인용 본문")
+        )
 
 
 class SanitizeMermaidCodeTests(unittest.TestCase):
@@ -2547,6 +3004,10 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         stack.enter_context(patch("api.analysis_routes._run_citation", new=citation_mock))
         stack.enter_context(patch("api.analysis_routes._get_visual_contract",
                                   new=AsyncMock(return_value=visual_ready_contract)))
+        # 시각화 캐시 키가 이미지 설정을 읽는다(_visualization_cache_input) — DB에 닿지 않게 막는다.
+        stack.enter_context(patch("api.analysis_routes._get_all_settings",
+                                  new=AsyncMock(return_value={"image_provider": "openai",
+                                                             "image_quality": "high"})))
         stack.enter_context(patch("api.analysis_routes._get_cached_phase_result", new=cache_fake))
         stack.enter_context(patch("api.analysis_routes.call_interaction", new=call_fake))
         stack.enter_context(patch(
@@ -2782,6 +3243,25 @@ class CitationPromptTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("문장5", prompt)
 
 
+class PhaseCacheKeyTest(unittest.TestCase):
+    """캐시 키가 프로필(system_instruction)·모델 변경에 반응한다 (Phase 0 P1)."""
+
+    def test_system_instruction_changes_key(self):
+        base = dict(model="m1", thinking="low", prompt="P")
+        k1 = analysis_routes._phase_cache_key(system_instruction="박사생 대상", **base)
+        k2 = analysis_routes._phase_cache_key(system_instruction="초등학생 대상", **base)
+        self.assertNotEqual(k1, k2)
+
+    def test_model_changes_key(self):
+        k1 = analysis_routes._phase_cache_key(model="m1", thinking="low", system_instruction="s", prompt="P")
+        k2 = analysis_routes._phase_cache_key(model="m2", thinking="low", system_instruction="s", prompt="P")
+        self.assertNotEqual(k1, k2)
+
+    def test_deterministic(self):
+        args = dict(model="m1", thinking="low", system_instruction="s", prompt="P")
+        self.assertEqual(analysis_routes._phase_cache_key(**args), analysis_routes._phase_cache_key(**args))
+
+
 class SystemInstructionContractTests(unittest.TestCase):
     def test_language_contract_preserves_machine_values(self):
         from services.llm.interactions_client import _SYSTEM_INSTRUCTION_KO
@@ -2921,6 +3401,54 @@ class TestDegenerateRepetitionDetector(unittest.TestCase):
             "degenerate repetition detected",
         )
         self.assertIsNone(_stage_result_defect('{"notes": "정상 텍스트"}'))
+
+
+class GetRecipeEvidenceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_recipe_response_carries_evidence_payload(self):
+        row = {
+            "id": 41,
+            "parsed_result": {"title": "레시피", "parameters": []},
+            "model_used": "gemini",
+            "created_at": "2026-08-06 10:00:00",
+        }
+        payload = {
+            "verifier_version": "ev1",
+            "normalizer_version": "norm-v1",
+            "summary": {"total": 1, "verified": 1, "by_display_status": {"VERIFIED": 1}},
+            "anchors": [{"target_index": 0, "display_status": "VERIFIED"}],
+        }
+        build_mock = AsyncMock(return_value=payload)
+        with (
+            patch("api.analysis_routes.get_latest_completed_phase_row", new=AsyncMock(return_value=row)),
+            patch("api.analysis_routes.build_evidence_payload", new=build_mock),
+        ):
+            response = await analysis_routes.get_recipe(12)
+
+        self.assertEqual(response["evidence"], payload)
+        self.assertEqual(response["recipe"], row["parsed_result"])  # 원본 blob 무수정
+        self.assertEqual(build_mock.await_args.args[0], 41)
+
+    async def test_evidence_is_null_when_no_anchor_exists(self):
+        row = {"id": 41, "parsed_result": {"title": "레시피"}, "model_used": "m", "created_at": "t"}
+        with (
+            patch("api.analysis_routes.get_latest_completed_phase_row", new=AsyncMock(return_value=row)),
+            patch("api.analysis_routes.build_evidence_payload", new=AsyncMock(return_value=None)),
+        ):
+            response = await analysis_routes.get_recipe(12)
+
+        self.assertIsNone(response["evidence"])
+
+    async def test_evidence_lookup_failure_does_not_break_recipe(self):
+        row = {"id": 41, "parsed_result": {"title": "레시피"}, "model_used": "m", "created_at": "t"}
+        with (
+            patch("api.analysis_routes.get_latest_completed_phase_row", new=AsyncMock(return_value=row)),
+            patch("api.analysis_routes.build_evidence_payload",
+                  new=AsyncMock(side_effect=RuntimeError("db gone"))),
+        ):
+            response = await analysis_routes.get_recipe(12)
+
+        self.assertIsNone(response["evidence"])
+        self.assertEqual(response["recipe"], row["parsed_result"])
 
 
 if __name__ == "__main__":

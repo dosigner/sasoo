@@ -345,6 +345,26 @@ class CachedPhaseLookupTests(unittest.IsolatedAsyncioTestCase):
         assert cached is not None
         self.assertEqual(cached.result_data["title"], "recipe")
 
+    async def test_find_cached_phase_result_carries_source_row_id(self):
+        """캐시 히트 경로에서 근거 백필을 하려면 소스 analysis_results.id가 필요하다."""
+        input_text = "recipe input"
+        row = {
+            "id": 4242,
+            "result": '{"title":"레시피"}',
+            "model_used": "gemini",
+            "tokens_in": 1,
+            "tokens_out": 2,
+            "cost_usd": 0.1,
+            "input_hash": "abc",
+        }
+        with patch("services.document_context.fetch_one", new=AsyncMock(return_value=row)) as fetch_mock:
+            cached = await find_cached_phase_result(7, "recipe", input_text)
+
+        self.assertIsNotNone(cached)
+        assert cached is not None
+        self.assertEqual(cached.result_id, 4242)
+        self.assertIn("id", fetch_mock.await_args.args[0])
+
 
 class TestInputHashProviderAware(unittest.TestCase):
     def test_legacy_call_without_kwargs_is_unchanged(self):

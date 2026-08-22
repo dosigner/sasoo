@@ -353,6 +353,8 @@ async def _maybe_select_candidate(
             ],
             lane="pipeline",
             model=_choice.model,
+            # effort는 model_registry가 정한다. FLASH_HQ는 minimal을 400으로
+            # 거부하므로 gemini 표의 값이 low다(services/test_model_registry.py).
             thinking_level=_choice.effort,
             store=False,
         )
@@ -426,6 +428,8 @@ async def _maybe_rerank_caption(
             ],
             lane="pipeline",
             model=_choice.model,
+            # effort는 model_registry가 정한다. FLASH_HQ는 minimal을 400으로
+            # 거부하므로 gemini 표의 값이 low다(services/test_model_registry.py).
             thinking_level=_choice.effort,
             store=False,
         )

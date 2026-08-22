@@ -76,12 +76,6 @@ export type UploadResponse = Paper;
 export type AnalysisPhase = 'screening' | 'citation' | 'visual' | 'recipe' | 'deep_dive';
 export type PhaseStatusValue = 'pending' | 'running' | 'completed' | 'error';
 export type VisualState = 'ready' | 'running' | 'error' | 'partial';
-export type PaperBananaProfile = 'fast' | 'balanced' | 'quality';
-
-export interface AnalysisRunRequest {
-  paperbanana_profile?: PaperBananaProfile;
-}
-
 export interface PhaseInfo {
   phase: AnalysisPhase;
   status: PhaseStatusValue;
@@ -143,6 +137,8 @@ export interface PdfNavigationRequest {
   page: number;
   requestId: string;
   source: 'figure' | 'table' | 'citation' | 'recipe';
+  /** 선택 — bbox는 PDF 포인트·좌하단 원점. 없으면 페이지 이동만 한다. */
+  highlight?: { bbox: [number, number, number, number] } | null;
 }
 
 export interface FigureListResponse {
@@ -205,11 +201,65 @@ export interface FigureExplanationResponse {
 }
 
 // Recipe types
+export type EvidenceDisplayStatus =
+  | 'VERIFIED'
+  | 'UNVERIFIED_PAGE_MISMATCH'
+  | 'UNVERIFIED_VALUE_MISMATCH'
+  | 'UNVERIFIED_INFERRED'
+  | 'UNVERIFIED_PARTIAL'
+  | 'UNVERIFIED_AMBIGUOUS'
+  | 'UNVERIFIED_NOT_FOUND'
+  | 'UNVERIFIED_NO_QUOTE'
+  | 'UNVERIFIED_NO_TEXT_LAYER'
+  | 'UNVERIFIED_STALE_SOURCE'
+  | 'UNVERIFIED_ERROR'
+  /** 앵커 자체가 없는 경우. 백엔드는 이 값을 저장하지 않고 프론트가 합성한다. */
+  | 'UNVERIFIED_NOT_RUN';
+
+/** 결정론적 검증기(evidence-verifier)가 만든 파라미터별 근거 앵커. LLM 출력이 아니다. */
+export interface EvidenceAnchor {
+  target_index: number;
+  target_key: string;
+  target_label: string;
+  source_tag: string | null;
+  /** LLM이 주장한 인용 — 확인되지 않았을 수 있다. */
+  claimed_quote: string | null;
+  claimed_page: number | null;
+  quote_status: string;
+  page_status: string;
+  value_status: string;
+  display_status: EvidenceDisplayStatus;
+  match_method: string | null;
+  match_ratio: number | null;
+  /** 원문에서 실제로 확인된 span. 확인 실패 시 null. */
+  matched_quote: string | null;
+  matched_page: number | null;
+  /** [x0, y_bottom, x1, y_top] PDF 포인트, 좌하단 원점. */
+  bbox: [number, number, number, number] | null;
+  corpus: string;
+  failure_detail: string | null;
+  verifier_version: string;
+  normalizer_version: string;
+}
+
+export interface RecipeEvidence {
+  verifier_version: string;
+  normalizer_version: string;
+  summary: {
+    total: number;
+    verified: number;
+    by_display_status: Record<string, number>;
+  };
+  anchors: EvidenceAnchor[];
+}
+
 export interface Recipe {
   paper_id: number;
   recipe: Record<string, unknown>;
   model_used: string | null;
   created_at: string | null;
+  /** null이면 "검증 기록 없음"이지 "검증됨"이 아니다. */
+  evidence?: RecipeEvidence | null;
 }
 
 // Mermaid diagram types
@@ -218,23 +268,6 @@ export interface MermaidDiagram {
   mermaid_code: string;
   diagram_type: string;
   description: string | null;
-}
-
-// PaperBanana types (visual summary)
-export interface PaperBanana {
-  paper_id: number;
-  image_path: string;
-  image_url: string;
-  width: number;
-  height: number;
-}
-
-export interface GeneratePaperBananaRequest {
-  style?: 'default' | 'minimal' | 'detailed';
-  language?: 'ko' | 'en';
-  include_recipe?: boolean;
-  include_figures?: boolean;
-  paperbanana_profile?: PaperBananaProfile;
 }
 
 // Visualization plan types (Gemini Pro 3 → up to 5 items)
@@ -280,7 +313,6 @@ export interface Settings {
   auto_analyze: boolean;
   language: string;
   max_concurrent_analyses: number;
-  paperbanana_profile: PaperBananaProfile;
   pdf_parser_mode: 'java';
   extraction_pipeline_version: 'resolver_v1';
   pdf_visual_engine: 'gemini' | 'odl';
@@ -559,14 +591,10 @@ export async function updatePaper(
 // Analysis endpoints
 // ---------------------------------------------------------------------------
 
-export async function runAnalysis(
-  paperId: string,
-  data: AnalysisRunRequest = {}
-): Promise<AnalysisStatus> {
-  return request<AnalysisStatus>(`/analysis/${paperId}/run`, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
+// 백엔드 /run은 본문을 받지 않는다(analysis_routes.run_analysis 시그니처에 body 인자가 없다).
+// 본문을 실어 보내면 FastAPI가 조용히 버리므로, 보내는 쪽에서 아예 만들지 않는다.
+export async function runAnalysis(paperId: string): Promise<AnalysisStatus> {
+  return request<AnalysisStatus>(`/analysis/${paperId}/run`, { method: 'POST' });
 }
 
 export async function getAnalysisStatus(
@@ -648,21 +676,6 @@ export async function getVisualizations(
   paperId: string
 ): Promise<VisualizationPlan> {
   return request<VisualizationPlan>(`/analysis/${paperId}/visualizations`);
-}
-
-export async function generatePaperBanana(
-  paperId: string,
-  data: GeneratePaperBananaRequest = {}
-): Promise<PaperBanana> {
-  const payload: GeneratePaperBananaRequest = {
-    paperbanana_profile: 'fast',
-    ...data,
-  };
-
-  return request<PaperBanana>(`/analysis/${paperId}/paperbanana`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
 }
 
 // ---------------------------------------------------------------------------

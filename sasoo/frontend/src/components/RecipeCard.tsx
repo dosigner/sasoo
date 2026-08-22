@@ -1,8 +1,20 @@
 import { useState, useCallback } from 'react';
-import type { Recipe } from '@/lib/api';
+import type { EvidenceAnchor, Recipe } from '@/lib/api';
 import { S } from '@/lib/strings';
 import { AppIcon } from '@/components/icons';
 import CascadeIn from '@/components/amicro/CascadeIn';
+import { Badge, Tooltip } from '@/components/ui';
+import {
+  attachEvidence,
+  evidenceBadge,
+  evidenceSummaryTone,
+  evidenceTarget,
+  evidenceTooltip,
+  parseRecipeParameters,
+  resolveDisplayStatus,
+  summarizeAnchoredEvidence,
+} from '@/lib/evidence';
+import { generateCsvFromRecipe } from '@/lib/recipeCsv';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -11,58 +23,12 @@ import CascadeIn from '@/components/amicro/CascadeIn';
 interface RecipeCardProps {
   recipe: Recipe | null;
   loading?: boolean;
+  onJumpToEvidence?: (anchor: EvidenceAnchor) => void;
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function generateCsvFromRecipe(recipe: Recipe): string {
-  const data = recipe.recipe as Record<string, unknown>;
-  const rows: string[][] = [];
-
-  // Header info
-  rows.push(['Section', 'Key', 'Value']);
-  rows.push(['Info', 'Title', String(data.title || '')]);
-  rows.push(['Info', 'Objective', String(data.objective || '')]);
-  rows.push(['Info', 'Confidence', data.confidence != null ? `${(Number(data.confidence) * 100).toFixed(0)}%` : '']);
-  rows.push(['Info', 'Reproducibility', data.reproducibility_score != null ? `${(Number(data.reproducibility_score) * 100).toFixed(0)}%` : '']);
-
-  // Materials
-  const materials = (data.materials as string[]) || [];
-  materials.forEach((m, i) => rows.push(['Material', `#${i + 1}`, m]));
-
-  // Equipment
-  const equipment = (data.equipment as string[]) || [];
-  equipment.forEach((e, i) => rows.push(['Equipment', `#${i + 1}`, e]));
-
-  // Parameters
-  const params = (data.parameters as Record<string, string>[]) || [];
-  params.forEach(p => {
-    if (typeof p === 'object' && p.name) {
-      rows.push(['Parameter', p.name, `${p.value || ''}${p.unit ? ' ' + p.unit : ''}${p.notes ? ' (' + p.notes + ')' : ''}`]);
-    }
-  });
-
-  // Steps
-  const steps = (data.steps as string[]) || [];
-  steps.forEach((s, i) => rows.push(['Step', `#${i + 1}`, s]));
-
-  // Critical notes
-  const notes = (data.critical_notes as string[]) || [];
-  notes.forEach((n, i) => rows.push(['Critical Note', `#${i + 1}`, n]));
-
-  if (data.expected_results) rows.push(['Info', 'Expected Results', String(data.expected_results)]);
-  if (data.safety_notes) rows.push(['Info', 'Safety Notes', String(data.safety_notes)]);
-
-  // Escape CSV fields
-  return rows.map(row =>
-    row.map(cell => {
-      const s = String(cell).replace(/"/g, '""');
-      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
-    }).join(',')
-  ).join('\n');
-}
 
 function downloadCsv(content: string, filename: string) {
   const bom = '\uFEFF'; // UTF-8 BOM for Excel compatibility
@@ -107,6 +73,7 @@ function RecipeSkeleton() {
 export default function RecipeCard({
   recipe,
   loading = false,
+  onJumpToEvidence,
 }: RecipeCardProps) {
   const [exported, setExported] = useState(false);
 
@@ -151,30 +118,13 @@ export default function RecipeCard({
   const confidence = data.confidence as number | undefined;
   const reproducibilityScore = data.reproducibility_score as number | undefined;
 
-  // Robustly parse parameters — handle both array of objects and other formats
-  const rawParams = data.parameters;
-  const parameters: { name: string; value: string; unit: string; notes: string }[] = [];
-  if (Array.isArray(rawParams)) {
-    rawParams.forEach((p: unknown) => {
-      if (typeof p === 'object' && p !== null) {
-        const obj = p as Record<string, unknown>;
-        parameters.push({
-          name: String(obj.name || obj.Name || obj.parameter || obj.key || ''),
-          value: String(obj.value || obj.Value || obj.val || ''),
-          unit: String(obj.unit || obj.Unit || obj.units || ''),
-          notes: String(obj.notes || obj.Notes || obj.note || obj.context || ''),
-        });
-      } else if (typeof p === 'string') {
-        // "Temperature: 500 C" format
-        const match = p.match(/^(.+?):\s*(.+)$/);
-        if (match) {
-          parameters.push({ name: match[1].trim(), value: match[2].trim(), unit: '', notes: '' });
-        } else {
-          parameters.push({ name: p, value: '', unit: '', notes: '' });
-        }
-      }
-    });
-  }
+  // 파라미터 파싱은 lib/evidence.ts로 옮겼다 — 백엔드 검증기와 규칙을 맞추고 단위 테스트를 붙이기 위해.
+  const parameters = parseRecipeParameters(data.parameters);
+  const anchored = attachEvidence(parameters, recipe.evidence ?? null);
+  const evidenceSummary = recipe.evidence?.summary ?? null;
+  // 배지는 백엔드 summary 원본이 아니라 화면에 실제 붙은 anchored 결과로 센다 —
+  // fail-closed로 숨겨진 앵커가 있으면 백엔드 summary와 표 숫자가 어긋난다.
+  const evidenceCounts = summarizeAnchoredEvidence(anchored);
 
   return (
     <div>
@@ -254,10 +204,15 @@ export default function RecipeCard({
       {parameters.length > 0 && (
         <CascadeIn index={3}>
         <div className="card p-0 overflow-hidden mb-3">
-          <div className="px-3 py-2 border-b border-border bg-surface/70">
+          <div className="px-3 py-2 border-b border-border bg-surface/70 flex items-center justify-between gap-2">
             <h4 className="text-2xs font-medium uppercase tracking-wide text-fg-muted">
               {S.recipe.parameters} ({parameters.length})
             </h4>
+            {evidenceSummary && (
+              <Badge variant={evidenceSummaryTone(evidenceCounts.verified, evidenceCounts.total)}>
+                {S.recipe.evidence.summaryBadge(evidenceCounts.verified, evidenceCounts.total)}
+              </Badge>
+            )}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -268,18 +223,52 @@ export default function RecipeCard({
                   <th className="text-left font-semibold text-fg-secondary px-3 py-2">Value</th>
                   <th className="text-left font-semibold text-fg-secondary px-3 py-2">Unit</th>
                   <th className="text-left font-semibold text-fg-secondary px-3 py-2">Notes</th>
+                  <th className="text-left font-semibold text-fg-secondary px-3 py-2">{S.recipe.evidence.column}</th>
                 </tr>
               </thead>
               <tbody>
-                {parameters.map((param, index) => (
-                  <tr key={index} className="border-b border-border/50 last:border-b-0 hover:bg-surface-hover/30 transition-colors">
-                    <td className="px-3 py-2 font-mono tabular-nums text-fg-muted">{index + 1}</td>
-                    <td className="px-3 py-2 text-sm text-fg-secondary">{param.name || '-'}</td>
-                    <td className="px-3 py-2 font-mono text-sm tabular-nums text-accent">{param.value || '-'}</td>
-                    <td className="px-3 py-2 font-mono text-sm tabular-nums text-fg-muted">{param.unit || '-'}</td>
-                    <td className="px-3 py-2 text-xs text-fg-muted">{param.notes || '-'}</td>
-                  </tr>
-                ))}
+                {anchored.map(({ row, anchor }) => {
+                  const status = resolveDisplayStatus(anchor);
+                  const badge = evidenceBadge(status);
+                  const target = evidenceTarget(anchor);
+                  return (
+                    <tr key={row.index} className="border-b border-border/50 last:border-b-0 hover:bg-surface-hover/30 transition-colors">
+                      <td className="px-3 py-2 font-mono tabular-nums text-fg-muted">{row.index + 1}</td>
+                      <td className="px-3 py-2 text-sm text-fg-secondary">{row.name || '-'}</td>
+                      <td className="px-3 py-2 font-mono text-sm tabular-nums text-accent">{row.value || '-'}</td>
+                      <td className="px-3 py-2 font-mono text-sm tabular-nums text-fg-muted">{row.unit || '-'}</td>
+                      <td className="px-3 py-2 text-xs text-fg-muted">{row.notes || '-'}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Tooltip
+                            content={<span className="block max-w-xs whitespace-pre-wrap">{evidenceTooltip(anchor)}</span>}
+                          >
+                            <span aria-label={badge.label}>
+                              <Badge variant={badge.tone}>
+                                <AppIcon name={badge.icon} className="w-3 h-3 mr-1" />
+                                {badge.label}
+                              </Badge>
+                            </span>
+                          </Tooltip>
+                          {anchor && target && onJumpToEvidence && (
+                            <button
+                              type="button"
+                              onClick={() => onJumpToEvidence(anchor)}
+                              className="btn-ghost text-2xs px-1.5 py-0.5"
+                              title={S.recipe.evidence.jump}
+                            >
+                              {target.kind === 'confirmed'
+                                ? S.recipe.evidence.confirmedPage(target.page)
+                                : target.kind === 'found'
+                                  ? S.recipe.evidence.foundPage(target.page)
+                                  : S.recipe.evidence.candidatePage(target.page)}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

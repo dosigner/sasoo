@@ -200,9 +200,6 @@ export const S = {
     recipeTab: '레시피',
     experimentTab: '실험 계획',
     experimentPending: '레시피가 준비되면 실험 계획서를 만들 수 있어요.',
-    paperbananaProfile: '분석 프로필',
-    useDefaultProfile: (label: string) => `기본값 사용 (${label})`,
-    paperbananaProfileHelp: 'Figure와 시각화의 품질과 속도를 어떻게 맞출지 골라요.',
   },
 
   // ── PDF Viewer ──
@@ -358,9 +355,6 @@ export const S = {
     pdfVisualEngineHelp: 'AI 판독은 그림·수식을 정확히 읽지만 논문당 API 비용이 들어요. 빠른 추출은 무료지만 수식·표를 놓칠 수 있어요.',
     pdfVisualEngineGemini: 'AI 판독 (정확, 유료)',
     pdfVisualEngineOdl: '빠른 추출 (무료)',
-    profileFast: '빠름',
-    profileBalanced: '균형',
-    profileQuality: '고품질',
     // Appearance
     appearance: '테마',
     dark: '다크',
@@ -564,6 +558,20 @@ export const S = {
     title: '재현성 레시피',
     noRecipe: '아직 레시피를 만들지 않았어요. 분석을 실행하면 파라미터를 뽑아요.',
     exportCsv: 'CSV',
+    // CSV 열 이름. 엑셀에서 사용자가 그대로 읽는 문자열이라 여기 둔다. 순서 계약은
+    // lib/recipeCsv.ts의 RECIPE_CSV_HEADER가 쥔다. 이름은 검증 여부를 단정하지 않는다 —
+    // "발견/주장"은 출처를 가리킬 뿐이고 검증 결과는 '검증 상태' 열 하나가 말한다(DEC-012).
+    csvHeader: {
+      section: '구분',
+      key: '항목',
+      value: '값',
+      status: '검증 상태',
+      method: '검증 방법',
+      foundQuote: '발견 인용',
+      foundPage: '발견 페이지',
+      claimedQuote: '주장 인용',
+      claimedPage: '주장 페이지',
+    },
     exported: '내보냄',
     confidence: '신뢰도',
     reproducibility: '재현성',
@@ -577,6 +585,40 @@ export const S = {
       '파라미터를 뽑지 못했어요. 논문에 실험 세부 정보가 적거나, Methods 섹션을 온전히 읽지 못했을 수 있어요.',
     expectedResults: '예상 결과',
     safetyNotes: '안전 주의사항',
+    evidence: {
+      column: '근거',
+      summaryBadge: (verified: number, total: number) => `근거 확인 ${verified}/${total}`,
+      notRunNotice: '이 분석 결과에는 근거 검증 기록이 없어요. 다시 분석하면 근거를 모아요.',
+      verifiedQuote: '확인된 원문',
+      // DEC-012 — 페이지만 어긋난 near-miss용. 검증 도장 대신 "발견"이라는 문구만 쓴다.
+      foundQuote: (page: number | null) => (page != null ? `발견된 원문 (p.${page})` : '발견된 원문'),
+      claimedQuote: 'LLM이 주장한 인용 (원문에서 확인되지 않음)',
+      confirmedPage: (page: number) => `p.${page}에서 확인`,
+      foundPage: (page: number) => `발견 위치 p.${page}`,
+      candidatePage: (page: number) => `후보 위치 p.${page}`,
+      claimedPageNote: (page: number) => `LLM 주장 p.${page}`,
+      jump: '이 페이지로 이동',
+      method: {
+        exact: '축자 일치',
+        normalized: '표기 정규화 일치',
+        partial: '부분 일치',
+      },
+      status: {
+        VERIFIED: '원문 확인',
+        UNVERIFIED_PAGE_MISMATCH: '다른 페이지에서 발견',
+        UNVERIFIED_VALUE_MISMATCH: '인용에 값이 없음',
+        UNVERIFIED_INFERRED: '추론값',
+        UNVERIFIED_PARTIAL: '부분 일치 — 미검증',
+        UNVERIFIED_AMBIGUOUS: '위치가 모호함',
+        UNVERIFIED_NOT_FOUND: '원문에서 찾지 못함',
+        UNVERIFIED_NO_QUOTE: '근거 없음',
+        UNVERIFIED_NO_TEXT_LAYER: '검증 불가 (텍스트 없는 PDF)',
+        UNVERIFIED_STALE_SOURCE: '원문이 바뀜 — 재검증 필요',
+        UNVERIFIED_ERROR: '검증 실패',
+        UNVERIFIED_NOT_RUN: '검증 미실행',
+      },
+      disclaimer: '인용이 논문 원문에 있는지 확인한 결과예요. 값의 과학적 타당성 검증은 아니에요.',
+    },
   },
 
   // ── Mermaid Renderer ──

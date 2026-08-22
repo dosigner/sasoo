@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from services.model_registry import ModelChoice, ROLES, active_provider, resolve
-from services.models import MODEL_VISUAL
+from services.models import MODEL_FLASH_HQ, MODEL_VISUAL
 
 
 class TestGeminiColumnMatchesProduction(unittest.TestCase):
@@ -24,13 +24,18 @@ class TestGeminiColumnMatchesProduction(unittest.TestCase):
         self.assertEqual(resolve("viz_planning", "gemini").effort, "medium")
 
     def test_resolvers_low(self):
-        """FLASH_HQ(3.7 Flash)는 minimal을 400으로 거부한다(ai.google.dev,
-        2026-08-16 확인) — main #51(159c5f2)이 같은 이유로 세 리졸버를 low로
-        올렸다. 2026-08-22, 병합 전에 이 표를 같은 값으로 맞췄다."""
+        """FLASH_HQ는 minimal을 400으로 거부한다(ai.google.dev, 2026-08-16 확인)
+        — main #51(159c5f2)이 같은 이유로 세 리졸버를 low로 올렸다.
+        2026-08-22, 병합 전에 이 표를 같은 값으로 맞췄다.
+
+        모델은 리터럴이 아니라 MODEL_FLASH_HQ로 비교한다. main 병합으로 프로덕션
+        FLASH_HQ가 3.6에서 3.7로 올라갔고, 이 클래스가 잠그는 것은 "레지스트리
+        값 == 프로덕션 실동작"이므로 상수를 따라가는 것이 그 계약이다. 모델 ID
+        자체의 변경은 services/test_model_pins.py가 본다."""
         for role in ("figure_resolver", "table_resolver", "subfigure"):
             with self.subTest(role=role):
                 choice = resolve(role, "gemini")
-                self.assertEqual(choice.model, "gemini-3.6-flash")
+                self.assertEqual(choice.model, MODEL_FLASH_HQ)
                 self.assertEqual(choice.effort, "low")
 
     def test_naming_flash_lite(self):
@@ -46,11 +51,14 @@ class TestGeminiColumnMatchesProduction(unittest.TestCase):
         """Task 9 이전: get_mermaid/repair_mermaid/chat 핸들러가 레지스트리를 거치지
         않고 MODEL_FLASH_HQ를 thinking_level 없이 직접 호출했다. Task 9가 이 두
         role을 레지스트리 경유로 배선하므로, gemini 열이 그 실값과 바이트 단위로
-        같아야 provider가 gemini로 결정될 때 기존 경로가 무손상이다."""
+        같아야 provider가 gemini로 결정될 때 기존 경로가 무손상이다.
+
+        그 실값은 MODEL_FLASH_HQ다 — main 병합으로 3.6에서 3.7로 올라갔으므로
+        리터럴이 아니라 상수로 비교한다(test_resolvers_low와 같은 이유)."""
         for role in ("mermaid", "chat"):
             with self.subTest(role=role):
                 choice = resolve(role, "gemini")
-                self.assertEqual(choice.model, "gemini-3.6-flash")
+                self.assertEqual(choice.model, MODEL_FLASH_HQ)
                 self.assertIsNone(choice.effort)
 
 

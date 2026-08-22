@@ -64,7 +64,7 @@ RENDER_DPI = _env_int("SASOO_GEMINI_PARSER_DPI", 150)  # 페이지 래스터화 
 PAGE_CONCURRENCY = _env_int("SASOO_GEMINI_PARSER_PAGE_CONCURRENCY", 12)
 _PAGE_RETRIES = 1              # 페이지 호출 실패 시 추가 재시도 횟수(총 2회 시도)
 # thinking 토큰은 출력 단가로 과금됨. 빈 문자열이면 model_registry의 pdf_parse role 값을
-# 쓴다(Gemini=minimal, OpenAI=low). 명시하면 provider 무관하게 이 값이 이긴다 —
+# 쓴다(Gemini=low, OpenAI=low). 명시하면 provider 무관하게 이 값이 이긴다 —
 # 베이스라인 재현 절차(위 주석)가 이 레버에 의존한다.
 _THINKING_OVERRIDE = _env_str("SASOO_GEMINI_PARSER_THINKING", "")
 # 이미지 파트별 media_resolution(low/medium/high/ultra_high). 빈 문자열이면 미지정(SDK 기본).

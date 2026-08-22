@@ -180,6 +180,34 @@ class TestCallInteractionBehavior(unittest.TestCase):
         kwargs = fake_client.responses.create.call_args.kwargs
         self.assertEqual(kwargs["previous_response_id"], "resp_prev")
 
+    def test_max_output_tokens_is_passed_through(self):
+        """analysis_routes가 recipe phase에서 이 값을 넘긴다(_STAGE_MAX_OUTPUT_TOKENS).
+
+        파라미터가 없으면 디스패처의 **kwargs가 그대로 전달돼 TypeError가 난다.
+        Gemini 쪽만 고치고 여기를 빼면 provider=openai에서만 조용히 터진다.
+        """
+        from services.llm import openai_client
+
+        fake_client = MagicMock()
+        fake_client.responses.create.return_value = _fake_response()
+        with patch("services.llm.openai_client._get_client", return_value=fake_client):
+            asyncio.run(openai_client.call_interaction(
+                "안녕", lane="pipeline", thinking_level="low", max_output_tokens=24000,
+            ))
+        kwargs = fake_client.responses.create.call_args.kwargs
+        self.assertEqual(kwargs["max_output_tokens"], 24000)
+
+    def test_max_output_tokens_omitted_when_not_given(self):
+        """안 주면 키를 안 보낸다 — 기본값을 우리가 정하지 않는다."""
+        from services.llm import openai_client
+
+        fake_client = MagicMock()
+        fake_client.responses.create.return_value = _fake_response()
+        with patch("services.llm.openai_client._get_client", return_value=fake_client):
+            asyncio.run(openai_client.call_interaction("안녕", lane="pipeline"))
+        kwargs = fake_client.responses.create.call_args.kwargs
+        self.assertNotIn("max_output_tokens", kwargs)
+
     def test_media_resolution_is_ignored(self):
         """media_resolution은 Gemini 전용 — 시그니처 호환을 위해 받되 무시한다."""
         from services.llm import openai_client

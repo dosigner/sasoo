@@ -135,6 +135,7 @@ async def call_interaction(
     response_schema: dict | None = None,
     store: bool = True,
     media_resolution: str | None = None,
+    max_output_tokens: int | None = None,
 ) -> dict:
     if not store and previous_interaction_id:
         raise ValueError("previous_interaction_id requires store=True")
@@ -147,8 +148,16 @@ async def call_interaction(
             "system_instruction": system_instruction or _SYSTEM_INSTRUCTION_KO,
             "store": store,
         }
+        generation_config: dict = {}
         if thinking_level:
-            kwargs["generation_config"] = {"thinking_level": thinking_level}
+            generation_config["thinking_level"] = thinking_level
+        # VERIFY(확인됨, static/api/interactions.md.txt 2026-08-17): GenerationConfig의
+        # max_output_tokens. 상한에 걸리면 status가 "incomplete"로 온다. 기본값은
+        # 문서에 없으므로 우리가 임의로 정하지 않는다 — 안 주면 키를 안 보낸다.
+        if max_output_tokens is not None:
+            generation_config["max_output_tokens"] = max_output_tokens
+        if generation_config:
+            kwargs["generation_config"] = generation_config
         if previous_interaction_id:
             kwargs["previous_interaction_id"] = previous_interaction_id
         if response_schema:

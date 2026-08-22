@@ -48,6 +48,9 @@ class CachedPhaseResult:
     tokens_out: int
     cost_usd: float
     input_hash: Optional[str]
+    # 캐시 소스 행의 analysis_results.id. Evidence 백필·재검증이 LLM 재호출 없이
+    # 이 id로 이루어진다(스펙 §결정 4). 조회 실패 시 0.
+    result_id: int = 0
 
 
 def compute_input_hash(
@@ -94,7 +97,7 @@ async def find_cached_phase_result(
     input_hash = compute_input_hash(input_text, provider=provider, model=model, effort=effort)
     row = await fetch_one(
         """
-        SELECT result, model_used, tokens_in, tokens_out, cost_usd, input_hash
+        SELECT id, result, model_used, tokens_in, tokens_out, cost_usd, input_hash
         FROM analysis_results
         WHERE paper_id = ? AND phase = ? AND input_hash = ?
         ORDER BY created_at DESC
@@ -117,6 +120,7 @@ async def find_cached_phase_result(
         tokens_out=row.get("tokens_out") or 0,
         cost_usd=row.get("cost_usd") or 0.0,
         input_hash=row.get("input_hash"),
+        result_id=int(row.get("id") or 0),
     )
 
 

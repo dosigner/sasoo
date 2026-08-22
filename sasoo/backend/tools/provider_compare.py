@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GPT-5.6 Luna vs Gemini 3.6 Flash 출력·품질·비용 성향 비교 (R9).
+"""GPT-5.6 Luna vs 프로덕션 Gemini(model_registry가 고르는 모델) 출력·품질·비용 성향 비교 (R9).
 
 sasoo의 실제 프롬프트·스키마·모델 레지스트리를 그대로 써서 같은 논문을 두
 공급사의 5단계 전체(screening·citation·visual·recipe·deep_dive)에 넣고,
@@ -510,7 +510,7 @@ async def run_one(
 
 def build_arg_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
-        description="GPT-5.6 Luna vs Gemini 3.6 Flash 5단계 비교 + 품질·비용 신호 기록(R9).",
+        description="GPT-5.6 Luna vs 프로덕션 Gemini 5단계 비교 + 품질·비용 신호 기록(R9).",
     )
     ap.add_argument("--paper-id", type=int, default=DEFAULT_PAPER_ID, help="비교에 쓸 논문 ID")
     ap.add_argument(

@@ -104,7 +104,6 @@ export default function Settings() {
     pdf_parser_mode: 'java',
     extraction_pipeline_version: 'resolver_v1',
     pdf_visual_engine: 'gemini',
-    paperbanana_profile: 'fast',
     research_context: '',
     default_explanation_level: 'masters',
     research_areas: [],

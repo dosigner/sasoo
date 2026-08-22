@@ -112,6 +112,7 @@ async def call_interaction(
     response_schema: dict | None = None,
     store: bool = True,
     media_resolution: str | None = None,  # noqa: ARG001 - Gemini 전용, 시그니처 호환용
+    max_output_tokens: int | None = None,
 ) -> dict:
     """한 번의 Responses API 호출. gemini_client.call_interaction과 동형.
 
@@ -129,6 +130,10 @@ async def call_interaction(
     }
     if thinking_level:
         kwargs["reasoning"] = {"effort": thinking_level}
+    # Responses API의 대응 필드도 이름이 max_output_tokens다. 안 주면 키를 안
+    # 보낸다 — 기본값을 우리가 정하지 않는다(gemini_client와 같은 원칙).
+    if max_output_tokens is not None:
+        kwargs["max_output_tokens"] = max_output_tokens
     if previous_interaction_id:
         kwargs["previous_response_id"] = previous_interaction_id
     if response_schema:

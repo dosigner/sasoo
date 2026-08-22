@@ -75,6 +75,7 @@ from services.document_context import (
     find_cached_phase_result,
     load_or_build_document_context,
 )
+from services.evidence_repo import build_evidence_payload, ensure_recipe_anchors
 from services.pricing import calc_cost
 from services.llm.interactions_client import call_interaction, stream_interaction
 
@@ -83,8 +84,16 @@ from api.analysis_helpers import (
     _clean_llm_json,
     _is_error_result,
     _stage_result_defect,
+    drop_degenerate_fields,
+    salvage_truncated_json,
     _SYSTEM_INSTRUCTION_KO,
 )
+# 이 세 상수는 캐시 키 빌더(_citation_cache_key, _visualization_cache_key)에만
+# 남는다. 스테이지의 모델/effort는 model_registry가 정하지만, 그 두 키는
+# _phase_cache_key를 거치지 않는 바깥 캐시라서 "Gemini 모델을 갈면 무효화"를
+# 스스로 담아야 한다. 공급사 격리는 compute_input_hash(provider/model/effort)가
+# 따로 하므로 역할이 겹치지 않는다. 테스트가 patch.object로 이 이름을 덮는다.
+from services.models import MODEL_CITATION, MODEL_MERMAID, MODEL_VIZ_PLANNING
 from services.model_registry import ModelChoice, active_provider, resolve as resolve_model
 from services.provider_state import key_env_for
 from api.report_service import (
@@ -92,6 +101,9 @@ from api.report_service import (
     _generate_paperbanana_image,
 )
 from api.figure_service import explain_figure_handler
+# 함수 안에서 import하면 모듈 스텁이 깔린 테스트 구성에서 api.settings를 부분 import 상태로
+# 오염시킨다(이 파일 상단 주석의 격리 사고와 같은 계열). 상단에서 한 번만 묶는다.
+from api.settings import _get_all_settings
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
@@ -164,6 +176,7 @@ async def _get_cached_phase_result(
         "tokens_out": cached.tokens_out,
         "cost_usd": cached.cost_usd,
         "input_hash": cached.input_hash or fallback_hash,
+        "result_id": cached.result_id,
     }
 
 
@@ -271,6 +284,54 @@ _GATE_CONFIDENCE_FLOOR = 0.6
 # 문구가 아닌 "안정 콘텐츠 + 이 버전"으로 캐시 키를 구성한다. 문구를 바꿔도 재과금이
 # 없고, citation phase의 계약이 실제로 바뀔 때만 이 값을 올려 1회 무효화한다.
 _CITATION_PROMPT_VERSION = "2026-07-14"
+
+# Phase 0(2026-08-06): 캐시 키에 프로필·에이전트 지침(system_instruction)·모델·thinking을
+# 포함한다. 값을 올리면 모든 체인 phase 캐시가 무효화된다.
+# Phase 1(2026-08-06, Evidence Anchoring): 스펙 §결정 4에 따라 롤아웃 시 1회 bump한다.
+# recipe 파라미터에 evidence_quote/evidence_page가 생겨 구 스키마 결과를 재사용하면
+# 근거 없는 파라미터가 영구히 남는다. 체인 phase 전체가 1회 재과금되는 것을 알고 하는 선택이다.
+_CHAIN_CACHE_VERSION = "2026-08-06-ev1"
+
+
+def _phase_cache_key(*, model: str, thinking: str, system_instruction: str, prompt: str) -> str:
+    return "\n\x1f\n".join((_CHAIN_CACHE_VERSION, model, thinking, system_instruction or "", prompt))
+
+
+def _visualization_cache_input(
+    *,
+    visualization_input,
+    previous_results,
+    recipe_result,
+    deep_dive_result,
+    image_provider: str,
+    image_quality: str,
+) -> str:
+    """시각화 phase의 캐시 키.
+
+    이 phase는 캐시가 히트하면 계획뿐 아니라 **생성된 이미지까지** 통째로 재사용한다.
+    그래서 이미지 공급사와 품질이 키에 들어가야 한다 — 빠지면 사용자가 설정에서 품질을
+    바꿔도 예전 이미지가 그대로 나오고, 고른 값이 결과를 바꾸지 않는다(DEC-013이 걷어낸
+    거짓 통제와 같은 종류다). 체인 버전도 다른 phase와 같이 담는다.
+    """
+    return json.dumps(
+        {
+            "chain_version": _CHAIN_CACHE_VERSION,
+            "visualization_input": visualization_input,
+            "previous_results": previous_results,
+            "recipe_result": recipe_result,
+            "deep_dive_result": deep_dive_result,
+            "image_provider": image_provider,
+            "image_quality": image_quality,
+            # 이 바깥 캐시는 _phase_cache_key를 거치지 않으므로 모델을 직접 담아야 한다.
+            # 담지 않으면 모델을 갈아도 옛 모델이 만든 계획과 이미지가 그대로 나온다.
+            # 이미지 모델 ID는 담지 않는다(공급사와 품질로 대신한다) — 이미지 모델 자체를
+            # 바꿀 때는 _CHAIN_CACHE_VERSION을 올려라.
+            "plan_model": MODEL_VIZ_PLANNING,
+            "mermaid_model": MODEL_MERMAID,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
 
 
 def _screening_gate_decision(
@@ -404,8 +465,13 @@ async def _insert_analysis_result(
     provider: str | None = None,
     model: str | None = None,
     effort: str | None = None,
-) -> None:
-    await execute_insert(
+) -> int:
+    """analysis_results에 결과를 저장하고 lastrowid를 반환한다.
+
+    반환값은 Evidence 앵커를 이 행에 결속하는 데 쓴다(스펙 §결정 4). 기존 호출부는
+    반환값을 쓰지 않으므로 동작이 바뀌지 않는다.
+    """
+    return await execute_insert(
         """
         INSERT INTO analysis_results
             (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd, input_hash, interaction_id, config_hash)
@@ -424,6 +490,40 @@ async def _insert_analysis_result(
             _config_hash(provider, model, effort),
         ),
     )
+
+
+async def _ensure_recipe_evidence(
+    *,
+    paper_id: int,
+    analysis_result_id,
+    recipe_text: str,
+    folder_name: str,
+) -> None:
+    """Recipe 파라미터 근거를 결정론적으로 검증해 evidence_anchors에 기록한다.
+
+    예외를 밖으로 내보내지 않는다 — 검증기 실패가 recipe phase를 죽이면 안 된다.
+    실패하면 앵커가 남지 않고, 앵커 부재는 UI에서 '검증 미실행'으로 정직하게 보인다
+    (부재를 검증됨으로 표시하는 코드 경로는 존재하지 않는다).
+    """
+    if not analysis_result_id or not folder_name:
+        logger.info(
+            "evidence anchoring skipped (paper=%s result_id=%r folder=%r)",
+            paper_id, analysis_result_id, folder_name,
+        )
+        return
+    try:
+        pdf_path = _find_paper_pdf(get_paper_dir(folder_name))
+        await ensure_recipe_anchors(
+            paper_id=paper_id,
+            analysis_result_id=int(analysis_result_id),
+            recipe_text=recipe_text,
+            pdf_path=pdf_path,
+        )
+    except Exception as exc:
+        logger.warning(
+            "evidence anchoring failed (paper=%s result=%s): %s",
+            paper_id, analysis_result_id, exc,
+        )
 
 
 async def _get_visual_contract(
@@ -561,8 +661,16 @@ async def _run_screening(
 """
 
     choice = resolve_model("screening", provider)
+    # 두 메커니즘을 함께 쓴다. _phase_cache_key는 _CHAIN_CACHE_VERSION을 담아
+    # 체인 프롬프트를 바꿀 때 전 캐시를 한 번에 무효화하고(main #47),
+    # compute_input_hash의 provider/model/effort는 공급사별 결과를 격리한다.
+    # model/effort가 양쪽에 이중으로 들어가지만 해시 입력이 늘 뿐 무해하다.
+    # 한쪽만 남기면 버전 무효화 또는 공급사 격리가 조용히 사라진다.
+    cache_key = _phase_cache_key(
+        model=choice.model, thinking=choice.effort or "", system_instruction="", prompt=prompt,
+    )
     cached = await _get_cached_phase_result(
-        paper_id, "screening", prompt, provider=provider, model=choice.model, effort=choice.effort,
+        paper_id, "screening", cache_key, provider=provider, model=choice.model, effort=choice.effort,
     )
     if cached is not None:
         phase_status.status = "completed"
@@ -590,23 +698,31 @@ async def _run_screening(
     result = await _invoke()
     defect = _stage_result_defect(result.get("text") or "")
     if defect:
-        logger.warning(
-            "screening %s (tokens_out=%s); retrying once",
-            defect, result.get("tokens_out"),
-        )
-        retry = await _invoke()
-        # 재시도 사용량은 attempt별로 비용을 계산해 합산한다(R7-3) — 토큰을
-        # 합쳐 한 번에 계산하면 장문 임계값이 잘못 적용되거나(단가 구간 있는
-        # 모델) 이후 tokens_in/out 합산과 겹쳐 비용이 이중 계산된다.
-        retry["cost_usd_prior_attempts"] = calc_cost(
-            result["model"], result.get("tokens_in") or 0, result.get("tokens_out") or 0,
-        ) + calc_cost(
-            retry["model"], retry.get("tokens_in") or 0, retry.get("tokens_out") or 0,
-        )
-        # 사용량 표시(tokens_in/out)는 실사용 총량이 맞으므로 토큰 합산은 유지한다.
-        retry["tokens_in"] = (result.get("tokens_in") or 0) + (retry.get("tokens_in") or 0)
-        retry["tokens_out"] = (result.get("tokens_out") or 0) + (retry.get("tokens_out") or 0)
-        result = retry
+        salvaged = salvage_truncated_json(result.get("text") or "", _SCREENING_SCHEMA)
+        if salvaged is not None:
+            logger.warning(
+                "screening %s (tokens_out=%s); 잘린 앞부분을 살려 재시도를 건너뛴다",
+                defect, result.get("tokens_out"),
+            )
+            result["text"] = salvaged
+        else:
+            logger.warning(
+                "screening %s (tokens_out=%s); retrying once",
+                defect, result.get("tokens_out"),
+            )
+            retry = await _invoke()
+            # 재시도 사용량은 attempt별로 비용을 계산해 합산한다(R7-3) — 토큰을
+            # 합쳐 한 번에 계산하면 장문 임계값이 잘못 적용되거나(단가 구간 있는
+            # 모델) 이후 tokens_in/out 합산과 겹쳐 비용이 이중 계산된다.
+            retry["cost_usd_prior_attempts"] = calc_cost(
+                result["model"], result.get("tokens_in") or 0, result.get("tokens_out") or 0,
+            ) + calc_cost(
+                retry["model"], retry.get("tokens_in") or 0, retry.get("tokens_out") or 0,
+            )
+            # 사용량 표시(tokens_in/out)는 실사용 총량이 맞으므로 토큰 합산은 유지한다.
+            retry["tokens_in"] = (result.get("tokens_in") or 0) + (retry.get("tokens_in") or 0)
+            retry["tokens_out"] = (result.get("tokens_out") or 0) + (retry.get("tokens_out") or 0)
+            result = retry
 
     # structured output 실패 대비 안전망: 마크다운 펜스 제거 후 JSON 검증
     cleaned_text = _clean_llm_json(result["text"])
@@ -630,7 +746,7 @@ async def _run_screening(
         result["tokens_in"],
         result["tokens_out"],
         cost,
-        prompt,
+        cache_key,
         interaction_id=result.get("interaction_id"),
         provider=provider,
         model=choice.model,
@@ -638,7 +754,11 @@ async def _run_screening(
     )
 
     # Update status
-    phase_status.status = "completed"
+    if _is_error_result(result["text"]):
+        phase_status.status = "error"
+        phase_status.error_message = "LLM 응답을 구조화하지 못했습니다 (JSON 파싱 실패, 1회 재시도 포함)"
+    else:
+        phase_status.status = "completed"
     phase_status.completed_at = _utcnow_iso()
     phase_status.model_used = result["model"]
     phase_status.tokens_in = result["tokens_in"]
@@ -673,7 +793,11 @@ def _build_top_by_norm(top_cited: list) -> dict:
 def _citation_cache_key(local_result: dict, citation_body: str) -> str:
     """인용 phase 캐시 키: 프롬프트 문구가 아닌 안정 콘텐츠 + _CITATION_PROMPT_VERSION.
 
-    문구를 고쳐도 재과금이 없고, 계약이 실제로 바뀔 때 _CITATION_PROMPT_VERSION을 올려 1회 무효화한다."""
+    문구를 고쳐도 재과금이 없고, 계약이 실제로 바뀔 때 _CITATION_PROMPT_VERSION을 올려 1회 무효화한다.
+
+    이 키는 _phase_cache_key를 거치지 않으므로 모델을 직접 담아야 한다. 담지 않으면
+    모델을 갈아도 이 phase만 옛 모델이 만든 인용 분석을 계속 내놓는다. thinking_level은
+    호출부에 "low"로 고정돼 있어 담지 않는다. 단계별로 고를 수 있게 바뀌면 같이 담아라."""
     top = [
         {
             "ref_id": r.get("ref_id"),
@@ -688,6 +812,7 @@ def _citation_cache_key(local_result: dict, citation_body: str) -> str:
     payload = {
         "v": _CITATION_PROMPT_VERSION,
         "phase": "citation",
+        "model": MODEL_CITATION,
         "total_references": local_result.get("total_references", 0),
         "citation_style": local_result.get("citation_style", ""),
         "self_citation_count": local_result.get("self_citation_count", 0),
@@ -910,7 +1035,7 @@ async def _run_citation(
 
 
 # ---------------------------------------------------------------------------
-# Stateful chain: Visual -> Recipe -> Deep Dive -> Viz planning (gemini-3.6-flash)
+# Stateful chain: Visual -> Recipe -> Deep Dive -> Viz planning (MODEL_FLASH_HQ)
 # ---------------------------------------------------------------------------
 
 # 체인 스테이지 이름과 레지스트리 role의 번역표.
@@ -921,6 +1046,21 @@ _PHASE_TO_ROLE = {
     "deep_dive": "deep_dive",
     "visualization": "viz_planning",
 }
+
+# 폭주 반복이 뚫렸을 때의 손해 상한. 스키마 쪽 조치(마지막 속성을 숫자로)가 1차
+# 방어고, 이건 그게 뚫려도 비용이 유한하게 끝나도록 하는 2차 방어다.
+# 값 근거: 실측 최대 정상 recipe 본문이 12,416자(파라미터 26개 완성)였고, 폭주는
+# 모델 상한 65,536까지 갔다. 이 상한은 **thinking 토큰을 포함해서 센다**(문서에 없어
+# 실호출로 확인. 상한 2,000 -> tokens_out 1,986, 그중 thinking 1,213). recipe의
+# medium thinking이 실측 600~4,000이라 24,000이면 본문에 최소 20,000이 남는다.
+# 상한에 걸리면 status가 incomplete로 오고 꼬리가 잘리는데, 그건 이미
+# salvage_truncated_json이 값 경계에서 되살린다.
+# 잠금: api/test_recipe_output_bounds.py, services/test_model_pins.py
+_STAGE_MAX_OUTPUT_TOKENS = {"recipe": 24_000}
+
+# _STAGE_THINKING과 _STAGE_MODELS는 model_registry가 대체했다(provider x role).
+# 스테이지의 모델/effort는 _stage_choice()로만 구한다 — 두 출처를 두면 provider가
+# openai일 때 캐시 키와 실제 호출이 어긋난다.
 
 
 def _stage_choice(phase: str, provider: str) -> ModelChoice:
@@ -970,8 +1110,14 @@ _RECIPE_SCHEMA = {
                     "unit": {"type": "string"},
                     "notes": {"type": "string"},
                     "source_tag": {"type": "string", "enum": ["explicit", "inferred"]},
+                    # Evidence Anchoring(Phase 1): LLM은 후보만 낸다.
+                    # verification_status·matched_quote·bbox는 절대 LLM 출력 필드로 두지 않는다.
+                    "evidence_quote": {"type": "string"},
+                    # 1-based PDF 페이지. Gemini structured output이 minimum을 일관되게
+                    # 지원하지 않아 범위 제약은 스키마가 아니라 검증기가 건다(invalid_page).
+                    "evidence_page": {"type": "integer"},
                 },
-                "required": ["name", "value"],
+                "required": ["name", "value", "source_tag"],
             },
         },
         "steps": {"type": "array", "items": {"type": "string"}},
@@ -980,8 +1126,12 @@ _RECIPE_SCHEMA = {
         "safety_notes": {"type": "string"},
         "confidence": {"type": "number"},
         "missing_info": {"type": "array", "items": {"type": "string"}},
+        # 마지막 속성은 자유서술 문자열로 두지 않는다. 구조화 출력은 JSON 문법을
+        # 강제하지만 문자열 값 안에서는 어떤 토큰도 합법이라, 모델이 "끝났다"고
+        # 판단하고도 종료 토큰을 못 내면 그 안에 갇혀 상한까지 필러를 뱉는다.
+        # 여기 있던 score_rationale이 정확히 그 자리였다(3.6·3.7 공통).
+        # 잠금: api/test_recipe_output_bounds.py
         "reproducibility_score": {"type": "number"},
-        "score_rationale": {"type": "string"},
     },
     "required": ["title", "objective", "parameters", "steps"],
 }
@@ -1273,6 +1423,7 @@ async def _run_chain_stage(
                 previous_interaction_id=previous_interaction_id,
                 response_schema=response_schema,
                 store=True,
+                max_output_tokens=_STAGE_MAX_OUTPUT_TOKENS.get(phase),
             )
         choice = _stage_choice(phase, provider)
         return await call_interaction(
@@ -1283,11 +1434,23 @@ async def _run_chain_stage(
             thinking_level=choice.effort,
             response_schema=response_schema,
             store=False,
+            max_output_tokens=_STAGE_MAX_OUTPUT_TOKENS.get(phase),
         )
 
     result = await _invoke()
     defect = _stage_result_defect(result.get("text") or "")
     if defect:
+        # 상한에 걸려 꼬리만 잘린 경우가 있다. 앞부분이 온전하면 그걸 쓰고 재시도를
+        # 건너뛴다. 같은 요청을 그대로 다시 보내면 같은 자리에서 또 잘리므로
+        # (실측 2026-08-16: 65522 토큰 x 2) 재시도는 값만 두 배가 된다.
+        salvaged = salvage_truncated_json(result.get("text") or "", response_schema or {})
+        if salvaged is not None:
+            logger.warning(
+                "chain stage %s %s (tokens_out=%s); 잘린 앞부분을 살려 재시도를 건너뛴다",
+                phase, defect, result.get("tokens_out"),
+            )
+            result["text"] = salvaged
+            return result
         logger.warning(
             "chain stage %s %s (tokens_out=%s); retrying once",
             phase, defect, result.get("tokens_out"),
@@ -1305,6 +1468,25 @@ async def _run_chain_stage(
         retry["tokens_in"] = (result.get("tokens_in") or 0) + (retry.get("tokens_in") or 0)
         retry["tokens_out"] = (result.get("tokens_out") or 0) + (retry.get("tokens_out") or 0)
         result = retry
+        # 재시도 결과도 검사한다. 파싱 실패는 _raw/_parse_error 경로가 받아 주지만,
+        # 파싱은 되면서 값만 오염된 출력은 받아 줄 경로가 없어 그대로 저장됐다.
+        # 실측 2026-08-17: DB에 그렇게 저장된 recipe 행이 3개(전부 3.6-flash) 있었고
+        # 그중 하나는 화면에 나가는 프로덕션 행이었다.
+        retry_defect = _stage_result_defect(result.get("text") or "")
+        if retry_defect == "degenerate repetition detected":
+            pruned = drop_degenerate_fields(result.get("text") or "", response_schema or {})
+            if pruned is not None:
+                logger.warning(
+                    "chain stage %s 재시도도 %s; 오염 필드를 떨어내고 나머지를 저장한다",
+                    phase, retry_defect,
+                )
+                result["text"] = pruned
+            else:
+                # 오염된 값이 required라 떨어내면 빈 껍데기가 된다. 기존 경로에 맡긴다.
+                logger.warning(
+                    "chain stage %s 재시도도 %s; 필수 필드가 오염돼 떨어낼 수 없다",
+                    phase, retry_defect,
+                )
     return result
 
 
@@ -1440,7 +1622,12 @@ async def _run_visual(
 
     prompt_chain = f"{instruction}\n\n{_doc_reference_phrase(provider)}를 직접 보고 시각 요소를 분석해줘.{figure_desc}"
     prompt_fallback = f"논문 관련 텍스트:\n{visual_input}\n{figure_desc}\n\n{instruction}"
-    cache_key = prompt_fallback
+    cache_key = _phase_cache_key(
+        model=choice.model,
+        thinking=choice.effort or "",
+        system_instruction=system_instruction,
+        prompt=prompt_fallback,
+    )
 
     cached = await _get_cached_phase_result(
         paper_id, "visual", cache_key, provider=provider, model=choice.model, effort=choice.effort,
@@ -1499,7 +1686,11 @@ async def _run_visual(
         effort=choice.effort,
     )
 
-    phase_status.status = "completed"
+    if _is_error_result(result["text"]):
+        phase_status.status = "error"
+        phase_status.error_message = "LLM 응답을 구조화하지 못했습니다 (JSON 파싱 실패, 1회 재시도 포함)"
+    else:
+        phase_status.status = "completed"
     phase_status.completed_at = _utcnow_iso()
     phase_status.model_used = result["model"]
     phase_status.tokens_in = result["tokens_in"]
@@ -1525,6 +1716,7 @@ async def _run_recipe(
     pdf_uri: Optional[str] = None,
     doc_text: str = "",
     provider: str = "gemini",
+    folder_name: str = "",
 ) -> dict:
     """Phase 3: Recipe extraction - extract structured experimental procedure."""
     phase_status = PhaseStatus(
@@ -1606,23 +1798,47 @@ voltages, currents, frequencies, distances, speeds, sizes, ratios, percentages, 
    - "inferred": 논문에 명시된 다른 값에서 계산·추론 가능 — notes에 근거와 계산을 적어.
 4. 개수 목표는 없어. 논문에 실제로 있는 항목만 추출하고, 통상 기본값·상식·장비 기본 설정을 논문 값처럼 보충하지 마.
 5. 재현에 필요한데 논문에 없는 항목은 parameters에 넣지 말고 missing_info에 기록해.
-6. reproducibility_score는 explicit 핵심 파라미터의 충족도와 missing_info를 근거로 매기고, 그 근거를 score_rationale에 한 문장으로 적어.
+6. reproducibility_score는 explicit 핵심 파라미터의 충족도와 missing_info를 근거로 매겨.
+7. 각 파라미터마다 그 값의 근거가 되는 논문 원문을 그대로(축자) evidence_quote에 옮겨.
+   번역·요약·재작성·말줄임표·떨어져 있는 문장 결합은 금지야. 원문 언어 그대로 써.
+8. evidence_quote는 그 파라미터를 뒷받침하는 가장 짧은 연속 스팬 하나로 해(1~2문장, 최대 300자).
+   source_tag="explicit"이면 그 value가 인용 안에 실제로 들어 있어야 해.
+9. evidence_page는 PDF 파일 기준 1-based 페이지 번호야(표지 포함). 논문에 인쇄된 페이지 번호가 아니야.
+   논문 텍스트만 받은 경우에는 "--- Page N ---" 마커의 N을 써.
+10. 축자로 옮길 수 없으면 evidence_quote를 빈 문자열로 두고 페이지도 추측하지 마.
+    빈 근거가 지어낸 근거보다 나아 — 근거 없음은 화면에 그대로 표시돼.
+11. 인용은 논문 PDF(또는 제공된 논문 텍스트)에서만 가져와. 앞선 단계(스크리닝·시각·인용 분석)
+    결과는 인용 출처가 아니야.
 {domain_hint}
 
 출력 필드: title(레시피 제목, 한국어), objective(실험 목적), materials(재료 리스트, 규격 포함),
-equipment(장비 리스트, 모델번호 포함), parameters(각 항목 name/value/unit/notes/source_tag),
+equipment(장비 리스트, 모델번호 포함), parameters(각 항목 name/value/unit/notes/source_tag/evidence_quote/evidence_page),
 steps(단계별 상세 설명, 온도·시간·속도 등 포함), critical_notes(재현 중요 참고사항),
 expected_results(예상 결과), safety_notes(안전 주의사항), confidence(0.0~1.0),
-missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibility_score(0.0~1.0), score_rationale(점수 근거)."""
+missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibility_score(0.0~1.0)."""
 
     prompt_chain = f"{instruction}\n\n{_doc_reference_phrase(provider)}와 이전 분석을 바탕으로 실험 레시피를 추출해줘."
     prompt_fallback = f"논문 텍스트:\n{recipe_input}\n\n{instruction}"
-    cache_key = prompt_fallback
+    cache_key = _phase_cache_key(
+        model=choice.model,
+        thinking=choice.effort or "",
+        system_instruction=system_instruction,
+        prompt=prompt_fallback,
+    )
 
     cached = await _get_cached_phase_result(
         paper_id, "recipe", cache_key, provider=provider, model=choice.model, effort=choice.effort,
     )
     if cached is not None:
+        # 캐시 히트도 검증을 태운다 — 옛 결과 백필과 검증기 버전업 재검증의 유일한 통로다.
+        # completed로 세팅하기 전에 먼저 끝내야 한다 — await 경계 사이에 폴링이
+        # completed+evidence=None을 볼 수 있다(리뷰 지적 M-3, 비캐시 경로와 순서를 맞춘다).
+        await _ensure_recipe_evidence(
+            paper_id=paper_id,
+            analysis_result_id=cached.get("result_id"),
+            recipe_text=cached["text"],
+            folder_name=folder_name,
+        )
         phase_status.status = "completed"
         phase_status.completed_at = _utcnow_iso()
         phase_status.model_used = cached["model"]
@@ -1660,7 +1876,7 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
 
     cost = _result_cost(result)
 
-    await _insert_analysis_result(
+    result_id = await _insert_analysis_result(
         paper_id,
         "recipe",
         result["text"],
@@ -1675,7 +1891,21 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
         effort=choice.effort,
     )
 
-    phase_status.status = "completed"
+    # recipe row 저장(lastrowid 확보) 직후, phase completed 노출 전 동기 검증(스펙 §결정 3).
+    # 41페이지 논문 실측 ~0.4초의 순수 CPU 작업이라 별도 큐·phase를 만들지 않는다.
+    if not _is_error_result(result["text"]):
+        await _ensure_recipe_evidence(
+            paper_id=paper_id,
+            analysis_result_id=result_id,
+            recipe_text=result["text"],
+            folder_name=folder_name,
+        )
+
+    if _is_error_result(result["text"]):
+        phase_status.status = "error"
+        phase_status.error_message = "LLM 응답을 구조화하지 못했습니다 (JSON 파싱 실패, 1회 재시도 포함)"
+    else:
+        phase_status.status = "completed"
     phase_status.completed_at = _utcnow_iso()
     phase_status.model_used = result["model"]
     phase_status.tokens_in = result["tokens_in"]
@@ -1745,7 +1975,12 @@ async def _run_deep_dive(
         f"이전 분석 단계의 결과:\n{prev_context[:4000]}\n\n"
         f"{instruction}\n\n위 정보를 바탕으로 포괄적인 심층 분석을 제공해줘."
     )
-    cache_key = prompt_fallback
+    cache_key = _phase_cache_key(
+        model=choice.model,
+        thinking=choice.effort or "",
+        system_instruction=system_instruction,
+        prompt=prompt_fallback,
+    )
 
     # 체인 재시작 복원용 컨텍스트는 체인 스테이지(시각·레시피)만 담는다. 스크리닝·인용은
     # 위 prompt_chain에 이미 삽입돼 있으므로 중복 방지를 위해 제외한다.
@@ -1811,7 +2046,11 @@ async def _run_deep_dive(
         effort=choice.effort,
     )
 
-    phase_status.status = "completed"
+    if _is_error_result(result["text"]):
+        phase_status.status = "error"
+        phase_status.error_message = "LLM 응답을 구조화하지 못했습니다 (JSON 파싱 실패, 1회 재시도 포함)"
+    else:
+        phase_status.status = "completed"
     phase_status.completed_at = _utcnow_iso()
     phase_status.model_used = result["model"]
     phase_status.tokens_in = result["tokens_in"]
@@ -2062,7 +2301,12 @@ category(experimental_protocol|algorithm_flow|signal_flow|system_architecture|co
         f"{instruction}\n\n--- 분석 결과 (Phase 1-4) ---\n{prev_context[:9000]}\n\n"
         f"--- 관련 텍스트 요약 ---\n{visualization_input}"
     )
-    cache_key = prompt_fallback
+    cache_key = _phase_cache_key(
+        model=choice.model,
+        thinking=choice.effort or "",
+        system_instruction=system_instruction,
+        prompt=prompt_fallback,
+    )
 
     cached = await _get_cached_phase_result(
         paper_id, "viz_plan", cache_key, provider=provider, model=choice.model, effort=choice.effort,
@@ -2313,15 +2557,14 @@ async def _run_visualizations(
     2. Generate each (Mermaid or PaperBanana) in parallel
     3. Store results in DB
     """
-    visualization_cache_input = json.dumps(
-        {
-            "visualization_input": visualization_input,
-            "previous_results": previous_results,
-            "recipe_result": recipe_result,
-            "deep_dive_result": deep_dive_result,
-        },
-        ensure_ascii=False,
-        sort_keys=True,
+    _image_settings = await _get_all_settings()
+    visualization_cache_input = _visualization_cache_input(
+        visualization_input=visualization_input,
+        previous_results=previous_results,
+        recipe_result=recipe_result,
+        deep_dive_result=deep_dive_result,
+        image_provider=_image_settings.get("image_provider", "openai"),
+        image_quality=_image_settings.get("image_quality", "high"),
     )
     cached = await _get_cached_phase_result(paper_id, "visualization", visualization_cache_input)
     if cached is not None:
@@ -2697,6 +2940,7 @@ async def _run_full_analysis(paper_id: int):
             pdf_uri=pdf_uri,
             doc_text=doc_text,
             provider=provider,
+            folder_name=folder_name,
         )
         if pdf_uri or doc_text:
             chain_prev_id = r3.get("interaction_id")
@@ -3238,11 +3482,20 @@ async def get_recipe(paper_id: int):
             detail=f"No recipe found for paper {paper_id}. Run analysis first.",
         )
 
+    # LLM 원본 blob은 무수정 유지하고 검증 결과를 형제 필드로 붙인다.
+    # evidence=None은 "검증 기록 없음"이지 "검증됨"이 아니다 — UI는 전 행을 미검증으로 표시한다.
+    try:
+        evidence = await build_evidence_payload(result.get("id"))
+    except Exception as exc:
+        logger.warning("evidence payload build failed for paper %s: %s", paper_id, exc)
+        evidence = None
+
     return {
         "paper_id": paper_id,
         "recipe": result.get("parsed_result"),
         "model_used": result.get("model_used"),
         "created_at": result.get("created_at"),
+        "evidence": evidence,
     }
 
 

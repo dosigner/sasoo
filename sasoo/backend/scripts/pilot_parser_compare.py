@@ -40,7 +40,7 @@ _GEMINI_PROFILES: dict[str, dict[str, str]] = {
     },
     "tuned": {
         "SASOO_GEMINI_PARSER_DPI": "150",
-        "SASOO_GEMINI_PARSER_THINKING": "minimal",
+        "SASOO_GEMINI_PARSER_THINKING": "low",
         "SASOO_GEMINI_PARSER_MEDIA_RESOLUTION": "low",
         "SASOO_GEMINI_PARSER_ELEMENTS": "slim",
     },

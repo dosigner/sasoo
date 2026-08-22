@@ -66,7 +66,8 @@ async def probe_candidate(candidate: dict, manifest: dict, paper_dir: Path, *, m
             ],
             lane="pipeline",
             model=MODEL_FLASH_HQ,
-            thinking_level="minimal",
+            # 3.7 Flash는 minimal을 거부한다(400). low가 이 모델의 최저치다.
+            thinking_level="low",
             store=False,
         )
     except Exception as exc:  # 진단에서는 예외를 반드시 노출한다
@@ -146,7 +147,8 @@ async def _probe_with_crop(candidate: dict, crop_path: Path) -> dict:
             ],
             lane="pipeline",
             model=MODEL_FLASH_HQ,
-            thinking_level="minimal",
+            # 3.7 Flash는 minimal을 거부한다(400). low가 이 모델의 최저치다.
+            thinking_level="low",
             store=False,
         )
     except Exception as exc:
