@@ -30,8 +30,11 @@ class TestGeminiColumnMatchesProduction(unittest.TestCase):
 
         모델은 리터럴이 아니라 MODEL_FLASH_HQ로 비교한다. main 병합으로 프로덕션
         FLASH_HQ가 3.6에서 3.7로 올라갔고, 이 클래스가 잠그는 것은 "레지스트리
-        값 == 프로덕션 실동작"이므로 상수를 따라가는 것이 그 계약이다. 모델 ID
-        자체의 변경은 services/test_model_pins.py가 본다."""
+        값 == 프로덕션 실동작"이므로 상수를 따라가는 것이 그 계약이다. 레지스트리
+        안에서 엉뚱한 상수(MODEL_PRO 등)로 드리프트하면 여기서 걸린다.
+
+        상수가 가리키는 문자열 값은 여기서 보지 않는다 —
+        services/test_model_pins.py::test_flash_hq_is_the_37_flash_id가 잠근다."""
         for role in ("figure_resolver", "table_resolver", "subfigure"):
             with self.subTest(role=role):
                 choice = resolve(role, "gemini")
@@ -54,7 +57,8 @@ class TestGeminiColumnMatchesProduction(unittest.TestCase):
         같아야 provider가 gemini로 결정될 때 기존 경로가 무손상이다.
 
         그 실값은 MODEL_FLASH_HQ다 — main 병합으로 3.6에서 3.7로 올라갔으므로
-        리터럴이 아니라 상수로 비교한다(test_resolvers_low와 같은 이유)."""
+        리터럴이 아니라 상수로 비교한다(test_resolvers_low와 같은 이유). 문자열
+        값 잠금은 services/test_model_pins.py에 있다."""
         for role in ("mermaid", "chat"):
             with self.subTest(role=role):
                 choice = resolve(role, "gemini")
