@@ -347,7 +347,9 @@ class RepairWithVlmCallInteractionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(base64.b64decode(contents[0]["data"]), image_bytes)
             self.assertEqual(contents[1]["type"], "text")
             self.assertEqual(kwargs["model"], MODEL_FLASH_HQ)
-            self.assertEqual(kwargs["thinking_level"], "minimal")
+            # FLASH_HQ(3.7 Flash)는 minimal을 400으로 거부한다 — low로 상향
+            # (model_registry.py의 table_resolver role, 2026-08-22).
+            self.assertEqual(kwargs["thinking_level"], "low")
             self.assertIs(kwargs["store"], False)
 
             self.assertEqual(grid, [["Name", "Value"], ["A", "1.0"]])

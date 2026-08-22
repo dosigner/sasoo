@@ -46,9 +46,13 @@ _REGISTRY: dict[str, dict[str, ModelChoice]] = {
     "gemini": {
         "screening": ModelChoice(MODEL_FLASH_LITE, "minimal"),
         "visual": ModelChoice(MODEL_FLASH_HQ, "low"),
-        # 페이지 전체 비전 파싱(gemini_parser). 그림 판독 단계인 "visual"과 별개 role이다 —
-        # 페이지 파서는 thinking을 최소로 쓰는 축자 전사 작업이라 effort가 minimal이다.
-        "pdf_parse": ModelChoice(MODEL_VISUAL, "minimal"),
+        # 페이지 전체 비전 파싱(gemini_parser). 그림 판독 단계인 "visual"과 별개 role이다.
+        # FLASH_HQ(3.7 Flash)는 minimal을 400으로 거부한다 — low가 이 모델의
+        # 최저치다(ai.google.dev, 2026-08-16 확인). main #51이 같은 이유로
+        # figure/table/subfigure 리졸버와 페이지 파서를 low로 올렸다.
+        # minimal이 남아 있는 곳은 flash-lite를 쓰는 screening과 naming뿐이다.
+        # 잠금: services/test_model_registry.py
+        "pdf_parse": ModelChoice(MODEL_VISUAL, "low"),
         "citation": ModelChoice(MODEL_FLASH_HQ, "low"),
         "recipe": ModelChoice(MODEL_FLASH_HQ, "medium"),
         "deep_dive": ModelChoice(MODEL_FLASH_HQ, "high"),
@@ -56,9 +60,9 @@ _REGISTRY: dict[str, dict[str, ModelChoice]] = {
         "mermaid": ModelChoice(MODEL_FLASH_HQ, None),
         "chat": ModelChoice(MODEL_FLASH_HQ, None),
         "figure_explain": ModelChoice(MODEL_FLASH_HQ, "high"),
-        "figure_resolver": ModelChoice(MODEL_FLASH_HQ, "minimal"),
-        "table_resolver": ModelChoice(MODEL_FLASH_HQ, "minimal"),
-        "subfigure": ModelChoice(MODEL_FLASH_HQ, "minimal"),
+        "figure_resolver": ModelChoice(MODEL_FLASH_HQ, "low"),
+        "table_resolver": ModelChoice(MODEL_FLASH_HQ, "low"),
+        "subfigure": ModelChoice(MODEL_FLASH_HQ, "low"),
         "naming": ModelChoice(MODEL_FLASH_LITE, "minimal"),
         "viz_image_plan": ModelChoice(MODEL_PRO, "medium"),
         "image": ModelChoice(MODEL_IMAGE, None),

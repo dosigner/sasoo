@@ -23,12 +23,15 @@ class TestGeminiColumnMatchesProduction(unittest.TestCase):
         self.assertEqual(resolve("deep_dive", "gemini").effort, "high")
         self.assertEqual(resolve("viz_planning", "gemini").effort, "medium")
 
-    def test_resolvers_minimal(self):
+    def test_resolvers_low(self):
+        """FLASH_HQ(3.7 Flash)는 minimal을 400으로 거부한다(ai.google.dev,
+        2026-08-16 확인) — main #51(159c5f2)이 같은 이유로 세 리졸버를 low로
+        올렸다. 2026-08-22, 병합 전에 이 표를 같은 값으로 맞췄다."""
         for role in ("figure_resolver", "table_resolver", "subfigure"):
             with self.subTest(role=role):
                 choice = resolve(role, "gemini")
                 self.assertEqual(choice.model, "gemini-3.6-flash")
-                self.assertEqual(choice.effort, "minimal")
+                self.assertEqual(choice.effort, "low")
 
     def test_naming_flash_lite(self):
         self.assertEqual(resolve("naming", "gemini").model, "gemini-3.5-flash-lite")
@@ -91,11 +94,16 @@ class TestOpenAIColumn(unittest.TestCase):
 
 class TestPdfParseRole(unittest.TestCase):
     def test_gemini_pdf_parse_matches_current_parser_defaults(self):
-        """Gemini 경로는 현행 페이지 파서와 바이트 동일해야 한다 — 모델은 MODEL_VISUAL,
-        effort는 minimal. 기존 role "visual"(low)을 재사용하면 이 테스트가 막는다."""
+        """Gemini 경로는 현행 페이지 파서와 바이트 동일해야 한다 — 모델은 MODEL_VISUAL.
+
+        effort는 minimal이 아니라 low다. FLASH_HQ(3.7 Flash)는 minimal을 400으로
+        거부한다(ai.google.dev, 2026-08-16 확인) — main의 gemini_parser.
+        _THINKING_LEVEL 기본값도 이미 low이므로, 여기서도 low로 맞춰야 병합 후
+        main과 동치가 된다(2026-08-22). 기존 role "visual"(low)을 재사용하면
+        이 테스트가 막는다."""
         choice = resolve("pdf_parse", "gemini")
         self.assertEqual(choice.model, MODEL_VISUAL)
-        self.assertEqual(choice.effort, "minimal")
+        self.assertEqual(choice.effort, "low")
 
     def test_openai_pdf_parse_uses_luna_low(self):
         """OpenAI는 minimal을 BadRequestError로 거부한다(플랜 Task 0 실측). low가 최저치."""
@@ -119,6 +127,30 @@ class TestRegistryShape(unittest.TestCase):
     def test_both_providers_cover_same_roles(self):
         from services.model_registry import _REGISTRY
         self.assertEqual(set(_REGISTRY["gemini"]), set(_REGISTRY["openai"]))
+
+
+def test_flash_hq_roles_never_use_minimal_effort():
+    """FLASH_HQ(=3.7 Flash)는 minimal을 400으로 거부한다.
+
+    근거: services/models.py 모듈 docstring, ai.google.dev 2026-08-16 확인.
+    main #51(159c5f2)이 figure_resolver/table_resolver/subfigure/gemini_parser
+    네 곳을 이 이유로 low로 올렸다. 레지스트리로 값을 옮기면서 minimal이 다시
+    들어오면 그 네 경로가 런타임에 400을 받는다 — 테스트 없이는 실호출에서만 드러난다.
+
+    minimal이 안전한 곳은 flash-lite를 쓰는 role뿐이다(screening, naming).
+    """
+    from services.model_registry import _REGISTRY
+    from services.models import MODEL_FLASH_HQ, MODEL_FLASH_LITE
+
+    offenders = [
+        role
+        for role, choice in _REGISTRY["gemini"].items()
+        if choice.effort == "minimal" and choice.model != MODEL_FLASH_LITE
+    ]
+    assert offenders == [], (
+        f"minimal은 flash-lite에서만 쓸 수 있다. FLASH_HQ({MODEL_FLASH_HQ})를 "
+        f"쓰면서 minimal인 role: {offenders}"
+    )
 
 
 if __name__ == "__main__":
