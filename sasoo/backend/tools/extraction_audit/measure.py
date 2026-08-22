@@ -344,11 +344,24 @@ def table_metrics(tables: list[dict[str, Any]], gold_numbers: list[int]) -> dict
     false_positive = sum(max(0, count - (1 if number in gold_set else 0)) for number, count in extracted.items())
     false_negative = len(gold_set - set(extracted))
     linked = sum(1 for table in tables if table.get("caption"))
+    # fp의 세 갈래. `sorted(set(extracted) - gold_set)`처럼 집합만 남기면 몫(count)이
+    # 사라져 fp와 대응이 끊긴다. 아래 세 값의 합은 항상 false_positive와 같다:
+    #   1) duplicate  — gold에 있는 번호인데 count > 1 (격자 복원이 한 표를 조각냄). 몫 count-1.
+    #   2) extra      — gold에 없는 번호(None 제외, 즉 가짜 번호). 몫 count.
+    #   3) unlabeled  — 번호를 못 뽑은 표(Counter의 None 키, 라벨 미상). 몫 count.
+    duplicate = {number: count - 1 for number, count in extracted.items() if number in gold_set and count > 1}
+    extra = {number: count for number, count in extracted.items() if number is not None and number not in gold_set}
+    unlabeled = extracted.get(None, 0)
+    assert sum(duplicate.values()) + sum(extra.values()) + unlabeled == false_positive
     return {
         "extracted_count": len(tables),
         "extracted_numbers": sorted(n for n in extracted if n is not None),
         "fp": false_positive,
         "fn": false_negative,
+        "missing": sorted(gold_set - set(extracted)),  # fn과 정확히 대응 (참조에 있는데 못 뽑은 번호)
+        "duplicate": duplicate,  # fp 갈래 1: 번호 -> 초과분(count-1)
+        "extra": extra,  # fp 갈래 2: 번호 -> count
+        "unlabeled": unlabeled,  # fp 갈래 3: 번호를 못 뽑은 표 수
         "error": false_positive + false_negative,
         "exact": false_positive == 0 and false_negative == 0,
         "caption_linked": linked,
@@ -594,6 +607,56 @@ def print_lane(report: dict[str, Any]) -> None:
     )
 
 
+def _selfcheck_table_metrics() -> None:
+    """`table_metrics`의 fp 세 갈래(duplicate/extra/unlabeled)가 fp 값과 정확히 대응하는지.
+
+    복제 구현이면 검증 가치가 없으므로 `table_metrics`를 직접 호출한다.
+    """
+    # (a) 누락만 있는 경우: gold {1,2,3} 중 3을 못 뽑음.
+    result = table_metrics([{"table_num": "Table 1"}, {"table_num": "Table 2"}], [1, 2, 3])
+    assert result["missing"] == [3], result["missing"]
+    assert result["duplicate"] == {}, result["duplicate"]
+    assert result["extra"] == {}, result["extra"]
+    assert result["unlabeled"] == 0, result["unlabeled"]
+    assert result["fp"] == 0 and result["fn"] == 1, result
+
+    # (b) 중복 산출: 격자 복원이 Table 1을 두 조각으로 쪼갬.
+    result = table_metrics(
+        [{"table_num": "Table 1"}, {"table_num": "Table 1"}, {"table_num": "Table 2"}], [1, 2]
+    )
+    assert result["missing"] == [], result["missing"]
+    assert result["duplicate"] == {1: 1}, result["duplicate"]
+    assert result["extra"] == {}, result["extra"]
+    assert result["unlabeled"] == 0, result["unlabeled"]
+    assert result["fp"] == 1 and result["fn"] == 0, result
+
+    # (c) 번호 미상: 표는 뽑았지만 라벨을 못 읽음("Fig. 9"는 표 라벨 패턴에 안 걸린다).
+    result = table_metrics([{"table_num": "Table 1"}, {"table_num": "Fig. 9"}], [1])
+    assert result["missing"] == [], result["missing"]
+    assert result["duplicate"] == {}, result["duplicate"]
+    assert result["extra"] == {}, result["extra"]
+    assert result["unlabeled"] == 1, result["unlabeled"]
+    assert result["fp"] == 1 and result["fn"] == 0, result
+
+    # (d) 세 갈래가 한 논문 안에서 동시에 발생해도 fp가 남은 항목으로 완전히 설명되는가.
+    result = table_metrics(
+        [
+            {"table_num": "Table 1"},
+            {"table_num": "Table 1"},  # duplicate: 1 -> +1
+            {"table_num": "Table 4"},  # extra: 4 -> 1
+            {"table_num": "???"},  # unlabeled: +1
+        ],
+        [1, 2],
+    )
+    assert result["missing"] == [2], result["missing"]
+    assert result["duplicate"] == {1: 1}, result["duplicate"]
+    assert result["extra"] == {4: 1}, result["extra"]
+    assert result["unlabeled"] == 1, result["unlabeled"]
+    assert result["fp"] == 3, result["fp"]
+    assert sum(result["duplicate"].values()) + sum(result["extra"].values()) + result["unlabeled"] == result["fp"]
+    print("selfcheck ok")
+
+
 async def main_async(args: argparse.Namespace) -> None:
     gold = load_gold()
     papers = iter_papers(args.papers, require_manifest=args.reparse is None)
@@ -632,7 +695,12 @@ def main() -> None:
     )
     parser.add_argument("--papers", default=None, help="논문 이름 부분 문자열 필터")
     parser.add_argument("--tag", default="", help="원장 파일명 접미사")
-    asyncio.run(main_async(parser.parse_args()))
+    parser.add_argument("--selfcheck", action="store_true", help="table_metrics 자기 점검만 돌리고 종료한다")
+    args = parser.parse_args()
+    if args.selfcheck:
+        _selfcheck_table_metrics()
+        return
+    asyncio.run(main_async(args))
 
 
 if __name__ == "__main__":
