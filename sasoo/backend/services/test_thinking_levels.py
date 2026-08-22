@@ -6,8 +6,23 @@ Gemini 3.7 Flash는 minimal을 거부한다. 실호출로 확인한 응답(2026-
     model. Allowed values are: medium, low, high.
 
 호출부가 대부분 try/except 안에 있어서 이 400은 예외로 튀지 않고 조용한 품질
-저하로만 나타난다. 그래서 정적으로 잡는다. 모델을 갈 때마다 사람이 전 호출부를
-다시 훑는 대신 이 테스트가 훑는다.
+저하로만 나타난다.
+
+이 파일의 AST 스캔이 잡는 것은 `model=<FLASH_HQ 별칭 리터럴 이름>` 형태
+(ast.Name)로 쓴 호출뿐이다. 이 브랜치는 호출부를 거의 전부 model_registry
+경유 `model=choice.model`(ast.Name이 아니라 ast.Attribute)로 옮겼기 때문에,
+지금 이 스캔이 실제로 걸리는 프로덕션 호출은 0건이다. 걸리는 두 곳
+(tools/extraction_audit/vlm_probe.py의 리터럴 model=MODEL_FLASH_HQ 호출
+두 건)은 감사 도구이고 이미 low다. 즉 이 스캔은 남아 있는 리터럴 호출부만
+지키는 좁은 안전망이고, "모델을 갈 때마다 전 호출부를 훑는다"는 보장은 하지
+않는다.
+
+실질 방어는 값의 출처인 레지스트리 자체를 보는 두 테스트가 한다 — provider별로
+resolve()가 실제로 내주는 (model, effort)를 확인하므로 호출부가 ast.Name이든
+ast.Attribute든 가리지 않는다.
+
+  - services/test_model_registry.py::test_flash_hq_roles_never_use_minimal_effort
+  - api/test_analysis_routes.py::StageThinkingLevelTests
 
 minimal 자체는 여전히 유효하다. flash-lite를 쓰는 screening과 파일명 생성은
 그대로 minimal을 쓴다. 금지되는 것은 FLASH_HQ와 minimal의 조합뿐이다.
@@ -95,5 +110,6 @@ def test_gemini_parser_default_thinking_level_is_supported():
 
 
 def test_the_scan_actually_looks_at_files():
-    # 스캔 대상이 비면 위 테스트가 공허하게 통과한다.
+    # 스캔 대상 파일 수만 확인한다 — 스캔이 실제로 하나 이상의 model= 호출을
+    # 매치하는지는 보지 않으므로, 매치 0건(현재 프로덕션 상태)이어도 이 테스트는 통과한다.
     assert len(list(_python_files())) > 20

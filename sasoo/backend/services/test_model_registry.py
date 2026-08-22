@@ -1,7 +1,9 @@
 import asyncio
 import unittest
-from unittest.mock import AsyncMock, patch
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from services import model_registry
 from services.model_registry import ModelChoice, ROLES, active_provider, resolve
 from services.models import MODEL_FLASH_HQ, MODEL_VISUAL
 
@@ -111,8 +113,13 @@ class TestPdfParseRole(unittest.TestCase):
         effort는 minimal이 아니라 low다. FLASH_HQ(3.7 Flash)는 minimal을 400으로
         거부한다(ai.google.dev, 2026-08-16 확인) — main의 gemini_parser.
         _THINKING_LEVEL 기본값도 이미 low이므로, 여기서도 low로 맞춰야 병합 후
-        main과 동치가 된다(2026-08-22). 기존 role "visual"(low)을 재사용하면
-        이 테스트가 막는다."""
+        main과 동치가 된다(2026-08-22).
+
+        주의: 이 단정만으로는 파서가 "pdf_parse" 대신 "visual" role을 잘못 써도
+        못 잡는다 — 2026-08-22에 pdf_parse의 effort가 minimal에서 low로 올라가면서
+        두 role의 (model, effort) 값이 gemini/openai 양쪽에서 완전히 같아졌다.
+        role 이름 자체를 지키는 것은 아래 test_gemini_parser_resolves_pdf_parse_role
+        (resolve 호출 인자를 직접 단정)이다."""
         choice = resolve("pdf_parse", "gemini")
         self.assertEqual(choice.model, MODEL_VISUAL)
         self.assertEqual(choice.effort, "low")
@@ -125,6 +132,36 @@ class TestPdfParseRole(unittest.TestCase):
 
     def test_pdf_parse_is_declared_in_roles(self):
         self.assertIn("pdf_parse", ROLES)
+
+    def test_gemini_parser_resolves_pdf_parse_role(self):
+        """값이 아니라 role 이름을 직접 단정한다.
+
+        pdf_parse와 visual이 값(model, effort)으로는 더 이상 구별되지 않으므로
+        (위 참고), gemini_parser.run_convert_gemini가 model_registry.resolve를
+        실제로 어떤 role 문자열로 호출하는지를 스파이로 가로채 확인한다.
+        gemini_parser.py는 resolve를 함수 내부에서 지역 import하므로
+        (`from services.model_registry import resolve`), model_registry 모듈의
+        resolve 속성 자체를 감싸야 그 지역 import가 감싼 대상을 집어온다.
+
+        PDF 경로를 존재하지 않는 파일로 둬 _open_metadata에서 GeminiParserError로
+        조기 실패시킨다 — resolve 호출은 그보다 먼저(R6, 스테이지 진입 시 1회) 일어나므로
+        페이지 호출·call_interaction을 모킹할 필요가 없다.
+
+        실증: gemini_parser.py의 `resolve("pdf_parse", provider)`를
+        `resolve("visual", provider)`로 바꾸면 이 테스트가 실패한다."""
+        from services.gemini_parser import GeminiParserError, run_convert_gemini
+
+        spy = MagicMock(wraps=model_registry.resolve)
+        with patch.object(model_registry, "resolve", spy):
+            with self.assertRaises(GeminiParserError):
+                asyncio.run(
+                    run_convert_gemini(
+                        Path("/nonexistent/does-not-exist.pdf"),
+                        Path("/tmp"),
+                        Path("/tmp"),
+                    )
+                )
+        spy.assert_any_call("pdf_parse", "gemini")
 
 
 class TestRegistryShape(unittest.TestCase):
