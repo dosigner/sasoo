@@ -638,6 +638,7 @@ export const S = {
     repairing: 'AI가 다이어그램 오류를 고치고 있어요...',
     repairedNotice: '구문 오류를 자동으로 고쳤어요',
     download: '다운로드',
+    downloadFailed: '다이어그램을 내려받지 못했어요',
     regenerate: '다시 생성',
     regenerating: '다시 만들고 있어요...',
     regenerateFailed: '다시 만들지 못했어요',
