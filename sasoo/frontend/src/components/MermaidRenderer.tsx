@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import type { MermaidDiagram } from '@/lib/api';
 import { S } from '@/lib/strings';
+import { downloadBlob } from '@/lib/download';
 import { resolveSvgPixelSize } from '@/lib/svgSize';
 
 mermaid.registerLayoutLoaders(elkLayouts);
@@ -164,15 +165,6 @@ function buildRenderCandidates(code: string): string[] {
 
 export function safeFilename(name: string): string {
   return (name || 'diagram').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 60);
-}
-
-export function downloadBlob(filename: string, blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /** Mermaid SVGs carry viewBox + max-width style but no pixel size; pin one for export. */

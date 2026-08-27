@@ -3,6 +3,7 @@ import { Markdown } from '@/components/Markdown';
 import { Loader2, Download } from 'lucide-react';
 import { getLibraryAssetUrl, type Figure, type VisualState } from '@/lib/api';
 import { S } from '@/lib/strings';
+import { assetExtension, downloadBlob, safeAssetFilename } from '@/lib/download';
 import { resolveArtifactPlaceholder } from '@/lib/artifactState';
 import { CONFIDENCE_REVIEW_THRESHOLD } from '@/lib/confidence';
 import { generateFigureExplanation } from '@/lib/api';
@@ -198,7 +199,7 @@ function Lightbox({
   useFocusTrap(modalRef, true, onClose);
 
   // Download the figure image. The asset is served same-origin from the
-  // backend (/static/library/...), so a blob + anchor click is enough — no
+  // backend (/static/library/...), so fetching it into a blob is enough — no
   // dependency on the heavy Mermaid export module.
   const handleDownload = useCallback(async () => {
     if (!figure?.file_path) return;
@@ -207,20 +208,9 @@ function Lightbox({
       const res = await fetch(getFigureImageUrl(figure));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
-      const objUrl = URL.createObjectURL(blob);
-      const ext = (figure.file_path.split('.').pop() || 'png').split(/[?#]/)[0];
-      // \p{L}/\p{N} keeps non-ASCII letters (한글 등) that ASCII-only \w drops.
-      const base =
-        (figure.figure_num || `figure_${currentIndex + 1}`)
-          .replace(/[^\p{L}\p{N}._-]+/gu, '_')
-          .replace(/^_+|_+$/g, '') || `figure_${currentIndex + 1}`;
-      const a = document.createElement('a');
-      a.href = objUrl;
-      a.download = `${base}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(objUrl);
+      const fallback = `figure_${currentIndex + 1}`;
+      const base = safeAssetFilename(figure.figure_num, fallback);
+      downloadBlob(`${base}.${assetExtension(figure.file_path)}`, blob);
       setError(null);
     } catch (err) {
       console.error('Figure download failed:', err);

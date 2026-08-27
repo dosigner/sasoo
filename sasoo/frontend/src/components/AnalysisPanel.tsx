@@ -31,6 +31,7 @@ import {
 } from '@/lib/api';
 import { buildPhaseSummary, buildWorkbenchStatusSummary } from '@/lib/workbenchSummaries';
 import { S } from '@/lib/strings';
+import { assetExtension, downloadBlob, safeAssetFilename } from '@/lib/download';
 import { extractOutline } from '@/lib/mdOutline';
 import SectionOutline from './SectionOutline';
 import FigureGallery from './FigureGallery';
@@ -681,32 +682,23 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
 
 function PaperBananaViewer({ item }: { item: VisualizationItem }) {
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   // Download the generated illustration. Served same-origin from the backend
-  // (/static/...), so a blob + anchor click is enough.
+  // (/static/...), so fetching it into a blob is enough.
   const handleDownload = useCallback(async () => {
     if (!item.image_url) return;
     setSaving(true);
+    setSaveError('');
     try {
       const res = await fetch(getStaticUrl(item.image_url));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
-      const objUrl = URL.createObjectURL(blob);
-      const ext = (item.image_url.split('.').pop() || 'png').split(/[?#]/)[0];
-      // \p{L}/\p{N} keeps non-ASCII letters (한글 등) that ASCII-only \w drops.
-      const base =
-        (item.title || 'illustration')
-          .replace(/[^\p{L}\p{N}._-]+/gu, '_')
-          .replace(/^_+|_+$/g, '') || 'illustration';
-      const a = document.createElement('a');
-      a.href = objUrl;
-      a.download = `${base}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(objUrl);
+      const base = safeAssetFilename(item.title, 'illustration');
+      downloadBlob(`${base}.${assetExtension(item.image_url)}`, blob);
     } catch (err) {
       console.error('Illustration download failed:', err);
+      setSaveError(S.figures.saveFailed);
     } finally {
       setSaving(false);
     }
@@ -753,6 +745,12 @@ function PaperBananaViewer({ item }: { item: VisualizationItem }) {
           <Download className="h-4 w-4" />
         )}
       </button>
+      {saveError && (
+        <p className="flex items-center gap-1 border-t border-border px-2 py-1 text-2xs text-danger">
+          <AlertCircle className="h-3 w-3" />
+          {saveError}
+        </p>
+      )}
     </div>
   );
 }
