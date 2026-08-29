@@ -643,9 +643,24 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
     if (data.expected_results) lines.push(`**${md.expectedResults}:** ${data.expected_results}\n`);
     if (data.safety_notes) lines.push(`**${md.safetyNotes}:** ${data.safety_notes}\n`);
   } else if (phase === 'deep_dive') {
+    // 신 스키마: 구조화 필드를 라벨과 함께 렌더. 빈 문자열은 건너뛴다.
+    const structured: [string, string][] = [
+      ['problem_definition', md.problemDefinition],
+      ['as_is', md.asIs],
+      ['to_be', md.toBe],
+      ['solution', md.solution],
+      ['method_summary', md.methodSummary],
+      ['key_results', md.keyResults],
+    ];
+    for (const [key, label] of structured) {
+      const value = data[key];
+      if (typeof value === 'string' && value.trim()) lines.push(`**${label}:** ${value}\n`);
+    }
+    // 구 캐시(detailed_analysis 단일 서술) 폴백.
     if (data.detailed_analysis) lines.push(`${data.detailed_analysis}\n`);
     if (data.novelty_assessment) lines.push(`**${md.novelty}:** ${data.novelty_assessment}\n`);
     if (data.comparison_to_prior_work) lines.push(`**${md.comparisonToPrior}:** ${data.comparison_to_prior_work}\n`);
+    if (data.comparison_scope === 'in_paper_only') lines.push(`_${md.comparisonScopeNote}_\n`);
     const sections: [string, string][] = [
       ['strengths', `✅ ${md.strengths}`],
       ['weaknesses', `⚠️ ${md.weaknesses}`],

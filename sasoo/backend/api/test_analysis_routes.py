@@ -2911,7 +2911,7 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
     @contextlib.contextmanager
     def _orchestration_patches(
         self, *, cache_fake, call_fake, visual_result=None, provider="gemini",
-        openai_figure_parts=None,
+        openai_figure_parts=None, deep_dive_provider=None,
     ):
         paper = {
             "id": 7,
@@ -3013,6 +3013,12 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         stack.enter_context(patch(
             "api.analysis_routes.active_provider", new=AsyncMock(return_value=provider),
         ))
+        # deep_dive만 provider가 갈릴 수 있다(DEC-019). 기본은 파이프라인 provider와
+        # 같게 둬 체인이 그대로 이어지고, 갈림을 검증하는 테스트만 값을 다르게 준다.
+        stack.enter_context(patch(
+            "api.analysis_routes.provider_for_role",
+            new=AsyncMock(return_value=deep_dive_provider or provider),
+        ))
         # I3: provider=openai일 때만 실제로 쓰이는 그림 이미지 로더. 직접 패치해
         # 기본값 []을 돌려주면(그림 파트 검증이 목적이 아닌 테스트) 이 함수가 실제
         # fetch_all을 태우지 않아 위 figures/tables용 side_effect 순서를 건드리지
@@ -3055,6 +3061,36 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(chain_calls[3]["previous_interaction_id"], chain_calls[2]["interaction_id"])
         # 체인 이어감 스테이지는 지시문 문자열만 전송(대용량 재전송 없음)
         self.assertIsInstance(chain_calls[1]["contents"], str)
+
+    async def test_deep_dive_provider_split_isolates_chain(self):
+        """deep_dive만 provider가 갈리면 체인을 끊고 텍스트 주입으로 새로 시작한다(DEC-019).
+
+        갈린 스테이지의 interaction_id는 다른 공급사 서버의 것이라, visualization이
+        그걸 이어받으면 그 호출이 통째로 실패한다. viz는 레시피까지의 체인을 잇는다.
+        """
+        calls = []
+        call_fake = self._orch_call_fake(calls)
+
+        async def _cache_none(*a, **k):
+            return None
+
+        with self._orchestration_patches(
+            cache_fake=_cache_none, call_fake=call_fake, deep_dive_provider="openai",
+        ):
+            await analysis_routes._run_full_analysis(7)
+
+        chain_calls = [c for c in calls if c["store"] is True]
+        self.assertEqual(len(chain_calls), 4)  # visual, recipe, deep_dive, viz
+        _visual, recipe, deep_dive, viz = chain_calls
+
+        # 체인을 끊고 새로 시작한다 — PDF 대신 논문 본문을 텍스트로 실어 보낸다.
+        self.assertIsNone(deep_dive["previous_interaction_id"])
+        self.assertIsInstance(deep_dive["contents"], str)
+        self.assertIn(self._FULL_TEXT_MARKER, deep_dive["contents"])
+
+        # visualization은 deep_dive가 아니라 레시피의 체인을 잇는다.
+        self.assertEqual(viz["previous_interaction_id"], recipe["interaction_id"])
+        self.assertNotEqual(viz["previous_interaction_id"], deep_dive["interaction_id"])
 
     async def test_cache_hit_restart_reincludes_pdf_and_prev_context(self):
         calls = []
