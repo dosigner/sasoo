@@ -627,8 +627,9 @@
     @apply cursor-pointer select-none transition-colors hover:text-fg-secondary;
   }
 
+  /* text-sm 줄높이 1.25rem + 상하 0.625rem = 40px 행 */
   .library-table tbody td {
-    @apply border-b border-border/40 px-4 py-3 align-middle text-sm text-fg-secondary;
+    @apply border-b border-border/40 px-4 py-2.5 align-middle text-sm text-fg-secondary;
   }
 
   .library-table tbody tr:last-child td {
