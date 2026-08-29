@@ -53,27 +53,24 @@ def test_deep_dive_schema_does_not_end_with_a_free_text_string():
     )
 
 
-def test_deep_dive_required_stays_minimal():
-    """as_is·to_be는 required에 넣지 않는다.
+def test_deep_dive_required_excludes_only_as_is_to_be():
+    """as_is·to_be만 required에서 빠지고 나머지 12필드는 전부 required다(DEC-020).
 
     as-is→to-be는 공학 논문의 프레이밍이라 이론·리뷰 논문에는 없는 경우가
-    많고, 없는 필드를 강제하면 모델이 지어낸다. method_summary는 required로
-    유지한다 — recipe가 스킵되는 논문(이론·리뷰)에서 방법 서술의 유일한
-    자리이기 때문이고, 해당 내용이 없으면 빈 문자열을 내도록 프롬프트가
-    허용한다.
+    많고, 없는 필드를 강제하면 모델이 지어낸다. 그 둘만 예외다.
+
+    나머지를 전부 required로 두는 이유는 실측이다(2026-08-29): Gemini는
+    required가 아닌 5필드(novelty_assessment, comparison_to_prior_work,
+    suggested_improvements, follow_up_questions, practical_applications)를
+    폭주 없이 정상 완료한 실행에서도 4/4로 통째 생략해 9/14만 냈다. Luna는
+    같은 조건에서 14/14였다. 프롬프트 요청은 provider별 준수율이 갈리고
+    required는 양쪽 다 지킨다 — 이 목록을 줄이면 Gemini 경로에서 그 필드가
+    조용히 사라진다.
     """
-    required = set(analysis_routes._DEEP_DIVE_SCHEMA["required"])
-    assert required == {
-        "problem_definition",
-        "solution",
-        "method_summary",
-        "key_results",
-        "strengths",
-        "weaknesses",
-        "comparison_scope",
-    }
-    assert "as_is" not in required
-    assert "to_be" not in required
+    schema = analysis_routes._DEEP_DIVE_SCHEMA
+    required = set(schema["required"])
+    optional = set(schema["properties"]) - required
+    assert optional == {"as_is", "to_be"}
 
 
 def test_instruction_names_every_schema_property():

@@ -1171,11 +1171,20 @@ _DEEP_DIVE_SCHEMA = {
         # 마지막 속성을 자유서술 단일 문자열로 두지 않는다(폭주 자리 방지, DEC-014).
         "practical_applications": {"type": "array", "items": {"type": "string"}},
     },
-    # as_is·to_be는 공학 논문 프레이밍이라 이론·리뷰 논문에는 없을 수 있어
-    # required에서 뺀다. 없는 필드를 강제하면 모델이 지어낸다.
+    # as_is·to_be만 required에서 뺀다. 이 둘은 논문에 그 구도가 아예 없을 수 있어
+    # (이론·리뷰 논문) 강제하면 모델이 지어낸다. 나머지는 논문 내용을 옮기는 칸이
+    # 아니라 모델이 분석해서 쓰는 칸이라 지어내기 위험이 낮다.
+    #
+    # 아래 5필드는 2026-08-29 실측에서 Gemini가 4/4로 통째 생략했다(폭주 없이
+    # 정상 완료한 실행에서도 9/14). Luna는 같은 조건에서 14/14를 냈다. 프롬프트로
+    # 요청만 하면 provider별 준수율이 갈리고, required는 양쪽 다 지킨다 —
+    # 수렴은 지시문이 아니라 스키마로 만든다(DEC-020).
+    # 잠금: api/test_deep_dive_schema.py
     "required": [
         "problem_definition", "solution", "method_summary", "key_results",
         "strengths", "weaknesses", "comparison_scope",
+        "novelty_assessment", "comparison_to_prior_work",
+        "suggested_improvements", "follow_up_questions", "practical_applications",
     ],
 }
 
@@ -1190,7 +1199,8 @@ _DEEP_DIVE_INSTRUCTION = """이 논문에 대한 심층 분석을 해줘. 전문
   평가하고, 외부 문헌과 대조하지 마. 이 한정은 comparison_scope 필드가 표시하니
   본문에 같은 문구를 반복해 적지 마.
 - 논문에 없는 반례·실험·선행연구를 만들어내지 마.
-- 논문에 해당 내용이 없는 필드는 지어내지 말고 빈 문자열로 둬.
+- 빈 문자열로 둘 수 있는 필드는 as_is와 to_be 둘뿐이야(그 구도가 없는 논문이 있으니까).
+  나머지 필드는 전부 채워. 논문 근거가 얇으면 얇은 대로 짧게 쓰되, 비우지는 마.
 
 출력 필드:
 - problem_definition: 논문이 풀려는 문제가 무엇이고 왜 중요한지 (2~4문장)
