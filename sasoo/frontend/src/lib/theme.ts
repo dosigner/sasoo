@@ -26,6 +26,10 @@ export function applyTheme(theme: Theme): void {
 
 /** 문서 루트에 플랫폼 클래스를 부착한다(CSS 재질 분기용). */
 export function applyPlatformClass(): void {
+  // 재질 분기는 Electron 창의 vibrancy를 전제로 배경을 비운다. 브라우저로 열면
+  // 비칠 창이 없으므로 클래스를 붙이지 않는다.
+  if (!window.electronAPI) return;
+
   const platform = isMac
     ? 'darwin'
     : navigator.platform.toLowerCase().includes('win')

@@ -1609,6 +1609,51 @@
   }
 }
 
+/* ── macOS vibrancy 틴트 ── */
+/* 창 재질(vibrancy: 'sidebar')이 블러를 담당하므로 여기서는 알파 틴트만 얹는다.
+   같은 표면에 backdrop-filter를 겹쳐 걸면 배경이 두 번 뭉개져 탁해진다.
+   읽는 면인 콘텐츠 영역(main)은 불투명하게 남긴다 — 라우트 전환 중
+   PageScaffold가 아직 없는 순간에도 창이 비치지 않아야 한다. */
+.platform-darwin {
+  --vibrancy-tint: 0.66;
+  --vibrancy-floating-tint: 0.72;
+}
+
+.platform-darwin.dark {
+  --vibrancy-tint: 0.58;
+  --vibrancy-floating-tint: 0.66;
+}
+
+.platform-darwin body,
+.platform-darwin .app-shell {
+  background-color: transparent;
+}
+
+.platform-darwin main {
+  background-color: rgb(var(--bg));
+}
+
+.platform-darwin .app-sidebar,
+.platform-darwin .titlebar-drag {
+  background-color: rgb(var(--surface) / var(--vibrancy-tint));
+  backdrop-filter: none;
+}
+
+/* 플로팅 표면은 앱 내용을 블러하는 기존 backdrop-filter를 그대로 쓰고,
+   창 재질과 겹쳐 탁해지지 않도록 알파만 낮춘다. */
+.platform-darwin .chat-launcher,
+.platform-darwin .chat-floating-card,
+.platform-darwin .figure-modal-inspector,
+.platform-darwin .toast-surface,
+.platform-darwin .settings-savebar {
+  background-color: rgb(var(--surface) / var(--vibrancy-floating-tint));
+}
+
+.platform-darwin .chat-launcher-ready:hover,
+.platform-darwin .chat-launcher-pending:hover {
+  background-color: rgb(var(--surface-hover) / var(--vibrancy-floating-tint));
+}
+
 /* ── Accessibility: reduced transparency ── */
 /* Apple HIG: translucent materials must degrade to opaque surfaces when the
    user asks the system to reduce transparency. Blur is disabled outright and
@@ -1632,5 +1677,19 @@
   .toast-surface {
     background-color: rgb(var(--surface));
     backdrop-filter: none;
+  }
+
+  /* darwin 틴트 복구. 위 .platform-darwin 규칙이 특정도가 높아 기본 폴백만으로는
+     덮이지 않으므로, 알파 변수를 1로 되돌리고 투명화한 배경을 채운다.
+     OS vibrancy 자체는 main 프로세스가 setVibrancy(null)로 끈다. */
+  .platform-darwin,
+  .platform-darwin.dark {
+    --vibrancy-tint: 1;
+    --vibrancy-floating-tint: 1;
+  }
+
+  .platform-darwin body,
+  .platform-darwin .app-shell {
+    background-color: rgb(var(--bg));
   }
 }
