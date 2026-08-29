@@ -29,14 +29,14 @@ function paperStatusLabel(status: Paper['status']): string {
 function paperStatusClass(status: Paper['status']): string {
   switch (status) {
     case 'completed':
-      return 'border-success/20 bg-success/10 text-success';
+      return 'border-success/40 text-success';
     case 'analyzing':
-      return 'border-accent/20 bg-accent/10 text-accent';
+      return 'border-accent/40 text-accent';
     case 'error':
-      return 'border-danger/20 bg-danger/10 text-danger';
+      return 'border-danger/40 text-danger';
     case 'pending':
     default:
-      return 'border-warning/20 bg-warning/10 text-warning';
+      return 'border-warning/40 text-warning';
   }
 }
 

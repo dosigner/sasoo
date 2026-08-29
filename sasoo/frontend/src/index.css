@@ -133,10 +133,6 @@
     border-radius: var(--radius-surface);
   }
 
-  .card-hover {
-    @apply card transition-colors duration-200 ease-out hover:border-border hover:bg-surface-hover;
-  }
-
   .app-shell {
     @apply flex h-screen flex-col bg-bg text-fg;
   }
@@ -262,7 +258,7 @@
   }
 
   .archive-inline-status {
-    @apply inline-flex items-center gap-2 rounded-full border border-border/60 bg-surface/60 px-3 py-1.5 text-2xs;
+    @apply inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-2xs;
   }
 
   .archive-inline-status-muted {
@@ -271,14 +267,12 @@
 
   .archive-inline-status-success {
     @apply text-success;
-    border-color: rgb(var(--success) / 0.2);
-    background: rgb(var(--success) / 0.08);
+    border-color: rgb(var(--success) / 0.4);
   }
 
   .archive-inline-status-error {
     @apply text-warning;
-    border-color: rgb(var(--warning) / 0.2);
-    background: rgb(var(--warning) / 0.08);
+    border-color: rgb(var(--warning) / 0.4);
   }
 
   .settings-panel-title {
@@ -434,22 +428,6 @@
     border-radius: var(--radius-pill);
   }
 
-  .badge-primary {
-    @apply badge bg-accent/10 text-accent;
-  }
-
-  .badge-success {
-    @apply badge bg-success/10 text-success;
-  }
-
-  .badge-warning {
-    @apply badge bg-warning/10 text-warning;
-  }
-
-  .badge-error {
-    @apply badge bg-danger/10 text-danger;
-  }
-
   .toolbar-shell {
     @apply border border-border/50 bg-surface;
     border-radius: var(--radius-surface);
@@ -581,62 +559,6 @@
 
   .library-shelf {
     @apply overflow-hidden rounded-surface border border-border/60 bg-surface/90;
-  }
-
-  .library-shelf-row--completed {
-    background-color: rgb(var(--success) / 0.06);
-  }
-
-  .library-shelf-row--analyzing {
-    background-color: rgb(var(--accent) / 0.07);
-  }
-
-  .library-shelf-row--pending {
-    background-color: rgb(var(--warning) / 0.06);
-  }
-
-  .library-shelf-row--error {
-    background-color: rgb(var(--danger) / 0.07);
-  }
-
-  .library-shelf-row--completed .library-status-badge {
-    @apply border-success/20 bg-success/10 text-success;
-  }
-
-  .library-shelf-row--analyzing .library-status-badge {
-    @apply border-accent/20 bg-accent/10 text-accent;
-  }
-
-  .library-shelf-row--pending .library-status-badge {
-    @apply border-warning/20 bg-warning/10 text-warning;
-  }
-
-  .library-shelf-row--error .library-status-badge {
-    @apply border-danger/20 bg-danger/10 text-danger;
-  }
-
-  .library-status-badge {
-    @apply inline-flex items-center gap-1 rounded-full border px-2 py-1 text-2xs;
-  }
-
-  .library-status-dot {
-    @apply h-1.5 w-1.5 rounded-full;
-  }
-
-  .library-shelf-row--completed .library-status-dot {
-    @apply bg-success;
-  }
-
-  .library-shelf-row--analyzing .library-status-dot {
-    @apply bg-accent;
-  }
-
-  .library-shelf-row--pending .library-status-dot {
-    @apply bg-warning;
-  }
-
-  .library-shelf-row--error .library-status-dot {
-    @apply bg-danger;
   }
 
   .library-record-title {
