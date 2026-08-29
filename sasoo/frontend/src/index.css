@@ -706,11 +706,11 @@
   }
 
   .library-soft-card:hover {
-    @apply -translate-y-0.5 border-border bg-surface shadow-lg;
+    @apply border-border bg-surface-hover;
   }
 
   .library-soft-card:focus-visible {
-    @apply -translate-y-0.5 outline-none ring-2 ring-accent/40 ring-offset-2 ring-offset-bg;
+    @apply outline-none ring-2 ring-accent/40 ring-offset-2 ring-offset-bg;
   }
 
   .library-soft-pill {
@@ -1148,7 +1148,7 @@
   }
 
   .chat-launcher {
-    @apply flex min-h-[4rem] items-center gap-3 rounded-surface border border-border/60 bg-surface/90 px-3.5 py-2.5 shadow-[0_18px_48px_rgba(0,0,0,0.22)] backdrop-blur-xl transition-[transform,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:border-border/70;
+    @apply flex min-h-[4rem] items-center gap-3 rounded-surface border border-border/60 bg-surface/90 px-3.5 py-2.5 shadow-[0_18px_48px_rgba(0,0,0,0.22)] backdrop-blur-xl transition-[border-color,background-color] duration-200 hover:border-border/70;
     width: min(20rem, calc(100vw - 1.5rem));
   }
 
@@ -1419,12 +1419,6 @@
   /* Modal must stay centered — fade in place, no vertical travel. */
   .animate-modal-slide-up {
     animation: modalSlideUpReduced 0.15s ease-out both !important;
-  }
-
-  /* Remove hover-lift transforms. */
-  .card-hover,
-  .chat-launcher {
-    transform: none !important;
   }
 
   /* Press-scale feedback is movement too — disable it. */
