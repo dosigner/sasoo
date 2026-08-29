@@ -720,3 +720,63 @@ def test_call_interaction_omits_max_output_tokens_when_not_given():
     assert fake_client.interactions.create.call_args.kwargs["generation_config"] == {
         "thinking_level": "low"
     }
+
+
+class _FakeResponse:
+    def __init__(self, status_code):
+        self.status_code = status_code
+
+
+def _client_error(code, response_json, response=None):
+    """실제 SDK 예외를 만든다 — 가짜 클래스로는 isinstance 판정을 검증할 수 없다.
+
+    APIError.__init__은 `self.code = code if code else self._get_code(response_json)`이라,
+    첫 인자가 falsy면 본문의 error.code가 그대로 .code가 된다. Interactions API의 400
+    본문은 code를 문자열로 싣는다(2026-08-26 재측정 로그: 'invalid_request').
+    """
+    from google.genai.errors import ClientError
+    return ClientError(code, response_json, response)
+
+
+_FILTER_BODY = {"error": {"code": "invalid_request", "message": "Request blocked due to copyright/recitation content."}}
+
+
+def test_string_code_with_http_status_is_not_retryable():
+    """code가 문자열이어도 response.status_code가 있으면 그것이 판정 근거다.
+
+    SDK의 raise 지점(google/genai/errors.py:184)은 항상 실제 응답 객체를 함께 싣는다.
+    """
+    from services.llm.gemini_client import _is_retryable
+
+    assert _is_retryable(_client_error(0, _FILTER_BODY, _FakeResponse(400))) is False
+    assert _is_retryable(_client_error(0, {"error": {"code": "rate_limited"}}, _FakeResponse(429))) is True
+
+
+def test_client_error_class_is_not_retryable_without_any_status():
+    """상태 코드를 어디서도 못 얻어도 ClientError는 4xx라는 사실 자체가 근거다.
+
+    SDK는 400 <= status < 500에서만 ClientError를 올린다(errors.py:183-184). 이 분기가
+    없으면 "문자열 code + response 없음" 조합이 조용히 재시도된다 — docstring이 막겠다고
+    명시한 바로 그 케이스다.
+    """
+    from google.genai.errors import ServerError
+    from services.llm.gemini_client import _is_retryable
+
+    assert _is_retryable(_client_error(0, _FILTER_BODY)) is False
+    assert _is_retryable(ServerError(0, {"error": {"code": "unavailable"}}, None)) is True
+
+
+def test_int_code_path_still_works():
+    """기존 판정(int인 .code)이 그대로 유지되는지 — 회귀 방지."""
+    from services.llm.gemini_client import _is_retryable
+
+    assert _is_retryable(_FakeApiError(400)) is False
+    assert _is_retryable(_FakeApiError(429)) is True
+    assert _is_retryable(_FakeApiError(503)) is True
+
+
+def test_unknown_exception_is_still_retryable():
+    """상태 코드도 클래스 근거도 없으면 기존 동작(재시도)을 유지한다 — 보수적으로 간다."""
+    from services.llm.gemini_client import _is_retryable
+
+    assert _is_retryable(RuntimeError("connection reset")) is True

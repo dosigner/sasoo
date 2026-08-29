@@ -58,23 +58,50 @@ _FILE_TTL = timedelta(hours=47)  # Files API 48h에서 1h 여유
 _RETRYABLE_CLIENT_STATUS = frozenset({408, 429})
 
 
+def _http_status(exc: BaseException) -> int | None:
+    """예외가 실어 온 HTTP 상태 코드. 못 얻으면 None.
+
+    `.code`만 보면 안 된다. APIError.__init__은 `self.code = code if code else
+    self._get_code(response_json)`이라(google/genai/errors.py), 생성자 첫 인자가 falsy면
+    응답 본문의 `error.code`가 그대로 `.code`가 된다. Interactions API의 400 본문은 이
+    값을 문자열로 싣는다 — 2026-08-26 재측정 로그에 `'invalid_request'`로 찍혔다.
+    반면 `.response.status_code`는 항상 실제 HTTP 상태다.
+    """
+    for candidate in (
+        getattr(getattr(exc, "response", None), "status_code", None),
+        getattr(exc, "code", None),
+    ):
+        if isinstance(candidate, int) and not isinstance(candidate, bool):
+            return candidate
+    return None
+
+
 def _is_retryable(exc: BaseException) -> bool:
     """재시도로 풀릴 수 있는 오류인지 판정한다.
 
-    google-genai는 4xx를 ClientError, 5xx를 ServerError로 올리며 둘 다 int인 .code를 갖는다
-    (google/genai/errors.py). 상태 코드가 없는 예외(네트워크 끊김, SDK 내부 오류 등)는
+    판정 근거를 세 단계로 찾는다. HTTP 상태 코드가 있으면 그것으로, 없으면 SDK가
+    4xx에만 ClientError를 올린다는 사실로(errors.py의 raise 분기), 둘 다 없으면
     판단 근거가 없으므로 기존 동작 그대로 재시도한다 — 보수적으로 간다.
 
     실사용 근거: 논문 PDF를 비전 모델에 넣으면 400 "copyright/recitation" 필터가 상시
     발생하는데, 기존 코드는 이를 6회(페이지 재시도 2 × 내부 재시도 3) 반복하며 20초를
-    순수 대기로 버렸다.
+    순수 대기로 버렸다. 그 뒤 `.code`가 int일 때만 상태 코드로 인정하도록 고쳤는데,
+    2026-08-26 재측정에서 바로 그 400 필터의 code가 문자열로 와서 이 함수가 막겠다고
+    명시한 케이스를 도로 재시도하고 있었다(로그의 `failed after retries`가 증거다).
+    잠금: services/llm/test_gemini_client.py의 _is_retryable 테스트 4건.
     """
-    code = getattr(exc, "code", None)
-    if isinstance(code, bool) or not isinstance(code, int):
+    status = _http_status(exc)
+    if status is None:
+        # 상태 코드를 못 얻었어도 클래스가 근거가 된다. SDK는 400 <= status < 500에서만
+        # ClientError를 올린다. import는 지연시킨다 — 이 모듈의 관용구다(_get_client 참조).
+        try:
+            from google.genai.errors import ClientError
+        except ImportError:
+            return True
+        return not isinstance(exc, ClientError)
+    if status in _RETRYABLE_CLIENT_STATUS:
         return True
-    if code in _RETRYABLE_CLIENT_STATUS:
-        return True
-    return not (400 <= code < 500)
+    return not (400 <= status < 500)
 
 _upload_locks: dict[int, asyncio.Lock] = {}
 
