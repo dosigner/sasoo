@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import appIconFlat from '@/assets/brand/app-icon-flat.svg';
 import { AppIcon } from '@/components/icons';
 import { S } from '@/lib/strings';
+import { isMac } from '@/lib/theme';
 
 export default function Titlebar() {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -32,8 +33,6 @@ export default function Titlebar() {
   // Only render in Electron environment
   const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
   if (!isElectron) return null;
-
-  const isMac = navigator.platform.toLowerCase().includes('mac');
 
   return (
     <div
