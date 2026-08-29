@@ -1,6 +1,5 @@
 import { useState, useCallback, useRef, useEffect, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router';
-import { Loader2 } from 'lucide-react';
 import {
   ApiError,
   getSettings,
@@ -278,19 +277,24 @@ export default function UploadPanel() {
 
           {(stage === 'uploading' || stage === 'parsing') && (
             <div className="rounded-surface border border-border bg-surface/60 p-4">
-              <div className="h-2 overflow-hidden rounded-full bg-surface">
-                <div
-                  className="h-full w-full bg-accent transition-transform duration-300 ease-out"
-                  style={{
-                    transformOrigin: 'left',
-                    transform: `scaleX(${(stage === 'parsing' ? 100 : uploadProgress) / 100})`,
-                  }}
-                />
-              </div>
-              <div className="mt-3 flex items-center gap-2 text-sm text-fg-muted">
-                <Loader2 className="h-4 w-4 animate-spin text-accent" />
-                {stage === 'uploading' ? S.upload.uploading(uploadProgress) : S.upload.parsing}
-              </div>
+              {stage === 'uploading' ? (
+                <>
+                  <div className="h-2 overflow-hidden rounded-full bg-surface">
+                    <div
+                      className="h-full w-full bg-accent transition-transform duration-300 ease-out"
+                      style={{
+                        transformOrigin: 'left',
+                        transform: `scaleX(${uploadProgress / 100})`,
+                      }}
+                    />
+                  </div>
+                  <div className="mt-3 text-sm text-fg-muted">
+                    {S.upload.uploading(uploadProgress)}
+                  </div>
+                </>
+              ) : (
+                <div className="text-sm shimmer-label">{S.upload.parsing}</div>
+              )}
             </div>
           )}
 

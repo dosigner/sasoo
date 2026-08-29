@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
 import {
   getSettings,
   updateSettings,
@@ -220,10 +219,7 @@ export default function Profile() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-6 h-6 text-accent animate-spin" />
-          <span className="text-sm text-fg-muted">{S.settings.loadingSettings}</span>
-        </div>
+        <span className="text-sm shimmer-label">{S.settings.loadingSettings}</span>
       </div>
     );
   }

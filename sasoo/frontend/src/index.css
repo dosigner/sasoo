@@ -377,6 +377,31 @@
     @apply bg-surface/90 backdrop-blur-lg;
   }
 
+  /* 라벨 로딩 — 회전하는 스피너 대신 글자 밝기가 한 방향으로 쓸린다.
+     진행률을 실제로 아는 구간(업로드)은 그대로 바와 %를 쓴다. */
+  .shimmer-label {
+    background-image: linear-gradient(
+      100deg,
+      rgb(var(--fg-muted)) 40%,
+      rgb(var(--fg)) 50%,
+      rgb(var(--fg-muted)) 60%
+    );
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: shimmer-sweep 2s linear infinite;
+  }
+
+  @keyframes shimmer-sweep {
+    from {
+      background-position: 150% 0;
+    }
+    to {
+      background-position: -50% 0;
+    }
+  }
+
   /* Button variants */
   .btn {
     @apply inline-flex items-center justify-center gap-2 px-4 text-sm font-medium transition-[color,background-color,border-color,opacity,transform] duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50 disabled:pointer-events-none;
@@ -1354,6 +1379,13 @@
   /* I4: Figure/Table 카드 press-scale(active:scale-[0.96])도 movement이므로 끈다. */
   [role="button"]:active {
     transform: none !important;
+  }
+
+  /* 로딩 라벨은 스윕을 멈추고 정적 텍스트로 남는다. */
+  .shimmer-label {
+    animation: none !important;
+    background-image: none;
+    color: rgb(var(--fg-muted));
   }
 
   /* I4: 워크벤치 상태부 진행 레일의 width 전환은 즉시 완료로 처리한다. */
