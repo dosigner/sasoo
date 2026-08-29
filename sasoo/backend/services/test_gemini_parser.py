@@ -227,7 +227,7 @@ class RunConvertGeminiTests(unittest.IsolatedAsyncioTestCase):
             )
             # provider 기본값(gemini)에서 registry의 pdf_parse effort는 "low"다 —
             # FLASH_HQ(3.7 Flash)가 minimal을 400으로 거부해서 2026-08-22에 올렸다
-            # (test_gemini_keeps_current_model_and_minimal_effort와 동일한 회귀 방어).
+            # (test_gemini_keeps_current_model_and_low_effort와 동일한 회귀 방어).
             self.assertEqual(
                 kwargs.get("thinking_level"), gemini_parser._THINKING_OVERRIDE or "low"
             )
@@ -589,7 +589,7 @@ class TestParserProviderRouting(unittest.TestCase):
                 ))
         return captured
 
-    def test_gemini_keeps_current_model_and_minimal_effort(self):
+    def test_gemini_keeps_current_model_and_low_effort(self):
         """회귀 방어: Gemini는 현행과 동일해야 한다.
 
         effort는 minimal이 아니라 low다 — FLASH_HQ(3.7 Flash)가 minimal을 400으로
