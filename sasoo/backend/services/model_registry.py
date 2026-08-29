@@ -108,6 +108,32 @@ def resolve(role: str, provider: str) -> ModelChoice:
         raise KeyError(f"unknown role: {role!r}") from None
 
 
+# deep_dive만 provider를 따로 고른다(DEC-019). Gemini 3.7 Flash는 이 role에서만
+# 확률적으로 폭주해 출력 상한에 걸리고, 그때 required가 아닌 부가 필드 6개
+# (to_be, novelty_assessment, comparison_to_prior_work, suggested_improvements,
+# follow_up_questions, practical_applications)가 오류 없이 사라진다 — 상한은 비용만
+# 막고 이 손실은 못 막는다. 프롬프트 정형 문구 제거로는 4/4를 2/4로 낮추는 데
+# 그쳤고, Luna는 같은 조건에서 누적 42/42 무폭주였다.
+# 근거: RESEARCH/2026-08-29-provider-chain-token-convergence.md 6장.
+_ROLE_PROVIDER_OVERRIDE: dict[str, Provider] = {"deep_dive": "openai"}
+
+
+async def provider_for_role(role: str) -> str:
+    """role의 유효 provider. 오버라이드가 있고 그 키가 등록돼 있으면 그쪽을 쓴다.
+
+    키가 없으면 조용히 기본 provider로 돌아간다 — deep_dive를 아예 못 돌리는 것보다
+    폭주 위험을 안고 돌리는 편이 낫다. 지연 import 이유는 active_provider와 같다.
+    """
+    from api.settings import _get_all_settings, _resolve_active_provider
+
+    settings = await _get_all_settings()
+    base = _resolve_active_provider(settings, settings.get("ai_provider")) or "gemini"
+    override = _ROLE_PROVIDER_OVERRIDE.get(role)
+    if override and override != base and str(settings.get(f"{override}_api_key") or "").strip():
+        return override
+    return base
+
+
 async def active_provider() -> str:
     """현재 유효 provider. 설정(ai_provider)을 키 가용성으로 보정한 값.
 

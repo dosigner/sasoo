@@ -100,7 +100,9 @@ def test_chain_stage_sends_no_cap_for_stages_without_one():
 
     with patch("api.analysis_routes.call_interaction", new=_fake_call):
         asyncio.run(analysis_routes._run_chain_stage(
-            phase="deep_dive",
+            # deep_dive는 2026-08-29 실측(VLA 4/6 폭주) 이후 상한이 생겨
+            # 상한 없는 단계의 대표가 visual로 바뀌었다.
+            phase="visual",
             prompt_chain="지시",
             prompt_fallback="폴백",
             system_instruction="si",

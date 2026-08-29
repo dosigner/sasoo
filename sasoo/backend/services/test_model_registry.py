@@ -202,5 +202,41 @@ def test_flash_hq_roles_never_use_minimal_effort():
     )
 
 
+class TestProviderForRole(unittest.TestCase):
+    """deep_dive만 provider를 따로 고른다(DEC-019). 나머지 role은 기본 provider 그대로."""
+
+    @staticmethod
+    def _run(role, *, stored, has_openai, has_gemini):
+        settings_stub = {
+            "ai_provider": stored,
+            "openai_api_key": "sk-x" if has_openai else "",
+            "gemini_api_key": "AIza-x" if has_gemini else "",
+        }
+        with patch("api.settings._get_all_settings", new=AsyncMock(return_value=settings_stub)):
+            return asyncio.run(model_registry.provider_for_role(role))
+
+    def test_deep_dive_moves_to_openai_when_key_present(self):
+        """gemini를 고른 사용자라도 OpenAI 키가 있으면 deep_dive만 그쪽으로 보낸다."""
+        result = self._run("deep_dive", stored="gemini", has_openai=True, has_gemini=True)
+        self.assertEqual(result, "openai")
+
+    def test_deep_dive_falls_back_without_openai_key(self):
+        """OpenAI 키가 없으면 조용히 기본 provider로 돌아간다.
+
+        폭주 위험을 안고 Gemini로 돌리는 편이, 키가 없어 deep_dive를 통째로
+        잃는 것보다 낫다. 이 폴백이 사라지면 Gemini 단독 사용자의 심층 분석이
+        매번 인증 오류로 실패한다.
+        """
+        result = self._run("deep_dive", stored="gemini", has_openai=False, has_gemini=True)
+        self.assertEqual(result, "gemini")
+
+    def test_other_roles_keep_base_provider(self):
+        """오버라이드는 deep_dive 전용이다 — 다른 role까지 번지면 안 된다."""
+        for role in ("visual", "recipe", "viz_planning", "citation"):
+            with self.subTest(role=role):
+                result = self._run(role, stored="gemini", has_openai=True, has_gemini=True)
+                self.assertEqual(result, "gemini")
+
+
 if __name__ == "__main__":
     unittest.main()

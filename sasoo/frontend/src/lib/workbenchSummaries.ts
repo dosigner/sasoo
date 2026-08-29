@@ -237,7 +237,13 @@ export function buildPhaseSummary(
   const vizCount = visualizations?.items.length ?? 0;
 
   return {
-    summaryLine: shortText(deepDive.detailed_analysis, vizCount > 0 ? '심층 분석과 시각화를 준비했어요.' : '심층 분석 결과를 정리했어요.'),
+    // 신 스키마는 problem_definition, 구 캐시는 detailed_analysis가 요약줄이 된다.
+    summaryLine: shortText(
+      (typeof deepDive.problem_definition === 'string' && deepDive.problem_definition.trim())
+        ? deepDive.problem_definition
+        : deepDive.detailed_analysis,
+      vizCount > 0 ? '심층 분석과 시각화를 준비했어요.' : '심층 분석 결과를 정리했어요.',
+    ),
     collapsedMeta: [
       vizCount > 0 ? `시각화 ${vizCount}개` : '시각화 대기',
       strengths > 0 ? `강점 ${strengths}` : '',

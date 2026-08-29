@@ -71,8 +71,23 @@ def _format_phase_data(phase: str, data: dict) -> str:
                     parts.append(f"- {p}")
 
     elif phase == "deep_dive":
-        parts.append(f"\n{data.get('detailed_analysis', '')}\n")
+        # 신 스키마(구조화 필드)를 라벨과 함께 렌더한다. 빈 문자열은 건너뛴다.
+        for key, label in [
+            ("problem_definition", "Problem"),
+            ("as_is", "As-Is"),
+            ("to_be", "To-Be"),
+            ("solution", "Solution"),
+            ("method_summary", "Method"),
+            ("key_results", "Results"),
+        ]:
+            if data.get(key):
+                parts.append(f"\n**{label}:** {data[key]}")
+        # 구 캐시(detailed_analysis 단일 서술) 폴백.
+        if data.get("detailed_analysis"):
+            parts.append(f"\n{data['detailed_analysis']}\n")
         parts.append(f"**Novelty:** {data.get('novelty_assessment', 'N/A')}")
+        if data.get("comparison_scope") == "in_paper_only":
+            parts.append("_(논문이 제시한 비교 범위 안의 평가로, 외부 문헌 검증은 하지 않았습니다)_")
 
         for key, label in [
             ("strengths", "Strengths"),

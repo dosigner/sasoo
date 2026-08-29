@@ -94,7 +94,12 @@ from api.analysis_helpers import (
 # 스스로 담아야 한다. 공급사 격리는 compute_input_hash(provider/model/effort)가
 # 따로 하므로 역할이 겹치지 않는다. 테스트가 patch.object로 이 이름을 덮는다.
 from services.models import MODEL_CITATION, MODEL_MERMAID, MODEL_VIZ_PLANNING
-from services.model_registry import ModelChoice, active_provider, resolve as resolve_model
+from services.model_registry import (
+    ModelChoice,
+    active_provider,
+    provider_for_role,
+    resolve as resolve_model,
+)
 from services.provider_state import key_env_for
 from api.report_service import (
     _format_phase_data,
@@ -1055,8 +1060,13 @@ _PHASE_TO_ROLE = {
 # medium thinking이 실측 600~4,000이라 24,000이면 본문에 최소 20,000이 남는다.
 # 상한에 걸리면 status가 incomplete로 오고 꼬리가 잘리는데, 그건 이미
 # salvage_truncated_json이 값 경계에서 되살린다.
-# 잠금: api/test_recipe_output_bounds.py, services/test_model_pins.py
-_STAGE_MAX_OUTPUT_TOKENS = {"recipe": 24_000}
+# deep_dive 16,000의 값 근거(2026-08-29 실측, RESEARCH/2026-08-29-provider-chain-token-convergence.md):
+# 정상 최대 출력이 8,734(luna xhigh), Gemini 정상은 2,840~6,946이었다. VLA 6편 실측에서
+# Gemini deep_dive가 high thinking에서도 4/6 폭주했고, 이 상한이 폭주당 손해를
+# $0.26에서 $0.06으로 막는 것을 실증했다.
+# 잠금: api/test_recipe_output_bounds.py, api/test_deep_dive_schema.py,
+#      services/test_model_pins.py
+_STAGE_MAX_OUTPUT_TOKENS = {"recipe": 24_000, "deep_dive": 16_000}
 
 # _STAGE_THINKING과 _STAGE_MODELS는 model_registry가 대체했다(provider x role).
 # 스테이지의 모델/effort는 _stage_choice()로만 구한다 — 두 출처를 두면 provider가
@@ -1136,19 +1146,46 @@ _RECIPE_SCHEMA = {
     "required": ["title", "objective", "parameters", "steps"],
 }
 
+# detailed_analysis("여러 문단" 자유서술)를 경계 있는 구조화 필드로 분해했다.
+# DEC-014가 지목한 폭주 유형(긴 자유서술)을 없애면서 문제정의·as-is/to-be·솔루션·
+# method·result가 결과 JSON에서 바로 드러나게 한다. 잠금: api/test_deep_dive_schema.py
 _DEEP_DIVE_SCHEMA = {
     "type": "object",
     "properties": {
-        "detailed_analysis": {"type": "string"},
-        "strengths": {"type": "array", "items": {"type": "string"}},
-        "weaknesses": {"type": "array", "items": {"type": "string"}},
+        "problem_definition": {"type": "string"},
+        "as_is": {"type": "string"},
+        "to_be": {"type": "string"},
+        "solution": {"type": "string"},
+        "method_summary": {"type": "string"},
+        "key_results": {"type": "string"},
         "novelty_assessment": {"type": "string"},
         "comparison_to_prior_work": {"type": "string"},
+        # "논문 자체 비교 범위 안의 평가"라는 한정을 본문 문구가 아니라 이 필드가 나른다.
+        # 2026-08-29 VLA 실측에서 그 한정 문구를 본문에 "명시해"라고 요구했더니 모델이
+        # 그 문구를 무한 반복하며 폭주했다(4/6). 정형 문구는 enum으로 옮기는 것이 원칙.
+        "comparison_scope": {"type": "string", "enum": ["in_paper_only"]},
+        "strengths": {"type": "array", "items": {"type": "string"}},
+        "weaknesses": {"type": "array", "items": {"type": "string"}},
         "suggested_improvements": {"type": "array", "items": {"type": "string"}},
         "follow_up_questions": {"type": "array", "items": {"type": "string"}},
+        # 마지막 속성을 자유서술 단일 문자열로 두지 않는다(폭주 자리 방지, DEC-014).
         "practical_applications": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["detailed_analysis", "strengths", "weaknesses"],
+    # as_is·to_be만 required에서 뺀다. 이 둘은 논문에 그 구도가 아예 없을 수 있어
+    # (이론·리뷰 논문) 강제하면 모델이 지어낸다. 나머지는 논문 내용을 옮기는 칸이
+    # 아니라 모델이 분석해서 쓰는 칸이라 지어내기 위험이 낮다.
+    #
+    # 아래 5필드는 2026-08-29 실측에서 Gemini가 4/4로 통째 생략했다(폭주 없이
+    # 정상 완료한 실행에서도 9/14). Luna는 같은 조건에서 14/14를 냈다. 프롬프트로
+    # 요청만 하면 provider별 준수율이 갈리고, required는 양쪽 다 지킨다 —
+    # 수렴은 지시문이 아니라 스키마로 만든다(DEC-020).
+    # 잠금: api/test_deep_dive_schema.py
+    "required": [
+        "problem_definition", "solution", "method_summary", "key_results",
+        "strengths", "weaknesses", "comparison_scope",
+        "novelty_assessment", "comparison_to_prior_work",
+        "suggested_improvements", "follow_up_questions", "practical_applications",
+    ],
 }
 
 _DEEP_DIVE_INSTRUCTION = """이 논문에 대한 심층 분석을 해줘. 전문적이면서도 이해하기 쉽게,
@@ -1158,13 +1195,27 @@ _DEEP_DIVE_INSTRUCTION = """이 논문에 대한 심층 분석을 해줘. 전문
 - 논문 PDF(또는 논문 텍스트)가 최우선 근거야. 앞선 단계(시각·레시피·스크리닝·인용) 결과는
   탐색용 힌트일 뿐이니, 논문에서 직접 확인한 내용만 사실로 서술해.
 - 강점·약점에는 근거가 된 논문 위치(섹션/그림/표)를 함께 적어.
-- novelty_assessment와 comparison_to_prior_work는 논문이 스스로 제시한 비교 범위 안의
-  평가임을 명시해 — 외부 문헌 검증은 하지 않았어.
+- novelty_assessment와 comparison_to_prior_work는 논문이 스스로 제시한 비교 범위 안에서만
+  평가하고, 외부 문헌과 대조하지 마. 이 한정은 comparison_scope 필드가 표시하니
+  본문에 같은 문구를 반복해 적지 마.
 - 논문에 없는 반례·실험·선행연구를 만들어내지 마.
+- 빈 문자열로 둘 수 있는 필드는 as_is와 to_be 둘뿐이야(그 구도가 없는 논문이 있으니까).
+  나머지 필드는 전부 채워. 논문 근거가 얇으면 얇은 대로 짧게 쓰되, 비우지는 마.
 
-출력 필드: detailed_analysis(기여도·방법론·결과 상세 분석, 여러 문단), strengths(강점 리스트),
-weaknesses(약점 리스트), novelty_assessment(새로움 평가), comparison_to_prior_work(기존 연구 대비 비교),
-suggested_improvements(개선 제안 리스트), follow_up_questions(후속 질문 리스트), practical_applications(실용적 응용 리스트)."""
+출력 필드:
+- problem_definition: 논문이 풀려는 문제가 무엇이고 왜 중요한지 (2~4문장)
+- as_is: 기존 접근이 어디까지 왔고 무엇이 부족한지. 이런 구도가 없는 논문이면 빈 문자열 (2~3문장)
+- to_be: 이 논문이 도달하려는 상태나 목표. 구도가 없으면 빈 문자열 (1~2문장)
+- solution: 문제를 푸는 핵심 아이디어와 그 아이디어가 통하는 이유 (2~4문장)
+- method_summary: 방법의 서술형 요약. 실험 논문은 절차의 흐름, 이론 논문은 유도의 뼈대,
+  시뮬레이션 논문은 모델과 설정, 리뷰 논문은 문헌 선정·분류 기준을 중심으로 (1~2문단)
+- key_results: 핵심 결과. 수치와 조건은 논문에 적힌 그대로 옮겨 (1~2문단)
+- novelty_assessment: 새로움 평가
+- comparison_to_prior_work: 기존 연구 대비 비교
+- comparison_scope: 항상 "in_paper_only"로 채워(위 두 평가가 논문 자체 비교 범위 기준이라는 표시)
+- strengths: 강점 리스트 / weaknesses: 약점 리스트
+- suggested_improvements: 개선 제안 리스트 / follow_up_questions: 후속 질문 리스트 /
+  practical_applications: 실용적 응용 리스트"""
 
 
 def _stateless_digest(screening_result_text: str, citation_result_text: str) -> str:
@@ -1809,6 +1860,9 @@ voltages, currents, frequencies, distances, speeds, sizes, ratios, percentages, 
     빈 근거가 지어낸 근거보다 나아 — 근거 없음은 화면에 그대로 표시돼.
 11. 인용은 논문 PDF(또는 제공된 논문 텍스트)에서만 가져와. 앞선 단계(스크리닝·시각·인용 분석)
     결과는 인용 출처가 아니야.
+12. name은 아래 DOMAIN-SPECIFIC PARAMETERS 목록에 있는 항목이면 그 표기를 그대로 쓰고,
+    목록에 없으면 축약 없는 소문자 snake_case 전체 명칭으로 써(예: aperture가 아니라
+    aperture_diameter). 같은 물리량에 임의의 다른 이름을 만들지 마.
 {domain_hint}
 
 출력 필드: title(레시피 제목, 한국어), objective(실험 목적), materials(재료 리스트, 규격 포함),
@@ -2955,6 +3009,12 @@ async def _run_full_analysis(paper_id: int):
             previous.append(r3["text"])
 
         # Phase 4: Deep Dive (체인 3번째 스테이지)
+        # 이 단계만 provider가 갈릴 수 있다(DEC-019 — Gemini deep_dive 폭주 회피).
+        # 갈리면 서버측 체인 상태를 공유할 수 없으므로 PDF 대신 텍스트를 주입해
+        # 새 체인을 시작한다. 앞선 시각·레시피 결과는 _run_deep_dive가 붙이는
+        # restart_context가 복원한다.
+        dd_provider = await provider_for_role("deep_dive")
+        dd_chained = dd_provider == provider
         r4 = await _run_deep_dive(
             paper_id,
             str(phase_inputs.get("deep_dive", "")),
@@ -2963,12 +3023,14 @@ async def _run_full_analysis(paper_id: int):
             screening_result_text=r1.get("text", ""),
             citation_result_text=r_cit.get("text", ""),
             system_instruction=deep_dive_system_instruction,
-            previous_interaction_id=chain_prev_id,
-            pdf_uri=pdf_uri,
-            doc_text=doc_text,
-            provider=provider,
+            previous_interaction_id=chain_prev_id if dd_chained else None,
+            pdf_uri=pdf_uri if dd_chained else None,
+            doc_text=doc_text if dd_chained else full_text[:_OPENAI_DOC_TEXT_CHAR_LIMIT],
+            provider=dd_provider,
         )
-        if pdf_uri or doc_text:
+        # provider가 갈렸으면 r4의 interaction_id는 다른 서버의 것이라 이어 쓸 수 없다.
+        # visualization은 레시피까지의 체인을 그대로 잇는다.
+        if dd_chained and (pdf_uri or doc_text):
             chain_prev_id = r4.get("interaction_id")
 
         # Check for cancellation
