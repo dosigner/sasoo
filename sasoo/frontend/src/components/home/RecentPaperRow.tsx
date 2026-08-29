@@ -57,7 +57,7 @@ export default function RecentPaperRow({
     <button
       type="button"
       onClick={() => onOpen(String(paper.id))}
-      className="group w-full rounded-surface bg-surface/30 px-4 py-3.5 text-left transition-colors duration-200 hover:bg-surface/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+      className="group w-full rounded-surface bg-surface/30 px-4 py-3.5 text-left transition-colors duration-200 hover:bg-surface/40 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
       aria-label={`${paper.title} 워크벤치 열기`}
     >
       <div className="flex items-start justify-between gap-3">

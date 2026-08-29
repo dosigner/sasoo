@@ -28,7 +28,7 @@ export default function Select({
   return (
     <RadixSelect.Root value={value} onValueChange={onValueChange} disabled={disabled}>
       <RadixSelect.Trigger
-        className={`input flex w-full items-center justify-between gap-2 text-left data-[placeholder]:text-fg-muted ${className}`}
+        className={`input flex w-full items-center justify-between gap-2 text-left data-placeholder:text-fg-muted ${className}`}
         aria-label={ariaLabel}
       >
         <RadixSelect.Value placeholder={placeholder} />
@@ -40,14 +40,14 @@ export default function Select({
         <RadixSelect.Content
           position="popper"
           sideOffset={4}
-          className="z-50 max-h-[min(24rem,var(--radix-select-content-available-height))] w-[var(--radix-select-trigger-width)] overflow-hidden border border-border bg-surface shadow-lg rounded-surface animate-pop-in [transform-origin:var(--radix-select-content-transform-origin)]"
+          className="z-50 max-h-[min(24rem,var(--radix-select-content-available-height))] w-(--radix-select-trigger-width) overflow-hidden border border-border bg-surface shadow-lg rounded-surface animate-pop-in origin-(--radix-select-content-transform-origin)"
         >
           <RadixSelect.Viewport className="p-1">
             {options.map((option) => (
               <RadixSelect.Item
                 key={option.value}
                 value={option.value}
-                className="relative flex cursor-pointer select-none items-center rounded-control px-2.5 py-1.5 text-sm text-fg outline-none data-[highlighted]:bg-surface-hover data-[state=checked]:text-accent focus-visible:ring-2 focus-visible:ring-accent"
+                className="relative flex cursor-pointer select-none items-center rounded-control px-2.5 py-1.5 text-sm text-fg outline-hidden data-highlighted:bg-surface-hover data-[state=checked]:text-accent focus-visible:ring-2 focus-visible:ring-accent"
               >
                 <RadixSelect.ItemText>{option.label}</RadixSelect.ItemText>
               </RadixSelect.Item>

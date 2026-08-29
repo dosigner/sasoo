@@ -195,7 +195,9 @@ export function useWorkbenchLayout() {
     (e: React.KeyboardEvent) => {
       // Keyboard actions move immediately — no spring animation.
       cancelActiveSpring();
-      let newPos = splitPositionRef.current;
+      // switch의 default가 return이라 아래로 내려오는 모든 경로가 값을 대입한다.
+      // 초기값은 읽히지 않는다(eslint no-useless-assignment).
+      let newPos: number;
 
       switch (e.key) {
         case 'ArrowLeft':

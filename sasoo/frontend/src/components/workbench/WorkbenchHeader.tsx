@@ -157,7 +157,7 @@ function AgentBadgeDropdown({
           aria-label="담당 에이전트 선택"
           aria-activedescendant={`${listboxId}-opt-${activeIndex}`}
           onKeyDown={handleListKeyDown}
-          className="absolute left-0 top-full z-50 mt-1.5 max-h-72 w-56 overflow-y-auto rounded-lg border border-border bg-surface p-1 shadow-lg backdrop-blur focus:outline-none"
+          className="absolute left-0 top-full z-50 mt-1.5 max-h-72 w-56 overflow-y-auto rounded-lg border border-border bg-surface p-1 shadow-lg backdrop-blur-sm focus:outline-hidden"
         >
           {agents.map((agent, index) => {
             const isSelected = index === selectedIndex;
@@ -242,7 +242,7 @@ export default function WorkbenchHeader({
   ];
 
   return (
-    <div className="relative z-40 shrink-0 border-b border-border/45 bg-surface/95 px-4 py-3 backdrop-blur">
+    <div className="relative z-40 shrink-0 border-b border-border/45 bg-surface/95 px-4 py-3 backdrop-blur-sm">
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-2.5">
           <button

@@ -20,9 +20,10 @@
     "noFallthroughCasesInSwitch": true,
 
     /* Paths */
-    "baseUrl": ".",
+    // TS7이 baseUrl을 제거했다(TS5102). paths는 tsconfig 위치 기준 상대 경로로 쓰고
+    // 선행 "./"가 필수다(TS5090: Non-relative paths are not allowed).
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     },
 
     /* Interop */

@@ -28,14 +28,14 @@ export default function CoverFlow({ items, activeIndex, onActiveChange, onOpen }
       className="flex w-full select-none flex-col items-center justify-center overflow-hidden rounded-xl border border-border bg-surface py-6"
       style={{ perspective: '1000px' }}
     >
-      <div className="relative flex h-[190px] w-full items-center justify-center [transform-style:preserve-3d]">
+      <div className="relative flex h-[190px] w-full items-center justify-center transform-3d">
         {items.map((item, i) => {
           const t = coverFlowTransform(i - activeIndex);
           const isActive = i === activeIndex;
           return (
             <motion.div
               key={`${item.src}-${i}`}
-              className="absolute aspect-[4/3] w-[180px] cursor-pointer"
+              className="absolute aspect-4/3 w-[180px] cursor-pointer"
               initial={false}
               animate={{ x: t.x * 2.2, rotateY: t.rotateY, z: t.z, scale: t.scale, opacity: t.opacity }}
               transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 200, damping: 25 }}
@@ -60,7 +60,7 @@ export default function CoverFlow({ items, activeIndex, onActiveChange, onOpen }
         })}
       </div>
 
-      <div className="z-20 mt-7 flex w-fit items-center justify-center gap-2 rounded-full border border-border bg-surface-hover/60 px-1.5 py-0.5 shadow-sm backdrop-blur-md">
+      <div className="z-20 mt-7 flex w-fit items-center justify-center gap-2 rounded-full border border-border bg-surface-hover/60 px-1.5 py-0.5 shadow-xs backdrop-blur-md">
         <button
           type="button"
           onClick={toPrev}
