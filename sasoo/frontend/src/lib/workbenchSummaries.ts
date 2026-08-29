@@ -60,6 +60,8 @@ export interface WorkbenchStatusSummary {
   currentPhaseLabel: string;
   completedCount: number;
   totalCount: number;
+  /** 완료된 phase 중 현재 설정과 다른 모델로 분석된 결과가 있으면 그 모델명(스펙 §D). */
+  staleModel: string | null;
   progressRatio: number;
   // 헤더 칩·우측 패널 상태부가 실제로 보여줘야 하는 라벨/톤. trustStateLabel은
   // 항상 채워지는 폴백값이라 `trustStateLabel || runStateLabel` 식은 늘 trustStateLabel로만
@@ -318,6 +320,7 @@ function buildWorkbenchStatusSummaryCore({
 }): Omit<WorkbenchStatusSummary, 'displayStatusLabel' | 'statusTone'> {
   const totalCount = status?.phases.length ?? 5;
   const completedCount = status?.phases.filter((phase) => phase.status === 'completed').length ?? 0;
+  const staleModel = status?.phases.find((phase) => Boolean(phase.stale_model))?.stale_model ?? null;
   const progressRatio = totalCount > 0 ? completedCount / totalCount : 0;
   const currentPhase = status?.current_phase;
   const currentPhaseLabel = currentPhase ? PHASE_LABELS[currentPhase] : '분석 대기';
@@ -353,6 +356,7 @@ function buildWorkbenchStatusSummaryCore({
       currentPhaseLabel,
       completedCount,
       totalCount,
+      staleModel,
       progressRatio,
     };
   }
@@ -373,6 +377,7 @@ function buildWorkbenchStatusSummaryCore({
       currentPhaseLabel,
       completedCount,
       totalCount,
+      staleModel,
       progressRatio,
     };
   }
@@ -386,6 +391,7 @@ function buildWorkbenchStatusSummaryCore({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        staleModel,
         progressRatio,
       };
     }
@@ -399,6 +405,7 @@ function buildWorkbenchStatusSummaryCore({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        staleModel,
         progressRatio,
       };
     }
@@ -412,6 +419,7 @@ function buildWorkbenchStatusSummaryCore({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        staleModel,
         progressRatio,
       };
     }
@@ -425,6 +433,7 @@ function buildWorkbenchStatusSummaryCore({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        staleModel,
         progressRatio,
       };
     }
@@ -436,6 +445,7 @@ function buildWorkbenchStatusSummaryCore({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        staleModel,
         progressRatio,
       };
     }
@@ -449,6 +459,7 @@ function buildWorkbenchStatusSummaryCore({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        staleModel,
         progressRatio,
       };
     }
@@ -460,6 +471,7 @@ function buildWorkbenchStatusSummaryCore({
         currentPhaseLabel,
         completedCount,
         totalCount,
+        staleModel,
         progressRatio,
       };
     }
@@ -471,6 +483,7 @@ function buildWorkbenchStatusSummaryCore({
       currentPhaseLabel,
       completedCount,
       totalCount,
+      staleModel,
       progressRatio,
     };
   }
@@ -483,6 +496,7 @@ function buildWorkbenchStatusSummaryCore({
       currentPhaseLabel,
       completedCount,
       totalCount,
+      staleModel,
       progressRatio,
     };
   }
@@ -496,6 +510,7 @@ function buildWorkbenchStatusSummaryCore({
     currentPhaseLabel,
     completedCount,
     totalCount,
+    staleModel,
     progressRatio,
   };
 }

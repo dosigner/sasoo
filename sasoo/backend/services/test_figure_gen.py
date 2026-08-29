@@ -59,7 +59,7 @@ class FigureGenTests(unittest.IsolatedAsyncioTestCase):
         )
         self._plan.start()
 
-    async def _fake_plan(self, viz_target):
+    async def _fake_plan(self, viz_target, **kwargs):
         return "A minimal schematic: laser, mirror, labeled arrows."
 
     def tearDown(self):

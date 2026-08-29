@@ -30,7 +30,8 @@ from pathlib import Path
 from typing import Optional, Protocol
 
 from services.concurrency import RENDER_SEM, run_pipeline_blocking
-from services.models import MODEL_IMAGE, MODEL_IMAGE_OPENAI, MODEL_PRO
+from services.model_registry import resolve as resolve_model
+from services.models import MODEL_IMAGE, MODEL_IMAGE_OPENAI
 from services.pricing import calc_image_cost
 
 logger = logging.getLogger(__name__)
@@ -63,8 +64,12 @@ _PLANNER_SYSTEM = (
 )
 
 
-async def _plan_description(viz_target: dict) -> str:
-    """Gemini 3.1-pro로 렌더러에 넘길 상세 기술서를 만든다."""
+async def _plan_description(viz_target: dict, *, llm_provider: str = "gemini") -> str:
+    """텍스트 LLM(기본 Gemini 3.1-pro)으로 렌더러에 넘길 상세 기술서를 만든다.
+
+    llm_provider는 이 기술서를 쓰는 텍스트 모델의 provider다 — 아래 render 단계의
+    이미지 provider(preferred_provider, image_provider 설정)와는 다른 축이다.
+    """
     from services.llm.interactions_client import call_interaction
 
     prompt = (
@@ -74,12 +79,13 @@ async def _plan_description(viz_target: dict) -> str:
         f"Context:\n{viz_target.get('description', '')[:6000]}\n\n"
         "Write the final image description now."
     )
+    _choice = resolve_model("viz_image_plan", llm_provider)
     result = await call_interaction(
         prompt,
         lane="pipeline",
-        model=MODEL_PRO,
+        model=_choice.model,
         system_instruction=_PLANNER_SYSTEM,
-        thinking_level="medium",
+        thinking_level=_choice.effort,
         store=False,
     )
     return str(result.get("text", "")).strip()
@@ -185,12 +191,18 @@ async def generate_illustration(
     *,
     preferred_provider: str = "openai",
     quality: str = "high",
+    llm_provider: str = "gemini",
 ) -> FigureGenResult:
-    """도해 1건 생성. 실패해도 예외를 던지지 않고 error가 담긴 결과를 돌려준다."""
+    """도해 1건 생성. 실패해도 예외를 던지지 않고 error가 담긴 결과를 돌려준다.
+
+    preferred_provider/quality는 렌더(이미지 생성) 단계의 provider·품질이고,
+    llm_provider는 플래너(기술서 작성) 단계의 텍스트 LLM provider다 — 서로
+    독립적으로 결정된다(예: 텍스트는 openai, 이미지는 gemini 조합도 유효).
+    """
     start = time.monotonic()
 
     try:
-        description = await _plan_description(viz_target)
+        description = await _plan_description(viz_target, llm_provider=llm_provider)
     except Exception as exc:
         logger.warning("figure_gen planner failed for '%s': %s", viz_target.get("title"), exc)
         return FigureGenResult(None, None, round(time.monotonic() - start, 1), 0.0, f"planner: {exc}")

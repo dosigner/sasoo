@@ -19,7 +19,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import fitz
 
@@ -199,25 +199,25 @@ class VisualEnginePlanTests(unittest.TestCase):
         with _env(GEMINI_API_KEY="k"), patch(
             "services.odl_parser._java_runtime_available", return_value=True
         ):
-            self.assertEqual(_plan_visual_engines(), ["gemini", "odl"])
+            self.assertEqual(_plan_visual_engines("gemini"), ["gemini", "odl"])
 
     def test_java_invalid_but_key_present_uses_gemini_only(self) -> None:
         with _env(GEMINI_API_KEY="k"), patch(
             "services.odl_parser._java_runtime_available", return_value=False
         ):
-            self.assertEqual(_plan_visual_engines(), ["gemini"])
+            self.assertEqual(_plan_visual_engines("gemini"), ["gemini"])
 
     def test_no_key_but_java_ok_uses_odl_only(self) -> None:
         with _env(), patch(
             "services.odl_parser._java_runtime_available", return_value=True
         ):
-            self.assertEqual(_plan_visual_engines(), ["odl"])
+            self.assertEqual(_plan_visual_engines("gemini"), ["odl"])
 
     def test_nothing_available_returns_empty_plan(self) -> None:
         with _env(), patch(
             "services.odl_parser._java_runtime_available", return_value=False
         ):
-            self.assertEqual(_plan_visual_engines(), [])
+            self.assertEqual(_plan_visual_engines("gemini"), [])
 
 
 class VisualFallbackTests(unittest.TestCase):
@@ -235,9 +235,14 @@ class VisualFallbackTests(unittest.TestCase):
         """Java 검증 실패 + 키 존재 → ODL을 건너뛰고 Gemini로 표/그림을 뽑는다."""
         gemini_text = "GEMINI VISUAL BODY table | a | b |"
 
-        def _fake_run_convert(pdf_path, output_dir, figures_dir, mode, engine=None, stage="text"):
+        def _fake_run_convert(
+            pdf_path, output_dir, figures_dir, mode, engine=None, stage="text", provider=None
+        ):
             if engine == "odl":
                 raise AssertionError("Java 검증 실패 시 odl을 시도하면 안 된다")
+            # 배선 회귀 방어: ensure_visual_artifacts가 확정한 visual_provider가
+            # 실제로 _run_convert까지 실려 오는지 확인한다(active_provider가 "gemini"로 고정됨).
+            self.assertEqual(provider, "gemini")
             # stage_default(gemini)를 engine=None으로 태운 경로.
             return copy.deepcopy(_minimal_root(gemini_text)), gemini_text, "gemini"
 
@@ -249,6 +254,8 @@ class VisualFallbackTests(unittest.TestCase):
                 "services.odl_parser.ensure_text_artifacts"
             ), patch(
                 "services.odl_parser._run_convert", side_effect=_fake_run_convert
+            ), patch(
+                "services.odl_parser.active_provider", new=AsyncMock(return_value="gemini")
             ):
                 manifest = ensure_visual_artifacts(
                     paper_dir, mode="java", extraction_pipeline_version="legacy", force=True
@@ -266,6 +273,8 @@ class VisualFallbackTests(unittest.TestCase):
                 "services.odl_parser._java_runtime_available", return_value=False
             ), patch(
                 "services.odl_parser.ensure_text_artifacts"
+            ), patch(
+                "services.odl_parser.active_provider", new=AsyncMock(return_value="gemini")
             ):
                 with self.assertRaises(OdlRuntimeError) as ctx:
                     ensure_visual_artifacts(

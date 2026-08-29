@@ -28,6 +28,8 @@ from services.document_audit import _page_text_map, find_suspect_pages
 from services.document_manifest import build_document_manifest, resolve_paper_journal
 from services.figure_candidates import build_figure_candidates
 from services.figure_resolver import resolve_figure_candidates
+from services.model_registry import active_provider
+from services.provider_state import key_env_for
 from services.table_candidates import build_table_candidates
 from services.table_resolver import resolve_table_candidates
 
@@ -195,15 +197,17 @@ def _java_executable_works(java_exe: str | Path) -> bool:
     return ok
 
 
-def _java_runtime_unavailable_message() -> str:
+def _java_runtime_unavailable_message(provider: str) -> str:
+    key_env = key_env_for(provider)
+    label = "OpenAI" if provider == "openai" else "Gemini"
     return (
         "표·그림 추출에 필요한 Java 실행 환경을 찾지 못했습니다. "
         "동작하는 Java 11+ 런타임을 설치하거나 `backend/java-runtime`에 번들 런타임을 두세요. "
-        "(GEMINI_API_KEY가 설정돼 있으면 Gemini 엔진으로 자동 대체됩니다.)"
+        f"({key_env}가 설정돼 있으면 {label} 엔진으로 자동 대체됩니다.)"
     )
 
 
-def ensure_java_runtime() -> str:
+def ensure_java_runtime(provider: str = "gemini") -> str:
     """
     Ensure Java is available for OpenDataLoader.
     Returns the java executable path.
@@ -211,6 +215,9 @@ def ensure_java_runtime() -> str:
     후보 java 실행 파일은 반드시 `java -version`으로 실제 동작을 검증한 뒤에만 반환한다.
     검증 없이 반환하면 macOS의 `/usr/bin/java` 스텁을 유효한 java로 오인해, 서드파티
     wrapper가 PATH의 "java"(=스텁)를 실행 → exit 1 + java.com 안내가 표/그림 오류로 노출된다.
+
+    provider는 실패 메시지("...로 대체됩니다")에만 쓰인다 — 호출부가 안 넘기면 기존
+    기본값 "gemini"라 문구가 바이트 단위로 그대로 유지된다.
     """
     _ensure_java_tool_options()
     for candidate in _runtime_candidates():
@@ -233,7 +240,7 @@ def ensure_java_runtime() -> str:
         # 아래 OdlRuntimeError로 떨어진다(그러면 text는 PyMuPDF, visual은 Gemini로 대체).
         return java_on_path
 
-    raise OdlRuntimeError(_java_runtime_unavailable_message())
+    raise OdlRuntimeError(_java_runtime_unavailable_message(provider))
 
 
 def _java_runtime_available() -> bool:
@@ -867,38 +874,45 @@ def _run_convert(
     mode: str,
     engine: str | None = None,
     stage: str = "text",
+    provider: str | None = None,
 ) -> tuple[dict[str, Any], str, str]:
     """엔진 디스패처. 반환 계약 (root_json, markdown_text, actual_engine)은 엔진 불문 동일.
 
     스테이지(text/visual)별로 _resolve_stage_engine이 엔진을 고른다. gemini로 결정됐지만
-    GEMINI_API_KEY가 없으면 조용히 ODL로 내려간다(경고 1줄) — 페이지별 재시도 폭주를 피한다.
+    활성 provider의 API 키가 없으면 조용히 ODL로 내려간다(경고 1줄) — 페이지별 재시도 폭주를 피한다.
     gemini 실행 실패는 _run_convert_gemini가 OdlParserError로 변환한다(상위 폴백 체인이 처리).
     이 저수준 디스패처는 자동 폴백을 하지 않는다 — 폴백은 프로덕션 경로(ensure_visual_artifacts)가 담당.
     """
     selected = _resolve_stage_engine(stage, engine)
-    if selected == GEMINI_ENGINE_NAME and not (os.environ.get("GEMINI_API_KEY") or "").strip():
-        logger.warning(
-            "GEMINI_API_KEY not set; %s stage falling back to ODL parser engine.", stage
-        )
-        selected = "odl"
     if selected == GEMINI_ENGINE_NAME:
-        return _run_convert_gemini(pdf_path, output_dir, figures_dir)
-    return _run_convert_odl(pdf_path, output_dir, figures_dir, mode)
+        resolved = provider or _resolve_visual_provider()
+        key_env = key_env_for(resolved)
+        if not (os.environ.get(key_env) or "").strip():
+            logger.warning(
+                "%s not set; %s stage falling back to ODL parser engine.", key_env, stage
+            )
+        else:
+            return _run_convert_gemini(pdf_path, output_dir, figures_dir, resolved)
+    # provider가 None이면(text 스테이지 기본 경로) 기존 기본값 "gemini"로 떨어져
+    # 아래 java-미탐지 사용자 안내 문구가 바이트 단위로 그대로 유지된다.
+    return _run_convert_odl(pdf_path, output_dir, figures_dir, mode, provider=provider or "gemini")
 
 
-def _visual_runtime_unavailable_message() -> str:
+def _visual_runtime_unavailable_message(provider: str) -> str:
+    key_env = key_env_for(provider)
+    label = "OpenAI" if provider == "openai" else "Gemini"
     return (
-        "표·그림 추출에 Java 실행 환경 또는 Gemini API 키가 필요합니다. "
-        "동작하는 Java 런타임(backend/java-runtime)이 없고 GEMINI_API_KEY도 설정돼 있지 않습니다."
+        f"표·그림 추출에 Java 실행 환경 또는 {label} API 키가 필요합니다. "
+        f"동작하는 Java 런타임(backend/java-runtime)이 없고 {key_env}도 설정돼 있지 않습니다."
     )
 
 
-def _plan_visual_engines() -> list[str]:
+def _plan_visual_engines(provider: str) -> list[str]:
     """visual 단계에서 시도할 엔진을 우선순위대로 반환한다(빈 리스트 = 가용 엔진 없음).
 
     - 스테이지 기본 엔진(_resolve_stage_engine("visual"))을 먼저, 실패 대비로 반대 엔진을 뒤에.
-    - gemini는 GEMINI_API_KEY가 있을 때만 후보에 넣는다. (없으면 _run_convert가 내부적으로
-      ODL로 downgrade해 스텁 java 에러를 만들 뿐이므로 애초에 시도하지 않는다.)
+    - gemini는 활성 provider의 API 키가 있을 때만 후보에 넣는다. (없으면 _run_convert가
+      내부적으로 ODL로 downgrade해 스텁 java 에러를 만들 뿐이므로 애초에 시도하지 않는다.)
     - odl은 ensure_java_runtime 검증이 통과할 때만 후보에 넣는다. (스텁 오탐지 시 굳이
       시도해 java.com 에러를 만들지 말고 건너뛰어 Gemini로 넘어간다.)
 
@@ -908,12 +922,14 @@ def _plan_visual_engines() -> list[str]:
     ordered = [stage_default] + [
         engine for engine in (GEMINI_ENGINE_NAME, "odl") if engine != stage_default
     ]
-    gemini_ok = bool((os.environ.get("GEMINI_API_KEY") or "").strip())
+    # 비전 엔진은 활성 provider의 키가 있을 때만 후보에 넣는다. GEMINI_ENGINE_NAME은
+    # 공급사가 아니라 "LLM 비전 경로"를 가리키는 레거시 이름이다(provider_state 참조).
+    vision_ok = bool((os.environ.get(key_env_for(provider)) or "").strip())
     java_ok = _java_runtime_available()
 
     plan: list[str] = []
     for engine in ordered:
-        if engine == GEMINI_ENGINE_NAME and not gemini_ok:
+        if engine == GEMINI_ENGINE_NAME and not vision_ok:
             continue
         if engine == "odl" and not java_ok:
             continue
@@ -921,8 +937,10 @@ def _plan_visual_engines() -> list[str]:
     return plan
 
 
-def _run_convert_odl(pdf_path: Path, output_dir: Path, figures_dir: Path, mode: str) -> tuple[dict[str, Any], str, str]:
-    ensure_java_runtime()
+def _run_convert_odl(
+    pdf_path: Path, output_dir: Path, figures_dir: Path, mode: str, provider: str = "gemini"
+) -> tuple[dict[str, Any], str, str]:
+    ensure_java_runtime(provider)
     odl = _import_odl_module()
 
     params: dict[str, Any] = {
@@ -940,7 +958,7 @@ def _run_convert_odl(pdf_path: Path, output_dir: Path, figures_dir: Path, mode: 
     try:
         odl.convert(**params)
     except Exception as exc:
-        raise OdlParserError(_convert_error_message(exc)) from exc
+        raise OdlParserError(_convert_error_message(exc, provider)) from exc
 
     json_path = _locate_output_file(output_dir, pdf_path.stem, ".json")
     md_path = _locate_output_file(output_dir, pdf_path.stem, ".md")
@@ -949,7 +967,9 @@ def _run_convert_odl(pdf_path: Path, output_dir: Path, figures_dir: Path, mode: 
     return root, markdown_text, actual_engine
 
 
-def _run_convert_gemini(pdf_path: Path, output_dir: Path, figures_dir: Path) -> tuple[dict[str, Any], str, str]:
+def _run_convert_gemini(
+    pdf_path: Path, output_dir: Path, figures_dir: Path, provider: str = "gemini"
+) -> tuple[dict[str, Any], str, str]:
     """Gemini 비전 엔진 어댑터. 비동기 run_convert_gemini를 기존 동기 브리지로 감싸고,
     실패는 OdlParserError로 변환해 폴백이 ODL 실패와 동일하게 동작하도록 한다.
 
@@ -962,7 +982,9 @@ def _run_convert_gemini(pdf_path: Path, output_dir: Path, figures_dir: Path) -> 
     usage_out = getattr(_visual_parse_usage_channel, "usage", None)
     try:
         return _run_coroutine_sync(
-            run_convert_gemini(pdf_path, output_dir, figures_dir, usage_out=usage_out)
+            run_convert_gemini(
+                pdf_path, output_dir, figures_dir, usage_out=usage_out, provider=provider
+            )
         )
     except GeminiParserError as exc:
         raise OdlParserError(f"Gemini parser engine failed: {exc}") from exc
@@ -991,20 +1013,26 @@ def _looks_like_java_missing(text: str | None) -> bool:
     return any(signature in lowered for signature in _JAVA_MISSING_SIGNATURES)
 
 
-def _java_missing_user_message() -> str:
+def _java_missing_user_message(provider: str = "gemini") -> str:
+    """provider 기본값 "gemini"는 explain_odl_failure의 두 호출부(:2121, :2124) 등 provider를
+    모르는 컨텍스트를 위한 것이다 — 그 호출부들은 실패한 백그라운드 태스크의 사후 콜백이라
+    당시 활성 provider를 알 방법이 없다(고쳐서 알아내려 하지 말고 기본값으로 문구를
+    바이트 동일하게 유지). _run_convert_odl처럼 provider를 실제로 아는 호출부만 넘긴다."""
+    key_env = key_env_for(provider)
+    label = "OpenAI" if provider == "openai" else "Gemini"
     return (
-        "표·그림 추출에 Java 실행 환경 또는 Gemini API 키가 필요합니다. "
+        f"표·그림 추출에 Java 실행 환경 또는 {label} API 키가 필요합니다. "
         "Java 런타임이 설치돼 있지 않거나 실행되지 않았습니다. "
-        "Java 11+를 설치하거나 GEMINI_API_KEY를 설정하면 표·그림을 추출할 수 있습니다."
+        f"Java 11+를 설치하거나 {key_env}를 설정하면 표·그림을 추출할 수 있습니다."
     )
 
 
-def _convert_error_message(exc: Exception) -> str:
+def _convert_error_message(exc: Exception, provider: str = "gemini") -> str:
     if isinstance(exc, subprocess.CalledProcessError):
         output = exc.stderr or exc.stdout or exc.output
         if _looks_like_java_missing(output if isinstance(output, str) else None):
             # 스텁 java가 exit≠0으로 죽은 경우 — 파싱 실패가 아니라 런타임 부재.
-            return _java_missing_user_message()
+            return _java_missing_user_message(provider)
         details: list[str] = [f"OpenDataLoader convert failed with exit code {exc.returncode}."]
         if output:
             last_line = output.strip().splitlines()[-1][:400]
@@ -1012,7 +1040,7 @@ def _convert_error_message(exc: Exception) -> str:
         return " ".join(details)
     if _looks_like_java_missing(str(exc)):
         # wrapper가 던지는 FileNotFoundError("Error: 'java' command not found ...") 등.
-        return _java_missing_user_message()
+        return _java_missing_user_message(provider)
     return f"OpenDataLoader convert failed: {exc}"
 
 
@@ -1037,6 +1065,18 @@ def _run_coroutine_sync(coro):
     if error:
         raise error["value"]
     return result.get("value")
+
+
+def _resolve_visual_provider() -> str:
+    """LLM 비전 경로가 쓸 공급사. 호출부가 provider를 안 넘긴 경우의 폴백이다.
+
+    동기 함수에서 async active_provider()를 부르므로 기존 브리지를 재사용한다. 문서당
+    한 번만 타는 경로라(페이지별이 아니다) 설정 DB 조회 비용은 무시할 수 있다. 모듈
+    상단에서 이미 import한 active_provider를 그대로 쓴다 — 기존 테스트들이
+    patch("services.odl_parser.active_provider", ...)로 이 이름을 가로채므로, 여기서
+    다시 지연 import하면 그 패치를 우회해 실제 설정 DB를 조회하게 된다.
+    """
+    return _run_coroutine_sync(active_provider())
 
 
 def _merge_page_scoped_items(
@@ -1109,12 +1149,17 @@ async def _build_resolver_v1_manifest(
         resolver_version=RESOLVER_VERSION,
     )
 
+    # 그림·표 resolve 전체(1차 + 재시도)에 걸쳐 provider를 한 번만 결정한다 — 매니페스트
+    # 하나를 만드는 도중 설정이 바뀌어도 이 실행 안에서는 일관된 provider를 쓴다.
+    provider = await active_provider()
+
     manifest["figure_candidates"] = build_figure_candidates(manifest, pdf_path=pdf_path)
     figure_result = await resolve_figure_candidates(
         manifest,
         paper_dir=paper_dir,
         pdf_path=pdf_path,
         resolver_version=RESOLVER_VERSION,
+        provider=provider,
     )
     manifest["figures"] = figure_result["figures"]
     low_figure_pages = set(figure_result.get("low_confidence_pages", []))
@@ -1128,6 +1173,7 @@ async def _build_resolver_v1_manifest(
         manifest,
         paper_dir=paper_dir,
         resolver_version=RESOLVER_VERSION,
+        provider=provider,
     )
     manifest["tables"] = table_result["tables"]
     low_table_pages = set(table_result.get("low_confidence_pages", []))
@@ -1184,6 +1230,7 @@ async def _build_resolver_v1_manifest(
             pdf_path=pdf_path,
             resolver_version=RESOLVER_VERSION,
             page_numbers=retry_figure_pages,
+            provider=provider,
         )
         manifest["figures"] = _merge_page_scoped_items(
             manifest.get("figures", []),
@@ -1209,6 +1256,7 @@ async def _build_resolver_v1_manifest(
             paper_dir=paper_dir,
             resolver_version=RESOLVER_VERSION,
             page_numbers=retry_table_pages,
+            provider=provider,
         )
         manifest["tables"] = _merge_page_scoped_items(
             manifest.get("tables", []),
@@ -1455,6 +1503,10 @@ def ensure_visual_artifacts(
         if output_file.exists():
             output_file.unlink()
 
+    # 이 문서의 visual 스테이지 전체에서 쓸 provider를 한 번만 확정한다(스펙 R6: 스테이지
+    # 진입 확정 원칙) — 아래 계획/디스패처/에러 메시지 호출부가 모두 같은 값을 본다.
+    visual_provider = _resolve_visual_provider()
+
     # visual 단계 Gemini 파서의 usage를 담을 빈 dict를 채널에 심는다. 실제 gemini 변환이
     # 일어날 때만 채워지고, ODL 폴백/키 부재/캐시 히트에선 빈 채로 남는다(→ 미기록).
     _visual_parse_usage_channel.usage = {}
@@ -1465,9 +1517,9 @@ def ensure_visual_artifacts(
         #   - Gemini가 안 되면(키 부재/변환 실패) Java(검증 통과 시)로 넘어간다.
         # _run_convert 저수준 디스패처는 불변 — 여기서만 engine을 명시해 엔진을 강제한다.
         # 스테이지 기본 엔진은 engine=None으로 넘겨 _resolve_stage_engine 의미를 그대로 태운다.
-        engine_plan = _plan_visual_engines()
+        engine_plan = _plan_visual_engines(visual_provider)
         if not engine_plan:
-            raise OdlRuntimeError(_visual_runtime_unavailable_message())
+            raise OdlRuntimeError(_visual_runtime_unavailable_message(visual_provider))
         stage_default = _resolve_stage_engine("visual")
         root = markdown_text = actual_engine = None  # type: ignore[assignment]
         last_error: Exception | None = None
@@ -1485,6 +1537,7 @@ def ensure_visual_artifacts(
                     requested_mode,
                     stage="visual",
                     engine=engine_override,
+                    provider=visual_provider,
                 )
                 break
             except (OdlParserError, OdlRuntimeError) as exc:
@@ -1499,7 +1552,7 @@ def ensure_visual_artifacts(
             # 계획한 모든 엔진이 실패 → 마지막 예외를 그대로 던진다(사용자 대면 메시지는
             # _run_convert/_convert_error_message가 Java 미탐지면 한국어로 이미 변환).
             raise last_error if last_error is not None else OdlRuntimeError(
-                _visual_runtime_unavailable_message()
+                _visual_runtime_unavailable_message(visual_provider)
             )
     finally:
         visual_parse_usage = getattr(_visual_parse_usage_channel, "usage", None)

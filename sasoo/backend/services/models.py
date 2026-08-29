@@ -17,6 +17,8 @@ Model choice rationale (2026-08, Gemini-only stack):
                 recipe 포함 텍스트 5단계 전부 이 모델을 쓴다.
   PRO         - deepest reasoning (GPQA 94.3%); 5단계 텍스트 분석에는 미사용
                 (A/B 후 승격 후보). 이미지 설명 플래너(viz/figure_gen.py)는 사용 중.
+  LUNA        - gpt-5.6-luna. OpenAI 키 단독 사용자의 전 단계 기본 모델.
+                minimal을 지원하지 않아 최저 effort가 low다(플랜 Task 0 실측).
   IMAGE       - Nano Banana 2 as the Gemini-side renderer; gpt-image-2
                 (Arena text-to-image #1) is the default. Provider choice and
                 fallback live in services/viz/figure_gen.py.
@@ -33,6 +35,9 @@ MODEL_PRO = "gemini-3.1-pro-preview"
 # 이전 세대 flash. 현재 어느 단계도 쓰지 않는다. DB에 이 모델이 만든 행이 남아 있어
 # 단가 계산을 위해 상수와 PRICING 항목을 유지한다(services/test_model_pins.py가 잠근다).
 MODEL_FLASH_PREV = "gemini-3.6-flash"
+
+# OpenAI 텍스트 모델 — provider 중립화(스펙 2026-07-31 + 개정 1)
+MODEL_LUNA = "gpt-5.6-luna"
 
 # Image generation
 MODEL_IMAGE = "gemini-3.1-flash-image"   # Nano Banana 2 ($0.067/장)

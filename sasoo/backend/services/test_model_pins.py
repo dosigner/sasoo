@@ -38,6 +38,24 @@ import services.models as models
 from services.pricing import PRICING
 
 
+def test_flash_hq_is_the_37_flash_id():
+    """FLASH_HQ의 문자열 값 자체를 잠근다.
+
+    3.7로 올린 판단에는 실측이 붙어 있다(main #51): 긴 문맥 검색 GDM-MRCR v2
+    8-needle @128k 91.8 -> 97.0%, PDF 문서 이해 GDP.pdf 22.0 -> 34.0%, 단가는 동일.
+    이 앱이 기대는 두 축이 그대로 오르면서 값이 같으니 되돌릴 이유가 없다.
+    되돌리려면 새 실측이 먼저다 — 3.6이 이 두 축에서 낫다는 증거를 가져와라.
+
+    이 단정이 없으면 값을 조용히 되돌려도 전 스위트가 통과한다. 다른 방어선은
+    모두 상수 대 상수이거나(test_recipe_uses_flash_hq) 단가표 존재 여부만
+    보므로(services/test_pricing.py::test_every_model_constant_is_priced),
+    이미 단가가 있는 Gemini ID로 바꾸면 아무것도 걸리지 않는다.
+    services/test_model_registry.py는 이 상수와 레지스트리가 일치하는지만 보고
+    값은 여기에 위임한다.
+    """
+    assert models.MODEL_FLASH_HQ == "gemini-3.7-flash"
+
+
 def test_recipe_uses_flash_hq():
     """recipe는 다른 단계와 같은 모델을 쓴다.
 

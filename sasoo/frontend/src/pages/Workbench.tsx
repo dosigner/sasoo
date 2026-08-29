@@ -304,6 +304,7 @@ export default function Workbench() {
         canStartAnalysis={canStartAnalysis}
         isRunning={isRunning}
         primaryActionLabel={primaryActionLabel}
+        staleModel={statusSummary.staleModel}
         onBack={() => navigate('/library')}
         onTogglePdf={togglePdf}
         onSplitPresetChange={setSplitPreset}

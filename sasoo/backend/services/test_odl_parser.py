@@ -57,6 +57,7 @@ from services.odl_parser import (
     sync_tables_for_paper,
     table_row_to_api_dict,
 )
+from services import odl_parser
 
 
 class OdlParserUnitTests(unittest.TestCase):
@@ -601,7 +602,10 @@ class OdlParserIntegrationTests(unittest.TestCase):
             # 이 테스트는 "java/ODL 모드 종단" 시나리오를 검증한다. 로컬 .env에
             # 실제 GEMINI_API_KEY가 있으면 visual 스테이지가 gemini로 선택돼
             # engine 필드가 달라지므로, 환경과 무관하게 폴백 경로를 강제한다.
-            with patch.dict(os.environ, {"GEMINI_API_KEY": ""}):
+            with (
+                patch.dict(os.environ, {"GEMINI_API_KEY": ""}),
+                patch("services.odl_parser.active_provider", new=AsyncMock(return_value="gemini")),
+            ):
                 manifest = ensure_parsed_artifacts(paper_dir, mode="java", force=True)
 
             self.assertEqual(manifest["engine"], "odl-java")
@@ -626,6 +630,7 @@ def _parser_env(**overrides):
         "SASOO_PDF_TEXT_ENGINE",
         "SASOO_PDF_VISUAL_ENGINE",
         "GEMINI_API_KEY",
+        "OPENAI_API_KEY",
     ]
     saved = {k: os.environ.get(k) for k in keys}
     for k in keys:
@@ -669,7 +674,7 @@ def _stage_convert_side_effect(*, visual_fail: bool = False):
             ],
         }
 
-    def _side(pdf_path, output_dir, figures_dir, mode, engine=None, stage="text"):
+    def _side(pdf_path, output_dir, figures_dir, mode, engine=None, stage="text", provider=None):
         if stage == "visual" and engine is None:
             if visual_fail:
                 raise OdlParserError("simulated gemini visual failure")
@@ -717,7 +722,9 @@ class RunConvertKeyGuardTests(unittest.TestCase):
             "services.odl_parser._run_convert_odl",
             return_value=({}, "md", "odl-java"),
         ) as odl_mock:
-            _, _, engine = _run_convert(Path("x.pdf"), Path("."), Path("."), "java", stage=stage)
+            _, _, engine = _run_convert(
+                Path("x.pdf"), Path("."), Path("."), "java", stage=stage, provider="gemini"
+            )
         return engine, gemini_mock, odl_mock
 
     def test_visual_uses_gemini_when_key_present(self) -> None:
@@ -743,6 +750,15 @@ class RunConvertKeyGuardTests(unittest.TestCase):
 
 
 class VisualPromotionTests(unittest.TestCase):
+    def setUp(self):
+        # Task 9: _build_resolver_v1_manifest가 active_provider()를 호출한다 —
+        # 이 클래스는 엔진 승격/폴백 로직만 검증하므로 gemini로 고정한다.
+        self._active_provider_patch = patch(
+            "services.odl_parser.active_provider", new=AsyncMock(return_value="gemini"),
+        )
+        self._active_provider_patch.start()
+        self.addCleanup(self._active_provider_patch.stop)
+
     def _make_paper(self, tmp_dir: str) -> Path:
         paper_dir = Path(tmp_dir)
         pdf_path = paper_dir / "paper.pdf"
@@ -841,7 +857,7 @@ class VisualPromotionTests(unittest.TestCase):
             paper_dir = self._make_paper(tmp_dir)
             # SASOO_PDF_VISUAL_ENGINE=odl → 실제 _run_convert 경로가 ODL을 고른다.
             # 여기선 _run_convert를 mock하되 visual/text 모두 ODL을 반환하도록 강제.
-            def _all_odl(pdf_path, output_dir, figures_dir, mode, engine=None, stage="text"):
+            def _all_odl(pdf_path, output_dir, figures_dir, mode, engine=None, stage="text", provider=None):
                 root = {
                     "title": "T", "author": "A", "number of pages": 1,
                     "kids": [{"type": "paragraph", "id": 1, "page number": 1,
@@ -861,6 +877,47 @@ class VisualPromotionTests(unittest.TestCase):
             self.assertNotIn("text_engine", manifest)
             self.assertNotIn("visual_engine", manifest)
             self.assertIn("ODL VERBATIM", (paper_dir / "paper.md").read_text(encoding="utf-8"))
+
+
+class TestVisualEngineProviderGate(unittest.TestCase):
+    """비전 엔진 가용성이 활성 provider의 키를 보는지."""
+
+    def test_openai_key_alone_keeps_vision_engine_in_plan(self):
+        """회귀 방어: 이전에는 GEMINI_API_KEY만 봐서 OpenAI 단독 키가 vision 경로에
+        전혀 못 들어갔다(로컬 ODL로만 떨어짐)."""
+        with _parser_env(OPENAI_API_KEY="k", SASOO_PDF_VISUAL_ENGINE="gemini"):
+            with patch.object(odl_parser, "_java_runtime_available", return_value=True):
+                plan = odl_parser._plan_visual_engines("openai")
+        self.assertEqual(plan[0], odl_parser.GEMINI_ENGINE_NAME)
+
+    def test_gemini_provider_without_gemini_key_drops_vision_engine(self):
+        with _parser_env(SASOO_PDF_VISUAL_ENGINE="gemini"):
+            with patch.object(odl_parser, "_java_runtime_available", return_value=True):
+                plan = odl_parser._plan_visual_engines("gemini")
+        self.assertEqual(plan, ["odl"])
+
+    def test_run_convert_downgrades_on_missing_active_provider_key(self):
+        """provider 키가 없으면 조용히 ODL로 내려간다(페이지별 재시도 폭주 방지).
+
+        GEMINI_API_KEY="k"를 일부러 심어 둔다 — 게이트가 옛 로직(os.environ.get
+        ("GEMINI_API_KEY"))으로 되돌아가면 "키가 있다"고 오판해 _run_convert_gemini를
+        불러버리므로, 이 값이 있어야 아래 gem_mock.assert_not_called()가 실제로
+        "OpenAI provider일 때 Gemini 키를 보지 않는다"를 검증하게 된다.
+        """
+        with _parser_env(SASOO_PDF_VISUAL_ENGINE="gemini", GEMINI_API_KEY="k"):
+            with patch.object(odl_parser, "_run_convert_odl", return_value=({}, "", "odl-java")) as odl_mock:
+                with patch.object(odl_parser, "_run_convert_gemini") as gem_mock:
+                    odl_parser._run_convert(
+                        Path("x.pdf"), Path("."), Path("."), "fast",
+                        stage="visual", provider="openai",
+                    )
+        gem_mock.assert_not_called()
+        odl_mock.assert_called_once()
+
+    def test_unavailable_message_names_the_active_provider_key(self):
+        msg = odl_parser._visual_runtime_unavailable_message("openai")
+        self.assertIn("OPENAI_API_KEY", msg)
+        self.assertNotIn("GEMINI_API_KEY", msg)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ import { AppIcon } from '@/components/icons';
 import AgentAvatar from '@/components/AgentAvatar';
 import type { AgentMeta } from '@/lib/agents';
 import type { WorkbenchSplitPreset } from '@/hooks/useWorkbenchLayout';
+import { S } from '@/lib/strings';
 import { DOMAIN_LABELS, type WorkbenchStatusTone } from '@/lib/workbenchSummaries';
 
 const STATUS_TONE_CLASS: Record<WorkbenchStatusTone, string> = {
@@ -205,6 +206,8 @@ interface WorkbenchHeaderProps {
   canStartAnalysis: boolean;
   isRunning: boolean;
   primaryActionLabel: string;
+  /** 완료된 phase 결과가 현재 설정과 다른 모델로 만들어졌으면 그 모델명(스펙 §D). */
+  staleModel?: string | null;
   onBack: () => void;
   onTogglePdf: () => void;
   onSplitPresetChange: (preset: WorkbenchSplitPreset) => void;
@@ -229,6 +232,7 @@ export default function WorkbenchHeader({
   canStartAnalysis,
   isRunning,
   primaryActionLabel,
+  staleModel,
   onBack,
   onTogglePdf,
   onSplitPresetChange,
@@ -336,6 +340,16 @@ export default function WorkbenchHeader({
                 );
               })}
             </div>
+
+            {canStartAnalysis && staleModel && (
+              <span
+                className="status-pill border-warning/20 bg-warning/10 text-warning"
+                title={S.workbench.staleModelHint}
+              >
+                <AppIcon name="warning" className="w-3 h-3" />
+                {S.workbench.staleModelBadge(staleModel)}
+              </span>
+            )}
 
             {canStartAnalysis && (
               <button
