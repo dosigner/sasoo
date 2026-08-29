@@ -215,6 +215,8 @@ cd sasoo/backend
 | VLM 호출(격자 복원) | 84 | 90 | 89 | 93 |
 | 격자 복원 성공 | 39/84 (46%) | 34/90 (38%) | 43/89 (48%) | 37/93 (40%) |
 
+소요 시간은 대조표에서 뺐다 — 이번 측정이 시스템 슬립에 오염됐다(아래 참조).
+
 ## 표 정확일치의 방향이 뒤집혔다
 
 2026-08-21에는 Gemini 10/12 대 OpenAI 9/12였고, 그 1편 차이를 수용하기로 결정했다
@@ -249,45 +251,53 @@ Gemini가 놓친 1건은 `OptFor_RefractiveMCAO_optics`의 **Table 3**이다. �
 집계 누락이 아니라 Gemini SDK가 이 모델에서 `total_thought_tokens`를 0으로 주는 것이다.
 그래서 effort 상승이 비용을 올리지 않았다.
 
-## 새로 관측된 문제 — Gemini 경로에서 논문 하나가 28.5시간 걸렸다
+## 소요 시간은 측정하지 못했다 (시스템 슬립 오염)
 
-이번 측정에서 가장 심각한 발견이다.
+원장의 `elapsed_sec`에 `2017_COMST_OpticalComm` 한 편이 102,437.2초(28.5시간)로
+찍혔다. **이 수치는 API 지연이 아니라 측정 아티팩트다.**
 
-| 논문 | Gemini 08-21 | Gemini 08-26 | OpenAI 08-21 | OpenAI 08-26 |
-|---|---|---|---|---|
-| `2017_COMST_OpticalComm` | 183.3초 | **102,437.2초** | 109.0초 | 118.1초 |
-| 나머지 11편 합계 | 1,548.6초 | 662.5초 | 514.7초 | 1,785.8초 |
+`measure.py:521,542`가 `time.time()`(벽시계)로 재기 때문에 프로세스가 진행하지 않는
+시간도 그대로 포함된다. `pmset -g log`로 측정 구간(2026-08-25 17:39 ~ 08-26 22:18)을
+확인한 결과 **총 68,445초(19.0시간)가 Sleep/DarkWake였다.** 25일 19시부터 26일
+08시 30분까지 15~17분 슬립과 짧은 DarkWake가 1,485회 반복된, 방치된 노트북 패턴이다.
 
-같은 논문, 같은 작업량인데(출력 토큰 82,988 → 82,635, 비용 $0.653790 → $0.325179)
-**시간만 560배**다. OpenAI 경로는 같은 논문에서 109초에서 118초로 정상이므로 Gemini
-경로 고유의 문제다. 나머지 11편은 27~97초로 오히려 이전보다 빠르다.
+그래서 이 측정으로는 소요 시간을 판정할 수 없다.
 
-이 논문은 41페이지이고 page 12와 41이 400 필터로 실패해 PyMuPDF 텍스트로 보충됐다.
-에러 두 종류가 관측됐다.
+- 논문별 `elapsed_sec`은 그 논문이 처리되던 구간에 시스템이 얼마나 잤는지를 반영할
+  뿐이다. `2017_COMST`가 유독 큰 이유는 그 논문 차례에 사용자가 자리를 비웠기
+  때문이고, 나머지 11편이 27~97초인 것은 깨어 있는 동안 처리됐기 때문이다.
+- 위 결과 대조표에서 **소요 시간 행을 빼둔 것은 이 때문이다.** 2026-08-21 측정의
+  "논문당 평균 144.3초 대 52.0초"와 이번 수치는 비교할 수 없다.
+- 정확도와 비용은 영향받지 않는다. 토큰 수와 정확일치 판정은 벽시계와 무관하다.
+  같은 논문의 출력 토큰이 82,988에서 82,635로 거의 같고 비용도 정상 범위다.
 
-```
-Request blocked due to copyright/recitation content.
-Input blocked: This request was blocked by Gemini's filters.
-```
-
-**28.5시간의 직접 원인은 확정하지 못했다.** 재시도 예산으로는 설명되지 않는다
-(`_RETRY_DELAYS = [2, 8]`, `_PAGE_RETRIES = 1`이므로 페이지당 최악 20초).
-
-다만 조사 중 별개의 결함을 하나 찾았다. `services/llm/gemini_client.py:61`의
-`_is_retryable`은 `getattr(exc, "code", None)`이 `int`일 때만 상태 코드로 판정하고,
-`int`가 아니면 "판단 근거 없음"으로 보아 재시도한다. 그런데 이번 로그의 400 에러는
-`code`가 문자열이다(`'invalid_request'`, `'The generated content was filtered...'`).
-그래서 **함수의 docstring이 막겠다고 명시한 바로 그 케이스(400 copyright/recitation
-필터)를 실제로는 재시도한다.** 로그의 `failed after retries` 문구가 그 증거다.
-이것만으로 28.5시간이 되지는 않지만, 이 경로에 잘못된 대기가 실재한다.
-
-재현 확인이 필요하다. 이 논문 하나만 다시 재면 비용은 약 $0.33이다.
+시간을 재려면 `time.monotonic()`으로 바꾸거나(macOS에서는 슬립 중 멈춘다), 측정 중
+`caffeinate -i`로 슬립을 막아야 한다. 후자가 간단하다.
 
 ```bash
 cd sasoo/backend
-.venv/bin/python -m tools.extraction_audit.measure --lane production --reparse gemini --no-cache \
-    --papers 2017_COMST --tag probe-comst
+caffeinate -i .venv/bin/python -m tools.extraction_audit.measure --lane production --reparse gemini --no-cache --tag ...
 ```
+
+## 별개로 확인된 결함 — `_is_retryable`이 400 필터를 재시도한다
+
+위 시간 문제와 무관하게, 조사 중 실재하는 결함을 하나 찾았다.
+
+`services/llm/gemini_client.py:61`의 `_is_retryable`은 `getattr(exc, "code", None)`이
+`int`일 때만 상태 코드로 판정하고, `int`가 아니면 "판단 근거 없음"으로 보아 재시도한다.
+그런데 이번 로그의 400 에러는 `code`가 문자열이다.
+
+```
+'code': 'invalid_request'
+'code': 'The generated content was filtered because it may contain material that resembles existing copyrighted works.'
+```
+
+그래서 **함수의 docstring이 막겠다고 명시한 바로 그 케이스(400 copyright/recitation
+필터)를 실제로는 재시도한다.** 로그의 `failed after retries` 문구가 그 증거다.
+
+낭비되는 시간은 페이지당 최대 20초다(`_RETRY_DELAYS = [2, 8]`, `_PAGE_RETRIES = 1`).
+이번 측정에서 필터에 걸린 페이지는 5개이므로 최대 100초 규모이고, 28.5시간과는
+무관하다. 그래도 docstring이 주장하는 동작과 실제가 다르므로 고칠 값이 있다.
 
 ## 격자 복원 성공률이 조금 내려갔다
 
@@ -300,4 +310,5 @@ Gemini 46% → 38%, OpenAI 48% → 40%. 양쪽 공통이므로 공급사 요인�
 1. `--repeat`를 쓰지 않아 노이즈 바닥이 없다. 표 1편 차이의 유의성을 판정할 수 없다.
 2. 표 격자 복원 비용은 여전히 위 비용 수치에 포함되지 않는다. 그 경로는 항상 Gemini로
    돌기 때문에 `--reparse openai` 실행에서도 Gemini API를 쓴다.
-3. `2017_COMST_OpticalComm`의 28.5시간이 재현되는지 확인하지 않았다.
+3. **소요 시간을 재지 못했다.** 측정 구간의 19시간이 시스템 슬립이었다. 다시 재려면
+   `caffeinate -i`로 감싸야 한다.
