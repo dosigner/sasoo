@@ -36,6 +36,13 @@ function getIconPath(): string | undefined {
   return fs.existsSync(iconPath) ? iconPath : undefined;
 }
 
+// 시스템 "투명도 감소"가 켜져 있으면 OS 재질 자체를 해제한다. CSS 폴백만으로는
+// 창 배경이 투명하게 비워진 상태가 남는다.
+function syncVibrancy(): void {
+  if (!isMac || !mainWindow) return;
+  mainWindow.setVibrancy(nativeTheme.prefersReducedTransparency ? null : 'sidebar');
+}
+
 async function createWindow(): Promise<void> {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -67,6 +74,8 @@ async function createWindow(): Promise<void> {
       ],
     },
   });
+
+  syncVibrancy();
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show();
@@ -253,6 +262,7 @@ async function initialize(): Promise<void> {
   }
 
   registerIpcHandlers();
+  nativeTheme.on('updated', syncVibrancy);
   await createWindow();
 
   // Forward Python backend logs to renderer DevTools console
