@@ -255,17 +255,29 @@ class VlmCache:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-async def run_pipeline(manifest: dict[str, Any], *, pdf_path: Path, scratch: Path) -> dict[str, Any]:
+async def run_pipeline(
+    manifest: dict[str, Any], *, pdf_path: Path, scratch: Path, provider: str = "gemini"
+) -> dict[str, Any]:
+    """그림·표 리졸버를 돌린다.
+
+    provider는 리졸버 4호출 전부에 그대로 내려간다. 이걸 안 넘기면 리졸버가
+    기본값 gemini로 떨어져, `--reparse openai`로 재도 격자 복원만 Gemini API를 쓴다
+    (2026-08-21·08-26 두 측정이 그 상태였고, 그래서 기록된 비용이 페이지 파싱 전용이었다).
+    프로덕션 경로(odl_parser.py:1172,1254)는 처음부터 provider를 넘긴다 — 어긋난 쪽은
+    이 감사 도구뿐이었다.
+    """
     manifest["figure_candidates"] = build_figure_candidates(manifest, pdf_path=pdf_path)
     figure_result = await resolve_figure_candidates(
-        manifest, paper_dir=scratch, pdf_path=pdf_path, resolver_version="audit"
+        manifest, paper_dir=scratch, pdf_path=pdf_path, resolver_version="audit", provider=provider
     )
     manifest["figures"] = figure_result["figures"]
     low_figure_pages = set(figure_result.get("low_confidence_pages", []))
 
     manifest["table_candidates"] = build_table_candidates(manifest, pdf_path=pdf_path, paper_dir=scratch)
     first_pass_candidates = [dict(candidate) for candidate in manifest["table_candidates"]]
-    table_result = await resolve_table_candidates(manifest, paper_dir=scratch, resolver_version="audit")
+    table_result = await resolve_table_candidates(
+        manifest, paper_dir=scratch, resolver_version="audit", provider=provider
+    )
     manifest["tables"] = table_result["tables"]
     low_table_pages = set(table_result.get("low_confidence_pages", []))
 
@@ -299,6 +311,7 @@ async def run_pipeline(manifest: dict[str, Any], *, pdf_path: Path, scratch: Pat
             pdf_path=pdf_path,
             resolver_version="audit",
             page_numbers=retry_figure_pages,
+            provider=provider,
         )
         manifest["figures"] = _merge_page_scoped_items(manifest["figures"], retried["figures"], retry_figure_pages)
 
@@ -311,7 +324,11 @@ async def run_pipeline(manifest: dict[str, Any], *, pdf_path: Path, scratch: Pat
             retry_table_pages,
         )
         retried = await resolve_table_candidates(
-            manifest, paper_dir=scratch, resolver_version="audit", page_numbers=retry_table_pages
+            manifest,
+            paper_dir=scratch,
+            resolver_version="audit",
+            page_numbers=retry_table_pages,
+            provider=provider,
         )
         manifest["tables"] = _merge_page_scoped_items(manifest["tables"], retried["tables"], retry_table_pages)
 
@@ -529,7 +546,12 @@ async def run_lane(
             scratch = make_scratch_dir(paper_dir, manifest, pdf_path)
         cache.install(hashlib.sha1(pdf_path.read_bytes()).hexdigest()[:16])
         try:
-            outcome = await run_pipeline(manifest, pdf_path=pdf_path, scratch=scratch)
+            # reparse가 곧 이번 측정의 공급사다. --reparse 없이 저장된 매니페스트를 쓰는
+            # 실행에서는 기존대로 gemini다 — 그 매니페스트가 어느 엔진 산출물이든 리졸버
+            # 단계는 별개이므로, 기본값을 바꾸면 과거 실행과 대조가 끊긴다.
+            outcome = await run_pipeline(
+                manifest, pdf_path=pdf_path, scratch=scratch, provider=reparse or "gemini"
+            )
         finally:
             cache.restore()
             shutil.rmtree(scratch, ignore_errors=True)
@@ -654,7 +676,47 @@ def _selfcheck_table_metrics() -> None:
     assert result["unlabeled"] == 1, result["unlabeled"]
     assert result["fp"] == 3, result["fp"]
     assert sum(result["duplicate"].values()) + sum(result["extra"].values()) + result["unlabeled"] == result["fp"]
+    _selfcheck_provider_threading()
     print("selfcheck ok")
+
+
+def _selfcheck_provider_threading() -> None:
+    """run_pipeline의 provider가 리졸버 4호출 전부에 도달하는지.
+
+    한 곳만 빠져도 그 호출이 기본값 gemini로 조용히 떨어지고, 측정은 정상으로 끝난다
+    (원장 어디에도 안 남는다). 실제 run_pipeline을 호출해 확인한다 — 복제 구현이면
+    검증 가치가 없다. 재시도 분기까지 타도록 low_confidence_pages를 채워 넣는다.
+    """
+    seen: list[str | None] = []
+
+    async def _fake_figures(_manifest, **kwargs):
+        seen.append(kwargs.get("provider"))
+        return {"figures": [], "low_confidence_pages": [1]}
+
+    async def _fake_tables(_manifest, **kwargs):
+        seen.append(kwargs.get("provider"))
+        return {"tables": [], "low_confidence_pages": [1]}
+
+    patched = {
+        "resolve_figure_candidates": _fake_figures,
+        "resolve_table_candidates": _fake_tables,
+        "build_figure_candidates": lambda _m, **_k: [],
+        "build_table_candidates": lambda _m, **_k: [],
+        "find_suspect_pages": lambda **_k: {"suspect_pages": []},
+    }
+    module = sys.modules[__name__]
+    saved = {name: getattr(module, name) for name in patched}
+    try:
+        for name, fake in patched.items():
+            setattr(module, name, fake)
+        asyncio.run(
+            run_pipeline({}, pdf_path=Path("x.pdf"), scratch=Path("/tmp"), provider="openai")
+        )
+    finally:
+        for name, original in saved.items():
+            setattr(module, name, original)
+
+    assert seen == ["openai"] * 4, f"provider가 리졸버 4호출에 다 안 갔다: {seen}"
 
 
 async def main_async(args: argparse.Namespace) -> None:
