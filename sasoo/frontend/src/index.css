@@ -249,6 +249,12 @@
     @apply px-4 py-4 md:px-5 md:py-4;
   }
 
+  /* 설정·프로필 항목 구분 — 구분선 대신 옅은 명도 블록으로 가른다. */
+  .settings-row-block {
+    @apply bg-surface-hover px-3 py-2.5;
+    border-radius: var(--radius-control);
+  }
+
   .page-header-dense {
     @apply flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between;
   }

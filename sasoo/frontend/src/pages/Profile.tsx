@@ -267,13 +267,13 @@ export default function Profile() {
 
         <div className="space-y-8">
           {/* 연구 배경 — 내가 어떤 분야에서 무엇을 연구하는지 */}
-          <div className="space-y-5">
+          <div className="space-y-2">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.12em] text-fg-muted">연구 배경</div>
               <p className="mt-1 text-2xs text-fg-muted">내가 어떤 분야에서 무엇을 연구하는지 알려줘요.</p>
             </div>
 
-            <div>
+            <div className="settings-row-block">
               <label htmlFor="research-context" className="mb-2 block text-sm font-medium text-fg-secondary">
                 {S.settings.researchContext}
               </label>
@@ -290,14 +290,14 @@ export default function Profile() {
               </p>
             </div>
 
-            <div>
+            <div className="settings-row-block">
               <label className="mb-2 block text-sm font-medium text-fg-secondary">
                 {S.settings.researchAreas}
               </label>
               <AreaPicker value={researchAreas} onChange={setResearchAreas} max={MAX_RESEARCH_AREAS} />
             </div>
 
-            <div>
+            <div className="settings-row-block">
               <label className="mb-2 block text-sm font-medium text-fg-secondary">
                 {S.settings.researchRole}
               </label>
@@ -311,23 +311,21 @@ export default function Profile() {
             </div>
           </div>
 
-          <div className="border-t border-border/50" />
-
           {/* 설명 눈높이 — 분석이 나에게 설명하는 깊이와 관점 */}
-          <div className="space-y-5">
+          <div className="space-y-2">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.12em] text-fg-muted">설명 눈높이</div>
               <p className="mt-1 text-2xs text-fg-muted">분석이 나에게 설명하는 깊이와 관점을 맞춰요.</p>
             </div>
 
-            <div>
+            <div className="settings-row-block">
               <label className="mb-2 block text-sm font-medium text-fg-secondary">
                 {S.settings.defaultLevel}
               </label>
               <LevelCards value={defaultLevel} onChange={setDefaultLevel} />
             </div>
 
-            <div>
+            <div className="settings-row-block">
               <label className="mb-2 block text-sm font-medium text-fg-secondary">
                 {S.settings.fieldExpertise}
               </label>
@@ -339,7 +337,7 @@ export default function Profile() {
               />
             </div>
 
-            <div>
+            <div className="settings-row-block">
               <label className="mb-2 block text-sm font-medium text-fg-secondary">
                 {S.settings.readingExperience}
               </label>
