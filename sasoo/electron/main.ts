@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as net from 'net';
@@ -19,6 +19,7 @@ import { initAutoUpdater } from './updater';
 installStdioEpipeGuard();
 
 const isDev = !app.isPackaged;
+const isMac = process.platform === 'darwin';
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 let mainWindow: BrowserWindow | null = null;
@@ -44,9 +45,17 @@ async function createWindow(): Promise<void> {
     icon: getIconPath(),
     title: 'Sasoo',
     frame: false,
-    backgroundColor: '#0a0a0b',
+    // darwin에서는 vibrancy가 사이드바·타이틀바 블러를 담당하므로 창 배경을
+    // 투명하게 비우고, CSS는 알파 틴트만 얹는다(backdrop-filter 중복 금지).
+    backgroundColor: isMac ? '#00000000' : '#0a0a0b',
     show: false,
-    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' } : {}),
+    ...(isMac
+      ? {
+          titleBarStyle: 'hiddenInset' as const,
+          vibrancy: 'sidebar' as const,
+          visualEffectState: 'followWindow' as const,
+        }
+      : {}),
     webPreferences: {
       preload: getPreloadPath(),
       contextIsolation: true,
@@ -208,6 +217,13 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('window:isMaximized', () => {
     return mainWindow?.isMaximized() ?? false;
+  });
+
+  // 앱 테마를 OS에 알려 vibrancy 재질이 같은 명암을 따르게 한다.
+  ipcMain.handle('theme:set', (event, theme: unknown) => {
+    if (!isMainWindowSender(event)) return;
+    if (theme !== 'dark' && theme !== 'light') return;
+    nativeTheme.themeSource = theme;
   });
 }
 
