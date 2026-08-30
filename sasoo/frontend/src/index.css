@@ -193,14 +193,6 @@
     @apply bg-accent/10 text-accent;
   }
 
-  .app-sidebar-collapse-btn {
-    @apply mt-2 flex h-8 w-8 items-center justify-center self-end rounded-control text-fg-muted transition-colors duration-150 hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
-  }
-
-  .app-sidebar-collapsed .app-sidebar-collapse-btn {
-    @apply self-center;
-  }
-
   .page-container-wide {
     @apply mx-auto min-h-full w-full px-4 py-4 md:px-6 md:py-5 xl:px-8;
     max-width: 120rem;
@@ -461,47 +453,6 @@
     border-radius: var(--radius-pill);
   }
 
-  .toolbar-shell {
-    @apply border border-border/50 bg-surface;
-    border-radius: var(--radius-surface);
-  }
-
-  .toolbar-group {
-    @apply inline-flex items-center gap-1 border border-border/50 bg-surface/40 px-1.5 py-1;
-    border-radius: var(--radius-control);
-  }
-
-  .panel-section {
-    @apply border border-border/50 bg-surface/40 transition-colors duration-200;
-    border-radius: var(--radius-surface);
-  }
-
-  /* Skeleton loader */
-  .skeleton {
-    @apply animate-pulse rounded bg-surface-hover;
-  }
-
-  /* Phase status dots */
-  .phase-dot {
-    @apply w-3 h-3 rounded-full border-2;
-  }
-
-  .phase-dot-pending {
-    @apply phase-dot border-border bg-transparent;
-  }
-
-  .phase-dot-running {
-    @apply phase-dot border-accent bg-accent animate-pulse-subtle;
-  }
-
-  .phase-dot-done {
-    @apply phase-dot border-success bg-success;
-  }
-
-  .phase-dot-error {
-    @apply phase-dot border-danger bg-danger;
-  }
-
   .icon-surface {
     border-radius: var(--radius-control);
     border: 1px solid rgb(var(--fg) / 0.06);
@@ -590,38 +541,6 @@
     @apply rounded-surface border border-border/50 bg-surface/90 p-4;
   }
 
-  .library-shelf {
-    @apply overflow-hidden rounded-surface border border-border/60 bg-surface/90;
-  }
-
-  .library-record-title {
-    @apply text-base font-semibold leading-snug tracking-[-0.02em] text-fg;
-  }
-
-  .library-record-meta {
-    @apply mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm leading-5 text-fg-muted;
-  }
-
-  .library-meta-label {
-    @apply text-2xs font-medium uppercase tracking-[0.14em] text-fg-muted;
-  }
-
-  .library-meta-value {
-    @apply text-base leading-6 text-fg;
-  }
-
-  .library-agent-label {
-    @apply inline-flex items-center gap-2 text-base leading-6 text-fg-secondary;
-  }
-
-  .library-archive-card {
-    @apply relative overflow-hidden rounded-surface border border-border/50 bg-surface/40 p-4 transition-colors;
-  }
-
-  .library-archive-card:hover {
-    @apply bg-surface/60;
-  }
-
   /* 데이터 테이블 (연구 보관함 리스트 뷰) */
   .library-table {
     @apply w-full border-collapse text-left;
@@ -671,22 +590,6 @@
 
   .library-soft-pill {
     @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border/60 bg-bg/40 px-2 py-1 text-2xs text-fg-secondary;
-  }
-
-  .library-archive-card--completed {
-    background-color: rgb(var(--success) / 0.07);
-  }
-
-  .library-archive-card--analyzing {
-    background-color: rgb(var(--accent) / 0.08);
-  }
-
-  .library-archive-card--pending {
-    background-color: rgb(var(--warning) / 0.07);
-  }
-
-  .library-archive-card--error {
-    background-color: rgb(var(--danger) / 0.08);
   }
 }
 
@@ -1005,32 +908,6 @@
     border-radius: var(--radius-control);
   }
 
-  .pdf-toolbar-btn-active {
-    @apply border-accent/20 bg-accent/10 text-accent;
-  }
-
-  .pdf-thumb-panel {
-    width: 7.25rem;
-  }
-
-  .pdf-thumb-item {
-    @apply mb-3 flex w-full flex-col items-center gap-1 border border-transparent px-2 py-2 transition-colors duration-200 hover:border-border/60 hover:bg-surface-hover/75;
-    border-radius: var(--radius-surface);
-  }
-
-  .pdf-thumb-item-active {
-    @apply border-accent/20 bg-accent/10;
-  }
-
-  .pdf-thumb-label {
-    @apply text-2xs font-medium text-fg-muted tabular-nums;
-  }
-
-  .pdf-thumb-canvas {
-    @apply overflow-hidden border border-border/50 bg-surface/70 p-1;
-    border-radius: var(--radius-control);
-  }
-
   .pdf-viewer-shell {
     @apply h-full;
   }
@@ -1175,10 +1052,6 @@
     }
   }
 
-  .figure-stage-grid {
-    grid-template-columns: minmax(0, 1fr) 26rem;
-  }
-
   .figure-modal-inspector {
     background-color: rgb(var(--surface) / 0.96);
   }
@@ -1207,8 +1080,8 @@
    and silently overrides the config's duration cap). */
 
 /* pulseSubtle keyframe + .animate-pulse-subtle utility live solely in
-   tailwind.config.js (opacity-only, single source). `.phase-dot-running`
-   consumes it via @apply animate-pulse-subtle. */
+   tailwind.config.js (opacity-only, single source). No consumer right now —
+   the reduced-motion block still disables it so a future one is covered. */
 
 /* ── Custom titlebar ── */
 
@@ -1293,22 +1166,6 @@
   }
 }
 
-@keyframes sidebarLabelEnter {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes filterItemIn {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 .animate-page-enter {
   animation: pageEnter 0.2s var(--ease-out-strong) both;
 }
@@ -1333,16 +1190,6 @@
   animation: modalSlideUp 0.15s var(--ease-out-strong) both;
 }
 
-.sidebar-label-enter {
-  animation: sidebarLabelEnter 0.15s var(--ease-out-strong) both;
-}
-
-.filter-stagger > *:nth-child(1) { animation: filterItemIn 0.2s var(--ease-out-strong) both; }
-.filter-stagger > *:nth-child(2) { animation: filterItemIn 0.2s var(--ease-out-strong) 0.05s both; }
-.filter-stagger > *:nth-child(3) { animation: filterItemIn 0.2s var(--ease-out-strong) 0.1s both; }
-.filter-stagger > *:nth-child(4) { animation: filterItemIn 0.2s var(--ease-out-strong) 0.15s both; }
-.filter-stagger > *:nth-child(5) { animation: filterItemIn 0.2s var(--ease-out-strong) 0.2s both; }
-
 /* ── Accessibility: reduced motion ── */
 
 @media (prefers-reduced-motion: reduce) {
@@ -1354,8 +1201,6 @@
   .animate-modal-in,
   .animate-backdrop-out,
   .animate-modal-out,
-  .sidebar-label-enter,
-  .filter-stagger > *,
   .animate-pulse-subtle {
     animation: none !important;
   }
