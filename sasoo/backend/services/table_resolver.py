@@ -24,7 +24,8 @@ from services.document_manifest import (
     strip_caption_decoration,
     table_int_to_roman,
 )
-from services.models import MODEL_FLASH_HQ
+from services.model_registry import resolve as resolve_model
+from services.provider_state import key_env_for
 
 logger = logging.getLogger(__name__)
 
@@ -182,17 +183,20 @@ def _grid_to_markdown(grid: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
-async def _repair_with_vlm(candidate: dict[str, Any], manifest: dict[str, Any], paper_dir: Path) -> tuple[list[list[str]], str, float]:
+async def _repair_with_vlm(
+    candidate: dict[str, Any], manifest: dict[str, Any], paper_dir: Path, *, provider: str = "gemini",
+) -> tuple[list[list[str]], str, float]:
     # 표의 격자 복원은 본질적으로 VLM에 의존한다 — `caption_fallback_crop` 후보는 text_grid가
     # 비어 있고, 그 상태로 돌아가면 최종 필터(_has_meaningful_grid)에서 100% 탈락한다.
     # 키가 없거나 호출이 실패했을 때 그 사실이 어디에도 남지 않아, 표가 통째로 사라져도
     # 원인을 알 수 없었다. 429·JSON 파싱 실패·타임아웃이 전부 같은 결과(빈 grid)로 보인다.
-    if not os.environ.get("GEMINI_API_KEY"):
+    key_env = key_env_for(provider)
+    if not os.environ.get(key_env):
         if not _has_meaningful_grid(_normalize_grid(candidate.get("text_grid"))):
             logger.warning(
-                "table resolver: GEMINI_API_KEY가 없어 격자 복원을 건너뛴다 — "
+                "table resolver: %s가 없어 격자 복원을 건너뛴다 — "
                 "이 후보는 격자가 비어 있어 표로 산출되지 못한다 (page=%s, id=%s)",
-                candidate.get("page_number"), candidate.get("id"),
+                key_env, candidate.get("page_number"), candidate.get("id"),
             )
         return (_normalize_grid(candidate.get("text_grid")), "heuristic", 0.0)
 
@@ -211,15 +215,17 @@ async def _repair_with_vlm(candidate: dict[str, Any], manifest: dict[str, Any], 
     }
     try:
         image_bytes = (paper_dir / page["raster_path"]).resolve().read_bytes()
+        _choice = resolve_model("table_resolver", provider)
         result = await call_interaction(
             [
                 {"type": "image", "data": base64.b64encode(image_bytes).decode("ascii"), "mime_type": "image/png"},
                 {"type": "text", "text": json.dumps(prompt, ensure_ascii=False)},
             ],
             lane="pipeline",
-            model=MODEL_FLASH_HQ,
-            # 3.7 Flash는 minimal을 거부한다(400). low가 이 모델의 최저치다.
-            thinking_level="low",
+            model=_choice.model,
+            # effort는 model_registry가 정한다. FLASH_HQ는 minimal을 400으로
+            # 거부하므로 gemini 표의 값이 low다(services/test_model_registry.py).
+            thinking_level=_choice.effort,
             store=False,
         )
         payload = json.loads(_clean_llm_json(result["text"]))
@@ -240,6 +246,7 @@ async def resolve_table_candidates(
     paper_dir: Path,
     resolver_version: str,
     page_numbers: set[int] | None = None,
+    provider: str = "gemini",
 ) -> dict[str, Any]:
     captions_by_id = {
         caption["id"]: caption
@@ -319,7 +326,10 @@ async def resolve_table_candidates(
     repair_targets = [item for item in prepared if item["needs_vlm_repair"] and not item["skip"]]
     if repair_targets:
         repair_results = await asyncio.gather(
-            *[_repair_with_vlm(item["candidate"], manifest, paper_dir) for item in repair_targets]
+            *[
+                _repair_with_vlm(item["candidate"], manifest, paper_dir, provider=provider)
+                for item in repair_targets
+            ]
         )
         for item, result in zip(repair_targets, repair_results):
             item["repair_result"] = result

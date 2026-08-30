@@ -43,6 +43,9 @@ PRICING: dict[str, dict[str, float]] = {
     "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
     "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
     "claude-sonnet-4-5-20250929": {"input": 3.00, "output": 15.00},
+
+    # --- OpenAI 텍스트 (provider 중립화 — 단가는 2026-08-05 공식 페이지 확인값) ---
+    "gpt-5.6-luna": {"input": 0.20, "output": 1.20},
 }
 
 
@@ -82,14 +85,24 @@ IMAGE_PRICING: dict[str, float] = {
 }
 
 _FALLBACK = "gemini-3-flash-preview"
+_FALLBACK_OPENAI = "gpt-5.6-luna"
+
+
+def _fallback_for(model: str) -> str:
+    """미등록 모델의 폴백 단가 — provider를 넘어가는 오산 금지(스펙 R7-1)."""
+    return _FALLBACK_OPENAI if model.startswith("gpt-") else _FALLBACK
 
 
 def _rate(model: str, as_of: date) -> dict[str, float]:
-    """기준일에 유효한 (input, output) 단가."""
+    """기준일에 유효한 (input, output) 단가.
+
+    폴백은 공급사별로 갈린다 — gpt-* 를 Gemini 단가로 계산하면 비용이 조용히
+    오산된다(스펙 R7-1, services/test_pricing.py가 잠근다).
+    """
     intro = INTRO_PRICING.get(model)
     if intro is not None and as_of <= intro.through:
         return {"input": intro.input, "output": intro.output}
-    return PRICING.get(model, PRICING[_FALLBACK])
+    return PRICING.get(model) or PRICING[_fallback_for(model)]
 
 
 def calc_cost(

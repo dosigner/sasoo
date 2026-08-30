@@ -10,6 +10,7 @@ Phases:
 """
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -64,6 +65,7 @@ from services.odl_parser import (
 from services.analysis_results import (
     get_latest_completed_phase_row,
     get_latest_completed_phase_rows,
+    parse_phase_row,
 )
 from services.artifact_status import resolve_artifact_status_contract
 from services.concurrency import run_chat_blocking, run_pipeline_blocking
@@ -86,17 +88,19 @@ from api.analysis_helpers import (
     salvage_truncated_json,
     _SYSTEM_INSTRUCTION_KO,
 )
-from services.models import (
-    MODEL_SCREENING,
-    MODEL_CITATION,
-    MODEL_VISUAL,
-    MODEL_RECIPE,
-    MODEL_DEEP_DIVE,
-    MODEL_VIZ_PLANNING,
-    MODEL_MERMAID,
-    MODEL_CHAT,
-    MODEL_FLASH_HQ,
+# 이 세 상수는 캐시 키 빌더(_citation_cache_key, _visualization_cache_key)에만
+# 남는다. 스테이지의 모델/effort는 model_registry가 정하지만, 그 두 키는
+# _phase_cache_key를 거치지 않는 바깥 캐시라서 "Gemini 모델을 갈면 무효화"를
+# 스스로 담아야 한다. 공급사 격리는 compute_input_hash(provider/model/effort)가
+# 따로 하므로 역할이 겹치지 않는다. 테스트가 patch.object로 이 이름을 덮는다.
+from services.models import MODEL_CITATION, MODEL_MERMAID, MODEL_VIZ_PLANNING
+from services.model_registry import (
+    ModelChoice,
+    active_provider,
+    provider_for_role,
+    resolve as resolve_model,
 )
+from services.provider_state import key_env_for
 from api.report_service import (
     _format_phase_data,
     _generate_paperbanana_image,
@@ -139,10 +143,21 @@ async def _get_visual_row_counts(paper_id: int) -> tuple[int, int]:
     return int(row["figure_count"] or 0), int(row["table_count"] or 0)
 
 
-async def _get_cached_phase_result(paper_id: int, phase: str, input_text: str) -> Optional[dict]:
-    cached = await find_cached_phase_result(paper_id, phase, input_text)
+async def _get_cached_phase_result(
+    paper_id: int,
+    phase: str,
+    input_text: str,
+    *,
+    provider: str | None = None,
+    model: str | None = None,
+    effort: str | None = None,
+) -> Optional[dict]:
+    cached = await find_cached_phase_result(
+        paper_id, phase, input_text, provider=provider, model=model, effort=effort,
+    )
     if cached is None:
         return None
+    fallback_hash = compute_input_hash(input_text, provider=provider, model=model, effort=effort)
     await execute_insert(
         """
         INSERT INTO analysis_cache_events
@@ -152,7 +167,7 @@ async def _get_cached_phase_result(paper_id: int, phase: str, input_text: str) -
         (
             paper_id,
             phase,
-            cached.input_hash or compute_input_hash(input_text),
+            cached.input_hash or fallback_hash,
             cached.model_used or "cached",
             cached.cost_usd or 0.0,
             cached.tokens_in or 0,
@@ -165,9 +180,105 @@ async def _get_cached_phase_result(paper_id: int, phase: str, input_text: str) -
         "tokens_in": cached.tokens_in,
         "tokens_out": cached.tokens_out,
         "cost_usd": cached.cost_usd,
-        "input_hash": cached.input_hash or compute_input_hash(input_text),
+        "input_hash": cached.input_hash or fallback_hash,
         "result_id": cached.result_id,
     }
+
+
+def _config_hash(provider: str | None, model: str | None, effort: str | None) -> str:
+    """(provider, model, effort) 지문 — 문서 내용을 포함하지 않는다.
+
+    Task 11(스펙 §D 2단계 조회)의 stage-1 키. input_hash는 문서 전체를 포함해
+    GET 상태 조회 시점에 재구성하려면 프롬프트 전체를 다시 만들어야 한다(비용
+    큰 중복). 이 지문은 그 비용 없이 "이 설정으로 이미 분석해본 적이 있는가"만
+    싸게 판정하기 위한 의도적 단순화다 — 문서가 바뀐 경우까지는 잡지 못하지만,
+    Task 6이 바꾼 캐시 키(provider/model/effort)의 후속 조치인 이 배지 기능의
+    범위 안에서는 충분하다. compute_input_hash(input_text="")의 퇴화형이라
+    별도 해시 스킴을 새로 만들지 않는다.
+    """
+    return compute_input_hash("", provider=provider, model=model, effort=effort)
+
+
+def _stale_model_for_row(row: dict, current_hash: str, current_model: str) -> Optional[str]:
+    """phase의 최신 행 하나(row)만 보고 stale_model을 판정한다(추가 조회 없음, 순수함수).
+
+    - config_hash가 있고 current_hash와 같으면: 이 설정으로 이미 분석해본 적이
+      있다는 뜻 -> stale 아님(None).
+    - config_hash가 있고 다르면(config_hash 컬럼 도입 이후 행인데 지금 설정과
+      다름 — effort만 바뀐 경우 포함): stale, 옛 model_used를 그대로 싣는다
+      (스펙 §D — 캐시 키가 다르면 다른 결과다).
+    - config_hash가 NULL이면: config_hash 컬럼은 additive 마이그레이션이라 그
+      이전에 쓰인 행은 전부 NULL이다 — 이 경우 "다른 설정으로 분석됨"을 판단할
+      근거가 model_used뿐이므로, 옛 model_used를 현재 모델명과 직접 비교한다.
+      같으면 stale 아님(리뷰 Important I1 — 안 그러면 아무것도 안 바꾼 사용자의
+      기존 분석 전부에 "다른 모델로 분석됨" 배지가 상시 오탐된다), 다르면 stale.
+    """
+    config_hash = row.get("config_hash")
+    if config_hash is not None:
+        return None if config_hash == current_hash else row.get("model_used")
+    return None if row.get("model_used") == current_model else row.get("model_used")
+
+
+async def _lookup_phase_result_with_staleness(
+    paper_id: int,
+    phase: str,
+    current_hash: str,
+    current_model: str,
+    *,
+    latest_row: Optional[dict] = None,
+) -> Optional[dict]:
+    """phase 결과의 2단계 조회(스펙 §D) + 레거시 행 오탐 수정(I1) + 폴링 부하 완화(I2).
+
+    latest_row: 호출측이 이미 들고 있는 이 phase의 최신 analysis_results 행
+    (예: get_latest_completed_phase_rows가 SELECT *로 이미 가져온 dict — 거기엔
+    config_hash·model_used가 이미 있다). 넘기면 이 함수는 DB를 전혀 조회하지
+    않고 그 값만으로 stale을 판정한다 — /status가 2초 간격으로 폴링하며
+    phase마다 최대 2쿼리씩 태우던 부하(리뷰 Important I2)를 없앤다. 대가로
+    "최신 행은 다른 설정인데 그보다 오래된 행 중 현재 설정과 일치하는 게
+    있는가"(stage-1의 전체 이력 매치)는 더 보지 않는다 — 최신 행 하나만 본다.
+    None이면(호출측에 미리 가져온 행이 없으면) 아래 2단계 DB 조회로 폴백한다.
+
+    1. 현재 (provider, model, effort) 지문(config_hash)으로 조회 → 히트하면
+       이 설정으로 이미 분석해본 적이 있다는 뜻이라 stale_model=None으로 그대로
+       쓴다.
+    2. 미스면 phase의 최신 행을 stale_model과 함께 돌려준다 — "다른 모델로
+       분석됨" 배지 + 재분석 안내(get_analysis_status)의 데이터 소스. 행이
+       아예 없으면 None. stale_model 판정은 _stale_model_for_row를 공유한다
+       (레거시 행 NULL config_hash 처리 포함).
+    """
+    if latest_row is not None:
+        parsed = dict(latest_row)
+        parsed["stale_model"] = _stale_model_for_row(parsed, current_hash, current_model)
+        return parsed
+
+    row = await fetch_one(
+        """
+        SELECT * FROM analysis_results
+        WHERE paper_id = ? AND phase = ? AND config_hash = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        """,
+        (paper_id, phase, current_hash),
+    )
+    if row is not None:
+        parsed = parse_phase_row(row)
+        parsed["stale_model"] = None
+        return parsed
+
+    latest = await fetch_one(
+        """
+        SELECT * FROM analysis_results
+        WHERE paper_id = ? AND phase = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        """,
+        (paper_id, phase),
+    )
+    if latest is None:
+        return None
+    parsed = parse_phase_row(latest)
+    parsed["stale_model"] = _stale_model_for_row(parsed, current_hash, current_model)
+    return parsed
 
 
 # 게이트가 applicable=False로 스킵하기 전 요구하는 최소 확신도(잠정값 0.6 — e2e 분포로 재조정).
@@ -355,6 +466,10 @@ async def _insert_analysis_result(
     cost_usd: float,
     input_text: str,
     interaction_id: str | None = None,
+    *,
+    provider: str | None = None,
+    model: str | None = None,
+    effort: str | None = None,
 ) -> int:
     """analysis_results에 결과를 저장하고 lastrowid를 반환한다.
 
@@ -364,8 +479,8 @@ async def _insert_analysis_result(
     return await execute_insert(
         """
         INSERT INTO analysis_results
-            (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd, input_hash, interaction_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd, input_hash, interaction_id, config_hash)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             paper_id,
@@ -375,8 +490,9 @@ async def _insert_analysis_result(
             tokens_in,
             tokens_out,
             cost_usd,
-            compute_input_hash(input_text),
+            compute_input_hash(input_text, provider=provider, model=model, effort=effort),
             interaction_id,
+            _config_hash(provider, model, effort),
         ),
     )
 
@@ -496,7 +612,26 @@ _CITATION_SCHEMA = {
 }
 
 
-async def _run_screening(paper_id: int, screening_input: str, status: AnalysisStatus) -> dict:
+def _result_cost(result: dict) -> float:
+    """LLM 호출 결과 하나의 USD 비용을 계산한다(R7-3).
+
+    재시도가 있었던 결과는 tokens_in/tokens_out이 이미 attempt 합산값이라
+    (사용량 표시를 위해 유지) calc_cost(model, tokens_in, tokens_out)을 그대로
+    호출하면 마지막 attempt 단가가 합산 토큰 전체에 적용돼 앞선 attempt 비용이
+    이중 계산되거나(평면 단가) 장문 임계값이 잘못 적용된다(단가 구간 있는
+    모델). 재시도 게이트가 attempt별로 미리 계산해 둔 총비용
+    (result["cost_usd_prior_attempts"])이 있으면 그 값을 그대로 쓰고,
+    없으면(재시도가 없었던 결과) 평소대로 단일 attempt 비용을 계산한다.
+    """
+    prior_total = result.get("cost_usd_prior_attempts")
+    if prior_total is not None:
+        return prior_total
+    return calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
+
+
+async def _run_screening(
+    paper_id: int, screening_input: str, status: AnalysisStatus, *, provider: str = "gemini",
+) -> dict:
     """Phase 1: Screening - classify domain, score relevance, extract topics."""
     phase_status = PhaseStatus(
         phase=AnalysisPhase.SCREENING,
@@ -530,10 +665,18 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
 불확실하면 applicable을 성급히 false로 두지 말고 confidence를 낮춰.
 """
 
+    choice = resolve_model("screening", provider)
+    # 두 메커니즘을 함께 쓴다. _phase_cache_key는 _CHAIN_CACHE_VERSION을 담아
+    # 체인 프롬프트를 바꿀 때 전 캐시를 한 번에 무효화하고(main #47),
+    # compute_input_hash의 provider/model/effort는 공급사별 결과를 격리한다.
+    # model/effort가 양쪽에 이중으로 들어가지만 해시 입력이 늘 뿐 무해하다.
+    # 한쪽만 남기면 버전 무효화 또는 공급사 격리가 조용히 사라진다.
     cache_key = _phase_cache_key(
-        model=MODEL_SCREENING, thinking="minimal", system_instruction="", prompt=prompt,
+        model=choice.model, thinking=choice.effort or "", system_instruction="", prompt=prompt,
     )
-    cached = await _get_cached_phase_result(paper_id, "screening", cache_key)
+    cached = await _get_cached_phase_result(
+        paper_id, "screening", cache_key, provider=provider, model=choice.model, effort=choice.effort,
+    )
     if cached is not None:
         phase_status.status = "completed"
         phase_status.completed_at = _utcnow_iso()
@@ -551,8 +694,8 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
         return await call_interaction(
             prompt,
             lane="pipeline",
-            model=MODEL_SCREENING,
-            thinking_level="minimal",
+            model=choice.model,
+            thinking_level=choice.effort,
             response_schema=_SCREENING_SCHEMA,
             store=False,
         )
@@ -573,7 +716,15 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
                 defect, result.get("tokens_out"),
             )
             retry = await _invoke()
-            # 재시도 사용량을 합산해 비용 추적이 실사용을 반영하게 한다
+            # 재시도 사용량은 attempt별로 비용을 계산해 합산한다(R7-3) — 토큰을
+            # 합쳐 한 번에 계산하면 장문 임계값이 잘못 적용되거나(단가 구간 있는
+            # 모델) 이후 tokens_in/out 합산과 겹쳐 비용이 이중 계산된다.
+            retry["cost_usd_prior_attempts"] = calc_cost(
+                result["model"], result.get("tokens_in") or 0, result.get("tokens_out") or 0,
+            ) + calc_cost(
+                retry["model"], retry.get("tokens_in") or 0, retry.get("tokens_out") or 0,
+            )
+            # 사용량 표시(tokens_in/out)는 실사용 총량이 맞으므로 토큰 합산은 유지한다.
             retry["tokens_in"] = (result.get("tokens_in") or 0) + (retry.get("tokens_in") or 0)
             retry["tokens_out"] = (result.get("tokens_out") or 0) + (retry.get("tokens_out") or 0)
             result = retry
@@ -589,7 +740,7 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
         logger.warning("Phase 1 JSON validation failed: %s", exc)
         result["text"] = json.dumps({"_raw": cleaned_text, "_parse_error": str(exc)})
 
-    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
+    cost = _result_cost(result)
 
     # Store in DB
     await _insert_analysis_result(
@@ -602,6 +753,9 @@ async def _run_screening(paper_id: int, screening_input: str, status: AnalysisSt
         cost,
         cache_key,
         interaction_id=result.get("interaction_id"),
+        provider=provider,
+        model=choice.model,
+        effort=choice.effort,
     )
 
     # Update status
@@ -680,6 +834,8 @@ async def _run_citation(
     citation_references: str,
     paper_authors: str,
     status: AnalysisStatus,
+    *,
+    provider: str = "gemini",
 ) -> dict:
     """Phase 2: Citation Analysis - parse references, count citation frequency, analyze roles."""
     phase_status = PhaseStatus(
@@ -689,6 +845,8 @@ async def _run_citation(
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.CITATION
+
+    choice = resolve_model("citation", provider)
 
     # --- Step 1: Parse references and count citations locally ---
     from services.citation_analyzer import analyze_citations
@@ -747,7 +905,9 @@ async def _run_citation(
 """
 
         cache_key = _citation_cache_key(local_result, citation_body)
-        cached = await _get_cached_phase_result(paper_id, "citation", cache_key)
+        cached = await _get_cached_phase_result(
+            paper_id, "citation", cache_key, provider=provider, model=choice.model, effort=choice.effort,
+        )
         if cached is not None:
             phase_status.status = "completed"
             phase_status.completed_at = _utcnow_iso()
@@ -765,8 +925,8 @@ async def _run_citation(
             result = await call_interaction(
                 llm_prompt,
                 lane="pipeline",
-                model=MODEL_CITATION,
-                thinking_level="low",
+                model=choice.model,
+                thinking_level=choice.effort,
                 response_schema=_CITATION_SCHEMA,
                 store=False,
             )
@@ -839,7 +999,9 @@ async def _run_citation(
     )
 
     if not top_refs:
-        cached = await _get_cached_phase_result(paper_id, "citation", input_hash_source)
+        cached = await _get_cached_phase_result(
+            paper_id, "citation", input_hash_source, provider=provider, model=choice.model, effort=choice.effort,
+        )
         if cached is not None:
             phase_status.status = "completed"
             phase_status.completed_at = _utcnow_iso()
@@ -864,6 +1026,9 @@ async def _run_citation(
         phase_status.tokens_out or 0,
         cost,
         input_hash_source,
+        provider=provider,
+        model=choice.model,
+        effort=choice.effort,
     )
 
     phase_status.status = "completed"
@@ -878,8 +1043,14 @@ async def _run_citation(
 # Stateful chain: Visual -> Recipe -> Deep Dive -> Viz planning (MODEL_FLASH_HQ)
 # ---------------------------------------------------------------------------
 
-# 단계별 thinking_level (visual=low, recipe=medium, deep_dive=high, visualization=medium)
-_STAGE_THINKING = {"visual": "low", "recipe": "medium", "deep_dive": "high", "visualization": "medium"}
+# 체인 스테이지 이름과 레지스트리 role의 번역표.
+# "visualization"(파이프라인 내부 명)만 레지스트리 role "viz_planning"과 다르다.
+_PHASE_TO_ROLE = {
+    "visual": "visual",
+    "recipe": "recipe",
+    "deep_dive": "deep_dive",
+    "visualization": "viz_planning",
+}
 
 # 폭주 반복이 뚫렸을 때의 손해 상한. 스키마 쪽 조치(마지막 속성을 숫자로)가 1차
 # 방어고, 이건 그게 뚫려도 비용이 유한하게 끝나도록 하는 2차 방어다.
@@ -889,15 +1060,22 @@ _STAGE_THINKING = {"visual": "low", "recipe": "medium", "deep_dive": "high", "vi
 # medium thinking이 실측 600~4,000이라 24,000이면 본문에 최소 20,000이 남는다.
 # 상한에 걸리면 status가 incomplete로 오고 꼬리가 잘리는데, 그건 이미
 # salvage_truncated_json이 값 경계에서 되살린다.
-# 잠금: api/test_recipe_output_bounds.py
-_STAGE_MAX_OUTPUT_TOKENS = {"recipe": 24_000}
+# deep_dive 16,000의 값 근거(2026-08-29 실측, RESEARCH/2026-08-29-provider-chain-token-convergence.md):
+# 정상 최대 출력이 8,734(luna xhigh), Gemini 정상은 2,840~6,946이었다. VLA 6편 실측에서
+# Gemini deep_dive가 high thinking에서도 4/6 폭주했고, 이 상한이 폭주당 손해를
+# $0.26에서 $0.06으로 막는 것을 실증했다.
+# 잠금: api/test_recipe_output_bounds.py, api/test_deep_dive_schema.py,
+#      services/test_model_pins.py
+_STAGE_MAX_OUTPUT_TOKENS = {"recipe": 24_000, "deep_dive": 16_000}
 
-_STAGE_MODELS = {
-    "visual": MODEL_VISUAL,
-    "recipe": MODEL_RECIPE,
-    "deep_dive": MODEL_DEEP_DIVE,
-    "visualization": MODEL_VIZ_PLANNING,
-}
+# _STAGE_THINKING과 _STAGE_MODELS는 model_registry가 대체했다(provider x role).
+# 스테이지의 모델/effort는 _stage_choice()로만 구한다 — 두 출처를 두면 provider가
+# openai일 때 캐시 키와 실제 호출이 어긋난다.
+
+
+def _stage_choice(phase: str, provider: str) -> ModelChoice:
+    return resolve_model(_PHASE_TO_ROLE[phase], provider)
+
 
 _VISUAL_SCHEMA = {
     "type": "object",
@@ -968,19 +1146,46 @@ _RECIPE_SCHEMA = {
     "required": ["title", "objective", "parameters", "steps"],
 }
 
+# detailed_analysis("여러 문단" 자유서술)를 경계 있는 구조화 필드로 분해했다.
+# DEC-014가 지목한 폭주 유형(긴 자유서술)을 없애면서 문제정의·as-is/to-be·솔루션·
+# method·result가 결과 JSON에서 바로 드러나게 한다. 잠금: api/test_deep_dive_schema.py
 _DEEP_DIVE_SCHEMA = {
     "type": "object",
     "properties": {
-        "detailed_analysis": {"type": "string"},
-        "strengths": {"type": "array", "items": {"type": "string"}},
-        "weaknesses": {"type": "array", "items": {"type": "string"}},
+        "problem_definition": {"type": "string"},
+        "as_is": {"type": "string"},
+        "to_be": {"type": "string"},
+        "solution": {"type": "string"},
+        "method_summary": {"type": "string"},
+        "key_results": {"type": "string"},
         "novelty_assessment": {"type": "string"},
         "comparison_to_prior_work": {"type": "string"},
+        # "논문 자체 비교 범위 안의 평가"라는 한정을 본문 문구가 아니라 이 필드가 나른다.
+        # 2026-08-29 VLA 실측에서 그 한정 문구를 본문에 "명시해"라고 요구했더니 모델이
+        # 그 문구를 무한 반복하며 폭주했다(4/6). 정형 문구는 enum으로 옮기는 것이 원칙.
+        "comparison_scope": {"type": "string", "enum": ["in_paper_only"]},
+        "strengths": {"type": "array", "items": {"type": "string"}},
+        "weaknesses": {"type": "array", "items": {"type": "string"}},
         "suggested_improvements": {"type": "array", "items": {"type": "string"}},
         "follow_up_questions": {"type": "array", "items": {"type": "string"}},
+        # 마지막 속성을 자유서술 단일 문자열로 두지 않는다(폭주 자리 방지, DEC-014).
         "practical_applications": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["detailed_analysis", "strengths", "weaknesses"],
+    # as_is·to_be만 required에서 뺀다. 이 둘은 논문에 그 구도가 아예 없을 수 있어
+    # (이론·리뷰 논문) 강제하면 모델이 지어낸다. 나머지는 논문 내용을 옮기는 칸이
+    # 아니라 모델이 분석해서 쓰는 칸이라 지어내기 위험이 낮다.
+    #
+    # 아래 5필드는 2026-08-29 실측에서 Gemini가 4/4로 통째 생략했다(폭주 없이
+    # 정상 완료한 실행에서도 9/14). Luna는 같은 조건에서 14/14를 냈다. 프롬프트로
+    # 요청만 하면 provider별 준수율이 갈리고, required는 양쪽 다 지킨다 —
+    # 수렴은 지시문이 아니라 스키마로 만든다(DEC-020).
+    # 잠금: api/test_deep_dive_schema.py
+    "required": [
+        "problem_definition", "solution", "method_summary", "key_results",
+        "strengths", "weaknesses", "comparison_scope",
+        "novelty_assessment", "comparison_to_prior_work",
+        "suggested_improvements", "follow_up_questions", "practical_applications",
+    ],
 }
 
 _DEEP_DIVE_INSTRUCTION = """이 논문에 대한 심층 분석을 해줘. 전문적이면서도 이해하기 쉽게,
@@ -990,13 +1195,27 @@ _DEEP_DIVE_INSTRUCTION = """이 논문에 대한 심층 분석을 해줘. 전문
 - 논문 PDF(또는 논문 텍스트)가 최우선 근거야. 앞선 단계(시각·레시피·스크리닝·인용) 결과는
   탐색용 힌트일 뿐이니, 논문에서 직접 확인한 내용만 사실로 서술해.
 - 강점·약점에는 근거가 된 논문 위치(섹션/그림/표)를 함께 적어.
-- novelty_assessment와 comparison_to_prior_work는 논문이 스스로 제시한 비교 범위 안의
-  평가임을 명시해 — 외부 문헌 검증은 하지 않았어.
+- novelty_assessment와 comparison_to_prior_work는 논문이 스스로 제시한 비교 범위 안에서만
+  평가하고, 외부 문헌과 대조하지 마. 이 한정은 comparison_scope 필드가 표시하니
+  본문에 같은 문구를 반복해 적지 마.
 - 논문에 없는 반례·실험·선행연구를 만들어내지 마.
+- 빈 문자열로 둘 수 있는 필드는 as_is와 to_be 둘뿐이야(그 구도가 없는 논문이 있으니까).
+  나머지 필드는 전부 채워. 논문 근거가 얇으면 얇은 대로 짧게 쓰되, 비우지는 마.
 
-출력 필드: detailed_analysis(기여도·방법론·결과 상세 분석, 여러 문단), strengths(강점 리스트),
-weaknesses(약점 리스트), novelty_assessment(새로움 평가), comparison_to_prior_work(기존 연구 대비 비교),
-suggested_improvements(개선 제안 리스트), follow_up_questions(후속 질문 리스트), practical_applications(실용적 응용 리스트)."""
+출력 필드:
+- problem_definition: 논문이 풀려는 문제가 무엇이고 왜 중요한지 (2~4문장)
+- as_is: 기존 접근이 어디까지 왔고 무엇이 부족한지. 이런 구도가 없는 논문이면 빈 문자열 (2~3문장)
+- to_be: 이 논문이 도달하려는 상태나 목표. 구도가 없으면 빈 문자열 (1~2문장)
+- solution: 문제를 푸는 핵심 아이디어와 그 아이디어가 통하는 이유 (2~4문장)
+- method_summary: 방법의 서술형 요약. 실험 논문은 절차의 흐름, 이론 논문은 유도의 뼈대,
+  시뮬레이션 논문은 모델과 설정, 리뷰 논문은 문헌 선정·분류 기준을 중심으로 (1~2문단)
+- key_results: 핵심 결과. 수치와 조건은 논문에 적힌 그대로 옮겨 (1~2문단)
+- novelty_assessment: 새로움 평가
+- comparison_to_prior_work: 기존 연구 대비 비교
+- comparison_scope: 항상 "in_paper_only"로 채워(위 두 평가가 논문 자체 비교 범위 기준이라는 표시)
+- strengths: 강점 리스트 / weaknesses: 약점 리스트
+- suggested_improvements: 개선 제안 리스트 / follow_up_questions: 후속 질문 리스트 /
+  practical_applications: 실용적 응용 리스트"""
 
 
 def _stateless_digest(screening_result_text: str, citation_result_text: str) -> str:
@@ -1096,6 +1315,84 @@ def _build_persona_prompt(agent, stage: str | None = None) -> str:
     return "\n\n".join(p.strip() for p in (desc, overlay) if p and p.strip())
 
 
+# OpenAI 텍스트 체인(doc_text) 주입 상한. Task 0 스파이크 실측: 논문 전체 텍스트를
+# 프롬프트에 그대로 실었을 때 관측된 입력 토큰 최대치는 80,882(gpt-5.6-luna 계열
+# 기준). 문자:토큰 비율은 언어·인코딩에 따라 흔들릴 수 있어 실측치보다 넉넉한
+# 150,000자를 상한으로 둔다 — 대부분의 논문은 절단 없이 통과시키면서, 극단적으로
+# 긴 논문에서도 프롬프트가 무한정 커지지 않도록 안전판을 둔다(리뷰 Critical 수정).
+_OPENAI_DOC_TEXT_CHAR_LIMIT = 150_000
+
+# OpenAI 체인 첫 호출(visual)에 별도 첨부하는 그림 이미지 장수 상한(스펙 R1).
+# OpenAI는 PDF 파트를 못 보므로(doc_text 텍스트 주입만) 그림은 이미지 파트로 직접
+# 붙여야 "그림을 봤다"가 참이 된다. 무한정 붙이면 요청이 무거워지므로 상한을 둔다.
+_OPENAI_VISUAL_IMAGE_LIMIT = 8
+
+# figure_service.py의 단일 그림 이미지 mime 추정과 같은 표 — 그림 추출이 사실상
+# PNG만 만들지만(figure_resolver.py) 과거 자산·수동 업로드 대비 나머지도 인식한다.
+_IMAGE_MIME_BY_SUFFIX = {
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".gif": "image/gif", ".webp": "image/webp",
+}
+
+
+async def _load_openai_figure_parts(paper_id: int, paper_dir: Path) -> list[dict]:
+    """OpenAI visual 첫 호출에 첨부할 그림 이미지 파트를 만든다(리뷰 Important I3).
+
+    스펙 R1: "visual 스테이지는 추출된 그림 이미지 파트를 별도 첨부한다." OpenAI
+    경로는 document 파트를 지원하지 않아(_translate_parts) PDF를 못 보므로,
+    doc_text 텍스트 주입만으로는 프롬프트의 "PDF를 직접 보고"가 거짓이 된다 — 이
+    함수가 그 간극을 메운다. 최대 _OPENAI_VISUAL_IMAGE_LIMIT장만 읽는다. 개별
+    그림 파일이 없거나 읽기 실패하면 그 그림만 건너뛰고 경고 로그를 남긴다 —
+    분석 전체를 막지 않는다.
+    """
+    rows = await fetch_all(
+        """
+        SELECT file_path FROM figures
+        WHERE paper_id = ?
+          AND COALESCE(extraction_status, 'resolved') != 'rejected'
+          AND file_path IS NOT NULL AND file_path != ''
+        ORDER BY id ASC
+        LIMIT ?
+        """,
+        (paper_id, _OPENAI_VISUAL_IMAGE_LIMIT),
+    )
+    parts: list[dict] = []
+    for row in rows:
+        file_path = row.get("file_path")
+        if not file_path:
+            continue
+        candidate = Path(file_path)
+        resolved = candidate if candidate.is_absolute() else (paper_dir / candidate)
+        try:
+            image_bytes = resolved.read_bytes()
+        except OSError as exc:
+            logger.warning(
+                "OpenAI visual figure image load failed (paper %s, %s): %s",
+                paper_id, resolved, exc,
+            )
+            continue
+        mime_type = _IMAGE_MIME_BY_SUFFIX.get(resolved.suffix.lower(), "image/png")
+        parts.append({
+            "type": "image",
+            "data": base64.b64encode(image_bytes).decode("ascii"),
+            "mime_type": mime_type,
+        })
+    return parts
+
+
+def _doc_reference_phrase(provider: str) -> str:
+    """체인 프롬프트가 가리키는 입력 소스 문구(리뷰 Important I3).
+
+    Gemini 체인은 PDF 파일을 실제로 첨부하므로 "위 논문 PDF"가 사실이다. OpenAI
+    체인은 PDF를 못 보고(document 파트 미지원) 로컬 추출 텍스트 + (visual 스테이지
+    한정) 그림 이미지 파트만 받으므로, 그대로 "PDF"라고 쓰면 거짓 지시문이 된다 —
+    각 호출부가 이 함수로 provider에 맞는 문구를 골라 쓴다.
+    """
+    if provider == "openai":
+        return "위 논문 본문 텍스트(첫 단계에 첨부된 그림 이미지 포함)"
+    return "위 논문 PDF"
+
+
 async def _run_chain_stage(
     *,
     phase: str,
@@ -1106,23 +1403,43 @@ async def _run_chain_stage(
     pdf_uri: Optional[str],
     response_schema: dict,
     restart_context: str = "",
+    provider: str = "gemini",
+    doc_text: str = "",
+    figure_parts: Optional[list[dict]] = None,
 ) -> dict:
     """체인/폴백 모드에 맞춰 call_interaction을 호출한다.
 
-    - pdf_uri 있음(체인 모드): store=True. 체인 첫 호출(previous_interaction_id None)만
-      PDF 문서를 input에 포함하고, 이후 스테이지는 지시문만 보내 서버 상태를 신뢰한다.
-      단, 중간 스테이지 캐시 히트/스킵으로 previous_interaction_id가 유실된 체인 재시작
-      케이스에는 restart_context(이전 스테이지 결과 텍스트)를 PDF와 함께 프롬프트에 실어
-      서버 상태 단절로 잃은 이전 분석 컨텍스트를 복원한다.
-    - pdf_uri 없음(폴백): stateless(store=False). 기존 phase_inputs 텍스트를 프롬프트에 삽입한다.
+    - pdf_uri 있음(Gemini 체인 모드): store=True. 체인 첫 호출(previous_interaction_id
+      None)만 PDF 문서를 input에 포함하고, 이후 스테이지는 지시문만 보내 서버 상태를
+      신뢰한다. 단, 중간 스테이지 캐시 히트/스킵으로 previous_interaction_id가 유실된
+      체인 재시작 케이스에는 restart_context(이전 스테이지 결과 텍스트)를 PDF와 함께
+      프롬프트에 실어 서버 상태 단절로 잃은 이전 분석 컨텍스트를 복원한다. figure_parts는
+      이 경로에서 쓰지 않는다(Gemini는 PDF에서 직접 그림을 본다).
+    - doc_text 있음(OpenAI 체인 모드, 스펙 R1): store=True. OpenAI는 document 파트를
+      지원하지 않아 PDF 업로드 대신 로컬 추출 텍스트를 체인 첫 호출에 1회 주입하고,
+      이후 스테이지는 pdf_uri 체인과 동일하게 지시문만 보내 서버 상태를 신뢰한다.
+      restart_context 복원 경로도 pdf_uri 체인과 동일하게 적용된다. 주입 라벨은 실제
+      절단 여부를 그대로 알린다 — doc_text 길이가 _OPENAI_DOC_TEXT_CHAR_LIMIT 이상이면
+      "절단" 라벨, 아니면 "전문" 라벨(호출측이 이미 그 상한으로 잘라 넘긴다). 체인 첫
+      호출(previous_interaction_id None)에 figure_parts가 있으면 이미지 파트들을
+      텍스트 파트 앞에 붙여 contents를 리스트로 조립한다(스펙 R1 — visual 스테이지가
+      추출된 그림을 별도 첨부). 이미지가 없으면(빈 리스트/None) 기존처럼 문자열
+      그대로 보낸다. 후속 스테이지(previous_interaction_id 있음)는 figure_parts를
+      받아도 무시한다 — 서버가 이미 첫 호출에서 본 이미지를 기억한다.
+    - 둘 다 없음(폴백): stateless(store=False). 기존 phase_inputs 텍스트를 프롬프트에
+      삽입한다.
+
+    pdf_uri와 doc_text는 상호 배타다(Gemini는 PDF 파트, OpenAI는 텍스트 주입만 쓴다).
 
     결과 텍스트가 JSON 파싱 불가이거나, 파싱은 되지만 필드 값이 반복 루프
     (degenerate repetition)에 오염됐으면 1회 재시도한다(재시도도 실패하면
     그대로 반환 — 기존 `_raw`/`_parse_error` 경로가 처리).
     """
+    if pdf_uri and doc_text:
+        raise ValueError("pdf_uri(Gemini 체인)와 doc_text(OpenAI 체인)는 동시 사용 불가")
 
     async def _invoke() -> dict:
-        if pdf_uri:
+        if pdf_uri or doc_text:
             if previous_interaction_id is None:
                 chain_text = prompt_chain
                 if restart_context:
@@ -1130,29 +1447,42 @@ async def _run_chain_stage(
                         f"{prompt_chain}\n\n"
                         f"이전 분석 단계 결과(체인 재시작으로 복원):\n{restart_context}"
                     )
-                contents = [
-                    {"type": "document", "uri": pdf_uri, "mime_type": "application/pdf"},
-                    {"type": "text", "text": chain_text},
-                ]
+                if pdf_uri:
+                    contents = [
+                        {"type": "document", "uri": pdf_uri, "mime_type": "application/pdf"},
+                        {"type": "text", "text": chain_text},
+                    ]
+                else:
+                    if len(doc_text) >= _OPENAI_DOC_TEXT_CHAR_LIMIT:
+                        doc_label = f"[논문 본문({_OPENAI_DOC_TEXT_CHAR_LIMIT:,}자 절단)]"
+                    else:
+                        doc_label = "[논문 전문]"
+                    text_content = f"{doc_label}\n{doc_text}\n\n{chain_text}"
+                    if figure_parts:
+                        contents = [*figure_parts, {"type": "text", "text": text_content}]
+                    else:
+                        contents = text_content
             else:
                 contents = prompt_chain
+            choice = _stage_choice(phase, provider)
             return await call_interaction(
                 contents,
                 lane="pipeline",
-                model=_STAGE_MODELS[phase],
+                model=choice.model,
                 system_instruction=system_instruction,
-                thinking_level=_STAGE_THINKING[phase],
+                thinking_level=choice.effort,
                 previous_interaction_id=previous_interaction_id,
                 response_schema=response_schema,
                 store=True,
                 max_output_tokens=_STAGE_MAX_OUTPUT_TOKENS.get(phase),
             )
+        choice = _stage_choice(phase, provider)
         return await call_interaction(
             prompt_fallback,
             lane="pipeline",
-            model=_STAGE_MODELS[phase],
+            model=choice.model,
             system_instruction=system_instruction,
-            thinking_level=_STAGE_THINKING[phase],
+            thinking_level=choice.effort,
             response_schema=response_schema,
             store=False,
             max_output_tokens=_STAGE_MAX_OUTPUT_TOKENS.get(phase),
@@ -1177,7 +1507,15 @@ async def _run_chain_stage(
             phase, defect, result.get("tokens_out"),
         )
         retry = await _invoke()
-        # 재시도 사용량을 합산해 비용 추적이 실사용을 반영하게 한다
+        # 재시도 사용량은 attempt별로 비용을 계산해 합산한다(R7-3) — 토큰을
+        # 합쳐 한 번에 계산하면 장문 임계값이 잘못 적용되거나(단가 구간 있는
+        # 모델) 이후 tokens_in/out 합산과 겹쳐 비용이 이중 계산된다.
+        retry["cost_usd_prior_attempts"] = calc_cost(
+            result["model"], result.get("tokens_in") or 0, result.get("tokens_out") or 0,
+        ) + calc_cost(
+            retry["model"], retry.get("tokens_in") or 0, retry.get("tokens_out") or 0,
+        )
+        # 사용량 표시(tokens_in/out)는 실사용 총량이 맞으므로 토큰 합산은 유지한다.
         retry["tokens_in"] = (result.get("tokens_in") or 0) + (retry.get("tokens_in") or 0)
         retry["tokens_out"] = (result.get("tokens_out") or 0) + (retry.get("tokens_out") or 0)
         result = retry
@@ -1212,8 +1550,15 @@ async def _run_visual(
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
+    doc_text: str = "",
+    figure_parts: Optional[list[dict]] = None,
+    provider: str = "gemini",
 ) -> dict:
-    """Phase 3: Visual verification - analyze figures, assess quality."""
+    """Phase 3: Visual verification - analyze figures, assess quality.
+
+    figure_parts는 OpenAI 체인 첫 호출(이 phase)에서만 쓰인다(스펙 R1) — Gemini는
+    PDF에서 직접 그림을 보므로 무시된다. _run_chain_stage로 그대로 전달한다.
+    """
     phase_status = PhaseStatus(
         phase=AnalysisPhase.VISUAL,
         status="running",
@@ -1221,6 +1566,7 @@ async def _run_visual(
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.VISUAL
+    choice = _stage_choice("visual", provider)
     paper_dir = get_paper_dir(folder_name)
     visual_contract, figure_count, table_count = await _get_visual_contract(
         paper_id,
@@ -1280,7 +1626,9 @@ async def _run_visual(
             visual_state=str(visual_contract["visual_state"]),
             visual_error=visual_contract["visual_error"],
         )
-        cached = await _get_cached_phase_result(paper_id, "visual", partial_hash_source)
+        cached = await _get_cached_phase_result(
+            paper_id, "visual", partial_hash_source, provider=provider, model=choice.model, effort=choice.effort,
+        )
         if cached is None:
             await _insert_analysis_result(
                 paper_id,
@@ -1291,6 +1639,9 @@ async def _run_visual(
                 0,
                 0.0,
                 partial_hash_source,
+                provider=provider,
+                model=choice.model,
+                effort=choice.effort,
             )
         else:
             result_text = cached["text"]
@@ -1320,16 +1671,18 @@ async def _run_visual(
 
     instruction = _VISUAL_INSTRUCTION
 
-    prompt_chain = f"{instruction}\n\n위 논문 PDF를 직접 보고 시각 요소를 분석해줘.{figure_desc}"
+    prompt_chain = f"{instruction}\n\n{_doc_reference_phrase(provider)}를 직접 보고 시각 요소를 분석해줘.{figure_desc}"
     prompt_fallback = f"논문 관련 텍스트:\n{visual_input}\n{figure_desc}\n\n{instruction}"
     cache_key = _phase_cache_key(
-        model=_STAGE_MODELS["visual"],
-        thinking=_STAGE_THINKING["visual"],
+        model=choice.model,
+        thinking=choice.effort or "",
         system_instruction=system_instruction,
         prompt=prompt_fallback,
     )
 
-    cached = await _get_cached_phase_result(paper_id, "visual", cache_key)
+    cached = await _get_cached_phase_result(
+        paper_id, "visual", cache_key, provider=provider, model=choice.model, effort=choice.effort,
+    )
     if cached is not None:
         phase_status.status = "completed"
         phase_status.completed_at = _utcnow_iso()
@@ -1350,7 +1703,10 @@ async def _run_visual(
         system_instruction=system_instruction,
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
+        doc_text=doc_text,
+        figure_parts=figure_parts,
         response_schema=_VISUAL_SCHEMA,
+        provider=provider,
     )
     cleaned_text = _clean_llm_json(result["text"])
 
@@ -1364,7 +1720,7 @@ async def _run_visual(
         logger.warning("Phase 2 JSON validation failed: %s", exc)
         result["text"] = json.dumps({"_raw": cleaned_text, "_parse_error": str(exc)})
 
-    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
+    cost = _result_cost(result)
 
     await _insert_analysis_result(
         paper_id,
@@ -1376,6 +1732,9 @@ async def _run_visual(
         cost,
         cache_key,
         interaction_id=result.get("interaction_id"),
+        provider=provider,
+        model=choice.model,
+        effort=choice.effort,
     )
 
     if _is_error_result(result["text"]):
@@ -1406,6 +1765,8 @@ async def _run_recipe(
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
+    doc_text: str = "",
+    provider: str = "gemini",
     folder_name: str = "",
 ) -> dict:
     """Phase 3: Recipe extraction - extract structured experimental procedure."""
@@ -1416,6 +1777,7 @@ async def _run_recipe(
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.RECIPE
+    choice = _stage_choice("recipe", provider)
 
     should_skip, skip_reason = _screening_gate_decision(screening_result_text, phase="recipe")
     if should_skip:
@@ -1498,6 +1860,9 @@ voltages, currents, frequencies, distances, speeds, sizes, ratios, percentages, 
     빈 근거가 지어낸 근거보다 나아 — 근거 없음은 화면에 그대로 표시돼.
 11. 인용은 논문 PDF(또는 제공된 논문 텍스트)에서만 가져와. 앞선 단계(스크리닝·시각·인용 분석)
     결과는 인용 출처가 아니야.
+12. name은 아래 DOMAIN-SPECIFIC PARAMETERS 목록에 있는 항목이면 그 표기를 그대로 쓰고,
+    목록에 없으면 축약 없는 소문자 snake_case 전체 명칭으로 써(예: aperture가 아니라
+    aperture_diameter). 같은 물리량에 임의의 다른 이름을 만들지 마.
 {domain_hint}
 
 출력 필드: title(레시피 제목, 한국어), objective(실험 목적), materials(재료 리스트, 규격 포함),
@@ -1506,16 +1871,18 @@ steps(단계별 상세 설명, 온도·시간·속도 등 포함), critical_note
 expected_results(예상 결과), safety_notes(안전 주의사항), confidence(0.0~1.0),
 missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibility_score(0.0~1.0)."""
 
-    prompt_chain = f"{instruction}\n\n위 논문 PDF와 이전 분석을 바탕으로 실험 레시피를 추출해줘."
+    prompt_chain = f"{instruction}\n\n{_doc_reference_phrase(provider)}와 이전 분석을 바탕으로 실험 레시피를 추출해줘."
     prompt_fallback = f"논문 텍스트:\n{recipe_input}\n\n{instruction}"
     cache_key = _phase_cache_key(
-        model=_STAGE_MODELS["recipe"],
-        thinking=_STAGE_THINKING["recipe"],
+        model=choice.model,
+        thinking=choice.effort or "",
         system_instruction=system_instruction,
         prompt=prompt_fallback,
     )
 
-    cached = await _get_cached_phase_result(paper_id, "recipe", cache_key)
+    cached = await _get_cached_phase_result(
+        paper_id, "recipe", cache_key, provider=provider, model=choice.model, effort=choice.effort,
+    )
     if cached is not None:
         # 캐시 히트도 검증을 태운다 — 옛 결과 백필과 검증기 버전업 재검증의 유일한 통로다.
         # completed로 세팅하기 전에 먼저 끝내야 한다 — await 경계 사이에 폴링이
@@ -1545,8 +1912,10 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
         system_instruction=system_instruction,
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
+        doc_text=doc_text,
         response_schema=_RECIPE_SCHEMA,
         restart_context=_build_chain_restart_context(previous_results),
+        provider=provider,
     )
 
     cleaned_text = _clean_llm_json(result["text"])
@@ -1559,7 +1928,7 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
         logger.warning("Phase 3 JSON validation failed: %s", exc)
         result["text"] = json.dumps({"_raw": cleaned_text, "_parse_error": str(exc)})
 
-    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
+    cost = _result_cost(result)
 
     result_id = await _insert_analysis_result(
         paper_id,
@@ -1571,6 +1940,9 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
         cost,
         cache_key,
         interaction_id=result.get("interaction_id"),
+        provider=provider,
+        model=choice.model,
+        effort=choice.effort,
     )
 
     # recipe row 저장(lastrowid 확보) 직후, phase completed 노출 전 동기 검증(스펙 §결정 3).
@@ -1612,6 +1984,8 @@ async def _run_deep_dive(
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
+    doc_text: str = "",
+    provider: str = "gemini",
 ) -> dict:
     """Phase 4: Deep dive - comprehensive analysis over the stateful chain."""
     phase_status = PhaseStatus(
@@ -1621,6 +1995,7 @@ async def _run_deep_dive(
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.DEEP_DIVE
+    choice = _stage_choice("deep_dive", provider)
 
     should_skip, skip_reason = _screening_gate_decision(screening_result_text, phase="deep_dive")
     if should_skip:
@@ -1644,7 +2019,7 @@ async def _run_deep_dive(
     stateless_context = _stateless_digest(screening_result_text or "", citation_result_text or "")
 
     prompt_chain = (
-        f"{instruction}\n\n위 논문 PDF와 앞선 체인 단계(시각·레시피) 결과, 그리고 아래 "
+        f"{instruction}\n\n{_doc_reference_phrase(provider)}와 앞선 체인 단계(시각·레시피) 결과, 그리고 아래 "
         "스크리닝·인용 분석 digest를 바탕으로 포괄적인 심층 분석을 제공해줘."
     )
     if stateless_context:
@@ -1655,8 +2030,8 @@ async def _run_deep_dive(
         f"{instruction}\n\n위 정보를 바탕으로 포괄적인 심층 분석을 제공해줘."
     )
     cache_key = _phase_cache_key(
-        model=_STAGE_MODELS["deep_dive"],
-        thinking=_STAGE_THINKING["deep_dive"],
+        model=choice.model,
+        thinking=choice.effort or "",
         system_instruction=system_instruction,
         prompt=prompt_fallback,
     )
@@ -1669,7 +2044,9 @@ async def _run_deep_dive(
         if r not in (screening_result_text, citation_result_text)
     ]
 
-    cached = await _get_cached_phase_result(paper_id, "deep_dive", cache_key)
+    cached = await _get_cached_phase_result(
+        paper_id, "deep_dive", cache_key, provider=provider, model=choice.model, effort=choice.effort,
+    )
     if cached is not None:
         phase_status.status = "completed"
         phase_status.completed_at = _utcnow_iso()
@@ -1690,8 +2067,10 @@ async def _run_deep_dive(
         system_instruction=system_instruction,
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
+        doc_text=doc_text,
         response_schema=_DEEP_DIVE_SCHEMA,
         restart_context=_build_chain_restart_context(chain_stage_results),
+        provider=provider,
     )
 
     cleaned_text = _clean_llm_json(result["text"])
@@ -1704,7 +2083,7 @@ async def _run_deep_dive(
         logger.warning("Phase 4 JSON validation failed: %s", exc)
         result["text"] = json.dumps({"_raw": cleaned_text, "_parse_error": str(exc)})
 
-    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
+    cost = _result_cost(result)
 
     await _insert_analysis_result(
         paper_id,
@@ -1716,6 +2095,9 @@ async def _run_deep_dive(
         cost,
         cache_key,
         interaction_id=result.get("interaction_id"),
+        provider=provider,
+        model=choice.model,
+        effort=choice.effort,
     )
 
     if _is_error_result(result["text"]):
@@ -1933,6 +2315,8 @@ async def _plan_visualizations(
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
+    doc_text: str = "",
+    provider: str = "gemini",
 ) -> list[dict]:
     """
     Decide which visualizations (6-10) best help understand the paper's
@@ -1944,6 +2328,7 @@ async def _plan_visualizations(
         started_at=_utcnow_iso(),
     )
     # Don't append a new phase — we update the existing deep_dive phase's progress
+    choice = _stage_choice("visualization", provider)  # role: viz_planning
 
     prev_context = "\n---\n".join(previous_results[:4])
 
@@ -1965,19 +2350,21 @@ category(experimental_protocol|algorithm_flow|signal_flow|system_architecture|co
 실험 방법을 최대한 이해할 수 있는 시각화를 우선시해.
 고려할 것: 프로세스 흐름, 파라미터 관계, 장비 구성, 신호 경로, 비교표."""
 
-    prompt_chain = f"{instruction}\n\n위 논문 PDF와 이전 분석 단계 결과를 바탕으로 시각화 계획을 세워줘."
+    prompt_chain = f"{instruction}\n\n{_doc_reference_phrase(provider)}와 이전 분석 단계 결과를 바탕으로 시각화 계획을 세워줘."
     prompt_fallback = (
         f"{instruction}\n\n--- 분석 결과 (Phase 1-4) ---\n{prev_context[:9000]}\n\n"
         f"--- 관련 텍스트 요약 ---\n{visualization_input}"
     )
     cache_key = _phase_cache_key(
-        model=_STAGE_MODELS["visualization"],
-        thinking=_STAGE_THINKING["visualization"],
+        model=choice.model,
+        thinking=choice.effort or "",
         system_instruction=system_instruction,
         prompt=prompt_fallback,
     )
 
-    cached = await _get_cached_phase_result(paper_id, "viz_plan", cache_key)
+    cached = await _get_cached_phase_result(
+        paper_id, "viz_plan", cache_key, provider=provider, model=choice.model, effort=choice.effort,
+    )
     if cached is not None:
         try:
             return json.loads(cached["text"]).get("visualizations", [])
@@ -1991,10 +2378,12 @@ category(experimental_protocol|algorithm_flow|signal_flow|system_architecture|co
         system_instruction=system_instruction,
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
+        doc_text=doc_text,
         response_schema=_VIZ_PLAN_SCHEMA,
         restart_context=_build_chain_restart_context(previous_results),
+        provider=provider,
     )
-    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
+    cost = _result_cost(result)
 
     status.total_cost_usd += cost
     status.total_tokens_in += result["tokens_in"]
@@ -2036,6 +2425,9 @@ category(experimental_protocol|algorithm_flow|signal_flow|system_architecture|co
         cost,
         cache_key,
         interaction_id=result.get("interaction_id"),
+        provider=provider,
+        model=choice.model,
+        effort=choice.effort,
     )
 
     return items
@@ -2053,6 +2445,8 @@ async def _generate_single_mermaid(
     viz_item: dict,
     visualization_input: str,
     previous_results: list[str],
+    *,
+    provider: str = "gemini",
 ) -> str:
     """Generate Mermaid code for a single visualization item using Gemini Pro 3."""
     title = viz_item.get("title", "Diagram")
@@ -2085,7 +2479,10 @@ async def _generate_single_mermaid(
 다이어그램 타입 키워드로 시작하는 유효한 Mermaid 코드만 반환해.
 """
 
-    result = await call_interaction(prompt, lane="pipeline", model=MODEL_MERMAID, store=False)
+    choice = resolve_model("mermaid", provider)
+    result = await call_interaction(
+        prompt, lane="pipeline", model=choice.model, thinking_level=choice.effort, store=False,
+    )
 
     return _sanitize_mermaid_code(result["text"])
 
@@ -2097,6 +2494,8 @@ async def _generate_single_paperbanana(
     folder_name: str,
     recipe_result: str,
     deep_dive_result: str,
+    *,
+    llm_provider: str = "gemini",
 ) -> dict:
     """
     Generate a PaperBanana illustration for a single visualization item.
@@ -2127,6 +2526,7 @@ async def _generate_single_paperbanana(
         str(get_paper_dir(folder_name)),
         preferred_provider=settings.get("image_provider", "openai"),
         quality=settings.get("image_quality", "high"),
+        llm_provider=llm_provider,
     )
     if result.path:
         url = f"/static/library/{folder_name}/paperbanana/{Path(result.path).name}"
@@ -2146,21 +2546,26 @@ async def _generate_single_paperbanana(
 
 
 async def _store_visualization_progress(
-    paper_id: int, items: list[dict], cache_input: str, done: bool
+    paper_id: int, items: list[dict], cache_input: str, done: bool, *, provider: str = "gemini",
 ) -> None:
     """항목이 하나 끝날 때마다 visualization 행을 갱신한다 (중간 사망 시 유실 방지).
 
     UPDATE 대상 SELECT는 input_hash까지 걸어 같은 실행(run)의 행만 찾는다. paper_id+phase
     최신 1건만 보면, 재분석(다른 input_hash로 재실행)이 이전 실행의 완료된 행을 이어달리기로
     착각하고 덮어써버린다 — 새 실행은 반드시 새 행을 INSERT해야 한다.
+
+    model_used는 provider에 맞는 레지스트리 모델명이어야 한다 — 이 메타데이터는
+    plan(viz_planning role)이 실제로 어떤 모델로 계획됐는지를 남기는 것이지, 개별
+    항목(mermaid/paperbanana)의 모델이 아니다.
     """
     input_hash = compute_input_hash(cache_input)
     total_cost_usd = sum(it.get("cost_usd") or 0 for it in items)
+    model_used = resolve_model("viz_planning", provider).model
     payload = json.dumps(
         {
             "items": sorted(items, key=lambda x: x.get("id", 0)),
             "total_count": len(items),
-            "model_used": MODEL_VIZ_PLANNING,
+            "model_used": model_used,
             "planned_at": _utcnow_iso(),
             "complete": done,
         },
@@ -2181,7 +2586,7 @@ async def _store_visualization_progress(
         )
     else:
         await _insert_analysis_result(
-            paper_id, "visualization", payload, MODEL_VIZ_PLANNING, 0, 0, total_cost_usd, cache_input,
+            paper_id, "visualization", payload, model_used, 0, 0, total_cost_usd, cache_input,
         )
 
 
@@ -2197,6 +2602,8 @@ async def _run_visualizations(
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
+    doc_text: str = "",
+    provider: str = "gemini",
 ) -> list[dict]:
     """
     Full visualization pipeline:
@@ -2237,6 +2644,8 @@ async def _run_visualizations(
         system_instruction=system_instruction,
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
+        doc_text=doc_text,
+        provider=provider,
     )
 
     # Step 2: Generate all in parallel
@@ -2258,6 +2667,7 @@ async def _run_visualizations(
                     item,
                     visualization_input,
                     previous_results,
+                    provider=provider,
                 )
                 result_item["mermaid_code"] = code
                 result_item["status"] = "completed"
@@ -2269,6 +2679,7 @@ async def _run_visualizations(
                     folder_name,
                     recipe_result,
                     deep_dive_result,
+                    llm_provider=provider,
                 )
                 result_item["image_url"] = pb_result.get("image_url")
                 result_item["image_path"] = pb_result.get("image_path")
@@ -2305,7 +2716,9 @@ async def _run_visualizations(
     mermaid_results = await asyncio.gather(*mermaid_tasks, return_exceptions=False) if mermaid_tasks else []
     if mermaid_results:
         accumulated.extend(mermaid_results)
-        await _store_visualization_progress(paper_id, accumulated, visualization_cache_input, done=False)
+        await _store_visualization_progress(
+            paper_id, accumulated, visualization_cache_input, done=False, provider=provider,
+        )
 
     # Run paperbanana generations sequentially to avoid API rate limits
     paperbanana_results = []
@@ -2313,7 +2726,9 @@ async def _run_visualizations(
         result = await generate_one(i, item)
         paperbanana_results.append(result)
         accumulated.append(result)
-        await _store_visualization_progress(paper_id, accumulated, visualization_cache_input, done=False)
+        await _store_visualization_progress(
+            paper_id, accumulated, visualization_cache_input, done=False, provider=provider,
+        )
         # Small delay between PaperBanana calls to avoid rate limiting
         if idx < len(paperbanana_items) - 1:
             await asyncio.sleep(2.0)
@@ -2323,14 +2738,18 @@ async def _run_visualizations(
     other_results = await asyncio.gather(*other_tasks, return_exceptions=False) if other_tasks else []
     if other_results:
         accumulated.extend(other_results)
-        await _store_visualization_progress(paper_id, accumulated, visualization_cache_input, done=False)
+        await _store_visualization_progress(
+            paper_id, accumulated, visualization_cache_input, done=False, provider=provider,
+        )
 
     # Combine and sort by original index
     all_results = list(mermaid_results) + paperbanana_results + list(other_results)
     generated_items = sorted(all_results, key=lambda x: x.get("id", 0))
 
     # Step 3: Store all visualization results in DB (final, complete=True)
-    await _store_visualization_progress(paper_id, generated_items, visualization_cache_input, done=True)
+    await _store_visualization_progress(
+        paper_id, generated_items, visualization_cache_input, done=True, provider=provider,
+    )
 
     # Visualization complete — set progress to 100%
     status.progress_pct = 100.0
@@ -2373,12 +2792,23 @@ async def _run_full_analysis(paper_id: int):
         if paper is None:
             raise ValueError(f"Paper {paper_id} not found")
 
+        # 이 실행 전체에 걸쳐 provider를 한 번만 결정한다 — 분석 도중 설정 화면에서
+        # provider를 바꿔도 이미 진행 중인 실행은 처음 값으로 일관되게 끝까지 간다.
+        provider = await active_provider()
+
         folder_name = paper["folder_name"]
         paper_dir = get_paper_dir(folder_name)
 
         document_context = await run_pipeline_blocking(load_or_build_document_context, paper_dir)
         phase_inputs = document_context.get("phase_inputs", {})
         sections = document_context.get("sections", {})
+        # 스크리닝 전용 5,000자 절단본 — screening 호출에만 쓴다.
+        paper_text = str(phase_inputs.get("screening", ""))
+        # 비절단 원문 — OpenAI 체인의 doc_text 주입은 이 값을 쓴다(리뷰 Critical 수정:
+        # paper_text의 5,000자 절단본을 그대로 재사용하면 recipe(기존 폴백 14,000자) 등
+        # 후속 스테이지가 구조적으로 열화된다). document_context가 이미 메모리에 올려둔
+        # 값을 노출한 것뿐이라 새 파일 IO는 없다.
+        full_text = str(document_context.get("full_text", ""))
         try:
             await schedule_paper_artifacts_refresh(paper_id, paper_dir)
         except Exception as exc:
@@ -2393,8 +2823,9 @@ async def _run_full_analysis(paper_id: int):
         # Phase 1: Screening
         r1 = await _run_screening(
             paper_id,
-            str(phase_inputs.get("screening", "")),
+            paper_text,
             status,
+            provider=provider,
         )
 
         # Check for cancellation
@@ -2463,20 +2894,39 @@ async def _run_full_analysis(paper_id: int):
         viz_system_instruction = _stage_system_instruction(None)
 
         # PDF 직접 입력용 업로드. 실패/부재 시 pdf_uri=None → 각 스테이지는 텍스트 폴백 경로.
+        #
+        # gemini에서만 업로드한다. openai_client._translate_parts는 document 파트를
+        # 지원하지 않는다(스펙 R1 — OpenAI 체인은 파일이 아니라 텍스트 주입을 쓴다).
+        # 게이트 없이 업로드하면 pdf_uri가 채워진 채로 _run_chain_stage가 openai로
+        # 라우팅되어 document 파트를 만들고, openai_client가 그 자리에서 ValueError로
+        # 터진다 — provider=openai + GEMINI_API_KEY 보유(양쪽 키)인 흔한 조합에서
+        # 첫 체인 스테이지가 매번 100% 실패했다(리뷰 Critical 1). openai는 아래 elif
+        # 분기에서 doc_text로 텍스트 체인을 탄다(Task 10, 스펙 R1).
         chain_prev_id: Optional[str] = None
         pdf_uri: Optional[str] = None
-        pdf_file = _find_paper_pdf(paper_dir)
-        if pdf_file is not None:
-            try:
-                pdf_uri = await upload_pdf_for_paper(paper_id, str(pdf_file))
-            except Exception as exc:
+        doc_text: str = ""
+        figure_parts: list[dict] = []
+        if provider == "gemini":
+            pdf_file = _find_paper_pdf(paper_dir)
+            if pdf_file is not None:
+                try:
+                    pdf_uri = await upload_pdf_for_paper(paper_id, str(pdf_file))
+                except Exception as exc:
+                    logger.warning(
+                        "PDF upload failed for paper %s, falling back to text context: %s", paper_id, exc
+                    )
+            else:
                 logger.warning(
-                    "PDF upload failed for paper %s, falling back to text context: %s", paper_id, exc
+                    "No PDF found in %s for paper %s; using text-context fallback.", paper_dir, paper_id
                 )
-        else:
-            logger.warning(
-                "No PDF found in %s for paper %s; using text-context fallback.", paper_dir, paper_id
-            )
+        elif provider == "openai":
+            # 비절단 원문(full_text)을 체인 첫 호출에 1회 주입한다 — screening용
+            # paper_text(5,000자 절단본)가 아니다. _OPENAI_DOC_TEXT_CHAR_LIMIT 상한만
+            # 적용하고, 그 안이면 절단 없이 그대로 넣는다.
+            doc_text = full_text[:_OPENAI_DOC_TEXT_CHAR_LIMIT]
+            # PDF를 못 보는 대신(스펙 R1) 추출된 그림을 이미지 파트로 최대 8장 직접
+            # 첨부한다 — visual 스테이지(체인 첫 호출)에만 실린다(리뷰 Important I3).
+            figure_parts = await _load_openai_figure_parts(paper_id, paper_dir)
 
         # Phase 2: Citation Analysis (after screening, before visual)
         # TODO(parser-hybrid): visual 단계가 gemini로 승격되면 sections/references는 gemini 텍스트라
@@ -2492,6 +2942,7 @@ async def _run_full_analysis(paper_id: int):
             citation_references=str(phase_inputs.get("citation_references", "")),
             paper_authors=paper_authors,
             status=status,
+            provider=provider,
         )
 
         # Check for cancellation
@@ -2509,8 +2960,11 @@ async def _run_full_analysis(paper_id: int):
             system_instruction=visual_system_instruction,
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
+            doc_text=doc_text,
+            figure_parts=figure_parts,
+            provider=provider,
         )
-        if pdf_uri:
+        if pdf_uri or doc_text:
             chain_prev_id = r2.get("interaction_id")
 
         # Check for cancellation
@@ -2538,9 +2992,11 @@ async def _run_full_analysis(paper_id: int):
             system_instruction=recipe_system_instruction,
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
+            doc_text=doc_text,
+            provider=provider,
             folder_name=folder_name,
         )
-        if pdf_uri:
+        if pdf_uri or doc_text:
             chain_prev_id = r3.get("interaction_id")
 
         # Check for cancellation
@@ -2553,6 +3009,12 @@ async def _run_full_analysis(paper_id: int):
             previous.append(r3["text"])
 
         # Phase 4: Deep Dive (체인 3번째 스테이지)
+        # 이 단계만 provider가 갈릴 수 있다(DEC-019 — Gemini deep_dive 폭주 회피).
+        # 갈리면 서버측 체인 상태를 공유할 수 없으므로 PDF 대신 텍스트를 주입해
+        # 새 체인을 시작한다. 앞선 시각·레시피 결과는 _run_deep_dive가 붙이는
+        # restart_context가 복원한다.
+        dd_provider = await provider_for_role("deep_dive")
+        dd_chained = dd_provider == provider
         r4 = await _run_deep_dive(
             paper_id,
             str(phase_inputs.get("deep_dive", "")),
@@ -2561,10 +3023,14 @@ async def _run_full_analysis(paper_id: int):
             screening_result_text=r1.get("text", ""),
             citation_result_text=r_cit.get("text", ""),
             system_instruction=deep_dive_system_instruction,
-            previous_interaction_id=chain_prev_id,
-            pdf_uri=pdf_uri,
+            previous_interaction_id=chain_prev_id if dd_chained else None,
+            pdf_uri=pdf_uri if dd_chained else None,
+            doc_text=doc_text if dd_chained else full_text[:_OPENAI_DOC_TEXT_CHAR_LIMIT],
+            provider=dd_provider,
         )
-        if pdf_uri:
+        # provider가 갈렸으면 r4의 interaction_id는 다른 서버의 것이라 이어 쓸 수 없다.
+        # visualization은 레시피까지의 체인을 그대로 잇는다.
+        if dd_chained and (pdf_uri or doc_text):
             chain_prev_id = r4.get("interaction_id")
 
         # Check for cancellation
@@ -2603,6 +3069,8 @@ async def _run_full_analysis(paper_id: int):
                     system_instruction=viz_system_instruction,
                     previous_interaction_id=chain_prev_id,
                     pdf_uri=pdf_uri,
+                    doc_text=doc_text,
+                    provider=provider,
                 )
             except Exception as viz_err:
                 # Visualization failure should NOT block the analysis from completing
@@ -2709,14 +3177,16 @@ async def run_analysis(paper_id: int, background_tasks: BackgroundTasks):
     if paper is None:
         raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
 
-    # 분석 5단계는 공급사 설정과 무관하게 Gemini 전용이다(services/models.py).
-    # OpenAI 키만 등록된 설치에서 파이프라인 깊숙이 들어가 "GEMINI_API_KEY not set"
-    # 으로 죽는 대신, 시작 전에 명확한 안내로 거절한다.
-    if not os.getenv("GEMINI_API_KEY"):
+    # provider-aware 키 사전 점검: 분석 파이프라인 전체가 필요로 하는 키가
+    # 없으면 백그라운드 태스크를 큐에 올리기 전에 즉시 400으로 거절한다 —
+    # 큐에 올린 뒤 매 단계 LLM 호출에서 산발적으로 실패하는 것보다 낫다.
+    provider = await active_provider()
+    key_env = key_env_for(provider)
+    if not os.getenv(key_env):
+        provider_label = "OpenAI" if provider == "openai" else "Gemini"
         raise HTTPException(
             status_code=400,
-            detail="논문 분석은 Gemini로 실행되어 Gemini API 키가 필요해요. "
-                   "설정에서 Gemini 키를 등록해 주세요.",
+            detail=f"논문 분석에 {provider_label} API 키가 필요해요. 설정에서 키를 등록해 주세요.",
         )
 
     try:
@@ -2867,12 +3337,49 @@ async def get_analysis_status(paper_id: int):
     phase_order = ["screening", "citation", "visual", "recipe", "deep_dive"]
     completed_phases = set(latest_results.keys())
 
+    # Task 11(스펙 §D): stale_model 배지용 현재 provider. 조회 실패해도(설정
+    # DB 미초기화 등) 상태 응답 자체는 죽으면 안 되므로 관대하게 폴백한다 —
+    # provider가 None이면 아래 루프에서 배지 계산을 그냥 건너뛴다. 완료된 phase가
+    # 하나도 없으면(배지를 매길 대상 자체가 없음) 애초에 호출하지 않는다 — /status는
+    # 분석 진행 중 2초 간격으로 폴리되므로(리뷰 Important I2) 불필요한 settings
+    # 조회(_get_all_settings, fetch_one 20회+commit)를 아낀다.
+    stale_provider: Optional[str] = None
+    if completed_phases:
+        try:
+            stale_provider = await active_provider()
+        except Exception:
+            logger.debug("stale_model 조회용 provider 확인 실패 — 배지 없이 진행", exc_info=True)
+
     for phase_name in phase_order:
         r = latest_results.get(phase_name)
         if r:
             cost = r.get("cost_usd") or 0.0
             tin = r.get("tokens_in") or 0
             tout = r.get("tokens_out") or 0
+            stale_model: Optional[str] = None
+            # 스크리닝 게이트로 스킵된 phase("system")는 provider/model/effort 없이
+            # 저장돼(_store_skipped_phase_result) config_hash가 고정 상수 해시라
+            # 어떤 현재 설정과도 절대 일치하지 않는다 — 가드가 없으면 provider가
+            # 안 바뀌어도, 심지어 같은 스킵 결정으로 재분석해도 매번 "system로
+            # 분석됨" 배지가 뜬다(리뷰 Important). 스킵은 "다른 모델로 분석됨"이
+            # 아니므로 애초에 stale 판정 대상에서 제외한다.
+            if stale_provider and r.get("model_used") != "system":
+                try:
+                    choice = resolve_model(phase_name, stale_provider)
+                    current_hash = _config_hash(stale_provider, choice.model, choice.effort)
+                    # latest_row=r: get_latest_completed_phase_rows가 이미 SELECT *로
+                    # 가져온 이 phase의 최신 행을 그대로 넘긴다 — _lookup_phase_result_
+                    # with_staleness가 같은 행을 또 fetch_one 2회로 재조회하지 않게
+                    # 한다(리뷰 Important I2, /status 2초 폴링 부하).
+                    staleness = await _lookup_phase_result_with_staleness(
+                        paper_id, phase_name, current_hash, choice.model, latest_row=r,
+                    )
+                    if staleness:
+                        stale_model = staleness.get("stale_model")
+                except Exception:
+                    logger.debug(
+                        "phase %s stale_model 조회 실패 — 배지 없이 진행", phase_name, exc_info=True,
+                    )
             phases.append(PhaseStatus(
                 phase=AnalysisPhase(phase_name),
                 status="completed",
@@ -2881,6 +3388,7 @@ async def get_analysis_status(paper_id: int):
                 tokens_out=tout,
                 cost_usd=cost,
                 completed_at=r.get("created_at"),
+                stale_model=stale_model,
             ))
             total_cost += cost
             total_in += tin
@@ -3094,7 +3602,11 @@ Paper text excerpt:
 Return ONLY valid Mermaid syntax starting with "flowchart TD" or "flowchart LR".
 """
 
-    result = await call_interaction(prompt, lane="chat", model=MODEL_FLASH_HQ, store=False)
+    provider = await active_provider()
+    choice = resolve_model("mermaid", provider)
+    result = await call_interaction(
+        prompt, lane="chat", model=choice.model, thinking_level=choice.effort, store=False,
+    )
 
     mermaid_code = _sanitize_mermaid_code(result["text"])
 
@@ -3199,7 +3711,11 @@ async def repair_mermaid(paper_id: int, request: MermaidRepairRequest):
 - linkStyle 인덱스가 엣지 수를 벗어나면 해당 linkStyle 줄을 삭제해.
 - 수정된 전체 Mermaid 코드만 반환해. 설명 금지."""
 
-    result = await call_interaction(prompt, lane="chat", model=MODEL_FLASH_HQ, store=False)
+    provider = await active_provider()
+    choice = resolve_model("mermaid", provider)
+    result = await call_interaction(
+        prompt, lane="chat", model=choice.model, thinking_level=choice.effort, store=False,
+    )
     repaired = _sanitize_mermaid_code(result["text"])
     if not repaired:
         raise HTTPException(status_code=502, detail="Repair produced empty Mermaid code.")
@@ -3272,8 +3788,9 @@ async def regenerate_visualization(paper_id: int, viz_id: int):
         if phase in phase_rows
     ]
 
+    provider = await active_provider()
     code = await _generate_single_mermaid(
-        paper_id, stored_item, visualization_input, previous_results
+        paper_id, stored_item, visualization_input, previous_results, provider=provider,
     )
     if not code:
         raise HTTPException(status_code=502, detail="Regeneration produced empty Mermaid code.")
@@ -3530,7 +4047,13 @@ Return ONLY valid JSON (마크다운 펜스 없이):
 }}
 """
 
-    result = await call_interaction(prompt, lane="chat", model=MODEL_FLASH_HQ, store=False)
+    # 등록된 레지스트리 role이 없는 일회성 생성이라 "chat" role을 재사용한다 —
+    # lane도 "chat"이고 effort 특성(gemini=None, openai=low)이 그대로 맞는다.
+    provider = await active_provider()
+    choice = resolve_model("chat", provider)
+    result = await call_interaction(
+        prompt, lane="chat", model=choice.model, thinking_level=choice.effort, store=False,
+    )
     cleaned_text = _clean_llm_json(result["text"])
 
     # Validate JSON
@@ -3595,8 +4118,6 @@ async def get_experiment_plan(paper_id: int):
 # ---------------------------------------------------------------------------
 # Agent Chat (SSE streaming)
 # ---------------------------------------------------------------------------
-
-_CHAT_MODEL = MODEL_CHAT
 
 # The analysis path already retries transient failures; chat used to fail on the
 # first blip, which is exactly when the pipeline is hammering the same quota.
@@ -3704,6 +4225,11 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
     transcript_parts.append(f"사용자: {message}")
     chat_input = "\n".join(transcript_parts)
 
+    # 5b. provider는 이 요청 안에서 한 번만 결정한다 — 스트림 재시도 도중 설정이
+    #     바뀌어도 같은 요청 안에서는 일관된 모델을 쓴다.
+    provider = await active_provider()
+    chat_choice = resolve_model("chat", provider)
+
     # 6. Stream via SSE — stream_interaction(lane="chat")이 전용 풀에서 브릿지를 담당한다.
     #
     # 파이프라인과 같은 쿼터를 때리는 순간이 곧 채팅이 실패하기 쉬운 순간이라,
@@ -3718,7 +4244,8 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
                 async for ev in stream_interaction(
                     chat_input,
                     lane="chat",
-                    model=_CHAT_MODEL,
+                    model=chat_choice.model,
+                    thinking_level=chat_choice.effort,
                     system_instruction=system_prompt,
                     store=False,
                 ):
@@ -3731,7 +4258,7 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
                         streamed_any = True
                         yield f"data: {json.dumps({'type': 'token', 'content': ev['text']}, ensure_ascii=False)}\n\n"
                     elif ev["type"] == "done":
-                        cost = calc_cost(_CHAT_MODEL, ev["tokens_in"], ev["tokens_out"])
+                        cost = calc_cost(chat_choice.model, ev["tokens_in"], ev["tokens_out"])
                         yield f"data: {json.dumps({'type': 'done', 'tokens_in': ev['tokens_in'], 'tokens_out': ev['tokens_out'], 'cost_usd': cost}, ensure_ascii=False)}\n\n"
                 return
             except asyncio.CancelledError:

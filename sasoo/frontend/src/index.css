@@ -133,10 +133,6 @@
     border-radius: var(--radius-surface);
   }
 
-  .card-hover {
-    @apply card transition-colors duration-200 ease-out hover:border-border hover:bg-surface-hover;
-  }
-
   .app-shell {
     @apply flex h-screen flex-col bg-bg text-fg;
   }
@@ -179,8 +175,10 @@
     @apply px-2 pb-1.5 text-2xs font-semibold uppercase tracking-[0.08em] text-fg-muted;
   }
 
+  /* 위계: 링크(fg) > 활성(accent) > 하단 토글(fg-secondary) > 섹션 제목(fg-muted).
+     링크가 fg-secondary였을 때는 재질 위에서 전 항목이 같이 가라앉았다. */
   .app-sidebar-link {
-    @apply flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-sm text-fg-secondary transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
+    @apply flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-sm text-fg transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
   }
 
   .app-sidebar-collapsed .app-sidebar-link {
@@ -193,14 +191,6 @@
 
   .app-sidebar-link-active {
     @apply bg-accent/10 text-accent;
-  }
-
-  .app-sidebar-collapse-btn {
-    @apply mt-2 flex h-8 w-8 items-center justify-center self-end rounded-control text-fg-muted transition-colors duration-150 hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
-  }
-
-  .app-sidebar-collapsed .app-sidebar-collapse-btn {
-    @apply self-center;
   }
 
   .page-container-wide {
@@ -253,6 +243,12 @@
     @apply px-4 py-4 md:px-5 md:py-4;
   }
 
+  /* 설정·프로필 항목 구분 — 구분선 대신 옅은 명도 블록으로 가른다. */
+  .settings-row-block {
+    @apply bg-surface-hover px-3 py-2.5;
+    border-radius: var(--radius-control);
+  }
+
   .page-header-dense {
     @apply flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between;
   }
@@ -262,7 +258,7 @@
   }
 
   .archive-inline-status {
-    @apply inline-flex items-center gap-2 rounded-full border border-border/60 bg-surface/60 px-3 py-1.5 text-2xs;
+    @apply inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-2xs;
   }
 
   .archive-inline-status-muted {
@@ -271,14 +267,12 @@
 
   .archive-inline-status-success {
     @apply text-success;
-    border-color: rgb(var(--success) / 0.2);
-    background: rgb(var(--success) / 0.08);
+    border-color: rgb(var(--success) / 0.4);
   }
 
   .archive-inline-status-error {
     @apply text-warning;
-    border-color: rgb(var(--warning) / 0.2);
-    background: rgb(var(--warning) / 0.08);
+    border-color: rgb(var(--warning) / 0.4);
   }
 
   .settings-panel-title {
@@ -383,6 +377,31 @@
     @apply bg-surface/90 backdrop-blur-lg;
   }
 
+  /* 라벨 로딩 — 회전하는 스피너 대신 글자 밝기가 한 방향으로 쓸린다.
+     진행률을 실제로 아는 구간(업로드)은 그대로 바와 %를 쓴다. */
+  .shimmer-label {
+    background-image: linear-gradient(
+      100deg,
+      rgb(var(--fg-muted)) 40%,
+      rgb(var(--fg)) 50%,
+      rgb(var(--fg-muted)) 60%
+    );
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: shimmer-sweep 2s linear infinite;
+  }
+
+  @keyframes shimmer-sweep {
+    from {
+      background-position: 150% 0;
+    }
+    to {
+      background-position: -50% 0;
+    }
+  }
+
   /* Button variants */
   .btn {
     @apply inline-flex items-center justify-center gap-2 px-4 text-sm font-medium transition-[color,background-color,border-color,opacity,transform] duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50 disabled:pointer-events-none;
@@ -432,63 +451,6 @@
   .badge {
     @apply inline-flex items-center px-2 py-0.5 text-xs font-medium;
     border-radius: var(--radius-pill);
-  }
-
-  .badge-primary {
-    @apply badge bg-accent/10 text-accent;
-  }
-
-  .badge-success {
-    @apply badge bg-success/10 text-success;
-  }
-
-  .badge-warning {
-    @apply badge bg-warning/10 text-warning;
-  }
-
-  .badge-error {
-    @apply badge bg-danger/10 text-danger;
-  }
-
-  .toolbar-shell {
-    @apply border border-border/50 bg-surface;
-    border-radius: var(--radius-surface);
-  }
-
-  .toolbar-group {
-    @apply inline-flex items-center gap-1 border border-border/50 bg-surface/40 px-1.5 py-1;
-    border-radius: var(--radius-control);
-  }
-
-  .panel-section {
-    @apply border border-border/50 bg-surface/40 transition-colors duration-200;
-    border-radius: var(--radius-surface);
-  }
-
-  /* Skeleton loader */
-  .skeleton {
-    @apply animate-pulse rounded bg-surface-hover;
-  }
-
-  /* Phase status dots */
-  .phase-dot {
-    @apply w-3 h-3 rounded-full border-2;
-  }
-
-  .phase-dot-pending {
-    @apply phase-dot border-border bg-transparent;
-  }
-
-  .phase-dot-running {
-    @apply phase-dot border-accent bg-accent animate-pulse-subtle;
-  }
-
-  .phase-dot-done {
-    @apply phase-dot border-success bg-success;
-  }
-
-  .phase-dot-error {
-    @apply phase-dot border-danger bg-danger;
   }
 
   .icon-surface {
@@ -579,94 +541,6 @@
     @apply rounded-surface border border-border/50 bg-surface/90 p-4;
   }
 
-  .library-shelf {
-    @apply overflow-hidden rounded-surface border border-border/60 bg-surface/90;
-  }
-
-  .library-shelf-row--completed {
-    background-color: rgb(var(--success) / 0.06);
-  }
-
-  .library-shelf-row--analyzing {
-    background-color: rgb(var(--accent) / 0.07);
-  }
-
-  .library-shelf-row--pending {
-    background-color: rgb(var(--warning) / 0.06);
-  }
-
-  .library-shelf-row--error {
-    background-color: rgb(var(--danger) / 0.07);
-  }
-
-  .library-shelf-row--completed .library-status-badge {
-    @apply border-success/20 bg-success/10 text-success;
-  }
-
-  .library-shelf-row--analyzing .library-status-badge {
-    @apply border-accent/20 bg-accent/10 text-accent;
-  }
-
-  .library-shelf-row--pending .library-status-badge {
-    @apply border-warning/20 bg-warning/10 text-warning;
-  }
-
-  .library-shelf-row--error .library-status-badge {
-    @apply border-danger/20 bg-danger/10 text-danger;
-  }
-
-  .library-status-badge {
-    @apply inline-flex items-center gap-1 rounded-full border px-2 py-1 text-2xs;
-  }
-
-  .library-status-dot {
-    @apply h-1.5 w-1.5 rounded-full;
-  }
-
-  .library-shelf-row--completed .library-status-dot {
-    @apply bg-success;
-  }
-
-  .library-shelf-row--analyzing .library-status-dot {
-    @apply bg-accent;
-  }
-
-  .library-shelf-row--pending .library-status-dot {
-    @apply bg-warning;
-  }
-
-  .library-shelf-row--error .library-status-dot {
-    @apply bg-danger;
-  }
-
-  .library-record-title {
-    @apply text-base font-semibold leading-snug tracking-[-0.02em] text-fg;
-  }
-
-  .library-record-meta {
-    @apply mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm leading-5 text-fg-muted;
-  }
-
-  .library-meta-label {
-    @apply text-2xs font-medium uppercase tracking-[0.14em] text-fg-muted;
-  }
-
-  .library-meta-value {
-    @apply text-base leading-6 text-fg;
-  }
-
-  .library-agent-label {
-    @apply inline-flex items-center gap-2 text-base leading-6 text-fg-secondary;
-  }
-
-  .library-archive-card {
-    @apply relative overflow-hidden rounded-surface border border-border/50 bg-surface/40 p-4 transition-colors;
-  }
-
-  .library-archive-card:hover {
-    @apply bg-surface/60;
-  }
-
   /* 데이터 테이블 (연구 보관함 리스트 뷰) */
   .library-table {
     @apply w-full border-collapse text-left;
@@ -680,8 +554,9 @@
     @apply cursor-pointer select-none transition-colors hover:text-fg-secondary;
   }
 
+  /* text-sm 줄높이 1.25rem + 상하 0.625rem = 40px 행 */
   .library-table tbody td {
-    @apply border-b border-border/40 px-4 py-3 align-middle text-sm text-fg-secondary;
+    @apply border-b border-border/40 px-4 py-2.5 align-middle text-sm text-fg-secondary;
   }
 
   .library-table tbody tr:last-child td {
@@ -706,31 +581,15 @@
   }
 
   .library-soft-card:hover {
-    @apply -translate-y-0.5 border-border bg-surface shadow-lg;
+    @apply border-border bg-surface-hover;
   }
 
   .library-soft-card:focus-visible {
-    @apply -translate-y-0.5 outline-none ring-2 ring-accent/40 ring-offset-2 ring-offset-bg;
+    @apply outline-none ring-2 ring-accent/40 ring-offset-2 ring-offset-bg;
   }
 
   .library-soft-pill {
     @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border/60 bg-bg/40 px-2 py-1 text-2xs text-fg-secondary;
-  }
-
-  .library-archive-card--completed {
-    background-color: rgb(var(--success) / 0.07);
-  }
-
-  .library-archive-card--analyzing {
-    background-color: rgb(var(--accent) / 0.08);
-  }
-
-  .library-archive-card--pending {
-    background-color: rgb(var(--warning) / 0.07);
-  }
-
-  .library-archive-card--error {
-    background-color: rgb(var(--danger) / 0.08);
   }
 }
 
@@ -1049,32 +908,6 @@
     border-radius: var(--radius-control);
   }
 
-  .pdf-toolbar-btn-active {
-    @apply border-accent/20 bg-accent/10 text-accent;
-  }
-
-  .pdf-thumb-panel {
-    width: 7.25rem;
-  }
-
-  .pdf-thumb-item {
-    @apply mb-3 flex w-full flex-col items-center gap-1 border border-transparent px-2 py-2 transition-colors duration-200 hover:border-border/60 hover:bg-surface-hover/75;
-    border-radius: var(--radius-surface);
-  }
-
-  .pdf-thumb-item-active {
-    @apply border-accent/20 bg-accent/10;
-  }
-
-  .pdf-thumb-label {
-    @apply text-2xs font-medium text-fg-muted tabular-nums;
-  }
-
-  .pdf-thumb-canvas {
-    @apply overflow-hidden border border-border/50 bg-surface/70 p-1;
-    border-radius: var(--radius-control);
-  }
-
   .pdf-viewer-shell {
     @apply h-full;
   }
@@ -1148,7 +981,7 @@
   }
 
   .chat-launcher {
-    @apply flex min-h-[4rem] items-center gap-3 rounded-surface border border-border/60 bg-surface/90 px-3.5 py-2.5 shadow-[0_18px_48px_rgba(0,0,0,0.22)] backdrop-blur-xl transition-[transform,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:border-border/70;
+    @apply flex min-h-[4rem] items-center gap-3 rounded-surface border border-border/60 bg-surface/90 px-3.5 py-2.5 shadow-[0_18px_48px_rgba(0,0,0,0.22)] backdrop-blur-xl transition-[border-color,background-color] duration-200 hover:border-border/70;
     width: min(20rem, calc(100vw - 1.5rem));
   }
 
@@ -1219,10 +1052,6 @@
     }
   }
 
-  .figure-stage-grid {
-    grid-template-columns: minmax(0, 1fr) 26rem;
-  }
-
   .figure-modal-inspector {
     background-color: rgb(var(--surface) / 0.96);
   }
@@ -1251,8 +1080,8 @@
    and silently overrides the config's duration cap). */
 
 /* pulseSubtle keyframe + .animate-pulse-subtle utility live solely in
-   tailwind.config.js (opacity-only, single source). `.phase-dot-running`
-   consumes it via @apply animate-pulse-subtle. */
+   tailwind.config.js (opacity-only, single source). No consumer right now —
+   the reduced-motion block still disables it so a future one is covered. */
 
 /* ── Custom titlebar ── */
 
@@ -1337,22 +1166,6 @@
   }
 }
 
-@keyframes sidebarLabelEnter {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes filterItemIn {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 .animate-page-enter {
   animation: pageEnter 0.2s var(--ease-out-strong) both;
 }
@@ -1377,16 +1190,6 @@
   animation: modalSlideUp 0.15s var(--ease-out-strong) both;
 }
 
-.sidebar-label-enter {
-  animation: sidebarLabelEnter 0.15s var(--ease-out-strong) both;
-}
-
-.filter-stagger > *:nth-child(1) { animation: filterItemIn 0.2s var(--ease-out-strong) both; }
-.filter-stagger > *:nth-child(2) { animation: filterItemIn 0.2s var(--ease-out-strong) 0.05s both; }
-.filter-stagger > *:nth-child(3) { animation: filterItemIn 0.2s var(--ease-out-strong) 0.1s both; }
-.filter-stagger > *:nth-child(4) { animation: filterItemIn 0.2s var(--ease-out-strong) 0.15s both; }
-.filter-stagger > *:nth-child(5) { animation: filterItemIn 0.2s var(--ease-out-strong) 0.2s both; }
-
 /* ── Accessibility: reduced motion ── */
 
 @media (prefers-reduced-motion: reduce) {
@@ -1398,8 +1201,6 @@
   .animate-modal-in,
   .animate-backdrop-out,
   .animate-modal-out,
-  .sidebar-label-enter,
-  .filter-stagger > *,
   .animate-pulse-subtle {
     animation: none !important;
   }
@@ -1421,12 +1222,6 @@
     animation: modalSlideUpReduced 0.15s ease-out both !important;
   }
 
-  /* Remove hover-lift transforms. */
-  .card-hover,
-  .chat-launcher {
-    transform: none !important;
-  }
-
   /* Press-scale feedback is movement too — disable it. */
   .btn:active,
   .btn-icon-subtle:active,
@@ -1438,6 +1233,13 @@
   /* I4: Figure/Table 카드 press-scale(active:scale-[0.96])도 movement이므로 끈다. */
   [role="button"]:active {
     transform: none !important;
+  }
+
+  /* 로딩 라벨은 스윕을 멈추고 정적 텍스트로 남는다. */
+  .shimmer-label {
+    animation: none !important;
+    background-image: none;
+    color: rgb(var(--fg-muted));
   }
 
   /* I4: 워크벤치 상태부 진행 레일의 width 전환은 즉시 완료로 처리한다. */
@@ -1609,6 +1411,54 @@
   }
 }
 
+/* ── macOS vibrancy 틴트 ── */
+/* 창 재질(vibrancy: 'sidebar')이 블러를 담당하므로 여기서는 알파 틴트만 얹는다.
+   같은 표면에 backdrop-filter를 겹쳐 걸면 배경이 두 번 뭉개져 탁해진다.
+   읽는 면인 콘텐츠 영역(main)은 불투명하게 남긴다 — 라우트 전환 중
+   PageScaffold가 아직 없는 순간에도 창이 비치지 않아야 한다. */
+.platform-darwin {
+  --vibrancy-floating-tint: 0.72;
+}
+
+.platform-darwin.dark {
+  --vibrancy-floating-tint: 0.66;
+}
+
+/* index.html의 FOUC 가드가 html에 다크 배경(#0a0a0b)을 박아 둔다. body만
+   투명하게 하면 그 아래 html의 다크가 재질을 가리므로 html까지 비운다. */
+.platform-darwin,
+.platform-darwin body,
+.platform-darwin .app-shell {
+  background-color: transparent;
+}
+
+.platform-darwin main {
+  background-color: rgb(var(--bg));
+}
+
+/* 사이드바·타이틀바는 재질을 그대로 드러낸다. 알파 틴트를 얹으면 macOS가
+   그려 준 블러와 채도 증폭이 단색 페인트에 덮여 그냥 회색 판이 된다(실측). */
+.platform-darwin .app-sidebar,
+.platform-darwin .titlebar-drag {
+  background-color: transparent;
+  backdrop-filter: none;
+}
+
+/* 플로팅 표면은 앱 내용을 블러하는 기존 backdrop-filter를 그대로 쓰고,
+   창 재질과 겹쳐 탁해지지 않도록 알파만 낮춘다. */
+.platform-darwin .chat-launcher,
+.platform-darwin .chat-floating-card,
+.platform-darwin .figure-modal-inspector,
+.platform-darwin .toast-surface,
+.platform-darwin .settings-savebar {
+  background-color: rgb(var(--surface) / var(--vibrancy-floating-tint));
+}
+
+.platform-darwin .chat-launcher-ready:hover,
+.platform-darwin .chat-launcher-pending:hover {
+  background-color: rgb(var(--surface-hover) / var(--vibrancy-floating-tint));
+}
+
 /* ── Accessibility: reduced transparency ── */
 /* Apple HIG: translucent materials must degrade to opaque surfaces when the
    user asks the system to reduce transparency. Blur is disabled outright and
@@ -1632,5 +1482,24 @@
   .toast-surface {
     background-color: rgb(var(--surface));
     backdrop-filter: none;
+  }
+
+  /* darwin 틴트 복구. 위 .platform-darwin 규칙이 특정도가 높아 기본 폴백만으로는
+     덮이지 않으므로, 알파 변수를 1로 되돌리고 투명화한 배경을 채운다.
+     OS vibrancy 자체는 main 프로세스가 setVibrancy(null)로 끈다. */
+  .platform-darwin,
+  .platform-darwin.dark {
+    --vibrancy-floating-tint: 1;
+  }
+
+  .platform-darwin,
+  .platform-darwin body,
+  .platform-darwin .app-shell {
+    background-color: rgb(var(--bg));
+  }
+
+  .platform-darwin .app-sidebar,
+  .platform-darwin .titlebar-drag {
+    background-color: rgb(var(--surface));
   }
 }

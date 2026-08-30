@@ -503,6 +503,25 @@ async def init_db() -> None:
         except Exception:
             pass  # column already exists
 
+    # Migration: config_hash — (provider, model, effort) 지문. input_hash와 달리
+    # 문서 내용을 포함하지 않는다(Task 11, 스펙 §D 2단계 조회의 stage-1 키).
+    # 옛 행은 NULL로 남고, 어떤 현재 설정과도 매치되지 않아 자연히 "다른 모델로
+    # 분석됨" 배지 경로를 탄다 — 별도 백필이 필요 없다.
+    try:
+        await _db_connection.execute("ALTER TABLE analysis_results ADD COLUMN config_hash TEXT")
+        await _db_connection.commit()
+    except Exception:
+        pass  # column already exists
+
+    try:
+        await _db_connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_analysis_config_hash "
+            "ON analysis_results(paper_id, phase, config_hash)"
+        )
+        await _db_connection.commit()
+    except Exception:
+        pass
+
     # analysis_runs: 디태치 워커 조율 테이블(프로세스 분리 + 자동 재개)
     from models.analysis_runs import ANALYSIS_RUNS_DDL
     try:

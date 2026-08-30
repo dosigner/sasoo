@@ -3,6 +3,7 @@ import { Routes, Route, useLocation } from 'react-router';
 import { S } from '@/lib/strings';
 import { getSettings } from '@/lib/api';
 import { fetchAllAgents } from '@/lib/agents';
+import { applyPlatformClass, applyTheme, readStoredTheme } from '@/lib/theme';
 import { AppIcon } from '@/components/icons';
 
 // Components
@@ -48,19 +49,11 @@ function App() {
 
   // Load theme: localStorage first (instant), then sync with backend
   useEffect(() => {
-    function applyTheme(t: string) {
-      if (t === 'light') {
-        document.documentElement.classList.add('light');
-        document.documentElement.classList.remove('dark');
-      } else {
-        document.documentElement.classList.add('dark');
-        document.documentElement.classList.remove('light');
-      }
-    }
+    applyPlatformClass();
 
     // Phase 1: instant restore from localStorage (no flash)
-    const cached = localStorage.getItem('sasoo-theme');
-    applyTheme(cached || 'light');
+    const cached = readStoredTheme();
+    applyTheme(cached ?? 'light');
 
     // Phase 2: sync with backend only when no local preference exists yet
     // (first run / new profile). A cached value already reflects the user's
@@ -71,8 +64,7 @@ function App() {
       getSettings()
         .then((data) => {
           if (data?.theme) {
-            localStorage.setItem('sasoo-theme', data.theme);
-            applyTheme(data.theme);
+            applyTheme(data.theme === 'dark' ? 'dark' : 'light');
           }
         })
         .catch(() => {});

@@ -86,6 +86,8 @@ export interface PhaseInfo {
   tokens_out: number | null;
   cost_usd: number | null;
   error_message: string | null;
+  /** 이 phase의 최신 결과가 현재 설정과 다른 (provider, model, effort)로 만들어졌으면 그 모델명. */
+  stale_model?: string | null;
 }
 
 export interface AnalysisStatus {

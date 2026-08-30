@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as net from 'net';
@@ -19,6 +19,7 @@ import { initAutoUpdater } from './updater';
 installStdioEpipeGuard();
 
 const isDev = !app.isPackaged;
+const isMac = process.platform === 'darwin';
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 let mainWindow: BrowserWindow | null = null;
@@ -35,6 +36,13 @@ function getIconPath(): string | undefined {
   return fs.existsSync(iconPath) ? iconPath : undefined;
 }
 
+// 시스템 "투명도 감소"가 켜져 있으면 OS 재질 자체를 해제한다. CSS 폴백만으로는
+// 창 배경이 투명하게 비워진 상태가 남는다.
+function syncVibrancy(): void {
+  if (!isMac || !mainWindow) return;
+  mainWindow.setVibrancy(nativeTheme.prefersReducedTransparency ? null : 'under-window');
+}
+
 async function createWindow(): Promise<void> {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -43,10 +51,18 @@ async function createWindow(): Promise<void> {
     minHeight: 680,
     icon: getIconPath(),
     title: 'Sasoo',
-    frame: false,
-    backgroundColor: '#0a0a0b',
     show: false,
-    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' } : {}),
+    // darwin은 frame을 유지한다. frameless 창에는 NSVisualEffectView가 붙지
+    // 않아 vibrancy가 통째로 사라진다(실측: macOS 26.5). 트래픽 라이트를 남기고
+    // 타이틀바만 감추는 건 hiddenInset 하나로 충분하다. backgroundColor도 주지
+    // 않는다 — 재질이 곧 창 배경이다.
+    ...(isMac
+      ? {
+          titleBarStyle: 'hiddenInset' as const,
+          vibrancy: 'under-window' as const,
+          visualEffectState: 'followWindow' as const,
+        }
+      : { frame: false, backgroundColor: '#0a0a0b' }),
     webPreferences: {
       preload: getPreloadPath(),
       contextIsolation: true,
@@ -58,6 +74,8 @@ async function createWindow(): Promise<void> {
       ],
     },
   });
+
+  syncVibrancy();
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show();
@@ -209,6 +227,13 @@ function registerIpcHandlers(): void {
   ipcMain.handle('window:isMaximized', () => {
     return mainWindow?.isMaximized() ?? false;
   });
+
+  // 앱 테마를 OS에 알려 vibrancy 재질이 같은 명암을 따르게 한다.
+  ipcMain.handle('theme:set', (event, theme: unknown) => {
+    if (!isMainWindowSender(event)) return;
+    if (theme !== 'dark' && theme !== 'light') return;
+    nativeTheme.themeSource = theme;
+  });
 }
 
 async function initialize(): Promise<void> {
@@ -237,6 +262,7 @@ async function initialize(): Promise<void> {
   }
 
   registerIpcHandlers();
+  nativeTheme.on('updated', syncVibrancy);
   await createWindow();
 
   // Forward Python backend logs to renderer DevTools console

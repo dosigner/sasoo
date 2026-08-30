@@ -25,6 +25,24 @@ def test_legacy_claude_rows_still_price():
     assert not any(v.startswith("claude") for v in defaults)
 
 
+def test_luna_is_registered():
+    assert "gpt-5.6-luna" in PRICING
+    entry = PRICING["gpt-5.6-luna"]
+    assert entry["input"] > 0
+    assert entry["output"] > 0
+
+
+def test_unknown_openai_model_does_not_use_gemini_fallback():
+    """미지의 gpt-* 모델을 Gemini 단가로 조용히 계산하면 비용이 오산된다(스펙 R7-1)."""
+    cost_unknown_gpt = calc_cost("gpt-99-future", 1_000_000, 1_000_000)
+    cost_luna = calc_cost("gpt-5.6-luna", 1_000_000, 1_000_000)
+    assert cost_unknown_gpt == cost_luna  # OpenAI 폴백은 Luna 단가
+
+
+def test_unknown_gemini_model_keeps_existing_fallback():
+    from services.pricing import _FALLBACK
+    cost = calc_cost("gemini-99-future", 1_000_000, 0)
+    assert cost == calc_cost(_FALLBACK, 1_000_000, 0)
 # ---------------------------------------------------------------------------
 # 날짜 조건부 단가
 #

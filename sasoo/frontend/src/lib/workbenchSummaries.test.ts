@@ -277,3 +277,41 @@ describe('buildPhaseSummary(screening) — metaItems', () => {
     expect(summary.metaItems).toEqual([]);
   });
 });
+
+describe('buildPhaseSummary(deep_dive) — 신구 스키마 요약', () => {
+  function makeDeepDiveResults(deepDive: Record<string, unknown>): AnalysisResults {
+    return {
+      paper_id: 1,
+      status: {} as AnalysisStatus,
+      screening: null,
+      citation: null,
+      visual: null,
+      recipe: null,
+      deep_dive: deepDive,
+    };
+  }
+
+  it('신 스키마면 problem_definition이 요약줄이 된다', () => {
+    const summary = buildPhaseSummary(
+      'deep_dive',
+      makeDeepDiveResults({ problem_definition: '수차 보정이 느린 것이 문제다', strengths: ['a'] }),
+      null,
+      [],
+      [],
+      null,
+    );
+    expect(summary.summaryLine).toBe('수차 보정이 느린 것이 문제다');
+  });
+
+  it('구 캐시(detailed_analysis만 있음)면 그 본문이 요약줄로 남는다', () => {
+    const summary = buildPhaseSummary(
+      'deep_dive',
+      makeDeepDiveResults({ detailed_analysis: '옛 형식의 분석 본문' }),
+      null,
+      [],
+      [],
+      null,
+    );
+    expect(summary.summaryLine).toBe('옛 형식의 분석 본문');
+  });
+});

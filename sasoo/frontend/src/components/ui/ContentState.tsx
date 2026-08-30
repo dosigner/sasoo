@@ -1,5 +1,4 @@
 import type { ComponentType } from 'react';
-import { AppIcon } from '@/components/icons';
 
 interface ContentStateProps {
   icon: ComponentType<{ className?: string; title?: string }>;
@@ -55,19 +54,21 @@ export default function ContentState({
       } ${className}`}
       style={{ borderRadius: 'var(--radius-surface)' }}
     >
-      <div
-        className={`mb-3 flex items-center justify-center border ${styles.iconWrap} ${
-          compact ? 'h-10 w-10' : 'h-11 w-11'
-        }`}
-        style={{ borderRadius: 'var(--radius-control)' }}
-      >
-        {loading ? (
-          <AppIcon name="spinner" className={`animate-spin ${styles.icon} ${compact ? 'h-4 w-4' : 'h-5 w-5'}`} />
-        ) : (
+      {!loading && (
+        <div
+          className={`mb-3 flex items-center justify-center border ${styles.iconWrap} ${
+            compact ? 'h-10 w-10' : 'h-11 w-11'
+          }`}
+          style={{ borderRadius: 'var(--radius-control)' }}
+        >
           <Icon className={`${styles.icon} ${compact ? 'h-4 w-4' : 'h-5 w-5'}`} />
-        )}
-      </div>
-      <h3 className={`${compact ? 'text-xs' : 'text-sm'} font-semibold text-fg`}>
+        </div>
+      )}
+      <h3
+        className={`${compact ? 'text-xs' : 'text-sm'} font-semibold ${
+          loading ? 'shimmer-label' : 'text-fg'
+        }`}
+      >
         {title}
       </h3>
       {description && (

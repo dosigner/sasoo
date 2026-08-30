@@ -3,6 +3,7 @@ import unittest
 from services.provider_state import (
     VALID_PROVIDERS,
     effective_provider,
+    key_env_for,
     mirror_legacy_settings,
     provider_switched,
 )
@@ -52,6 +53,18 @@ class TestEffectiveProvider(unittest.TestCase):
 
     def test_garbage_stored_value_is_treated_as_unset(self):
         self.assertEqual(effective_provider("anthropic", has_openai=True, has_gemini=True), "openai")
+
+
+class TestKeyEnvFor(unittest.TestCase):
+    def test_openai_maps_to_openai_key(self):
+        self.assertEqual(key_env_for("openai"), "OPENAI_API_KEY")
+
+    def test_gemini_maps_to_gemini_key(self):
+        self.assertEqual(key_env_for("gemini"), "GEMINI_API_KEY")
+
+    def test_unknown_falls_back_to_gemini_key(self):
+        """active_provider()의 None 폴백과 같은 관례 — 모르는 값은 gemini로 취급."""
+        self.assertEqual(key_env_for("anthropic"), "GEMINI_API_KEY")
 
 
 class TestSwitchDetection(unittest.TestCase):

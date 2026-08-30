@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from PIL import Image
 
 from services.llm.interactions_client import call_interaction
-from services.models import MODEL_FLASH_HQ
+from services.model_registry import resolve as resolve_model
 from models.paper import Figure
 
 _SUBFIGURE_RESPONSE_SCHEMA = {
@@ -134,13 +134,17 @@ If no sub-figures are detected, return:
 
     async def detect_subfigures(
         self,
-        figure: Figure
+        figure: Figure,
+        *,
+        provider: str = "gemini",
     ) -> SubFigureDetectionResult:
         """
         Detect sub-figures in a composite figure image.
 
         Args:
             figure: Figure object with image_path
+            provider: LLM provider role 조회에 쓸 값. 기본값 "gemini"는
+                Task 9 이전 실동작의 이식 — 호출자가 명시하지 않으면 바뀌지 않는다.
 
         Returns:
             SubFigureDetectionResult with detected boundaries
@@ -169,15 +173,17 @@ If no sub-figures are detected, return:
 
         # Call Gemini with vision via the Interactions API
         try:
+            _choice = resolve_model("subfigure", provider)
             result = await call_interaction(
                 [
                     {"type": "image", "data": image_base64, "mime_type": "image/png"},
                     {"type": "text", "text": self.DETECTION_PROMPT},
                 ],
                 lane="pipeline",
-                model=MODEL_FLASH_HQ,
-                # 3.7 Flash는 minimal을 거부한다(400). low가 이 모델의 최저치다.
-                thinking_level="low",
+                model=_choice.model,
+                # effort는 model_registry가 정한다. FLASH_HQ는 minimal을 400으로
+                # 거부하므로 gemini 표의 값이 low다(services/test_model_registry.py).
+                thinking_level=_choice.effort,
                 store=False,
                 response_schema=_SUBFIGURE_RESPONSE_SCHEMA,
             )
@@ -260,7 +266,9 @@ If no sub-figures are detected, return:
         self,
         figure: Figure,
         output_dir: Path,
-        detection_result: Optional[SubFigureDetectionResult] = None
+        detection_result: Optional[SubFigureDetectionResult] = None,
+        *,
+        provider: str = "gemini",
     ) -> list[Figure]:
         """
         Extract sub-figures as separate images based on detection result.
@@ -269,12 +277,13 @@ If no sub-figures are detected, return:
             figure: Original composite figure
             output_dir: Directory to save sub-figure images
             detection_result: Optional pre-computed detection result
+            provider: detection_result가 없어 새로 detect할 때만 쓰인다.
 
         Returns:
             List of Figure objects for each sub-figure
         """
         if detection_result is None:
-            detection_result = await self.detect_subfigures(figure)
+            detection_result = await self.detect_subfigures(figure, provider=provider)
 
         if not detection_result.has_subfigures:
             return [figure]  # Return original if no sub-figures
