@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Download, RefreshCw, ExternalLink, X } from 'lucide-react';
+import { isMac } from '@/lib/theme';
 
 type UpdateState = 'hidden' | 'available' | 'downloading' | 'ready';
 
@@ -8,8 +9,6 @@ export default function UpdateBanner() {
   const [version, setVersion] = useState('');
   const [progress, setProgress] = useState(0);
   const [dismissed, setDismissed] = useState(false);
-
-  const isMac = navigator.platform.toLowerCase().includes('mac');
 
   useEffect(() => {
     if (!window.electronAPI?.on) return;
@@ -42,7 +41,7 @@ export default function UpdateBanner() {
     setState('downloading');
     setProgress(0);
     await window.electronAPI?.downloadUpdate();
-  }, [isMac]);
+  }, []);
 
   const handleInstall = useCallback(() => {
     window.electronAPI?.installUpdate();

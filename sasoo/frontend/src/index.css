@@ -175,8 +175,10 @@
     @apply px-2 pb-1.5 text-2xs font-semibold uppercase tracking-[0.08em] text-fg-muted;
   }
 
+  /* 위계: 링크(fg) > 활성(accent) > 하단 토글(fg-secondary) > 섹션 제목(fg-muted).
+     링크가 fg-secondary였을 때는 재질 위에서 전 항목이 같이 가라앉았다. */
   .app-sidebar-link {
-    @apply flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-sm text-fg-secondary transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
+    @apply flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-sm text-fg transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
   }
 
   .app-sidebar-collapsed .app-sidebar-link {
@@ -1564,6 +1566,54 @@
   }
 }
 
+/* ── macOS vibrancy 틴트 ── */
+/* 창 재질(vibrancy: 'sidebar')이 블러를 담당하므로 여기서는 알파 틴트만 얹는다.
+   같은 표면에 backdrop-filter를 겹쳐 걸면 배경이 두 번 뭉개져 탁해진다.
+   읽는 면인 콘텐츠 영역(main)은 불투명하게 남긴다 — 라우트 전환 중
+   PageScaffold가 아직 없는 순간에도 창이 비치지 않아야 한다. */
+.platform-darwin {
+  --vibrancy-floating-tint: 0.72;
+}
+
+.platform-darwin.dark {
+  --vibrancy-floating-tint: 0.66;
+}
+
+/* index.html의 FOUC 가드가 html에 다크 배경(#0a0a0b)을 박아 둔다. body만
+   투명하게 하면 그 아래 html의 다크가 재질을 가리므로 html까지 비운다. */
+.platform-darwin,
+.platform-darwin body,
+.platform-darwin .app-shell {
+  background-color: transparent;
+}
+
+.platform-darwin main {
+  background-color: rgb(var(--bg));
+}
+
+/* 사이드바·타이틀바는 재질을 그대로 드러낸다. 알파 틴트를 얹으면 macOS가
+   그려 준 블러와 채도 증폭이 단색 페인트에 덮여 그냥 회색 판이 된다(실측). */
+.platform-darwin .app-sidebar,
+.platform-darwin .titlebar-drag {
+  background-color: transparent;
+  backdrop-filter: none;
+}
+
+/* 플로팅 표면은 앱 내용을 블러하는 기존 backdrop-filter를 그대로 쓰고,
+   창 재질과 겹쳐 탁해지지 않도록 알파만 낮춘다. */
+.platform-darwin .chat-launcher,
+.platform-darwin .chat-floating-card,
+.platform-darwin .figure-modal-inspector,
+.platform-darwin .toast-surface,
+.platform-darwin .settings-savebar {
+  background-color: rgb(var(--surface) / var(--vibrancy-floating-tint));
+}
+
+.platform-darwin .chat-launcher-ready:hover,
+.platform-darwin .chat-launcher-pending:hover {
+  background-color: rgb(var(--surface-hover) / var(--vibrancy-floating-tint));
+}
+
 /* ── Accessibility: reduced transparency ── */
 /* Apple HIG: translucent materials must degrade to opaque surfaces when the
    user asks the system to reduce transparency. Blur is disabled outright and
@@ -1587,5 +1637,24 @@
   .toast-surface {
     background-color: rgb(var(--surface));
     backdrop-filter: none;
+  }
+
+  /* darwin 틴트 복구. 위 .platform-darwin 규칙이 특정도가 높아 기본 폴백만으로는
+     덮이지 않으므로, 알파 변수를 1로 되돌리고 투명화한 배경을 채운다.
+     OS vibrancy 자체는 main 프로세스가 setVibrancy(null)로 끈다. */
+  .platform-darwin,
+  .platform-darwin.dark {
+    --vibrancy-floating-tint: 1;
+  }
+
+  .platform-darwin,
+  .platform-darwin body,
+  .platform-darwin .app-shell {
+    background-color: rgb(var(--bg));
+  }
+
+  .platform-darwin .app-sidebar,
+  .platform-darwin .titlebar-drag {
+    background-color: rgb(var(--surface));
   }
 }

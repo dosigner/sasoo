@@ -14,6 +14,7 @@ import { ProviderCards, type Provider } from '@/components/settings/ProviderCard
 import { SaveBar } from '@/components/settings/SaveBar';
 import { Select, Toggle } from '@/components/ui';
 import { S } from '@/lib/strings';
+import { applyTheme, readStoredTheme, type Theme } from '@/lib/theme';
 import { AppIcon } from '@/components/icons';
 
 // ---------------------------------------------------------------------------
@@ -125,9 +126,7 @@ export default function Settings() {
   const [geminiKey, setGeminiKey] = useState('');
   const [openaiKey, setOpenaiKey] = useState('');
   const [libraryPath, setLibraryPath] = useState('');
-  const [theme, setTheme] = useState<'dark' | 'light'>(
-    () => (localStorage.getItem('sasoo-theme') === 'dark' ? 'dark' : 'light')
-  );
+  const [theme, setTheme] = useState<Theme>(() => readStoredTheme() ?? 'light');
   const [autoAnalyze, setAutoAnalyze] = useState(false);
   const [pdfParserMode, setPdfParserMode] = useState<'java'>('java');
   const [extractionPipelineVersion, setExtractionPipelineVersion] = useState<'resolver_v1'>('resolver_v1');
@@ -161,8 +160,8 @@ export default function Settings() {
     // backend value on a true first run, where no local preference exists yet —
     // otherwise a stale/unsaved backend value would silently revert an
     // already-applied theme toggle on every settings reload.
-    if (!localStorage.getItem('sasoo-theme') && data.theme) {
-      setTheme(data.theme as 'dark' | 'light');
+    if (!readStoredTheme() && data.theme) {
+      setTheme(data.theme as Theme);
     }
     setAutoAnalyze(data.auto_analyze ?? false);
     setPdfParserMode((data.pdf_parser_mode || 'java') as 'java');
@@ -213,14 +212,7 @@ export default function Settings() {
   // Apply theme
   // -----------------------------------------------------------------------
   useEffect(() => {
-    if (theme === 'light') {
-      document.documentElement.classList.add('light');
-      document.documentElement.classList.remove('dark');
-    } else {
-      document.documentElement.classList.add('dark');
-      document.documentElement.classList.remove('light');
-    }
-    localStorage.setItem('sasoo-theme', theme);
+    applyTheme(theme);
   }, [theme]);
 
   // -----------------------------------------------------------------------
