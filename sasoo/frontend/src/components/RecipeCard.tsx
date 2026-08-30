@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { EvidenceAnchor, Recipe } from '@/lib/api';
 import { S } from '@/lib/strings';
+import { downloadBlob } from '@/lib/download';
 import { AppIcon } from '@/components/icons';
 import CascadeIn from '@/components/amicro/CascadeIn';
 import { Badge, Tooltip } from '@/components/ui';
@@ -32,13 +33,7 @@ interface RecipeCardProps {
 
 function downloadCsv(content: string, filename: string) {
   const bom = '\uFEFF'; // UTF-8 BOM for Excel compatibility
-  const blob = new Blob([bom + content], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(filename, new Blob([bom + content], { type: 'text/csv;charset=utf-8;' }));
 }
 
 // ---------------------------------------------------------------------------

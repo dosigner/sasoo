@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import type { MermaidDiagram } from '@/lib/api';
 import { S } from '@/lib/strings';
+import { downloadBlob } from '@/lib/download';
+import { resolveSvgPixelSize } from '@/lib/svgSize';
 
 mermaid.registerLayoutLoaders(elkLayouts);
 
@@ -165,26 +167,15 @@ export function safeFilename(name: string): string {
   return (name || 'diagram').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 60);
 }
 
-export function downloadBlob(filename: string, blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 /** Mermaid SVGs carry viewBox + max-width style but no pixel size; pin one for export. */
 function svgWithPixelSize(svg: string): { svg: string; width: number; height: number } {
   const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
   const el = doc.documentElement;
-  let width = parseFloat(el.getAttribute('width') || '');
-  let height = parseFloat(el.getAttribute('height') || '');
-  const viewBox = (el.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
-  if ((!width || Number.isNaN(width)) && viewBox.length === 4) width = viewBox[2];
-  if ((!height || Number.isNaN(height)) && viewBox.length === 4) height = viewBox[3];
-  width = Math.ceil(width || 1200);
-  height = Math.ceil(height || 800);
+  const { width, height } = resolveSvgPixelSize(
+    el.getAttribute('width'),
+    el.getAttribute('height'),
+    el.getAttribute('viewBox')
+  );
   el.setAttribute('width', String(width));
   el.setAttribute('height', String(height));
   el.removeAttribute('style');
@@ -225,7 +216,9 @@ export async function svgToPngBlob(svg: string, scale = 2): Promise<Blob | null>
 
 async function downloadPng(svg: string, name: string, scale = 2) {
   const blob = await svgToPngBlob(svg, scale);
-  if (blob) downloadBlob(`${safeFilename(name)}.png`, blob);
+  // A null blob means canvas encoding failed; surface it instead of no-opping.
+  if (!blob) throw new Error('PNG encoding failed');
+  downloadBlob(`${safeFilename(name)}.png`, blob);
 }
 
 // ---------------------------------------------------------------------------
@@ -329,6 +322,7 @@ export default function MermaidRenderer({
   const [isRendering, setIsRendering] = useState(false);
   const [isRepairing, setIsRepairing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const renderIdRef = useRef(0);
   // Last source we already asked the LLM to repair — one attempt per source.
@@ -350,6 +344,7 @@ export default function MermaidRenderer({
 
       setIsRendering(true);
       setRenderError(null);
+      setDownloadError('');
       renderIdRef.current += 1;
       const currentRenderId = renderIdRef.current;
 
@@ -461,6 +456,26 @@ export default function MermaidRenderer({
     }
   }, [diagram?.mermaid_code]);
 
+  // Both download paths can fail (bad SVG, canvas encoding, blocked save), and
+  // a click that does nothing is indistinguishable from a broken button.
+  const handleDownload = useCallback(
+    async (format: 'svg' | 'png') => {
+      setDownloadError('');
+      try {
+        const name = title || S.mermaid.title;
+        if (format === 'svg') {
+          downloadSvg(svgContent, name);
+        } else {
+          await downloadPng(svgContent, name);
+        }
+      } catch (err) {
+        console.warn(`Mermaid ${format} download failed`, err);
+        setDownloadError(S.mermaid.downloadFailed);
+      }
+    },
+    [svgContent, title]
+  );
+
   if (loading) {
     return <MermaidSkeleton />;
   }
@@ -524,7 +539,7 @@ export default function MermaidRenderer({
           {svgContent && !renderError && (
             <>
               <button
-                onClick={() => downloadSvg(svgContent, title || S.mermaid.title)}
+                onClick={() => { void handleDownload('svg'); }}
                 className="btn-ghost text-2xs px-2 py-1"
                 title={`${S.mermaid.download} SVG`}
               >
@@ -532,7 +547,7 @@ export default function MermaidRenderer({
                 SVG
               </button>
               <button
-                onClick={() => { void downloadPng(svgContent, title || S.mermaid.title); }}
+                onClick={() => { void handleDownload('png'); }}
                 className="btn-ghost text-2xs px-2 py-1"
                 title={`${S.mermaid.download} PNG`}
               >
@@ -624,6 +639,12 @@ export default function MermaidRenderer({
               <p className="text-2xs text-fg-muted px-4 pt-3 flex items-center gap-1">
                 <AlertCircle className="w-3 h-3" />
                 {S.mermaid.styleFallback}
+              </p>
+            )}
+            {downloadError && (
+              <p className="text-2xs text-danger px-4 pt-3 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                {downloadError}
               </p>
             )}
             <div
