@@ -40,7 +40,7 @@ function getIconPath(): string | undefined {
 // 창 배경이 투명하게 비워진 상태가 남는다.
 function syncVibrancy(): void {
   if (!isMac || !mainWindow) return;
-  mainWindow.setVibrancy(nativeTheme.prefersReducedTransparency ? null : 'sidebar');
+  mainWindow.setVibrancy(nativeTheme.prefersReducedTransparency ? null : 'under-window');
 }
 
 async function createWindow(): Promise<void> {
@@ -59,7 +59,7 @@ async function createWindow(): Promise<void> {
     ...(isMac
       ? {
           titleBarStyle: 'hiddenInset' as const,
-          vibrancy: 'sidebar' as const,
+          vibrancy: 'under-window' as const,
           visualEffectState: 'followWindow' as const,
         }
       : { frame: false, backgroundColor: '#0a0a0b' }),
