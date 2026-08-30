@@ -79,7 +79,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
-            const title = '의존성 감사 실패: pnpm.overrides가 낡았다';
+            const title = '의존성 감사 실패: override가 낡았다';
             const body = [
               '주기 감사(`.github/workflows/dependency-audit.yml`)가 새 취약점을 찾았다.',
               '',
@@ -87,7 +87,7 @@ jobs:
               '',
               '## 고치는 법',
               '',
-              '이 저장소는 간접 의존성 취약점을 `package.json`의 `pnpm.overrides`로 막는다.',
+              '이 저장소는 간접 의존성 취약점을 `pnpm-workspace.yaml`의 `overrides`로 막는다.',
               '권고의 취약 범위를 선택자로, 패치 하한을 대상으로 쓴다. **정확한 버전으로 못 박지 마라**',
               '(다른 취약 버전이 오면 규칙이 발동하지 않고 조용히 통과한다).',
               '',
@@ -139,7 +139,7 @@ jobs:
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         with:
           script: |
-            const title = '의존성 감사 실패: pnpm.overrides가 낡았다';
+            const title = '의존성 감사 실패: override가 낡았다';
             const existing = await github.rest.issues.listForRepo({
               owner: context.repo.owner, repo: context.repo.repo,
               state: 'open', labels: 'dependencies,security',

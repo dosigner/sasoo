@@ -21,8 +21,8 @@
   "osvVulnerabilityAlerts": true,
   "packageRules": [
     {
-      "description": "pnpm.overrides는 이 저장소가 간접 의존성 취약점을 막는 유일한 수단이다. Dependabot은 이 필드를 갱신하지 못해서 Renovate를 골랐다(2026-08-18 조사). 묶지 말고 건별로 올려 근거를 확인할 수 있게 둔다.",
-      "matchDepTypes": ["pnpm.overrides", "overrides", "resolutions"],
+      "description": "override는 이 저장소가 간접 의존성 취약점을 막는 유일한 수단이다. Dependabot은 이 필드를 갱신하지 못해서 Renovate를 골랐다(2026-08-18 조사). 묶지 말고 건별로 올려 근거를 확인할 수 있게 둔다. depType은 정의 위치에 따라 갈린다: pnpm-workspace.yaml은 pnpm-workspace.overrides, package.json의 pnpm 필드는 pnpm.overrides다(renovatebot/renovate#42247, 2026-04-08 병합). 이 저장소는 앞의 것을 쓰지만 뒤의 것도 남겨 둔다.",
+      "matchDepTypes": ["pnpm-workspace.overrides", "pnpm.overrides", "overrides", "resolutions"],
       "groupName": null,
       "schedule": ["at any time"],
       "prPriority": 20,
