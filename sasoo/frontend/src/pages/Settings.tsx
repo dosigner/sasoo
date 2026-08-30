@@ -14,6 +14,7 @@ import { ProviderCards, type Provider } from '@/components/settings/ProviderCard
 import { SaveBar } from '@/components/settings/SaveBar';
 import { Select, Toggle } from '@/components/ui';
 import { S } from '@/lib/strings';
+import { applyTheme, readStoredTheme, type Theme } from '@/lib/theme';
 import { AppIcon } from '@/components/icons';
 
 // ---------------------------------------------------------------------------
@@ -35,7 +36,7 @@ function SettingSection({
       {description && (
         <p className="mt-1 text-xs text-fg-muted">{description}</p>
       )}
-      <div className="mt-3 divide-y divide-border">{children}</div>
+      <div className="mt-3 flex flex-col gap-1">{children}</div>
     </section>
   );
 }
@@ -55,7 +56,7 @@ function SettingRow({
 }) {
   if (full) {
     return (
-      <div className="py-3">
+      <div className="settings-row-block">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-fg">{label}</span>
           {badge}
@@ -68,7 +69,7 @@ function SettingRow({
     );
   }
   return (
-    <div className="flex items-center justify-between gap-4 py-3">
+    <div className="settings-row-block flex items-center justify-between gap-4">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-fg">{label}</span>
@@ -125,9 +126,7 @@ export default function Settings() {
   const [geminiKey, setGeminiKey] = useState('');
   const [openaiKey, setOpenaiKey] = useState('');
   const [libraryPath, setLibraryPath] = useState('');
-  const [theme, setTheme] = useState<'dark' | 'light'>(
-    () => (localStorage.getItem('sasoo-theme') === 'dark' ? 'dark' : 'light')
-  );
+  const [theme, setTheme] = useState<Theme>(() => readStoredTheme() ?? 'light');
   const [autoAnalyze, setAutoAnalyze] = useState(false);
   const [pdfParserMode, setPdfParserMode] = useState<'java'>('java');
   const [extractionPipelineVersion, setExtractionPipelineVersion] = useState<'resolver_v1'>('resolver_v1');
@@ -161,8 +160,8 @@ export default function Settings() {
     // backend value on a true first run, where no local preference exists yet —
     // otherwise a stale/unsaved backend value would silently revert an
     // already-applied theme toggle on every settings reload.
-    if (!localStorage.getItem('sasoo-theme') && data.theme) {
-      setTheme(data.theme as 'dark' | 'light');
+    if (!readStoredTheme() && data.theme) {
+      setTheme(data.theme as Theme);
     }
     setAutoAnalyze(data.auto_analyze ?? false);
     setPdfParserMode((data.pdf_parser_mode || 'java') as 'java');
@@ -213,14 +212,7 @@ export default function Settings() {
   // Apply theme
   // -----------------------------------------------------------------------
   useEffect(() => {
-    if (theme === 'light') {
-      document.documentElement.classList.add('light');
-      document.documentElement.classList.remove('dark');
-    } else {
-      document.documentElement.classList.add('dark');
-      document.documentElement.classList.remove('light');
-    }
-    localStorage.setItem('sasoo-theme', theme);
+    applyTheme(theme);
   }, [theme]);
 
   // -----------------------------------------------------------------------
@@ -366,10 +358,7 @@ export default function Settings() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-6 h-6 text-accent animate-spin" />
-          <span className="text-sm text-fg-muted">{S.settings.loadingSettings}</span>
-        </div>
+        <span className="text-sm shimmer-label">{S.settings.loadingSettings}</span>
       </div>
     );
   }

@@ -7,8 +7,8 @@
 
 import JSZip from 'jszip';
 import { getStaticUrl, type VisualizationItem } from '@/lib/api';
+import { downloadBlob } from '@/lib/download';
 import {
-  downloadBlob,
   renderMermaidSvg,
   safeFilename,
   svgToPngBlob,

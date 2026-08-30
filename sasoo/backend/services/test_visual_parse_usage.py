@@ -132,6 +132,14 @@ def _root(content: str) -> dict:
 class ChannelCaptureTests(unittest.TestCase):
     """_run_convert(mock 경계)를 건드리지 않고 gemini usage가 manifest로 올라오는지."""
 
+    def setUp(self):
+        # Task 9: _build_resolver_v1_manifest가 active_provider()를 호출한다.
+        self._active_provider_patch = patch(
+            "services.odl_parser.active_provider", new=AsyncMock(return_value="gemini"),
+        )
+        self._active_provider_patch.start()
+        self.addCleanup(self._active_provider_patch.stop)
+
     def _make_paper(self, tmp_dir: str) -> Path:
         paper_dir = Path(tmp_dir)
         pdf_path = paper_dir / "paper.pdf"
@@ -143,7 +151,9 @@ class ChannelCaptureTests(unittest.TestCase):
         return paper_dir
 
     def test_gemini_usage_bubbles_into_manifest_key(self):
-        async def _fake_run_convert_gemini(pdf_path, output_dir, figures_dir, *, usage_out=None):
+        async def _fake_run_convert_gemini(
+            pdf_path, output_dir, figures_dir, *, usage_out=None, provider="gemini"
+        ):
             # 실제 API 대신, 채널이 넘겨준 usage_out을 run_convert_gemini와 동일 계약으로 채운다.
             if usage_out is not None:
                 usage_out.update(
@@ -183,7 +193,7 @@ class ChannelCaptureTests(unittest.TestCase):
 
     def test_channel_stays_empty_when_engine_is_odl(self):
         # visual 엔진을 ODL로 강제하면 gemini 파서가 안 돌아 usage 키가 없어야 한다.
-        def _all_odl(pdf_path, output_dir, figures_dir, mode, engine=None, stage="text"):
+        def _all_odl(pdf_path, output_dir, figures_dir, mode, engine=None, stage="text", provider=None):
             return copy.deepcopy(_root("ODL TEXT")), "ODL TEXT", "odl-java"
 
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -200,6 +210,14 @@ class ChannelCaptureTests(unittest.TestCase):
 class FallbackAndTextRootTests(unittest.TestCase):
     """F1(폴백 우회 방지) + F2(부분 실패 원장 기록) + F4(텍스트 계약 본문 보전)."""
 
+    def setUp(self):
+        # Task 9: _build_resolver_v1_manifest가 active_provider()를 호출한다.
+        self._active_provider_patch = patch(
+            "services.odl_parser.active_provider", new=AsyncMock(return_value="gemini"),
+        )
+        self._active_provider_patch.start()
+        self.addCleanup(self._active_provider_patch.stop)
+
     def _make_paper(self, tmp_dir: str) -> Path:
         paper_dir = Path(tmp_dir)
         pdf_path = paper_dir / "paper.pdf"
@@ -213,7 +231,9 @@ class FallbackAndTextRootTests(unittest.TestCase):
     def test_run_convert_gemini_wraps_non_gemini_error_as_odl_error(self):
         # F1: gemini 경로가 GeminiParserError가 아닌 raw 예외(예: fitz.open 실패)를 던져도
         # _run_convert_gemini가 OdlParserError로 감싸야 상위 폴백이 동작한다(원인 체이닝 유지).
-        async def _raise_raw(pdf_path, output_dir, figures_dir, *, usage_out=None):
+        async def _raise_raw(
+            pdf_path, output_dir, figures_dir, *, usage_out=None, provider="gemini"
+        ):
             raise RuntimeError("raw fitz explosion")
 
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -228,7 +248,9 @@ class FallbackAndTextRootTests(unittest.TestCase):
     def test_partial_gemini_failure_records_billed_pages_via_odl_fallback(self):
         # F2: 부분 실패로 gemini가 raise하고 ODL 폴백이 일어나도, 이미 과금된 gemini 페이지의
         # usage가 채널을 통해 manifest로 올라와 원장에 기록되게 한다(최종 엔진은 ODL).
-        async def _partial_then_raise(pdf_path, output_dir, figures_dir, *, usage_out=None):
+        async def _partial_then_raise(
+            pdf_path, output_dir, figures_dir, *, usage_out=None, provider="gemini"
+        ):
             from services.gemini_parser import GeminiParserError
 
             if usage_out is not None:
@@ -246,7 +268,7 @@ class FallbackAndTextRootTests(unittest.TestCase):
                 )
             raise GeminiParserError("2/3 page(s) failed; first error: rate limit")
 
-        def _fake_odl(pdf_path, output_dir, figures_dir, mode):
+        def _fake_odl(pdf_path, output_dir, figures_dir, mode, provider=None):
             return copy.deepcopy(_root("ODL FALLBACK TEXT")), "ODL FALLBACK TEXT", "odl-java"
 
         with tempfile.TemporaryDirectory() as tmp_dir:

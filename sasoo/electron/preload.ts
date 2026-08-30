@@ -38,6 +38,9 @@ export interface ElectronAPI {
   closeWindow: () => Promise<void>;
   isMaximized: () => Promise<boolean>;
 
+  // Theme (OS vibrancy 재질 동기화)
+  setNativeTheme: (theme: 'dark' | 'light') => Promise<void>;
+
   // Updater
   downloadUpdate: () => Promise<{ success?: boolean; opened?: boolean; error?: string }>;
   installUpdate: () => Promise<void>;
@@ -63,6 +66,9 @@ const electronAPI: ElectronAPI = {
   maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
   closeWindow: () => ipcRenderer.invoke('window:close'),
   isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+
+  // Theme
+  setNativeTheme: (theme) => ipcRenderer.invoke('theme:set', theme),
 
   // Updater
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),

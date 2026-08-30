@@ -594,10 +594,7 @@ export default function Library() {
 
       {loading && (
         <div className="flex items-center justify-center py-20" role="status" aria-busy="true">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="w-6 h-6 text-accent animate-spin" />
-            <span className="text-sm text-fg-muted">{S.library.loading}</span>
-          </div>
+          <span className="text-sm shimmer-label">{S.library.loading}</span>
         </div>
       )}
 

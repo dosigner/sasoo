@@ -31,6 +31,7 @@ import {
 } from '@/lib/api';
 import { buildPhaseSummary, buildWorkbenchStatusSummary } from '@/lib/workbenchSummaries';
 import { S } from '@/lib/strings';
+import { assetExtension, downloadBlob, safeAssetFilename } from '@/lib/download';
 import { extractOutline } from '@/lib/mdOutline';
 import SectionOutline from './SectionOutline';
 import FigureGallery from './FigureGallery';
@@ -643,9 +644,24 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
     if (data.expected_results) lines.push(`**${md.expectedResults}:** ${data.expected_results}\n`);
     if (data.safety_notes) lines.push(`**${md.safetyNotes}:** ${data.safety_notes}\n`);
   } else if (phase === 'deep_dive') {
+    // 신 스키마: 구조화 필드를 라벨과 함께 렌더. 빈 문자열은 건너뛴다.
+    const structured: [string, string][] = [
+      ['problem_definition', md.problemDefinition],
+      ['as_is', md.asIs],
+      ['to_be', md.toBe],
+      ['solution', md.solution],
+      ['method_summary', md.methodSummary],
+      ['key_results', md.keyResults],
+    ];
+    for (const [key, label] of structured) {
+      const value = data[key];
+      if (typeof value === 'string' && value.trim()) lines.push(`**${label}:** ${value}\n`);
+    }
+    // 구 캐시(detailed_analysis 단일 서술) 폴백.
     if (data.detailed_analysis) lines.push(`${data.detailed_analysis}\n`);
     if (data.novelty_assessment) lines.push(`**${md.novelty}:** ${data.novelty_assessment}\n`);
     if (data.comparison_to_prior_work) lines.push(`**${md.comparisonToPrior}:** ${data.comparison_to_prior_work}\n`);
+    if (data.comparison_scope === 'in_paper_only') lines.push(`_${md.comparisonScopeNote}_\n`);
     const sections: [string, string][] = [
       ['strengths', `✅ ${md.strengths}`],
       ['weaknesses', `⚠️ ${md.weaknesses}`],
@@ -681,32 +697,23 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
 
 function PaperBananaViewer({ item }: { item: VisualizationItem }) {
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   // Download the generated illustration. Served same-origin from the backend
-  // (/static/...), so a blob + anchor click is enough.
+  // (/static/...), so fetching it into a blob is enough.
   const handleDownload = useCallback(async () => {
     if (!item.image_url) return;
     setSaving(true);
+    setSaveError('');
     try {
       const res = await fetch(getStaticUrl(item.image_url));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
-      const objUrl = URL.createObjectURL(blob);
-      const ext = (item.image_url.split('.').pop() || 'png').split(/[?#]/)[0];
-      // \p{L}/\p{N} keeps non-ASCII letters (한글 등) that ASCII-only \w drops.
-      const base =
-        (item.title || 'illustration')
-          .replace(/[^\p{L}\p{N}._-]+/gu, '_')
-          .replace(/^_+|_+$/g, '') || 'illustration';
-      const a = document.createElement('a');
-      a.href = objUrl;
-      a.download = `${base}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(objUrl);
+      const base = safeAssetFilename(item.title, 'illustration');
+      downloadBlob(`${base}.${assetExtension(item.image_url)}`, blob);
     } catch (err) {
       console.error('Illustration download failed:', err);
+      setSaveError(S.figures.saveFailed);
     } finally {
       setSaving(false);
     }
@@ -753,6 +760,12 @@ function PaperBananaViewer({ item }: { item: VisualizationItem }) {
           <Download className="h-4 w-4" />
         )}
       </button>
+      {saveError && (
+        <p className="flex items-center gap-1 border-t border-border px-2 py-1 text-2xs text-danger">
+          <AlertCircle className="h-3 w-3" />
+          {saveError}
+        </p>
+      )}
     </div>
   );
 }

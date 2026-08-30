@@ -3,6 +3,7 @@ import { NavLink } from 'react-router';
 import { Sun, Moon } from 'lucide-react';
 import { S } from '@/lib/strings';
 import { updateSettings } from '@/lib/api';
+import { applyTheme, readStoredTheme, type Theme } from '@/lib/theme';
 import appIcon32 from '@/assets/brand/app-icon-32.svg';
 import { AppIcon, type AppIconName } from '@/components/icons';
 
@@ -44,17 +45,12 @@ export default function AppSidebar() {
     });
   }, []);
 
-  const [theme, setTheme] = useState<'dark' | 'light'>(() =>
-    localStorage.getItem('sasoo-theme') === 'dark' ? 'dark' : 'light'
-  );
+  const [theme, setTheme] = useState<Theme>(() => readStoredTheme() ?? 'light');
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => {
-      const next = prev === 'dark' ? 'light' : 'dark';
-      localStorage.setItem('sasoo-theme', next);
-      const root = document.documentElement;
-      root.classList.toggle('dark', next === 'dark');
-      root.classList.toggle('light', next === 'light');
+      const next: Theme = prev === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
       // 백엔드에도 동기화 (App.tsx는 localStorage를 우선하지만 신규 세션 대비)
       updateSettings({ theme: next }).catch(() => {});
       return next;

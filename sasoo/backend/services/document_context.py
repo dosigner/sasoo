@@ -19,7 +19,11 @@ from services.section_splitter import SectionSplitter
 logger = logging.getLogger(__name__)
 
 DOCUMENT_CONTEXT_FILENAME = ".document_context.json"
-CONTEXT_BUILDER_VERSION = "document-context-v3"
+# v4: 반환 dict에 비절단 full_text를 노출한다(리뷰 Critical 수정, Task 10) — OpenAI
+# 텍스트 체인의 doc_text 주입이 phase_inputs 절단본 대신 이 값을 쓴다. 버전을 올려
+# v3 시절 사이드카(.document_context.json)에 full_text가 없는 경우를 자동 재빌드로
+# 무효화한다.
+CONTEXT_BUILDER_VERSION = "document-context-v4"
 _INPUT_HASH_LENGTH = 16
 _SECTION_SPLITTER = SectionSplitter()
 _QUANT_UNIT_PATTERN = (
@@ -49,9 +53,25 @@ class CachedPhaseResult:
     result_id: int = 0
 
 
-def compute_input_hash(input_text: str) -> str:
-    """Compute a short, stable hash for an analysis input string."""
-    return hashlib.sha256(input_text.encode("utf-8")).hexdigest()[:_INPUT_HASH_LENGTH]
+def compute_input_hash(
+    input_text: str,
+    *,
+    provider: str | None = None,
+    model: str | None = None,
+    effort: str | None = None,
+) -> str:
+    """분석 입력의 캐시 키.
+
+    provider/model/effort가 주어지면 키에 포함한다 — 같은 논문이라도 다른
+    모델·사고량의 결과는 다른 캐시 행이다(스펙 결정 3 + 개정 R6). 셋 다
+    None인 레거시 호출(odl_parser의 파서 사용량 기록 등)은 기존 해시를
+    바이트 단위로 유지해 데이터 마이그레이션을 피한다.
+    """
+    if provider is None and model is None and effort is None:
+        payload = input_text
+    else:
+        payload = f"{provider}\x1f{model}\x1f{effort}\x1f{input_text}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:_INPUT_HASH_LENGTH]
 
 
 def parse_result_json(result_text: str) -> dict[str, Any]:
@@ -65,12 +85,16 @@ async def find_cached_phase_result(
     paper_id: int,
     phase: str,
     input_text: str,
+    *,
+    provider: str | None = None,
+    model: str | None = None,
+    effort: str | None = None,
 ) -> Optional[CachedPhaseResult]:
     """Return the latest cached result for the same paper/phase/input hash."""
     if not input_text:
         return None
 
-    input_hash = compute_input_hash(input_text)
+    input_hash = compute_input_hash(input_text, provider=provider, model=model, effort=effort)
     row = await fetch_one(
         """
         SELECT id, result, model_used, tokens_in, tokens_out, cost_usd, input_hash
@@ -177,6 +201,10 @@ def build_document_context_from_text(
         "sections": sections,
         "phase_inputs": _build_phase_inputs(sections, full_text),
         "quantitative_candidates": _extract_quantitative_candidates(sections, full_text),
+        # 비절단 원문. 이미 메모리에 로드돼 있던 값을 그대로 노출한다(새 파일 IO 없음) —
+        # OpenAI 텍스트 체인의 doc_text 주입(스펙 R1)이 phase_inputs의 스테이지별 절단본
+        # 대신 이 값을 쓴다. phase_inputs는 여전히 스테이지별 폴백/캐시 키 용도로 유지.
+        "full_text": full_text,
     }
 
 

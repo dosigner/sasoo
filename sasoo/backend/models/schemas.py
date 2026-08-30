@@ -255,6 +255,10 @@ class PhaseStatus(BaseModel):
     tokens_out: Optional[int] = None
     cost_usd: Optional[float] = None
     error_message: Optional[str] = None
+    # Task 11(스펙 §D 2단계 조회): 이 phase의 최신 결과가 현재 (provider, model,
+    # effort) 설정과 다른 구성으로 만들어졌으면 그 모델명. 같은 구성이거나 결과가
+    # 없으면 None. 하위호환 옵셔널 필드 — 기존 클라이언트는 무시해도 된다.
+    stale_model: Optional[str] = None
 
 
 class AnalysisStatus(BaseModel):

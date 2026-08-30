@@ -227,6 +227,7 @@ async def upload_paper(file: UploadFile = File(...)):
 
     folder_name = fallback_folder
     try:
+        from services.model_registry import active_provider
         from services.naming_service import generate_folder_name
 
         suggested_name = await generate_folder_name(
@@ -235,6 +236,7 @@ async def upload_paper(file: UploadFile = File(...)):
             journal=metadata.get("journal"),
             domain=metadata.get("domain"),
             abstract=full_text[:500],
+            provider=await active_provider(),
         )
         folder_name = _make_unique_folder_name(suggested_name, fallback_folder)
     except Exception as exc:

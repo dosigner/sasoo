@@ -78,11 +78,16 @@ def load_gold() -> dict[str, dict]:
     return json.loads(GOLD_PATH.read_text(encoding="utf-8"))["papers"]
 
 
-def iter_papers(filter_substring: str | None = None) -> list[Path]:
+def iter_papers(filter_substring: str | None = None, *, require_manifest: bool = True) -> list[Path]:
+    """정답셋 후보 논문 디렉터리를 고른다.
+
+    `require_manifest=False`(재파싱 모드)에서는 저장된 매니페스트가 필요 없으므로
+    `*.pdf`만 있으면 후보로 인정한다.
+    """
     papers = sorted(
         directory
         for directory in LIBRARY.iterdir()
-        if (directory / ".odl_manifest.json").exists() and any(directory.glob("*.pdf"))
+        if (not require_manifest or (directory / ".odl_manifest.json").exists()) and any(directory.glob("*.pdf"))
     )
     if filter_substring:
         papers = [p for p in papers if filter_substring.lower() in p.name.lower()]
@@ -108,6 +113,44 @@ def prepare_manifest(paper_dir: Path, pdf_path: Path) -> dict[str, Any]:
     for key in ("figures", "tables", "figure_candidates", "table_candidates", "audit"):
         manifest.pop(key, None)
     return manifest
+
+
+async def _reparse_manifest(
+    pdf_path: Path, scratch: Path, provider: str, *, usage_out: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """비전 엔진으로 매니페스트를 새로 만든다(저장된 산출물을 쓰지 않는다).
+
+    프로덕션 경로(_build_resolver_v1_manifest)와 같은 인자로 build_document_manifest를
+    부르는 것이 핵심이다 — 여기서 인자가 어긋나면 "제품이 이렇게 뽑는다"가 아니라
+    "감사 도구가 이렇게 뽑는다"를 재게 된다.
+
+    `usage_out`은 페이지 비전 파싱의 실측 토큰/비용을 기록 문서용으로 빼내는 out-param이다
+    (Task 5: 논문당 평균 비용). 파이프라인 동작에는 영향이 없다 — run_convert_gemini가 이미
+    지원하는 채널을 그대로 노출할 뿐이다.
+    """
+    from services.document_manifest import build_document_manifest
+    from services.gemini_parser import run_convert_gemini
+    from services.odl_parser import (
+        RESOLVER_PARSER_VERSION,
+        RESOLVER_PIPELINE_VERSION,
+    )
+
+    figures_dir = scratch / "figures"
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    root, markdown_text, actual_engine = await run_convert_gemini(
+        pdf_path, scratch, figures_dir, provider=provider, usage_out=usage_out
+    )
+    return build_document_manifest(
+        pdf_path=pdf_path,
+        paper_dir=scratch,
+        root=root,
+        markdown_text=markdown_text,
+        actual_engine=actual_engine,
+        requested_mode="fast",
+        extraction_pipeline_version=RESOLVER_PIPELINE_VERSION,
+        parser_version=RESOLVER_PARSER_VERSION,
+        resolver_version="audit",
+    )
 
 
 def make_scratch_dir(paper_dir: Path, manifest: dict[str, Any] | None = None, pdf_path: Path | None = None) -> Path:
@@ -161,7 +204,7 @@ class VlmCache:
         self.original = table_resolver._repair_with_vlm
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-    def _key(self, candidate: dict[str, Any], pdf_digest: str) -> str:
+    def _key(self, candidate: dict[str, Any], pdf_digest: str, provider: str) -> str:
         payload = json.dumps(
             {
                 "pdf": pdf_digest,
@@ -169,6 +212,7 @@ class VlmCache:
                 "bbox": [round(float(v), 2) for v in (candidate.get("bbox") or [])],
                 "grid": candidate.get("text_grid"),
                 "prompt": VLM_PROMPT_VERSION,
+                "provider": provider,
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -178,16 +222,16 @@ class VlmCache:
     def install(self, pdf_digest: str) -> None:
         original = self.original
 
-        async def wrapper(candidate, manifest, paper_dir):  # noqa: ANN001
+        async def wrapper(candidate, manifest, paper_dir, *, provider: str = "gemini"):  # noqa: ANN001
             self.calls += 1
-            cache_path = CACHE_DIR / f"{self._key(candidate, pdf_digest)}.json"
+            cache_path = CACHE_DIR / f"{self._key(candidate, pdf_digest, provider)}.json"
             if self.enabled and cache_path.exists():
                 self.hits += 1
                 cached = json.loads(cache_path.read_text(encoding="utf-8"))
                 result = (cached["rows"], cached["model"], cached["confidence"])
             else:
                 self.misses += 1
-                result = await original(candidate, manifest, paper_dir)
+                result = await original(candidate, manifest, paper_dir, provider=provider)
                 if self.enabled:
                     cache_path.write_text(
                         json.dumps(
@@ -211,17 +255,29 @@ class VlmCache:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-async def run_pipeline(manifest: dict[str, Any], *, pdf_path: Path, scratch: Path) -> dict[str, Any]:
+async def run_pipeline(
+    manifest: dict[str, Any], *, pdf_path: Path, scratch: Path, provider: str = "gemini"
+) -> dict[str, Any]:
+    """그림·표 리졸버를 돌린다.
+
+    provider는 리졸버 4호출 전부에 그대로 내려간다. 이걸 안 넘기면 리졸버가
+    기본값 gemini로 떨어져, `--reparse openai`로 재도 격자 복원만 Gemini API를 쓴다
+    (2026-08-21·08-26 두 측정이 그 상태였고, 그래서 기록된 비용이 페이지 파싱 전용이었다).
+    프로덕션 경로(odl_parser.py:1172,1254)는 처음부터 provider를 넘긴다 — 어긋난 쪽은
+    이 감사 도구뿐이었다.
+    """
     manifest["figure_candidates"] = build_figure_candidates(manifest, pdf_path=pdf_path)
     figure_result = await resolve_figure_candidates(
-        manifest, paper_dir=scratch, pdf_path=pdf_path, resolver_version="audit"
+        manifest, paper_dir=scratch, pdf_path=pdf_path, resolver_version="audit", provider=provider
     )
     manifest["figures"] = figure_result["figures"]
     low_figure_pages = set(figure_result.get("low_confidence_pages", []))
 
     manifest["table_candidates"] = build_table_candidates(manifest, pdf_path=pdf_path, paper_dir=scratch)
     first_pass_candidates = [dict(candidate) for candidate in manifest["table_candidates"]]
-    table_result = await resolve_table_candidates(manifest, paper_dir=scratch, resolver_version="audit")
+    table_result = await resolve_table_candidates(
+        manifest, paper_dir=scratch, resolver_version="audit", provider=provider
+    )
     manifest["tables"] = table_result["tables"]
     low_table_pages = set(table_result.get("low_confidence_pages", []))
 
@@ -255,6 +311,7 @@ async def run_pipeline(manifest: dict[str, Any], *, pdf_path: Path, scratch: Pat
             pdf_path=pdf_path,
             resolver_version="audit",
             page_numbers=retry_figure_pages,
+            provider=provider,
         )
         manifest["figures"] = _merge_page_scoped_items(manifest["figures"], retried["figures"], retry_figure_pages)
 
@@ -267,7 +324,11 @@ async def run_pipeline(manifest: dict[str, Any], *, pdf_path: Path, scratch: Pat
             retry_table_pages,
         )
         retried = await resolve_table_candidates(
-            manifest, paper_dir=scratch, resolver_version="audit", page_numbers=retry_table_pages
+            manifest,
+            paper_dir=scratch,
+            resolver_version="audit",
+            page_numbers=retry_table_pages,
+            provider=provider,
         )
         manifest["tables"] = _merge_page_scoped_items(manifest["tables"], retried["tables"], retry_table_pages)
 
@@ -300,11 +361,24 @@ def table_metrics(tables: list[dict[str, Any]], gold_numbers: list[int]) -> dict
     false_positive = sum(max(0, count - (1 if number in gold_set else 0)) for number, count in extracted.items())
     false_negative = len(gold_set - set(extracted))
     linked = sum(1 for table in tables if table.get("caption"))
+    # fp의 세 갈래. `sorted(set(extracted) - gold_set)`처럼 집합만 남기면 몫(count)이
+    # 사라져 fp와 대응이 끊긴다. 아래 세 값의 합은 항상 false_positive와 같다:
+    #   1) duplicate  — gold에 있는 번호인데 count > 1 (격자 복원이 한 표를 조각냄). 몫 count-1.
+    #   2) extra      — gold에 없는 번호(None 제외, 즉 가짜 번호). 몫 count.
+    #   3) unlabeled  — 번호를 못 뽑은 표(Counter의 None 키, 라벨 미상). 몫 count.
+    duplicate = {number: count - 1 for number, count in extracted.items() if number in gold_set and count > 1}
+    extra = {number: count for number, count in extracted.items() if number is not None and number not in gold_set}
+    unlabeled = extracted.get(None, 0)
+    assert sum(duplicate.values()) + sum(extra.values()) + unlabeled == false_positive
     return {
         "extracted_count": len(tables),
         "extracted_numbers": sorted(n for n in extracted if n is not None),
         "fp": false_positive,
         "fn": false_negative,
+        "missing": sorted(gold_set - set(extracted)),  # fn과 정확히 대응 (참조에 있는데 못 뽑은 번호)
+        "duplicate": duplicate,  # fp 갈래 1: 번호 -> 초과분(count-1)
+        "extra": extra,  # fp 갈래 2: 번호 -> count
+        "unlabeled": unlabeled,  # fp 갈래 3: 번호를 못 뽑은 표 수
         "error": false_positive + false_negative,
         "exact": false_positive == 0 and false_negative == 0,
         "caption_linked": linked,
@@ -396,8 +470,8 @@ def candidate_diagnostics(
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-async def load_production_key() -> bool:
-    """DB에서 gemini 키를 읽어 환경변수에 넣는다.
+async def load_production_key(provider: str = "gemini") -> bool:
+    """DB에서 VLM 키를 읽어 환경변수에 넣는다.
 
     `worker=True`가 필수다. worker=False는 credential store 락을 잡고 사용자 DB에
     마이그레이션 UPDATE를 친다 — 측정 하네스가 사용자 데이터를 건드리면 안 된다.
@@ -410,29 +484,38 @@ async def load_production_key() -> bool:
 
     from models.database import DB_PATH
     from services.api_key_runtime import load_api_keys_from_settings
+    from services.provider_state import key_env_for
 
-    # 라이브러리 12편은 개발 DB(backend/library) 쪽인데, 개발 DB의 gemini_api_key는 비어
+    # 라이브러리 12편은 개발 DB(backend/library) 쪽인데, 개발 DB의 *_api_key는 비어
     # 있고 실제 키는 패키지 앱 DB에만 들어 있다. 키만 그쪽에서 읽는다(읽기 전용).
     candidates = [DB_PATH, Path.home() / "Library" / "Application Support" / "sasoo" / "sasoo.db"]
+    env_var = key_env_for(provider)
     for db_path in candidates:
         if not db_path.exists():
             continue
         connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         try:
-            rows = connection.execute("SELECT key, value FROM settings WHERE key = 'gemini_api_key'").fetchall()
+            rows = connection.execute(
+                "SELECT key, value FROM settings WHERE key IN ('gemini_api_key', 'openai_api_key')"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            # 스키마가 없는 빈 db(개발 worktree의 껍데기 sasoo.db 등) — 다음 후보로 넘어간다.
+            continue
         finally:
             connection.close()
         settings = {key: value for key, value in rows if value}
         if not settings:
             continue
         await load_api_keys_from_settings(settings, worker=True)
-        if os.environ.get("GEMINI_API_KEY"):
-            print(f"[audit] gemini 키 출처: {db_path}")
+        if os.environ.get(env_var):
+            print(f"[audit] {provider} 키 출처: {db_path}")
             return True
     return False
 
 
-async def run_lane(lane: str, papers: list[Path], gold: dict, *, use_cache: bool) -> dict[str, Any]:
+async def run_lane(
+    lane: str, papers: list[Path], gold: dict, *, use_cache: bool, reparse: str | None = None
+) -> dict[str, Any]:
     saved_key = os.environ.get("GEMINI_API_KEY")
     if lane == "deterministic":
         os.environ.pop("GEMINI_API_KEY", None)
@@ -451,11 +534,24 @@ async def run_lane(lane: str, papers: list[Path], gold: dict, *, use_cache: bool
         markdown_text = markdown_candidates[0].read_text(encoding="utf-8", errors="ignore") if markdown_candidates else ""
         paper_gold = gold.get(paper_dir.name, {"labels": [], "numbers": [], "evidence": []})
 
-        manifest = prepare_manifest(paper_dir, pdf_path)
-        scratch = make_scratch_dir(paper_dir, manifest, pdf_path)
+        usage: dict[str, Any] = {}
+        paper_started = time.time()
+        if reparse:
+            # 저장된 매니페스트를 쓰지 않는다 — 스크래치를 먼저 만들고 페이지 비전
+            # 파싱부터 다시 돌린다(래스터도 스크래치에 새로 생긴다).
+            scratch = Path(tempfile.mkdtemp(prefix="tblaudit_"))
+            manifest = await _reparse_manifest(pdf_path, scratch, reparse, usage_out=usage)
+        else:
+            manifest = prepare_manifest(paper_dir, pdf_path)
+            scratch = make_scratch_dir(paper_dir, manifest, pdf_path)
         cache.install(hashlib.sha1(pdf_path.read_bytes()).hexdigest()[:16])
         try:
-            outcome = await run_pipeline(manifest, pdf_path=pdf_path, scratch=scratch)
+            # reparse가 곧 이번 측정의 공급사다. --reparse 없이 저장된 매니페스트를 쓰는
+            # 실행에서는 기존대로 gemini다 — 그 매니페스트가 어느 엔진 산출물이든 리졸버
+            # 단계는 별개이므로, 기본값을 바꾸면 과거 실행과 대조가 끊긴다.
+            outcome = await run_pipeline(
+                manifest, pdf_path=pdf_path, scratch=scratch, provider=reparse or "gemini"
+            )
         finally:
             cache.restore()
             shutil.rmtree(scratch, ignore_errors=True)
@@ -465,6 +561,8 @@ async def run_lane(lane: str, papers: list[Path], gold: dict, *, use_cache: bool
             "figures": figure_metrics(outcome["figures"], markdown_text),
             "diagnostics": candidate_diagnostics(manifest, outcome["table_candidates"], paper_gold),
             "gold_labels": paper_gold["labels"],
+            "elapsed_sec": round(time.time() - paper_started, 1),
+            "usage": usage or None,
             "table_rows": [
                 {
                     "table_num": table.get("table_num"),
@@ -476,6 +574,8 @@ async def run_lane(lane: str, papers: list[Path], gold: dict, *, use_cache: bool
                 for table in outcome["tables"]
             ],
         }
+    usages = [item["usage"] for item in results.values() if item.get("usage")]
+    cost_total = round(sum(float(u.get("cost_usd") or 0.0) for u in usages), 6)
     return {
         "lane": lane,
         "elapsed_sec": round(time.time() - started, 1),
@@ -485,13 +585,24 @@ async def run_lane(lane: str, papers: list[Path], gold: dict, *, use_cache: bool
             "cache_misses": cache.misses,
             "grid_recovered": cache.successes,
         },
+        "cost_summary": {
+            "papers_with_usage": len(usages),
+            "cost_total_usd": cost_total,
+            "cost_avg_usd_per_paper": round(cost_total / len(usages), 6) if usages else None,
+            "elapsed_avg_sec_per_paper": (
+                round(sum(item["elapsed_sec"] for item in results.values()) / len(results), 1) if results else None
+            ),
+        },
         "papers": results,
     }
 
 
 def print_lane(report: dict[str, Any]) -> None:
     lane = report["lane"]
-    print(f"\n{'=' * 118}\n[{lane}] {report['elapsed_sec']}s  VLM {report['vlm']}\n{'=' * 118}")
+    print(
+        f"\n{'=' * 118}\n[{lane}] {report['elapsed_sec']}s  VLM {report['vlm']}  "
+        f"COST {report.get('cost_summary')}\n{'=' * 118}"
+    )
     print(
         f"{'논문':<46} {'gold':>4} {'표':>3} {'FP':>3} {'FN':>3} {'오차':>4} {'캡션연결':>8}  "
         f"{'그림(원문/추출)':>14}  후보"
@@ -518,15 +629,114 @@ def print_lane(report: dict[str, Any]) -> None:
     )
 
 
+def _selfcheck_table_metrics() -> None:
+    """`table_metrics`의 fp 세 갈래(duplicate/extra/unlabeled)가 fp 값과 정확히 대응하는지.
+
+    복제 구현이면 검증 가치가 없으므로 `table_metrics`를 직접 호출한다.
+    """
+    # (a) 누락만 있는 경우: gold {1,2,3} 중 3을 못 뽑음.
+    result = table_metrics([{"table_num": "Table 1"}, {"table_num": "Table 2"}], [1, 2, 3])
+    assert result["missing"] == [3], result["missing"]
+    assert result["duplicate"] == {}, result["duplicate"]
+    assert result["extra"] == {}, result["extra"]
+    assert result["unlabeled"] == 0, result["unlabeled"]
+    assert result["fp"] == 0 and result["fn"] == 1, result
+
+    # (b) 중복 산출: 격자 복원이 Table 1을 두 조각으로 쪼갬.
+    result = table_metrics(
+        [{"table_num": "Table 1"}, {"table_num": "Table 1"}, {"table_num": "Table 2"}], [1, 2]
+    )
+    assert result["missing"] == [], result["missing"]
+    assert result["duplicate"] == {1: 1}, result["duplicate"]
+    assert result["extra"] == {}, result["extra"]
+    assert result["unlabeled"] == 0, result["unlabeled"]
+    assert result["fp"] == 1 and result["fn"] == 0, result
+
+    # (c) 번호 미상: 표는 뽑았지만 라벨을 못 읽음("Fig. 9"는 표 라벨 패턴에 안 걸린다).
+    result = table_metrics([{"table_num": "Table 1"}, {"table_num": "Fig. 9"}], [1])
+    assert result["missing"] == [], result["missing"]
+    assert result["duplicate"] == {}, result["duplicate"]
+    assert result["extra"] == {}, result["extra"]
+    assert result["unlabeled"] == 1, result["unlabeled"]
+    assert result["fp"] == 1 and result["fn"] == 0, result
+
+    # (d) 세 갈래가 한 논문 안에서 동시에 발생해도 fp가 남은 항목으로 완전히 설명되는가.
+    result = table_metrics(
+        [
+            {"table_num": "Table 1"},
+            {"table_num": "Table 1"},  # duplicate: 1 -> +1
+            {"table_num": "Table 4"},  # extra: 4 -> 1
+            {"table_num": "???"},  # unlabeled: +1
+        ],
+        [1, 2],
+    )
+    assert result["missing"] == [2], result["missing"]
+    assert result["duplicate"] == {1: 1}, result["duplicate"]
+    assert result["extra"] == {4: 1}, result["extra"]
+    assert result["unlabeled"] == 1, result["unlabeled"]
+    assert result["fp"] == 3, result["fp"]
+    assert sum(result["duplicate"].values()) + sum(result["extra"].values()) + result["unlabeled"] == result["fp"]
+    _selfcheck_provider_threading()
+    print("selfcheck ok")
+
+
+def _selfcheck_provider_threading() -> None:
+    """run_pipeline의 provider가 리졸버 4호출 전부에 도달하는지.
+
+    한 곳만 빠져도 그 호출이 기본값 gemini로 조용히 떨어지고, 측정은 정상으로 끝난다
+    (원장 어디에도 안 남는다). 실제 run_pipeline을 호출해 확인한다 — 복제 구현이면
+    검증 가치가 없다. 재시도 분기까지 타도록 low_confidence_pages를 채워 넣는다.
+    """
+    seen: list[str | None] = []
+
+    async def _fake_figures(_manifest, **kwargs):
+        seen.append(kwargs.get("provider"))
+        return {"figures": [], "low_confidence_pages": [1]}
+
+    async def _fake_tables(_manifest, **kwargs):
+        seen.append(kwargs.get("provider"))
+        return {"tables": [], "low_confidence_pages": [1]}
+
+    patched = {
+        "resolve_figure_candidates": _fake_figures,
+        "resolve_table_candidates": _fake_tables,
+        "build_figure_candidates": lambda _m, **_k: [],
+        "build_table_candidates": lambda _m, **_k: [],
+        "find_suspect_pages": lambda **_k: {"suspect_pages": []},
+    }
+    module = sys.modules[__name__]
+    saved = {name: getattr(module, name) for name in patched}
+    try:
+        for name, fake in patched.items():
+            setattr(module, name, fake)
+        asyncio.run(
+            run_pipeline({}, pdf_path=Path("x.pdf"), scratch=Path("/tmp"), provider="openai")
+        )
+    finally:
+        for name, original in saved.items():
+            setattr(module, name, original)
+
+    assert seen == ["openai"] * 4, f"provider가 리졸버 4호출에 다 안 갔다: {seen}"
+
+
 async def main_async(args: argparse.Namespace) -> None:
     gold = load_gold()
-    papers = iter_papers(args.papers)
+    papers = iter_papers(args.papers, require_manifest=args.reparse is None)
     lanes = ["deterministic", "production"] if args.lane == "both" else [args.lane]
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
+    if args.reparse:
+        from services.provider_state import key_env_for
+
+        env_var = key_env_for(args.reparse)
+        if not os.environ.get(env_var) and not await load_production_key(args.reparse):
+            raise SystemExit(
+                f"{env_var}를 DB에서 읽지 못했다 — --reparse {args.reparse}로는 측정을 시작할 수 없다."
+            )
+
     for repeat in range(args.repeat):
         for lane in lanes:
-            report = await run_lane(lane, papers, gold, use_cache=not args.no_cache)
+            report = await run_lane(lane, papers, gold, use_cache=not args.no_cache, reparse=args.reparse)
             print_lane(report)
             suffix = f"_{repeat + 1}" if args.repeat > 1 else ""
             out_path = OUT_DIR / f"measure_{lane}{suffix}{args.tag}.json"
@@ -539,9 +749,20 @@ def main() -> None:
     parser.add_argument("--lane", choices=["deterministic", "production", "both"], default="both")
     parser.add_argument("--repeat", type=int, default=1, help="노이즈 바닥 측정용 반복 횟수")
     parser.add_argument("--no-cache", action="store_true", help="VLM 캐시를 끈다(노이즈 측정)")
+    parser.add_argument(
+        "--reparse",
+        choices=["gemini", "openai"],
+        default=None,
+        help="저장된 매니페스트 대신 이 공급사의 비전 엔진으로 다시 파싱해 측정한다",
+    )
     parser.add_argument("--papers", default=None, help="논문 이름 부분 문자열 필터")
     parser.add_argument("--tag", default="", help="원장 파일명 접미사")
-    asyncio.run(main_async(parser.parse_args()))
+    parser.add_argument("--selfcheck", action="store_true", help="table_metrics 자기 점검만 돌리고 종료한다")
+    args = parser.parse_args()
+    if args.selfcheck:
+        _selfcheck_table_metrics()
+        return
+    asyncio.run(main_async(args))
 
 
 if __name__ == "__main__":

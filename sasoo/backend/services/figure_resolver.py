@@ -21,7 +21,8 @@ from api.analysis_helpers import _clean_llm_json
 from models.paper import Figure as ParsedFigure
 from services.llm.interactions_client import call_interaction
 from services.document_manifest import strip_caption_decoration
-from services.models import MODEL_FLASH_HQ
+from services.model_registry import resolve as resolve_model
+from services.provider_state import key_env_for
 from services.subfigure_detector import SubFigureDetector
 
 logger = logging.getLogger(__name__)
@@ -295,6 +296,8 @@ async def _maybe_select_candidate(
     captions_by_id: dict[str, dict[str, Any]],
     rasters: _RasterCache,
     resolver_version: str,
+    *,
+    provider: str = "gemini",
 ) -> tuple[dict[str, Any], float, str]:
     scored = sorted(
         group,
@@ -309,7 +312,7 @@ async def _maybe_select_candidate(
 
     if not _needs_candidate_recheck(group, page):
         return (chosen, 0.0, "heuristic")
-    if len(scored) == 1 or not os.environ.get("GEMINI_API_KEY"):
+    if len(scored) == 1 or not os.environ.get(key_env_for(provider)):
         return (chosen, 0.0, "heuristic")
 
     image_b64 = rasters.get(page)
@@ -342,15 +345,17 @@ async def _maybe_select_candidate(
     }
 
     try:
+        _choice = resolve_model("figure_resolver", provider)
         result = await call_interaction(
             [
                 {"type": "image", "data": image_b64, "mime_type": "image/png"},
                 {"type": "text", "text": json.dumps(prompt, ensure_ascii=False)},
             ],
             lane="pipeline",
-            model=MODEL_FLASH_HQ,
-            # 3.7 Flash는 minimal을 거부한다(400). low가 이 모델의 최저치다.
-            thinking_level="low",
+            model=_choice.model,
+            # effort는 model_registry가 정한다. FLASH_HQ는 minimal을 400으로
+            # 거부하므로 gemini 표의 값이 low다(services/test_model_registry.py).
+            thinking_level=_choice.effort,
             store=False,
         )
         payload = json.loads(_clean_llm_json(result["text"]))
@@ -377,11 +382,13 @@ async def _maybe_rerank_caption(
     captions_by_id: dict[str, dict[str, Any]],
     rasters: _RasterCache,
     resolver_version: str,
+    *,
+    provider: str = "gemini",
 ) -> tuple[str | None, float, str]:
     option_ids = candidate.get("linked_caption_ids", [])[:3]
     if (
         len(option_ids) <= 1
-        or not os.environ.get("GEMINI_API_KEY")
+        or not os.environ.get(key_env_for(provider))
         or not candidate.get("needs_vlm_rerank")
     ):
         return (candidate.get("best_caption_id"), 0.0, "heuristic")
@@ -413,15 +420,17 @@ async def _maybe_rerank_caption(
     }
 
     try:
+        _choice = resolve_model("figure_resolver", provider)
         result = await call_interaction(
             [
                 {"type": "image", "data": image_b64, "mime_type": "image/png"},
                 {"type": "text", "text": json.dumps(prompt, ensure_ascii=False)},
             ],
             lane="pipeline",
-            model=MODEL_FLASH_HQ,
-            # 3.7 Flash는 minimal을 거부한다(400). low가 이 모델의 최저치다.
-            thinking_level="low",
+            model=_choice.model,
+            # effort는 model_registry가 정한다. FLASH_HQ는 minimal을 400으로
+            # 거부하므로 gemini 표의 값이 low다(services/test_model_registry.py).
+            thinking_level=_choice.effort,
             store=False,
         )
         payload = json.loads(_clean_llm_json(result["text"]))
@@ -458,8 +467,9 @@ async def _maybe_detect_subfigures(
     page_number: int,
     caption_text: str | None,
     confidence: float,
+    provider: str = "gemini",
 ) -> list[dict[str, Any]]:
-    if not os.environ.get("GEMINI_API_KEY"):
+    if not os.environ.get(key_env_for(provider)):
         return []
 
     detector = SubFigureDetector()
@@ -472,10 +482,12 @@ async def _maybe_detect_subfigures(
     )
 
     try:
-        result = await detector.detect_subfigures(parsed_figure)
+        result = await detector.detect_subfigures(parsed_figure, provider=provider)
         if not result.has_subfigures or result.confidence < 0.5:
             return []
-        extracted = await detector.extract_subfigures(parsed_figure, figure_path.parent, result)
+        extracted = await detector.extract_subfigures(
+            parsed_figure, figure_path.parent, result, provider=provider,
+        )
     except Exception:
         return []
 
@@ -514,6 +526,7 @@ async def resolve_figure_candidates(
     pdf_path: Path,
     resolver_version: str,
     page_numbers: set[int] | None = None,
+    provider: str = "gemini",
 ) -> dict[str, Any]:
     pages_by_number = {
         page["page_number"]: page
@@ -568,6 +581,7 @@ async def resolve_figure_candidates(
             captions_by_id,
             rasters,
             resolver_version,
+            provider=provider,
         )
         bbox = selected_candidate.get("bbox")
         if not bbox:
@@ -586,6 +600,7 @@ async def resolve_figure_candidates(
                 captions_by_id,
                 rasters,
                 resolver_version,
+                provider=provider,
             )
             confidence = min(0.99, confidence + delta)
         elif confidence < 0.5:
@@ -675,6 +690,7 @@ async def resolve_figure_candidates(
                     page_number=entry["page_number"],
                     caption_text=entry["caption"],
                     confidence=entry["confidence"],
+                    provider=provider,
                 )
                 for _, entry, path in pending_subfigures
             ]

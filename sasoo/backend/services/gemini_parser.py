@@ -28,7 +28,6 @@ from typing import Any
 import fitz  # PyMuPDF
 
 from services.llm.interactions_client import call_interaction
-from services.models import MODEL_VISUAL
 from services.pricing import calc_cost
 
 logger = logging.getLogger(__name__)
@@ -64,9 +63,10 @@ RENDER_DPI = _env_int("SASOO_GEMINI_PARSER_DPI", 150)  # 페이지 래스터화 
 # 8 -> 12: 2026-08-04 실측(스펙 2026-08-04-pipeline-concurrency-12-design.md 참조).
 PAGE_CONCURRENCY = _env_int("SASOO_GEMINI_PARSER_PAGE_CONCURRENCY", 12)
 _PAGE_RETRIES = 1              # 페이지 호출 실패 시 추가 재시도 횟수(총 2회 시도)
-# thinking 토큰은 출력 단가로 과금됨. MODEL_VISUAL(=3.7 Flash)이 받는 허용값은
-# low<medium<high뿐이고 minimal은 400으로 거부되므로 low가 최저치다.
-_THINKING_LEVEL = _env_str("SASOO_GEMINI_PARSER_THINKING", "low")
+# thinking 토큰은 출력 단가로 과금됨. 빈 문자열이면 model_registry의 pdf_parse role 값을
+# 쓴다(Gemini=low, OpenAI=low). 명시하면 provider 무관하게 이 값이 이긴다 —
+# 베이스라인 재현 절차(위 주석)가 이 레버에 의존한다.
+_THINKING_OVERRIDE = _env_str("SASOO_GEMINI_PARSER_THINKING", "")
 # 이미지 파트별 media_resolution(low/medium/high/ultra_high). 빈 문자열이면 미지정(SDK 기본).
 # 저해상일수록 이미지 입력 토큰이 줄지만 작은 수식/캡션 OCR이 깨질 수 있다 — DPI와 함께 조절.
 _MEDIA_RESOLUTION = _env_str("SASOO_GEMINI_PARSER_MEDIA_RESOLUTION", "low")
@@ -293,7 +293,7 @@ async def _render_page_png(
     return await asyncio.get_running_loop().run_in_executor(None, _work)
 
 
-async def _call_page(png_b64: str, model: str) -> dict[str, Any]:
+async def _call_page(png_b64: str, model: str, effort: str | None) -> dict[str, Any]:
     """한 페이지에 대한 비전 호출. 파싱된 JSON dict + usage를 담아 반환."""
     result = await call_interaction(
         [
@@ -303,7 +303,7 @@ async def _call_page(png_b64: str, model: str) -> dict[str, Any]:
         lane="pipeline",
         model=model,
         system_instruction=_PARSER_SYSTEM_INSTRUCTION,
-        thinking_level=_THINKING_LEVEL or None,
+        thinking_level=effort or None,
         store=False,
         response_schema=_PAGE_RESPONSE_SCHEMA,
         media_resolution=_MEDIA_RESOLUTION or None,
@@ -328,6 +328,7 @@ async def _process_page(
     page_index: int,
     page_sem: asyncio.Semaphore,
     model: str,
+    effort: str | None,
 ) -> tuple[list[dict[str, Any]], str, dict[str, Any]]:
     """페이지 하나를 렌더 -> 호출 -> 조립. 실패 시 _PAGE_RETRIES회 재시도 후 예외.
 
@@ -342,7 +343,7 @@ async def _process_page(
         last_err: Exception | None = None
         for attempt in range(_PAGE_RETRIES + 1):
             try:
-                data = await _call_page(png_b64, model)
+                data = await _call_page(png_b64, model, effort)
                 nodes = _assemble_page_nodes(data, page_index + 1, width, height)
                 page_markdown = str(data.get("markdown", "") or "")
                 usage = data.get("_usage", {})
@@ -419,6 +420,7 @@ async def run_convert_gemini(
     figures_dir: Path,
     *,
     usage_out: dict[str, Any] | None = None,
+    provider: str = "gemini",
 ) -> tuple[dict[str, Any], str, str]:
     """Gemini 비전 엔진으로 PDF를 파싱해 ODL 호환 (root_json, markdown_text, "gemini") 반환.
 
@@ -427,7 +429,16 @@ async def run_convert_gemini(
 
     usage_out이 주어지면 토큰/비용 집계를 채운다(파일럿 스크립트 소비용). 반환 트리 계약은
     3-tuple 그대로 두고, 사용량은 이 out-param 별도 채널로만 노출한다.
+
+    provider가 모델/effort를 정한다(model_registry.resolve("pdf_parse", provider)).
+    스테이지 진입 시 한 번만 확정하고(R6), 이후 모든 페이지 호출에 동일 값을 쓴다.
     """
+    from services.model_registry import resolve
+
+    choice = resolve("pdf_parse", provider)
+    model = choice.model
+    effort = _THINKING_OVERRIDE or choice.effort
+
     pdf_path = Path(pdf_path)
     loop = asyncio.get_running_loop()
     page_count, meta_title, meta_author = await loop.run_in_executor(
@@ -462,7 +473,7 @@ async def run_convert_gemini(
         probe_size = max(1, min(PAGE_CONCURRENCY, page_count))
         probe = await asyncio.gather(
             *[
-                _process_page(doc_pool, page_index, page_sem, MODEL_VISUAL)
+                _process_page(doc_pool, page_index, page_sem, model, effort)
                 for page_index in range(probe_size)
             ],
             return_exceptions=True,
@@ -477,7 +488,7 @@ async def run_convert_gemini(
         if page_count > probe_size:
             rest = await asyncio.gather(
                 *[
-                    _process_page(doc_pool, page_index, page_sem, MODEL_VISUAL)
+                    _process_page(doc_pool, page_index, page_sem, model, effort)
                     for page_index in range(probe_size, page_count)
                 ],
                 return_exceptions=True,
@@ -522,7 +533,7 @@ async def run_convert_gemini(
         usage_out.update(
             {
                 "engine": GEMINI_ENGINE_NAME,
-                "model": MODEL_VISUAL,
+                "model": model,
                 "pages": success_pages,
                 "tokens_in": totals["tokens_in"],
                 "tokens_out": totals["tokens_out"],
