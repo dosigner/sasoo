@@ -51,18 +51,18 @@ async function createWindow(): Promise<void> {
     minHeight: 680,
     icon: getIconPath(),
     title: 'Sasoo',
-    frame: false,
-    // darwin에서는 vibrancy가 사이드바·타이틀바 블러를 담당하므로 창 배경을
-    // 투명하게 비우고, CSS는 알파 틴트만 얹는다(backdrop-filter 중복 금지).
-    backgroundColor: isMac ? '#00000000' : '#0a0a0b',
     show: false,
+    // darwin은 frame을 유지한다. frameless 창에는 NSVisualEffectView가 붙지
+    // 않아 vibrancy가 통째로 사라진다(실측: macOS 26.5). 트래픽 라이트를 남기고
+    // 타이틀바만 감추는 건 hiddenInset 하나로 충분하다. backgroundColor도 주지
+    // 않는다 — 재질이 곧 창 배경이다.
     ...(isMac
       ? {
           titleBarStyle: 'hiddenInset' as const,
           vibrancy: 'sidebar' as const,
           visualEffectState: 'followWindow' as const,
         }
-      : {}),
+      : { frame: false, backgroundColor: '#0a0a0b' }),
     webPreferences: {
       preload: getPreloadPath(),
       contextIsolation: true,
