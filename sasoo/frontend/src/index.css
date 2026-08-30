@@ -133,10 +133,6 @@
     border-radius: var(--radius-surface);
   }
 
-  .card-hover {
-    @apply card transition-colors duration-200 ease-out hover:border-border hover:bg-surface-hover;
-  }
-
   .app-shell {
     @apply flex h-screen flex-col bg-bg text-fg;
   }
@@ -253,6 +249,12 @@
     @apply px-4 py-4 md:px-5 md:py-4;
   }
 
+  /* 설정·프로필 항목 구분 — 구분선 대신 옅은 명도 블록으로 가른다. */
+  .settings-row-block {
+    @apply bg-surface-hover px-3 py-2.5;
+    border-radius: var(--radius-control);
+  }
+
   .page-header-dense {
     @apply flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between;
   }
@@ -262,7 +264,7 @@
   }
 
   .archive-inline-status {
-    @apply inline-flex items-center gap-2 rounded-full border border-border/60 bg-surface/60 px-3 py-1.5 text-2xs;
+    @apply inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-2xs;
   }
 
   .archive-inline-status-muted {
@@ -271,14 +273,12 @@
 
   .archive-inline-status-success {
     @apply text-success;
-    border-color: rgb(var(--success) / 0.2);
-    background: rgb(var(--success) / 0.08);
+    border-color: rgb(var(--success) / 0.4);
   }
 
   .archive-inline-status-error {
     @apply text-warning;
-    border-color: rgb(var(--warning) / 0.2);
-    background: rgb(var(--warning) / 0.08);
+    border-color: rgb(var(--warning) / 0.4);
   }
 
   .settings-panel-title {
@@ -383,6 +383,31 @@
     @apply bg-surface/90 backdrop-blur-lg;
   }
 
+  /* 라벨 로딩 — 회전하는 스피너 대신 글자 밝기가 한 방향으로 쓸린다.
+     진행률을 실제로 아는 구간(업로드)은 그대로 바와 %를 쓴다. */
+  .shimmer-label {
+    background-image: linear-gradient(
+      100deg,
+      rgb(var(--fg-muted)) 40%,
+      rgb(var(--fg)) 50%,
+      rgb(var(--fg-muted)) 60%
+    );
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: shimmer-sweep 2s linear infinite;
+  }
+
+  @keyframes shimmer-sweep {
+    from {
+      background-position: 150% 0;
+    }
+    to {
+      background-position: -50% 0;
+    }
+  }
+
   /* Button variants */
   .btn {
     @apply inline-flex items-center justify-center gap-2 px-4 text-sm font-medium transition-[color,background-color,border-color,opacity,transform] duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50 disabled:pointer-events-none;
@@ -432,22 +457,6 @@
   .badge {
     @apply inline-flex items-center px-2 py-0.5 text-xs font-medium;
     border-radius: var(--radius-pill);
-  }
-
-  .badge-primary {
-    @apply badge bg-accent/10 text-accent;
-  }
-
-  .badge-success {
-    @apply badge bg-success/10 text-success;
-  }
-
-  .badge-warning {
-    @apply badge bg-warning/10 text-warning;
-  }
-
-  .badge-error {
-    @apply badge bg-danger/10 text-danger;
   }
 
   .toolbar-shell {
@@ -583,62 +592,6 @@
     @apply overflow-hidden rounded-surface border border-border/60 bg-surface/90;
   }
 
-  .library-shelf-row--completed {
-    background-color: rgb(var(--success) / 0.06);
-  }
-
-  .library-shelf-row--analyzing {
-    background-color: rgb(var(--accent) / 0.07);
-  }
-
-  .library-shelf-row--pending {
-    background-color: rgb(var(--warning) / 0.06);
-  }
-
-  .library-shelf-row--error {
-    background-color: rgb(var(--danger) / 0.07);
-  }
-
-  .library-shelf-row--completed .library-status-badge {
-    @apply border-success/20 bg-success/10 text-success;
-  }
-
-  .library-shelf-row--analyzing .library-status-badge {
-    @apply border-accent/20 bg-accent/10 text-accent;
-  }
-
-  .library-shelf-row--pending .library-status-badge {
-    @apply border-warning/20 bg-warning/10 text-warning;
-  }
-
-  .library-shelf-row--error .library-status-badge {
-    @apply border-danger/20 bg-danger/10 text-danger;
-  }
-
-  .library-status-badge {
-    @apply inline-flex items-center gap-1 rounded-full border px-2 py-1 text-2xs;
-  }
-
-  .library-status-dot {
-    @apply h-1.5 w-1.5 rounded-full;
-  }
-
-  .library-shelf-row--completed .library-status-dot {
-    @apply bg-success;
-  }
-
-  .library-shelf-row--analyzing .library-status-dot {
-    @apply bg-accent;
-  }
-
-  .library-shelf-row--pending .library-status-dot {
-    @apply bg-warning;
-  }
-
-  .library-shelf-row--error .library-status-dot {
-    @apply bg-danger;
-  }
-
   .library-record-title {
     @apply text-base font-semibold leading-snug tracking-[-0.02em] text-fg;
   }
@@ -680,8 +633,9 @@
     @apply cursor-pointer select-none transition-colors hover:text-fg-secondary;
   }
 
+  /* text-sm 줄높이 1.25rem + 상하 0.625rem = 40px 행 */
   .library-table tbody td {
-    @apply border-b border-border/40 px-4 py-3 align-middle text-sm text-fg-secondary;
+    @apply border-b border-border/40 px-4 py-2.5 align-middle text-sm text-fg-secondary;
   }
 
   .library-table tbody tr:last-child td {
@@ -706,11 +660,11 @@
   }
 
   .library-soft-card:hover {
-    @apply -translate-y-0.5 border-border bg-surface shadow-lg;
+    @apply border-border bg-surface-hover;
   }
 
   .library-soft-card:focus-visible {
-    @apply -translate-y-0.5 outline-none ring-2 ring-accent/40 ring-offset-2 ring-offset-bg;
+    @apply outline-none ring-2 ring-accent/40 ring-offset-2 ring-offset-bg;
   }
 
   .library-soft-pill {
@@ -1148,7 +1102,7 @@
   }
 
   .chat-launcher {
-    @apply flex min-h-[4rem] items-center gap-3 rounded-surface border border-border/60 bg-surface/90 px-3.5 py-2.5 shadow-[0_18px_48px_rgba(0,0,0,0.22)] backdrop-blur-xl transition-[transform,border-color,background-color] duration-200 hover:-translate-y-0.5 hover:border-border/70;
+    @apply flex min-h-[4rem] items-center gap-3 rounded-surface border border-border/60 bg-surface/90 px-3.5 py-2.5 shadow-[0_18px_48px_rgba(0,0,0,0.22)] backdrop-blur-xl transition-[border-color,background-color] duration-200 hover:border-border/70;
     width: min(20rem, calc(100vw - 1.5rem));
   }
 
@@ -1421,12 +1375,6 @@
     animation: modalSlideUpReduced 0.15s ease-out both !important;
   }
 
-  /* Remove hover-lift transforms. */
-  .card-hover,
-  .chat-launcher {
-    transform: none !important;
-  }
-
   /* Press-scale feedback is movement too — disable it. */
   .btn:active,
   .btn-icon-subtle:active,
@@ -1438,6 +1386,13 @@
   /* I4: Figure/Table 카드 press-scale(active:scale-[0.96])도 movement이므로 끈다. */
   [role="button"]:active {
     transform: none !important;
+  }
+
+  /* 로딩 라벨은 스윕을 멈추고 정적 텍스트로 남는다. */
+  .shimmer-label {
+    animation: none !important;
+    background-image: none;
+    color: rgb(var(--fg-muted));
   }
 
   /* I4: 워크벤치 상태부 진행 레일의 width 전환은 즉시 완료로 처리한다. */

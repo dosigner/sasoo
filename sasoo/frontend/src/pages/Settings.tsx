@@ -35,7 +35,7 @@ function SettingSection({
       {description && (
         <p className="mt-1 text-xs text-fg-muted">{description}</p>
       )}
-      <div className="mt-3 divide-y divide-border">{children}</div>
+      <div className="mt-3 flex flex-col gap-1">{children}</div>
     </section>
   );
 }
@@ -55,7 +55,7 @@ function SettingRow({
 }) {
   if (full) {
     return (
-      <div className="py-3">
+      <div className="settings-row-block">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-fg">{label}</span>
           {badge}
@@ -68,7 +68,7 @@ function SettingRow({
     );
   }
   return (
-    <div className="flex items-center justify-between gap-4 py-3">
+    <div className="settings-row-block flex items-center justify-between gap-4">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-fg">{label}</span>
@@ -366,10 +366,7 @@ export default function Settings() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-6 h-6 text-accent animate-spin" />
-          <span className="text-sm text-fg-muted">{S.settings.loadingSettings}</span>
-        </div>
+        <span className="text-sm shimmer-label">{S.settings.loadingSettings}</span>
       </div>
     );
   }
