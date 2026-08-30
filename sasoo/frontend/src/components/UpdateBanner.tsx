@@ -114,7 +114,7 @@ export default function UpdateBanner() {
         {state !== 'downloading' && (
           <button
             onClick={() => setDismissed(true)}
-            className="p-1 rounded text-fg-muted hover:text-fg-secondary hover:bg-surface-hover/50 transition-colors"
+            className="p-1 rounded-sm text-fg-muted hover:text-fg-secondary hover:bg-surface-hover/50 transition-colors"
             aria-label="닫기"
           >
             <X className="w-3.5 h-3.5" />

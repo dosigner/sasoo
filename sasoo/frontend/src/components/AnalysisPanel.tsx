@@ -750,7 +750,7 @@ function PaperBananaViewer({ item }: { item: VisualizationItem }) {
       <button
         onClick={handleDownload}
         disabled={saving}
-        className="absolute right-2 top-2 flex items-center justify-center rounded-md border border-border/60 bg-surface/90 p-1.5 text-fg-muted opacity-0 shadow-sm backdrop-blur transition hover:text-fg focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-50"
+        className="absolute right-2 top-2 flex items-center justify-center rounded-md border border-border/60 bg-surface/90 p-1.5 text-fg-muted opacity-0 shadow-xs backdrop-blur-sm transition hover:text-fg focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-50"
         aria-label={S.figures.saveImage}
         title={S.figures.saveImage}
       >
@@ -1089,7 +1089,7 @@ export default function AnalysisPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="sticky top-0 z-20 border-b border-border/45 bg-surface/95 backdrop-blur">
+      <div className="sticky top-0 z-20 border-b border-border/45 bg-surface/95 backdrop-blur-sm">
         <div className="px-5 py-4">
           <div className="border border-border/45 bg-surface/50 px-4 py-3" style={{ borderRadius: 'var(--radius-surface)' }}>
             <div className="flex flex-wrap items-start justify-between gap-3">

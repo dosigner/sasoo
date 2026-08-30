@@ -53,21 +53,21 @@ function statusTone(status: PaperStatus): {
     case 'completed':
       return {
         line: 'bg-success',
-        panel: 'bg-success/[0.05]',
+        panel: 'bg-success/5',
         badge: 'border-success/20 bg-success/10 text-success',
         dot: 'bg-success',
       };
     case 'analyzing':
       return {
         line: 'bg-accent',
-        panel: 'bg-accent/[0.05]',
+        panel: 'bg-accent/5',
         badge: 'border-accent/20 bg-accent/10 text-accent',
         dot: 'bg-accent',
       };
     case 'error':
       return {
         line: 'bg-danger',
-        panel: 'bg-danger/[0.05]',
+        panel: 'bg-danger/5',
         badge: 'border-danger/20 bg-danger/10 text-danger',
         dot: 'bg-danger',
       };
@@ -75,7 +75,7 @@ function statusTone(status: PaperStatus): {
     default:
       return {
         line: 'bg-warning',
-        panel: 'bg-warning/[0.05]',
+        panel: 'bg-warning/5',
         badge: 'border-warning/20 bg-warning/10 text-warning',
         dot: 'bg-warning',
       };
@@ -161,7 +161,7 @@ function PaperTableRow({ paper, onOpen, onDelete }: PaperTableRowProps) {
       onKeyDown={(event) => handleInteractiveKeyDown(event, () => onOpen(String(paper.id)))}
     >
       <td>
-        <div className="min-w-0 max-w-[38rem]">
+        <div className="min-w-0 max-w-152">
           <div className="line-clamp-2 font-medium leading-snug text-fg" title={paper.title}>
             {paper.title}
           </div>
@@ -222,7 +222,7 @@ function PaperArchiveCard({ paper, onOpen, onDelete }: PaperTableRowProps) {
       </div>
 
       <h3
-        className="mt-3 line-clamp-2 text-[0.95rem] font-semibold leading-snug tracking-[-0.01em] text-fg"
+        className="mt-3 line-clamp-2 text-[0.95rem] font-semibold leading-snug tracking-apple-body text-fg"
         title={paper.title}
       >
         {paper.title}
@@ -364,7 +364,7 @@ export default function Library() {
         <div className="page-header-dense">
           <div>
             <div className="archive-kicker">{S.library.heroKicker}</div>
-            <h1 className="mt-2 text-[1.8rem] font-semibold tracking-[-0.05em] text-fg">
+            <h1 className="mt-2 text-[1.8rem] font-semibold tracking-tighter text-fg">
               {S.library.title}
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-fg-muted">
@@ -395,7 +395,7 @@ export default function Library() {
                 setSearchValue(e.target.value);
                 setSearch(e.target.value);
               }}
-              className="w-full rounded-full border border-border bg-surface px-10 py-3 text-sm text-fg outline-none transition-colors placeholder:text-fg-muted focus:border-fg-muted"
+              className="w-full rounded-full border border-border bg-surface px-10 py-3 text-sm text-fg outline-hidden transition-colors placeholder:text-fg-muted focus:border-fg-muted"
               aria-label="논문 검색"
             />
           </div>
@@ -561,7 +561,7 @@ export default function Library() {
                       year: e.target.value ? parseInt(e.target.value, 10) : undefined,
                     })
                   }
-                  className="w-full rounded-full border border-border bg-surface px-4 py-3 text-sm text-fg outline-none transition-colors placeholder:text-fg-muted focus:border-fg-muted"
+                  className="w-full rounded-full border border-border bg-surface px-4 py-3 text-sm text-fg outline-hidden transition-colors placeholder:text-fg-muted focus:border-fg-muted"
                 />
               </div>
 

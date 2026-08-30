@@ -1,0 +1,163 @@
+name: Dependency Audit
+
+# 왜 이 워크플로가 있나
+#
+# 2026-08-07부터 08-16까지 열흘 동안 Build Check의 의존성 감사가 모든 PR에서
+# 실패했고, PR 4개(#47~#50)가 그 빨간 불을 넘기고 병합됐다. 항상 실패하는 검사는
+# 아무도 읽지 않는 검사가 되고, 진짜 새 취약점이 들어와도 기존 실패와 구분이 안 된다.
+#
+# Build Check의 감사는 PR이 있을 때만 돈다. 아무도 PR을 안 올리는 동안 새 권고가
+# 나오면 다음 PR을 올리는 사람이 자기 변경과 무관한 빨간 불을 만나고, 그게 위 사고의
+# 모양이었다. 이 워크플로는 PR과 무관하게 주 1회 돌면서 낡음을 이슈로 알린다.
+#
+# Renovate(renovate.json)가 고치는 쪽이고 이건 알리는 쪽이다. Renovate는 GitHub App
+# 설치가 필요하지만 이 워크플로는 설정만으로 돈다.
+
+on:
+  schedule:
+    # 매주 월요일 00:10 UTC (한국시간 월요일 09:10)
+    - cron: "10 0 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      # Build Check와 완전히 같은 명령을 쓴다. 두 곳이 갈리면 이 워크플로가
+      # 초록인데 PR은 빨간 상황이 생기고, 그러면 여기 신호를 아무도 안 믿는다.
+      - name: Audit root dependencies
+        id: root
+        working-directory: sasoo
+        run: |
+          set +e
+          out=$(npx --yes pnpm@11.0.0 audit --audit-level=moderate 2>&1)
+          code=$?
+          echo "$out"
+          {
+            echo "report<<AUDIT_EOF"
+            echo "$out"
+            echo "AUDIT_EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Audit frontend dependencies
+        id: frontend
+        working-directory: sasoo
+        run: |
+          set +e
+          out=$(npx --yes pnpm@11.0.0 --dir=frontend audit --audit-level=moderate 2>&1)
+          code=$?
+          echo "$out"
+          {
+            echo "report<<AUDIT_EOF"
+            echo "$out"
+            echo "AUDIT_EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      # 이슈는 하나만 유지한다. 주마다 새 이슈를 쌓으면 그것도 곧 안 읽는 알림이 된다.
+      - name: Open or update the audit issue
+        if: steps.root.outputs.code != '0' || steps.frontend.outputs.code != '0'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        env:
+          ROOT_REPORT: ${{ steps.root.outputs.report }}
+          FRONTEND_REPORT: ${{ steps.frontend.outputs.report }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const title = '의존성 감사 실패: override가 낡았다';
+            const body = [
+              '주기 감사(`.github/workflows/dependency-audit.yml`)가 새 취약점을 찾았다.',
+              '',
+              `실행 로그: ${process.env.RUN_URL}`,
+              '',
+              '## 고치는 법',
+              '',
+              '이 저장소는 간접 의존성 취약점을 `pnpm-workspace.yaml`의 `overrides`로 막는다.',
+              '권고의 취약 범위를 선택자로, 패치 하한을 대상으로 쓴다. **정확한 버전으로 못 박지 마라**',
+              '(다른 취약 버전이 오면 규칙이 발동하지 않고 조용히 통과한다).',
+              '',
+              '```',
+              '"js-yaml@>=4.0.0 <4.3.1": "4.3.1"   좋음: 권고 범위를 그대로 옮겼다',
+              '"js-yaml@4.1.1": "4.3.0"            나쁨: 4.2.0이 오면 안 걸린다',
+              '```',
+              '',
+              '취약 범위는 `gh api "/advisories?ecosystem=npm&affects=<패키지>"`로 확인할 수 있다.',
+              '고친 뒤 lockfile을 반드시 함께 커밋해라(CI가 `--frozen-lockfile`이다).',
+              '',
+              '## root',
+              '',
+              '```',
+              (process.env.ROOT_REPORT || '').slice(0, 25000),
+              '```',
+              '',
+              '## frontend',
+              '',
+              '```',
+              (process.env.FRONTEND_REPORT || '').slice(0, 25000),
+              '```',
+            ].join('\n');
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'dependencies,security',
+            });
+            const hit = existing.data.find((i) => i.title === title);
+            if (hit) {
+              await github.rest.issues.update({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: hit.number, body,
+              });
+              core.notice(`기존 이슈 #${hit.number}를 갱신했다`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ['dependencies', 'security'],
+              });
+              core.notice(`이슈 #${created.data.number}를 열었다`);
+            }
+
+      # 낡음이 해소되면 열린 이슈를 닫는다. 안 닫으면 그것도 낡은 신호가 된다.
+      - name: Close the audit issue when clean
+        if: steps.root.outputs.code == '0' && steps.frontend.outputs.code == '0'
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        with:
+          script: |
+            const title = '의존성 감사 실패: override가 낡았다';
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'dependencies,security',
+            });
+            const hit = existing.data.find((i) => i.title === title);
+            if (!hit) return;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: hit.number,
+              body: '주기 감사가 다시 초록이 되어 닫는다.',
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: hit.number, state: 'closed',
+            });
+
+      - name: Fail the run when the audit failed
+        if: steps.root.outputs.code != '0' || steps.frontend.outputs.code != '0'
+        run: |
+          echo "root=${{ steps.root.outputs.code }} frontend=${{ steps.frontend.outputs.code }}"
+          exit 1

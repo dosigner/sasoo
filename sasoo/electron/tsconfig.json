@@ -1,7 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "commonjs",
+    // TS7이 moduleResolution "node"(node10)를 제거했다(TS5108). node16을 쓴다.
+    // 루트 package.json에 "type"이 없어 CommonJS 패키지이므로 방출은 그대로 CJS다
+    // (main은 dist-electron/main.js). CJS 모드에서는 확장자 없는 상대 import가 유효하다.
+    "module": "node16",
     "lib": ["ES2022"],
     "outDir": "../dist-electron",
     "rootDir": ".",
@@ -11,7 +14,7 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "sourceMap": true,
-    "moduleResolution": "node",
+    "moduleResolution": "node16",
     "allowSyntheticDefaultImports": true,
     "types": ["node"]
   },

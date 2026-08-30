@@ -1,0 +1,57 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits"
+  ],
+  "timezone": "Asia/Seoul",
+  "schedule": ["before 9am on monday"],
+  "prConcurrentLimit": 3,
+  "prHourlyLimit": 2,
+  "labels": ["dependencies"],
+  "rangeStrategy": "bump",
+  "postUpdateOptions": ["pnpmDedupe"],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "schedule": ["at any time"],
+    "prPriority": 10,
+    "labels": ["dependencies", "security"]
+  },
+  "osvVulnerabilityAlerts": true,
+  "packageRules": [
+    {
+      "description": "override는 이 저장소가 간접 의존성 취약점을 막는 유일한 수단이다. Dependabot은 이 필드를 갱신하지 못해서 Renovate를 골랐다(2026-08-18 조사). 묶지 말고 건별로 올려 근거를 확인할 수 있게 둔다. depType은 정의 위치에 따라 갈린다: pnpm-workspace.yaml은 pnpm-workspace.overrides, package.json의 pnpm 필드는 pnpm.overrides다(renovatebot/renovate#42247, 2026-04-08 병합). 이 저장소는 앞의 것을 쓰지만 뒤의 것도 남겨 둔다.",
+      "matchDepTypes": ["pnpm-workspace.overrides", "pnpm.overrides", "overrides", "resolutions"],
+      "groupName": null,
+      "schedule": ["at any time"],
+      "prPriority": 20,
+      "labels": ["dependencies", "security", "overrides"]
+    },
+    {
+      "description": "patch와 minor는 묶어서 한 PR로. 매주 월요일 1건이면 검토가 감당된다.",
+      "matchUpdateTypes": ["patch", "minor"],
+      "matchDepTypes": ["dependencies", "devDependencies"],
+      "groupName": "patch와 minor",
+      "automerge": false
+    },
+    {
+      "description": "major는 절대 묶지 않는다. tailwindcss 3->4, vite 6->8, eslint 8->10처럼 각각이 별도 마이그레이션이라 한 PR에 섞이면 검토가 불가능해진다.",
+      "matchUpdateTypes": ["major"],
+      "groupName": null,
+      "automerge": false,
+      "labels": ["dependencies", "major"]
+    },
+    {
+      "description": "pdfjs-dist는 되돌리지 마라. 5.x가 '악성 PDF 열기만으로 임의 JS 실행' 권고에 걸린다. 이 앱이 하는 일이 인터넷에서 받은 PDF를 여는 것이라 예외 대상이 아니다. v6에서 NullL10n이 삭제됐는데 PdfViewer.tsx가 타입 단언 뒤에서 심볼을 꺼내 써서 tsc가 못 잡는다. 올릴 때는 빌드 통과로 끝내지 말고 실제로 띄워 렌더링과 본문 검색까지 확인해라.",
+      "matchPackageNames": ["pdfjs-dist"],
+      "labels": ["dependencies", "needs-manual-verification"]
+    },
+    {
+      "description": "electron 메이저는 Node ABI와 Chromium이 함께 올라간다. 빌드만 통과해서는 판단할 수 없으니 실행 확인이 필요하다.",
+      "matchPackageNames": ["electron", "electron-builder", "electron-updater"],
+      "matchUpdateTypes": ["major"],
+      "labels": ["dependencies", "major", "needs-manual-verification"]
+    }
+  ]
+}

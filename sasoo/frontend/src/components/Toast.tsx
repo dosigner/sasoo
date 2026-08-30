@@ -168,7 +168,7 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
       {/* Close button */}
       <button
         onClick={handleClose}
-        className="absolute top-3 right-3 p-1 rounded transition-colors
+        className="absolute top-3 right-3 p-1 rounded-sm transition-colors
           text-fg-muted hover:text-fg hover:bg-surface-hover"
         aria-label="Close notification"
       >

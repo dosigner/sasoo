@@ -44,16 +44,16 @@ function RecipeSkeleton() {
   return (
     <div className="card animate-pulse">
       <div className="flex items-center gap-2 mb-4">
-        <div className="h-4 w-4 bg-border rounded" />
-        <div className="h-4 bg-border rounded w-40" />
+        <div className="h-4 w-4 bg-border rounded-sm" />
+        <div className="h-4 bg-border rounded-sm w-40" />
       </div>
       <div className="space-y-2">
         {[1, 2, 3, 4, 5].map((i) => (
           <div key={i} className="flex gap-4">
-            <div className="h-3 bg-border rounded w-24" />
-            <div className="h-3 bg-border rounded w-16" />
-            <div className="h-3 bg-border rounded w-20" />
-            <div className="h-3 bg-border rounded w-16" />
+            <div className="h-3 bg-border rounded-sm w-24" />
+            <div className="h-3 bg-border rounded-sm w-16" />
+            <div className="h-3 bg-border rounded-sm w-20" />
+            <div className="h-3 bg-border rounded-sm w-16" />
           </div>
         ))}
       </div>

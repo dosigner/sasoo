@@ -98,7 +98,7 @@ export default function AppSidebar() {
         <button
           type="button"
           onClick={toggleTheme}
-          className={`flex items-center rounded-control text-fg-secondary transition-colors duration-150 hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${
+          className={`flex items-center rounded-control text-fg-secondary transition-colors duration-150 hover:bg-surface-hover hover:text-fg focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${
             collapsed ? 'h-10 w-10 justify-center' : 'gap-2 px-2 py-1.5 text-sm'
           }`}
           title={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
@@ -117,7 +117,7 @@ export default function AppSidebar() {
         <button
           type="button"
           onClick={toggle}
-          className="flex h-8 w-8 items-center justify-center rounded-control text-fg-muted transition-colors duration-150 hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+          className="flex h-8 w-8 items-center justify-center rounded-control text-fg-muted transition-colors duration-150 hover:bg-surface-hover hover:text-fg focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
           title={collapsed ? S.app.expandSidebar : S.app.collapseSidebar}
           aria-label={collapsed ? S.app.expandSidebar : S.app.collapseSidebar}
         >

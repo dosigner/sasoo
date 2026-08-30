@@ -35,7 +35,7 @@ export default function Toggle({ checked, onChange, label, ariaLabel, descriptio
         disabled={disabled}
       >
         <span
-          className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-surface shadow-sm transition-transform duration-200 ${
+          className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-surface shadow-xs transition-transform duration-200 ${
             checked ? 'translate-x-5' : 'translate-x-0'
           }`}
         />
