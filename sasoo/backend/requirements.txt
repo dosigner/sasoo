@@ -20,7 +20,7 @@ aiosqlite>=0.20.0
 PyYAML>=6.0.0
 
 # Image processing
-Pillow>=11.3.0
+Pillow>=12.3.0
 
 # SSL / Network
 truststore>=0.10.0
