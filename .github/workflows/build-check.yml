@@ -126,8 +126,15 @@ jobs:
         shell: pwsh
         run: python -m pip install --quiet pip-audit==2.10.1
 
+      # PYTHONUTF8=1이 없으면 Windows에서 깨진다. pip-audit이 쓰는
+      # pip-requirements-parser는 옛 pip의 auto_decode를 벤더링했는데, BOM도 PEP 263
+      # 주석도 없으면 locale 인코딩으로 폴백한다. Windows 런너는 cp1252라서
+      # requirements.txt의 한글 주석에서 UnicodeDecodeError가 났다(run 33502266262).
+      # UTF-8 모드는 locale.getpreferredencoding()이 무조건 utf-8을 반환하게 만든다.
       - name: Audit backend Python dependencies
         shell: pwsh
+        env:
+          PYTHONUTF8: "1"
         run: python -m pip_audit --progress-spinner=off -r backend/requirements.txt -r backend/requirements-test.txt
 
       - name: Build unsigned Windows artifact

@@ -90,9 +90,13 @@ jobs:
 
       # pnpm audit이 못 보는 백엔드 쪽이다. requirements가 고정되어 있지 않아서
       # pip-audit이 PyPI에서 전체 트리를 해석한 뒤 감사한다(1분 남짓 걸린다).
+      # PYTHONUTF8=1은 ubuntu에서는 없어도 되지만, Build Check와 실행 조건을
+      # 어긋나게 두지 않으려고 여기에도 둔다(이유는 build-check.yml 주석 참고).
       - name: Audit backend Python dependencies
         id: python
         working-directory: sasoo
+        env:
+          PYTHONUTF8: "1"
         run: |
           set +e
           out=$(python -m pip_audit --progress-spinner=off -r backend/requirements.txt -r backend/requirements-test.txt 2>&1)
