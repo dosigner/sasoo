@@ -21,3 +21,7 @@ sasoo/.codex/
 AGENTS.md
 PRD_Sasoo_v3.0.md
 docs/marketing/
+
+# 저장소 어디에 생기든 무시한다. sasoo/.gitignore에도 같은 규칙이 있지만
+# 루트에 npm을 잘못 돌리면 여기서만 걸린다(실측 2026-08-30, 루트에 151MB가 쌓여 있었다).
+node_modules/
