@@ -26,7 +26,7 @@ Pillow>=11.3.0
 truststore>=0.10.0
 
 # Security / Encryption
-cryptography>=44.0.0
+cryptography>=44.0.3
 filelock>=3.32.4
 keyring>=25.0.0
 
