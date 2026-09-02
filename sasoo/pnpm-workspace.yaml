@@ -1,12 +1,5 @@
-# pnpm v11부터 package.json의 pnpm 필드를 읽지 않는다(pnpm.io/package_json).
-# 실측 2026-08-18: pnpm 11로 설치하면 overrides 19건이 조용히 전부 무시되고
-# lockfile에서 overrides 블록 자체가 사라졌다. 여기 두면 pnpm 10과 11 둘 다 읽는다.
-#
-# 선택자는 권고의 취약 범위, 대상은 패치 하한으로 쓴다. 정확한 버전으로 못 박지 마라 —
-# 다른 취약 버전이 오면 규칙이 발동하지 않고 조용히 통과한다.
-# 취약 범위 확인: gh api "/advisories?ecosystem=npm&affects=<패키지>"
 overrides:
-  '@xmldom/xmldom@<0.8.13': '0.8.13'
+  '@xmldom/xmldom@<0.8.13': '0.8.15'
   'brace-expansion@<1.1.18': '1.1.18'
   'brace-expansion@>=2.0.0 <2.1.4': '2.1.4'
   'brace-expansion@>=4.0.0 <5.0.9': '5.0.9'
