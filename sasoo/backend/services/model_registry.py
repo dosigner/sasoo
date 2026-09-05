@@ -47,7 +47,7 @@ _REGISTRY: dict[str, dict[str, ModelChoice]] = {
         "screening": ModelChoice(MODEL_FLASH_LITE, "minimal"),
         "visual": ModelChoice(MODEL_FLASH_HQ, "low"),
         # 페이지 전체 비전 파싱(gemini_parser). 그림 판독 단계인 "visual"과 별개 role이다.
-        # FLASH_HQ(3.7 Flash)는 minimal을 400으로 거부한다 — low가 이 모델의
+        # FLASH_HQ(3.7/3.8 Flash)는 minimal을 400으로 거부한다 — low가 이 모델의
         # 최저치다(ai.google.dev, 2026-08-16 확인). main #51이 같은 이유로
         # figure/table/subfigure 리졸버와 페이지 파서를 low로 올렸다.
         # minimal이 남아 있는 곳은 flash-lite를 쓰는 screening과 naming뿐이다.

@@ -2211,7 +2211,7 @@ class ChainStageSalvageTests(unittest.TestCase):
 class StageThinkingLevelTests(unittest.TestCase):
     """체인 단계의 effort는 그 단계 모델이 받는 값이어야 한다.
 
-    3.7 Flash가 지원하는 값은 low, medium, high뿐이다. minimal을 명시하면 API가
+    3.7/3.8 Flash가 지원하는 값은 low, medium, high뿐이다. minimal을 명시하면 API가
     검증 에러를 돌려준다. 체인 단계는 전부 MODEL_FLASH_HQ로 도니까 여기에 minimal이
     섞이면 그 단계가 통째로 죽는다. Luna도 minimal 미지원이라 같은 제약을 받는다.
     screening은 flash-lite에서 minimal을 쓰므로 이 규칙 밖이고, _PHASE_TO_ROLE에도

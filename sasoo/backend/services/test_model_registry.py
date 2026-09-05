@@ -36,7 +36,7 @@ class TestGeminiColumnMatchesProduction(unittest.TestCase):
         안에서 엉뚱한 상수(MODEL_PRO 등)로 드리프트하면 여기서 걸린다.
 
         상수가 가리키는 문자열 값은 여기서 보지 않는다 —
-        services/test_model_pins.py::test_flash_hq_is_the_37_flash_id가 잠근다."""
+        services/test_model_pins.py::test_flash_hq_is_the_38_flash_id가 잠근다."""
         for role in ("figure_resolver", "table_resolver", "subfigure"):
             with self.subTest(role=role):
                 choice = resolve(role, "gemini")
@@ -110,7 +110,7 @@ class TestPdfParseRole(unittest.TestCase):
     def test_gemini_pdf_parse_matches_current_parser_defaults(self):
         """Gemini 경로는 현행 페이지 파서와 바이트 동일해야 한다 — 모델은 MODEL_VISUAL.
 
-        effort는 minimal이 아니라 low다. FLASH_HQ(3.7 Flash)는 minimal을 400으로
+        effort는 minimal이 아니라 low다. FLASH_HQ(3.7/3.8 Flash)는 minimal을 400으로
         거부한다(ai.google.dev, 2026-08-16 확인) — main의 gemini_parser.
         _THINKING_LEVEL 기본값도 이미 low이므로, 여기서도 low로 맞춰야 병합 후
         main과 동치가 된다(2026-08-22).
@@ -179,7 +179,7 @@ class TestRegistryShape(unittest.TestCase):
 
 
 def test_flash_hq_roles_never_use_minimal_effort():
-    """FLASH_HQ(=3.7 Flash)는 minimal을 400으로 거부한다.
+    """FLASH_HQ(=3.7/3.8 Flash)는 minimal을 400으로 거부한다.
 
     근거: services/models.py 모듈 docstring, ai.google.dev 2026-08-16 확인.
     main #51(159c5f2)이 figure_resolver/table_resolver/subfigure/gemini_parser

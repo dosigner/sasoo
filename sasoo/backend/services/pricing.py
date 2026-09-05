@@ -4,7 +4,8 @@ Sasoo - Unified Pricing Module
 Single source of truth for LLM pricing across all services.
 All prices are in USD per 1 million tokens.
 
-Verified against ai.google.dev/gemini-api/docs/pricing on 2026-08-16 (paid tier).
+Verified against ai.google.dev/gemini-api/docs/pricing on 2026-08-16 (paid tier);
+3.8 Flash 항목은 2026-09-05에 같은 페이지로 확인했다.
 Image models bill their image output separately from text output; IMAGE_PRICING
 below holds the per-image price, since calc_cost's token model cannot express it.
 
@@ -24,6 +25,7 @@ PRICING: dict[str, dict[str, float]] = {
     "gemini-3.1-pro-preview": {"input": 2.00, "output": 12.00},
     # NOTE: >200K-token prompts are billed at $4.00 / $18.00. calc_cost applies
     # the flat rate, so long-context calls under-report. See PRO_LONG_CONTEXT.
+    "gemini-3.8-flash": {"input": 1.50, "output": 7.50},  # 2026-09-02 발표(GA), 공식 pricing 확인함 (ai.google.dev, 2026-09-05); 3.7과 고시 동일, output은 thinking 토큰 포함. 2026-12-31까지는 INTRO_PRICING이 우선
     "gemini-3.7-flash": {"input": 1.50, "output": 7.50},  # 2026-08-13 발표(GA), 공식 pricing 확인함 (ai.google.dev, 2026-08-16); output은 thinking 토큰 포함. 2026-12-31까지는 INTRO_PRICING이 우선
     "gemini-3.6-flash": {"input": 1.50, "output": 7.50},  # 2026-07-21 발표, 공식 pricing 확인함 (ai.google.dev, 2026-08-16); output은 thinking 토큰 포함. 2026-12-31까지는 INTRO_PRICING이 우선
     "gemini-3.5-flash-lite": {"input": 0.30, "output": 2.50},  # 2026-07-21 발표, 공식 pricing 확인함 (ai.google.dev, 2026-07-24); output은 thinking 토큰 포함
@@ -58,8 +60,9 @@ class IntroPrice(NamedTuple):
 
 
 # 한시 도입가. 만료일이 지나면 PRICING의 표준가로 자동 복귀한다.
-# 확인: ai.google.dev/gemini-api/docs/pricing, 2026-08-16 (paid tier, standard).
+# 확인: ai.google.dev/gemini-api/docs/pricing, 2026-08-16 (paid tier, standard); 3.8은 2026-09-05.
 INTRO_PRICING: dict[str, IntroPrice] = {
+    "gemini-3.8-flash": IntroPrice(0.75, 3.75, date(2026, 12, 31)),
     "gemini-3.7-flash": IntroPrice(0.75, 3.75, date(2026, 12, 31)),
     "gemini-3.6-flash": IntroPrice(0.75, 3.75, date(2026, 12, 31)),
 }
@@ -69,8 +72,8 @@ PRO_LONG_CONTEXT_THRESHOLD = 200_000
 PRO_LONG_CONTEXT: dict[str, dict[str, float]] = {
     "gemini-3.1-pro-preview": {"input": 4.00, "output": 18.00},
 }
-# flash 계열(3.6/3.7)에는 프롬프트 길이별 계층이 없다. 1M 문맥 전체가 같은 단가다
-# (ai.google.dev/gemini-api/docs/pricing, 2026-08-16 확인).
+# flash 계열(3.6/3.7/3.8)에는 프롬프트 길이별 계층이 없다. 1M 문맥 전체가 같은 단가다
+# (ai.google.dev/gemini-api/docs/pricing, 2026-08-16 확인, 3.8은 2026-09-05 확인).
 
 # USD per generated image (1K-2K resolution).
 IMAGE_PRICING: dict[str, float] = {

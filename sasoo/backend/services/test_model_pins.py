@@ -38,13 +38,15 @@ import services.models as models
 from services.pricing import PRICING
 
 
-def test_flash_hq_is_the_37_flash_id():
+def test_flash_hq_is_the_38_flash_id():
     """FLASH_HQ의 문자열 값 자체를 잠근다.
 
-    3.7로 올린 판단에는 실측이 붙어 있다(main #51): 긴 문맥 검색 GDM-MRCR v2
-    8-needle @128k 91.8 -> 97.0%, PDF 문서 이해 GDP.pdf 22.0 -> 34.0%, 단가는 동일.
-    이 앱이 기대는 두 축이 그대로 오르면서 값이 같으니 되돌릴 이유가 없다.
-    되돌리려면 새 실측이 먼저다 — 3.6이 이 두 축에서 낫다는 증거를 가져와라.
+    3.8로 올린 판단(2026-09-05, DEC-021): 단가가 3.7과 동일한데 PDF 문서 이해
+    GDP.pdf 34.0 -> 35.0%, 도표 추론 CharXiv 84.5 -> 86.2%로 앱이 기대는 축이
+    내려간 곳 없이 오르고, thinking_level 계약(minimal 400)이 실호출로 같았다.
+    긴 문맥 검색 GDM-MRCR v2는 3.8 카드에 없어 미확인이다. 3.7로 올린 판단의
+    근거(3.6 대비 MRCR 91.8 -> 97.0%, GDP.pdf 22.0 -> 34.0%)는 main #51에 있다.
+    되돌리려면 새 실측이 먼저다 — 3.7이 이 축들에서 낫다는 증거를 가져와라.
 
     이 단정이 없으면 값을 조용히 되돌려도 전 스위트가 통과한다. 다른 방어선은
     모두 상수 대 상수이거나(test_recipe_uses_flash_hq) 단가표 존재 여부만
@@ -53,7 +55,7 @@ def test_flash_hq_is_the_37_flash_id():
     services/test_model_registry.py는 이 상수와 레지스트리가 일치하는지만 보고
     값은 여기에 위임한다.
     """
-    assert models.MODEL_FLASH_HQ == "gemini-3.7-flash"
+    assert models.MODEL_FLASH_HQ == "gemini-3.8-flash"
 
 
 def test_recipe_uses_flash_hq():
@@ -66,8 +68,9 @@ def test_recipe_uses_flash_hq():
 
 
 def test_flash_prev_stays_priced_for_historical_rows():
-    """DB에 3.6이 만든 행이 남아 있다. 단가표에서 빼면 그 행들의 비용이 조용히 틀린다."""
+    """DB에 3.6과 3.7이 만든 행이 남아 있다. 단가표에서 빼면 그 행들의 비용이 조용히 틀린다."""
     assert models.MODEL_FLASH_PREV in PRICING
+    assert "gemini-3.6-flash" in PRICING
 
 
 def test_recipe_keeps_an_output_cap():

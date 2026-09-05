@@ -1,6 +1,7 @@
 """MODEL_FLASH_HQ 계열 호출은 그 모델이 받는 thinking_level만 써야 한다.
 
-Gemini 3.7 Flash는 minimal을 거부한다. 실호출로 확인한 응답(2026-08-16):
+Gemini 3.7 Flash와 3.8 Flash는 minimal을 거부한다. 실호출로 확인한 응답(3.7은
+2026-08-16, 3.8은 2026-09-05, 메시지가 글자까지 같다):
 
     400 invalid_request: 'minimal' is not a supported thinking level for this
     model. Allowed values are: medium, low, high.

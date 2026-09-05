@@ -76,6 +76,17 @@ def test_gemini_36_flash_shares_the_same_intro_schedule():
     ) == pytest.approx(9.00)
 
 
+def test_gemini_38_flash_shares_the_same_intro_schedule():
+    # 3.7과 동일한 고시(ai.google.dev, 2026-09-05 확인). 도입가 없이 표준가만 넣으면
+    # 도입가 기간 내내 2배로 과대 계상된다 — 3.6이 실제로 그랬다(#51).
+    assert calc_cost(
+        "gemini-3.8-flash", 1_000_000, 1_000_000, as_of=date(2026, 12, 31)
+    ) == pytest.approx(4.50)
+    assert calc_cost(
+        "gemini-3.8-flash", 1_000_000, 1_000_000, as_of=date(2027, 1, 1)
+    ) == pytest.approx(9.00)
+
+
 def test_intro_price_does_not_leak_into_models_without_a_schedule():
     # 스케줄이 없는 모델은 기준일과 무관하게 표준가다.
     for day in (date(2026, 12, 31), date(2027, 1, 1)):
