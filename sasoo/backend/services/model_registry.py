@@ -112,14 +112,17 @@ def resolve(role: str, provider: str) -> ModelChoice:
         raise KeyError(f"unknown role: {role!r}") from None
 
 
-# deep_dive만 provider를 따로 고른다(DEC-019). Gemini 3.7 Flash는 이 role에서만
-# 확률적으로 폭주해 출력 상한에 걸리고, 그때 required가 아닌 부가 필드 6개
-# (to_be, novelty_assessment, comparison_to_prior_work, suggested_improvements,
-# follow_up_questions, practical_applications)가 오류 없이 사라진다 — 상한은 비용만
-# 막고 이 손실은 못 막는다. 프롬프트 정형 문구 제거로는 4/4를 2/4로 낮추는 데
-# 그쳤고, Luna는 같은 조건에서 누적 42/42 무폭주였다.
-# 근거: RESEARCH/2026-08-29-provider-chain-token-convergence.md 6장.
-_ROLE_PROVIDER_OVERRIDE: dict[str, Provider] = {"deep_dive": "openai"}
+# role별 provider 오버라이드. 지금은 비어 있다(DEC-022, 2026-09-06).
+# 이력: DEC-019(2026-08-29)가 deep_dive를 OpenAI Luna로 보냈다. Gemini 3.7 Flash가 이 role에서만
+# 확률적으로 폭주해 출력 상한에 걸리고, 그때 required가 아닌 부가 필드가 오류 없이 사라졌기
+# 때문이다(프롬프트 정형 문구 제거로는 4/4→2/4, Luna는 42/42 무폭주.
+# RESEARCH/2026-08-29-provider-chain-token-convergence.md 6장). 대가는 deep_dive 지연 약 90초였다.
+# 해제 근거: FLASH_HQ가 3.8 Flash로 올라간 뒤 같은 VLA 6편을 같은 체인·상한으로 재실행해 폭주 0/6,
+# 14/14 필드, 출력 2,805~3,444(상한 16k의 18~22%), 16~23초(RESEARCH/2026-09-06-vla6-gemini-3-8.md).
+# 기제(provider_for_role, analysis_routes의 체인 갈림 배선)는 남긴다 — 폭주가 재발하면 항목 하나로
+# 되돌릴 수 있다. 상한 16k와 salvage_truncated_json은 그대로라 재발 시 손해는 유한하다.
+# 잠금: services/test_model_registry.py::TestProviderForRole
+_ROLE_PROVIDER_OVERRIDE: dict[str, Provider] = {}
 
 
 async def provider_for_role(role: str) -> str:

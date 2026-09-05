@@ -205,7 +205,13 @@ def test_flash_hq_roles_never_use_minimal_effort():
 
 
 class TestProviderForRole(unittest.TestCase):
-    """deep_dive만 provider를 따로 고른다(DEC-019). 나머지 role은 기본 provider 그대로."""
+    """role별 provider 오버라이드 기제. 표(_ROLE_PROVIDER_OVERRIDE)는 지금 비어 있다(DEC-022).
+
+    DEC-019가 deep_dive를 OpenAI Luna로 보내던 항목은 2026-09-06에 뺐다: 3.7이 폭주한
+    VLA 6편을 3.8 Flash로 같은 체인·상한으로 재실행해 0/6 무폭주였다
+    (RESEARCH/2026-09-06-vla6-gemini-3-8.md). 기제(provider_for_role, 체인 갈림 배선)는
+    남겨 두므로 표가 비어 있을 때와 항목이 있을 때의 동작을 둘 다 잠근다.
+    """
 
     @staticmethod
     def _run(role, *, stored, has_openai, has_gemini):
@@ -217,27 +223,36 @@ class TestProviderForRole(unittest.TestCase):
         with patch("api.settings._get_all_settings", new=AsyncMock(return_value=settings_stub)):
             return asyncio.run(model_registry.provider_for_role(role))
 
-    def test_deep_dive_moves_to_openai_when_key_present(self):
-        """gemini를 고른 사용자라도 OpenAI 키가 있으면 deep_dive만 그쪽으로 보낸다."""
+    def test_override_table_is_empty(self):
+        """DEC-022: deep_dive도 기본 provider를 따른다. 항목을 다시 넣으려면 실측이 먼저다."""
+        self.assertEqual(model_registry._ROLE_PROVIDER_OVERRIDE, {})
+
+    def test_deep_dive_stays_on_base_provider_even_with_openai_key(self):
         result = self._run("deep_dive", stored="gemini", has_openai=True, has_gemini=True)
+        self.assertEqual(result, "gemini")
+
+    def test_override_entry_moves_role_when_key_present(self):
+        """기제는 살아 있다 — 항목이 있고 그 키가 있으면 그쪽으로 보낸다(DEC-019의 배선)."""
+        with patch.dict(model_registry._ROLE_PROVIDER_OVERRIDE, {"deep_dive": "openai"}):
+            result = self._run("deep_dive", stored="gemini", has_openai=True, has_gemini=True)
         self.assertEqual(result, "openai")
 
-    def test_deep_dive_falls_back_without_openai_key(self):
-        """OpenAI 키가 없으면 조용히 기본 provider로 돌아간다.
+    def test_override_entry_falls_back_without_key(self):
+        """항목이 있어도 그 키가 없으면 조용히 기본 provider로 돌아간다.
 
-        폭주 위험을 안고 Gemini로 돌리는 편이, 키가 없어 deep_dive를 통째로
-        잃는 것보다 낫다. 이 폴백이 사라지면 Gemini 단독 사용자의 심층 분석이
-        매번 인증 오류로 실패한다.
+        키가 없어 단계를 통째로 잃는 것보다 폭주 위험을 안고 돌리는 편이 낫다.
         """
-        result = self._run("deep_dive", stored="gemini", has_openai=False, has_gemini=True)
+        with patch.dict(model_registry._ROLE_PROVIDER_OVERRIDE, {"deep_dive": "openai"}):
+            result = self._run("deep_dive", stored="gemini", has_openai=False, has_gemini=True)
         self.assertEqual(result, "gemini")
 
     def test_other_roles_keep_base_provider(self):
-        """오버라이드는 deep_dive 전용이다 — 다른 role까지 번지면 안 된다."""
-        for role in ("visual", "recipe", "viz_planning", "citation"):
-            with self.subTest(role=role):
-                result = self._run(role, stored="gemini", has_openai=True, has_gemini=True)
-                self.assertEqual(result, "gemini")
+        """오버라이드는 표에 적힌 role에만 걸린다 — 다른 role까지 번지면 안 된다."""
+        with patch.dict(model_registry._ROLE_PROVIDER_OVERRIDE, {"deep_dive": "openai"}):
+            for role in ("visual", "recipe", "viz_planning", "citation"):
+                with self.subTest(role=role):
+                    result = self._run(role, stored="gemini", has_openai=True, has_gemini=True)
+                    self.assertEqual(result, "gemini")
 
 
 if __name__ == "__main__":
