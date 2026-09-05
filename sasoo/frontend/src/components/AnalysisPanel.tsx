@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
-import { Markdown } from '@/components/Markdown';
+import { Markdown, type MarkdownCitationOptions } from '@/components/Markdown';
+import { type CitationTarget } from '@/lib/citations';
 import {
   BookOpen,
   GitBranch,
@@ -38,6 +39,7 @@ import FigureGallery from './FigureGallery';
 import TableGallery from './TableGallery';
 import RecipeCard from './RecipeCard';
 import ExperimentPlanTab from './ExperimentPlanTab';
+import ReadingGuideTab from './ReadingGuideTab';
 import { ContentState } from '@/components/ui';
 import { AppIcon } from '@/components/icons';
 const MermaidRenderer = lazy(() => import('./MermaidRenderer'));
@@ -62,7 +64,13 @@ interface AnalysisPanelProps {
   onJumpToFigurePage?: (figure: Figure) => void;
   onJumpToTablePage?: (table: Table) => void;
   onJumpToEvidence?: (anchor: EvidenceAnchor) => void;
+  /** 읽기 안내의 섹션 페이지 클릭. */
+  onGuideJumpToPage?: (page: number) => void;
+  /** 읽기 안내의 표기 사전 항목 클릭. page가 있으면 그 페이지부터 찾는다. */
+  onGuideSearchInPdf?: (term: string, page: number | null) => void;
   citationFocus?: CitationFocus | null;
+  /** 요약 탭 페이즈 본문(스크리닝·인용 분석·심층 분석)의 인용 칩 클릭. 채팅과 동일한 그림/표/페이지 이동. */
+  onCitationClick?: (target: CitationTarget) => void;
   terminalState?: 'cancelled' | null;
 }
 
@@ -170,6 +178,8 @@ interface PhaseSectionProps {
   metaItems?: { label: string; value: string; accent?: boolean }[];
   tone?: 'primary' | 'muted' | 'practical';
   children?: React.ReactNode;
+  /** 있으면 본문 마크다운의 "Fig. 3" 같은 참조를 인용 칩으로 치환한다. */
+  citations?: MarkdownCitationOptions;
 }
 
 function PhaseSection({
@@ -184,6 +194,7 @@ function PhaseSection({
   metaItems = [],
   tone = 'muted',
   children,
+  citations,
 }: PhaseSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const outline = useMemo(() => (content ? extractOutline(content) : []), [content]);
@@ -335,7 +346,7 @@ function PhaseSection({
                 <SectionOutline outline={outline} scopeRef={contentRef} />
               )}
               <div className="analysis-content" ref={contentRef}>
-                <Markdown headingAnchors>{content}</Markdown>
+                <Markdown headingAnchors citations={citations}>{content}</Markdown>
               </div>
             </div>
           )}
@@ -998,13 +1009,17 @@ export default function AnalysisPanel({
   visualizations,
   isRunning,
   paperId,
+  paperLevel,
   onJumpToFigurePage,
   onJumpToTablePage,
   onJumpToEvidence,
+  onGuideJumpToPage,
+  onGuideSearchInPdf,
   citationFocus,
+  onCitationClick,
   terminalState,
 }: AnalysisPanelProps) {
-  const [activeTab, setActiveTab] = useState<'summary' | 'figures' | 'tables' | 'recipe' | 'experiment'>('summary');
+  const [activeTab, setActiveTab] = useState<'summary' | 'guide' | 'figures' | 'tables' | 'recipe'>('summary');
 
   useEffect(() => {
     setActiveTab('summary');
@@ -1061,6 +1076,31 @@ export default function AnalysisPanel({
 
   const figureList = figures?.figures ?? [];
   const tableList = tables?.tables ?? [];
+
+  // 요약 탭 인용 칩: 실제로 존재하는 그림/표 번호만 칩으로 바꾼다(논문에 없는 Fig. 9는
+  // 그대로 텍스트로 둔다). figure_num/table_num은 "3a" 같은 라벨일 수 있어 갤러리 카드의
+  // data-citation-anchor와 같은 방식(첫 숫자만 추출)으로 번호를 뽑는다.
+  const extractCitationNum = (label: string | null | undefined): number | null => {
+    const match = label?.match(/\d+/)?.[0];
+    return match ? parseInt(match, 10) : null;
+  };
+  const figureNumbers = new Set(
+    figureList.map((f) => extractCitationNum(f.figure_num)).filter((n): n is number => n !== null),
+  );
+  const tableNumbers = new Set(
+    tableList.map((t) => extractCitationNum(t.table_num)).filter((n): n is number => n !== null),
+  );
+  // 페이지 참조는 PDF 페이지 수를 모르므로 항상 칩으로 둔다(브리프 §7).
+  const summaryCitations: MarkdownCitationOptions | undefined = onCitationClick
+    ? {
+        onClick: onCitationClick,
+        isAllowed: (target: CitationTarget) =>
+          target.type === 'page' ||
+          (target.type === 'figure' && figureNumbers.has(target.n)) ||
+          (target.type === 'table' && tableNumbers.has(target.n)),
+      }
+    : undefined;
+
   const screeningSummary = buildPhaseSummary('screening', results, recipe, figureList, tableList, visualizations);
   const citationSummary = buildPhaseSummary('citation', results, recipe, figureList, tableList, visualizations);
   const visualSummary = buildPhaseSummary('visual', results, recipe, figureList, tableList, visualizations);
@@ -1077,14 +1117,12 @@ export default function AnalysisPanel({
     terminalState,
   });
 
-  const visibleTab = activeTab === 'experiment' && !recipeReady ? 'summary' : activeTab;
-
-  const tabs: Array<{ key: 'summary' | 'figures' | 'tables' | 'recipe' | 'experiment'; label: string; disabled?: boolean }> = [
+  const tabs: Array<{ key: typeof activeTab; label: string; disabled?: boolean }> = [
     { key: 'summary', label: S.workbench.summaryTab },
+    { key: 'guide', label: S.workbench.guideTab },
     { key: 'figures', label: S.workbench.figuresTab },
     { key: 'tables', label: S.workbench.tablesTab },
     { key: 'recipe', label: S.workbench.recipeTab },
-    { key: 'experiment', label: S.workbench.experimentTab, disabled: !recipeReady },
   ];
 
   return (
@@ -1129,7 +1167,7 @@ export default function AnalysisPanel({
                 onClick={() => !tab.disabled && setActiveTab(tab.key)}
                 disabled={tab.disabled}
                 className={`segmented-control__item ${
-                  visibleTab === tab.key ? 'segmented-control__item-active' : ''
+                  activeTab === tab.key ? 'segmented-control__item-active' : ''
                 } ${tab.disabled ? 'segmented-control__item-disabled' : ''}`}
               >
                 {tab.label}
@@ -1141,7 +1179,7 @@ export default function AnalysisPanel({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto scroll-stable px-5 py-4">
-        {visibleTab === 'summary' && (
+        {activeTab === 'summary' && (
           <div className="space-y-5">
             {status &&
               status.overall_status !== 'pending' &&
@@ -1168,6 +1206,7 @@ export default function AnalysisPanel({
                 expandedMeta={screeningSummary.expandedMeta}
                 metaItems={screeningSummary.metaItems}
                 tone={screeningSummary.tone}
+                citations={summaryCitations}
               />
 
               <PhaseSection
@@ -1180,6 +1219,7 @@ export default function AnalysisPanel({
                 collapsedMeta={citationSummary.collapsedMeta}
                 expandedMeta={citationSummary.expandedMeta}
                 tone={citationSummary.tone}
+                citations={summaryCitations}
               />
 
               <PhaseSection
@@ -1192,6 +1232,7 @@ export default function AnalysisPanel({
                 collapsedMeta={deepDiveSummary.collapsedMeta}
                 expandedMeta={deepDiveSummary.expandedMeta}
                 tone={deepDiveSummary.tone}
+                citations={summaryCitations}
               >
                 <VisualizationGallery
                   visualizations={visualizations}
@@ -1203,7 +1244,18 @@ export default function AnalysisPanel({
           </div>
         )}
 
-        {visibleTab === 'figures' && (
+        {/* 다른 탭과 달리 언마운트하지 않는다 — 생성 중(비용 발생) 탭을 옮기면 훅의
+            cleanup이 요청을 중단해 결과가 버려진다. hidden으로만 숨긴다. */}
+        <div hidden={activeTab !== 'guide'}>
+          <ReadingGuideTab
+            paperId={paperId ?? null}
+            level={paperLevel}
+            onJumpToPage={onGuideJumpToPage}
+            onSearchInPdf={onGuideSearchInPdf}
+          />
+        </div>
+
+        {activeTab === 'figures' && (
           <div className="space-y-5">
             <div className="border border-border/45 bg-surface/40 px-4 py-4" style={{ borderRadius: 'var(--radius-surface)' }}>
               <div className="flex items-center gap-2">
@@ -1233,7 +1285,7 @@ export default function AnalysisPanel({
           </div>
         )}
 
-        {visibleTab === 'tables' && (
+        {activeTab === 'tables' && (
           <div className="space-y-5">
             <div className="border border-border/45 bg-surface/40 px-4 py-4" style={{ borderRadius: 'var(--radius-surface)' }}>
               <div className="flex items-center gap-2">
@@ -1262,7 +1314,7 @@ export default function AnalysisPanel({
           </div>
         )}
 
-        {visibleTab === 'recipe' && (
+        {activeTab === 'recipe' && (
           <div className="space-y-5">
             <div className="border border-border/45 bg-surface/40 px-4 py-4" style={{ borderRadius: 'var(--radius-surface)' }}>
               <div className="flex items-center gap-2">
@@ -1281,32 +1333,25 @@ export default function AnalysisPanel({
               loading={getPhaseStatus('recipe') === 'running'}
               onJumpToEvidence={onJumpToEvidence}
             />
-          </div>
-        )}
 
-        {visibleTab === 'experiment' && (
-          <div className="space-y-5">
-            {recipeReady && paperId ? (
-              <div className="border border-border/45 bg-surface/40 px-4 py-4" style={{ borderRadius: 'var(--radius-surface)' }}>
-                <div className="mb-3 flex items-center gap-2">
-                  <AppIcon name="experiment" className="w-4 h-4 text-success" />
-                  <span className="text-sm font-medium text-fg">
-                    {S.workbench.experimentTab}
-                  </span>
-                </div>
-                <ExperimentPlanTab
-                  paperId={paperId}
-                  recipeAvailable={recipeReady}
-                />
+            {/* 실험 계획은 레시피에서 파생되므로 별도 탭이 아니라 이 탭의 하위 섹션이다. */}
+            <div className="border-t border-border/45 pt-5">
+              <div className="mb-3 flex items-center gap-2">
+                <AppIcon name="experiment" className="h-4 w-4 text-accent" />
+                <h3 className="text-sm font-[650] text-fg">{S.workbench.experimentTab}</h3>
               </div>
-            ) : (
-              <ContentState
-                icon={(props) => <AppIcon name="experiment" {...props} />}
-                title={S.workbench.experimentTab}
-                description={S.workbench.experimentPending}
-                tone="muted"
-              />
-            )}
+              {recipeReady && paperId ? (
+                <ExperimentPlanTab paperId={paperId} recipeAvailable={recipeReady} />
+              ) : (
+                <ContentState
+                  icon={(props) => <AppIcon name="experiment" {...props} />}
+                  title={S.workbench.experimentTab}
+                  description={S.workbench.experimentPending}
+                  tone="muted"
+                  compact
+                />
+              )}
+            </div>
           </div>
         )}
       </div>

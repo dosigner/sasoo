@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import {
   getCostSummary,
@@ -24,6 +24,9 @@ import {
 import WorkbenchHeader from '@/components/workbench/WorkbenchHeader';
 import type { CitationFocus } from '@/components/AnalysisPanel';
 import type { CitationTarget } from '@/components/ChatPanel';
+import type { PdfSearchRequest, PdfTextSelection } from '@/components/PdfViewer';
+import SelectionExplainPopover from '@/components/workbench/SelectionExplainPopover';
+import { buildExplainPrompt, isSelectionTooLong } from '@/lib/selectionExplain';
 import { ContentState, Modal } from '@/components/ui';
 import { useWorkbenchLayout } from '@/hooks/useWorkbenchLayout';
 import { useWorkbenchAnalysisControls } from '@/hooks/useWorkbenchAnalysisControls';
@@ -57,7 +60,10 @@ export default function Workbench() {
   const [paperLoading, setPaperLoading] = useState(true);
   const [paperError, setPaperError] = useState<string | null>(null);
   const [navigationRequest, setNavigationRequest] = useState<PdfNavigationRequest | null>(null);
+  const [searchRequest, setSearchRequest] = useState<PdfSearchRequest | null>(null);
   const [citationFocus, setCitationFocus] = useState<CitationFocus | null>(null);
+  const [selection, setSelection] = useState<PdfTextSelection | null>(null);
+  const pdfAreaRef = useRef<HTMLDivElement>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatDraft, setChatDraft] = useState('');
   const [agentChanging, setAgentChanging] = useState(false);
@@ -158,7 +164,32 @@ export default function Workbench() {
     setChatOpen(false);
     setChatDraft('');
     setCitationFocus(null);
+    setSearchRequest(null);
+    setSelection(null);
   }, [paper?.id]);
+
+  // 선택 팝오버의 "이 부분 설명": 채팅 패널의 draft만 채우고 연다. ChatPanel의 보내기
+  // 버튼(handleSend → enqueue)을 사용자가 직접 눌러야 실제 전송(비용 발생)이 나간다.
+  const handleExplainSelection = useCallback(() => {
+    if (!selection || isSelectionTooLong(selection.text)) return;
+    setChatDraft(buildExplainPrompt(selection.page, selection.text, paper?.explanation_level));
+    setChatOpen(true);
+    setSelection(null);
+    window.getSelection()?.removeAllRanges();
+  }, [paper?.explanation_level, selection]);
+
+  // 읽기 안내: 섹션 페이지 클릭은 페이지 이동, 표기 사전 항목 클릭은 본문 검색.
+  const handleGuideJumpToPage = useCallback((page: number) => {
+    setNavigationRequest({
+      page,
+      requestId: `guide-p${page}-${Date.now()}`,
+      source: 'guide',
+    });
+  }, []);
+
+  const handleGuideSearch = useCallback((term: string, page: number | null) => {
+    setSearchRequest({ term, page, requestId: `guide-s${page ?? 'x'}-${Date.now()}` });
+  }, []);
 
   // Chat citation click-back → jump the PDF and/or focus a gallery item.
   const handleCitationClick = useCallback((target: CitationTarget) => {
@@ -347,6 +378,7 @@ export default function Workbench() {
       <div ref={containerRef} className="flex flex-1 min-h-0">
         {!pdfCollapsed && (
           <div
+            ref={pdfAreaRef}
             className="relative h-full overflow-hidden"
             style={{ width: `${splitPosition}%` }}
           >
@@ -363,8 +395,16 @@ export default function Workbench() {
                 pdfUrl={pdfUrl}
                 title={paper.title}
                 navigationRequest={navigationRequest}
+                searchRequest={searchRequest}
+                onTextSelected={setSelection}
               />
             </Suspense>
+            <SelectionExplainPopover
+              selection={selection}
+              containerRef={pdfAreaRef}
+              onExplain={handleExplainSelection}
+              tooLong={selection !== null && isSelectionTooLong(selection.text)}
+            />
             {isResizing && (
               <div className="absolute inset-0 z-10" />
             )}
@@ -413,6 +453,9 @@ export default function Workbench() {
                 paperLevel={paper.explanation_level}
                 terminalState={terminalState}
                 citationFocus={citationFocus}
+                onCitationClick={handleCitationClick}
+                onGuideJumpToPage={handleGuideJumpToPage}
+                onGuideSearchInPdf={handleGuideSearch}
                 onJumpToFigurePage={(figure) => {
                   if (typeof figure.page_number !== 'number') return;
                   setNavigationRequest({

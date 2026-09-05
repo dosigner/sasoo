@@ -292,6 +292,9 @@ export const S = {
     pageJump: (page: number) => `${page}쪽으로 이동`,
     errorTitle: '읽기 안내를 만들지 못했어요',
     retry: '다시 시도',
+    explainSelection: '이 부분 설명',
+    explainSelectionAria: '선택한 부분 설명 요청하기',
+    explainTooLong: '2,000자까지만 설명할 수 있어요',
   },
 
   // ── PDF Viewer ──

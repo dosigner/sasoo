@@ -7,6 +7,7 @@ import { ContentState } from '@/components/ui';
 import { AppIcon } from '@/components/icons';
 import { type PdfNavigationRequest } from '@/lib/api';
 import { bboxToPercentRect } from '@/lib/pdfHighlight';
+import { normalizeSelectionText } from '@/lib/selectionExplain';
 import { S } from '@/lib/strings';
 
 const {
@@ -30,11 +31,27 @@ const {
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
+/** 외부(읽기 안내 등)에서 본문 검색을 시키는 요청. page가 있으면 그 페이지부터 찾는다. */
+export interface PdfSearchRequest {
+  term: string;
+  page: number | null;
+  requestId: string;
+}
+
+/** 드래그(또는 키보드)로 고른 텍스트 선택 한 건. */
+export interface PdfTextSelection {
+  text: string;
+  page: number;
+  rect: DOMRect;
+}
+
 interface PdfViewerProps {
   pdfUrl: string;
   title?: string;
   navigationRequest?: PdfNavigationRequest | null;
+  searchRequest?: PdfSearchRequest | null;
   onPageChange?: (page: number) => void;
+  onTextSelected?: (selection: PdfTextSelection | null) => void;
 }
 
 type ViewerInstances = {
@@ -94,7 +111,9 @@ export default function PdfViewer({
   pdfUrl,
   title,
   navigationRequest,
+  searchRequest,
   onPageChange,
+  onTextSelected,
 }: PdfViewerProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const viewerContainerRef = useRef<HTMLDivElement>(null);
@@ -106,6 +125,15 @@ export default function PdfViewer({
   const documentRef = useRef<PDFDocumentProxy | null>(null);
   const pendingPageRef = useRef(1);
   const committedSearchRef = useRef('');
+  const dispatchFindRef = useRef<(
+    type?: '' | 'again',
+    findPrevious?: boolean,
+    queryOverride?: string,
+  ) => void>(() => {});
+  const onTextSelectedRef = useRef(onTextSelected);
+  // 마지막으로 부모에 null을 보냈는지 추적해, 선택이 계속 비어 있는 동안 null을
+  // 반복 발화하지 않는다. 초기값은 true(아직 아무것도 선택되지 않은 상태와 동치).
+  const firedNullRef = useRef(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -115,6 +143,9 @@ export default function PdfViewer({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchState, setSearchState] = useState<number | null>(null);
   const [matchCount, setMatchCount] = useState<MatchCountState>({ current: 0, total: 0 });
+
+  // 매 렌더 최신 콜백을 가리키게 해서, 아래 선택 감지 effect를 마운트당 한 번만 붙인다.
+  onTextSelectedRef.current = onTextSelected;
 
   const createZoomAnchor = useCallback(
     (anchorClientPoint: { clientX: number; clientY: number }): ZoomAnchor | undefined => {
@@ -509,6 +540,83 @@ export default function PdfViewer({
     };
   }, [applyZoom, zoomAroundViewportCenter]);
 
+  // 읽기 안내의 "이 부분 설명" 팝오버를 위한 선택 감지. 스캔 PDF(텍스트 레이어 없음)는
+  // 애초에 드래그로 고를 문자가 없어 selection 자체가 생기지 않으므로 별도 감지가
+  // 필요 없다 — 텍스트 레이어가 있는 문서에서만 아래 로직이 발화한다.
+  useEffect(() => {
+    const container = viewerContainerRef.current;
+    if (!container) return;
+
+    let debounceTimer: number | null = null;
+
+    const emitNullOnce = () => {
+      if (firedNullRef.current) return;
+      firedNullRef.current = true;
+      onTextSelectedRef.current?.(null);
+    };
+
+    const emit = () => {
+      const callback = onTextSelectedRef.current;
+      if (!callback) return;
+
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+        emitNullOnce();
+        return;
+      }
+
+      const range = sel.getRangeAt(0);
+      const ancestor = range.commonAncestorContainer;
+      const ancestorEl = (
+        ancestor.nodeType === Node.TEXT_NODE ? ancestor.parentElement : ancestor
+      ) as Element | null;
+      // 공통 조상이 이 뷰어의 textLayer 안에 있어야 한다(다른 패널 선택, 툴바 선택은 무시).
+      const textLayer = ancestorEl?.closest('.textLayer');
+      if (!textLayer || !container.contains(textLayer)) {
+        emitNullOnce();
+        return;
+      }
+
+      const text = normalizeSelectionText(sel.toString());
+      if (!text) {
+        emitNullOnce();
+        return;
+      }
+
+      const startEl = (
+        range.startContainer.nodeType === Node.TEXT_NODE
+          ? range.startContainer.parentElement
+          : range.startContainer
+      ) as Element | null;
+      const pageEl = startEl?.closest('.page[data-page-number]') as HTMLElement | null;
+      const page = pageEl ? Number.parseInt(pageEl.dataset.pageNumber ?? '', 10) : NaN;
+      if (!Number.isFinite(page)) {
+        return;
+      }
+
+      firedNullRef.current = false;
+      callback({ text, page, rect: range.getBoundingClientRect() });
+    };
+
+    const handleMouseUp = () => emit();
+    const handleSelectionChange = () => {
+      if (debounceTimer !== null) window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(emit, 150);
+    };
+    // 스크롤로 선택 영역의 화면 좌표가 바뀌면 팝오버 좌표가 낡아지므로 선택을 닫는다.
+    const handleScroll = () => emitNullOnce();
+
+    container.addEventListener('mouseup', handleMouseUp);
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    document.addEventListener('selectionchange', handleSelectionChange);
+    return () => {
+      if (debounceTimer !== null) window.clearTimeout(debounceTimer);
+      container.removeEventListener('mouseup', handleMouseUp);
+      container.removeEventListener('scroll', handleScroll);
+      document.removeEventListener('selectionchange', handleSelectionChange);
+    };
+  }, []);
+
   const submitPageInput = () => {
     const instances = instancesRef.current;
     if (!instances) return;
@@ -517,11 +625,11 @@ export default function PdfViewer({
     instances.pdfViewer.currentPageNumber = nextPage;
   };
 
-  const dispatchFind = (type: '' | 'again' = '', findPrevious = false) => {
+  const dispatchFind = (type: '' | 'again' = '', findPrevious = false, queryOverride?: string) => {
     const instances = instancesRef.current;
     if (!instances) return;
 
-    const query = (searchQuery.trim() || committedSearchRef.current).trim();
+    const query = (queryOverride ?? (searchQuery.trim() || committedSearchRef.current)).trim();
     if (!query) {
       committedSearchRef.current = '';
       setSearchState(null);
@@ -531,7 +639,7 @@ export default function PdfViewer({
     }
 
     committedSearchRef.current = query;
-    if (!searchQuery.trim()) {
+    if (query !== searchQuery) {
       setSearchQuery(query);
     }
 
@@ -546,6 +654,31 @@ export default function PdfViewer({
       matchDiacritics: false,
     });
   };
+
+  // 아래 검색 요청 effect가 항상 최신 dispatchFind를 부르게 한다(매 렌더 새로 만들어진다).
+  dispatchFindRef.current = dispatchFind;
+
+  // 외부 검색 요청(읽기 안내의 표기 사전). pdf.js의 새 검색은 지금 보이는 페이지부터
+  // 시작하므로, 페이지를 먼저 옮기고 다음 프레임에 find를 쏴야 첫 정의 위치로 간다.
+  useEffect(() => {
+    if (!searchRequest) return;
+    const instances = instancesRef.current;
+    if (!instances || !documentRef.current) return;
+
+    const term = searchRequest.term.trim();
+    if (!term) return;
+
+    if (typeof searchRequest.page === 'number') {
+      const nextPage = clampPage(searchRequest.page, instances.pdfViewer.pagesCount);
+      pendingPageRef.current = nextPage;
+      instances.pdfViewer.currentPageNumber = nextPage;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      dispatchFindRef.current('', false, term);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [searchRequest]);
 
   const submitSearch = () => {
     dispatchFind('');

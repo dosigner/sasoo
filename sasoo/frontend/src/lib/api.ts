@@ -136,7 +136,7 @@ export interface Figure {
 export interface PdfNavigationRequest {
   page: number;
   requestId: string;
-  source: 'figure' | 'table' | 'citation' | 'recipe';
+  source: 'figure' | 'table' | 'citation' | 'recipe' | 'guide';
   /** 선택 — bbox는 PDF 포인트·좌하단 원점. 없으면 페이지 이동만 한다. */
   highlight?: { bbox: [number, number, number, number] } | null;
 }
