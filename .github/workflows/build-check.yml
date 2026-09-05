@@ -118,6 +118,25 @@ jobs:
         shell: pwsh
         run: npx --yes pnpm@11.0.0 --dir=frontend audit --audit-level=moderate
 
+      # pnpm audit은 npm 생태계만 본다. 백엔드는 파이썬이라 여기서 따로 감사한다.
+      # 이 단계가 없던 동안 Renovate가 파이썬 보안 PR을 올리는데도 CI는 초록이었다.
+      # backend/.venv가 아니라 setup-python 쪽 인터프리터에 설치해 감사 대상을
+      # 오염시키지 않는다. 주기 감사(dependency-audit.yml)와 명령을 똑같이 유지해라.
+      - name: Install pip-audit
+        shell: pwsh
+        run: python -m pip install --quiet pip-audit==2.10.1
+
+      # PYTHONUTF8=1이 없으면 Windows에서 깨진다. pip-audit이 쓰는
+      # pip-requirements-parser는 옛 pip의 auto_decode를 벤더링했는데, BOM도 PEP 263
+      # 주석도 없으면 locale 인코딩으로 폴백한다. Windows 런너는 cp1252라서
+      # requirements.txt의 한글 주석에서 UnicodeDecodeError가 났다(run 33502266262).
+      # UTF-8 모드는 locale.getpreferredencoding()이 무조건 utf-8을 반환하게 만든다.
+      - name: Audit backend Python dependencies
+        shell: pwsh
+        env:
+          PYTHONUTF8: "1"
+        run: python -m pip_audit --progress-spinner=off -r backend/requirements.txt -r backend/requirements-test.txt
+
       - name: Build unsigned Windows artifact
         shell: pwsh
         env:

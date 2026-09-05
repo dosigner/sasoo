@@ -11,7 +11,7 @@ opendataloader-pdf>=2.0.2
 
 # LLM providers
 google-genai>=2.3.0
-openai>=2.52.0  # Responses API 클라이언트 (openai_client.py)
+openai>=3.6.0  # Responses API 클라이언트 (openai_client.py)
 httpx>=0.27.0  # OpenAIImageProvider가 직접 사용 (figure_gen)
 
 # Data / validation
