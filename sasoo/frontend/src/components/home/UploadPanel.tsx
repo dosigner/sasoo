@@ -36,7 +36,12 @@ function formatFileSize(bytes: number): string {
 
 type UploadStage = 'idle' | 'uploading' | 'parsing' | 'classified' | 'error';
 
-export default function UploadPanel() {
+interface UploadPanelProps {
+  /** 보관함에 이미 있는 논문 수. 0이면 첫 업로드 문구를, 1편 이상이면 재방문 문구를 보여준다. */
+  paperCount?: number;
+}
+
+export default function UploadPanel({ paperCount = 0 }: UploadPanelProps) {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -205,11 +210,22 @@ export default function UploadPanel() {
       <div className="page-header-dense gap-3 border-b border-border/70 pb-4">
         <div>
           <div className="archive-kicker">{S.upload.surfaceTitle}</div>
-          <h2 className="mt-2 text-[1.55rem] font-semibold tracking-[-0.04em] text-fg">
+          <h2
+            className={
+              selectedFile
+                ? 'mt-2 truncate text-lg font-semibold tracking-[-0.04em] text-fg'
+                : 'mt-2 text-[1.55rem] font-semibold tracking-[-0.04em] text-fg'
+            }
+            title={selectedFile?.name}
+          >
             {selectedFile ? selectedFile.name : S.upload.dragDrop}
           </h2>
           <p className="mt-2 max-w-xl text-sm leading-6 text-fg-muted">
-            {selectedFile ? formatFileSize(selectedFile.size) : S.upload.surfaceBody}
+            {selectedFile
+              ? formatFileSize(selectedFile.size)
+              : paperCount > 0
+                ? S.upload.surfaceBodyReturning
+                : S.upload.surfaceBody}
           </p>
         </div>
         {!selectedFile && (
@@ -235,22 +251,23 @@ export default function UploadPanel() {
       />
 
       {!selectedFile && (
-        <div className="mt-4 rounded-surface border border-dashed border-border bg-surface/40 px-4 py-5 transition-colors hover:border-accent/50">
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="mt-4 block w-full rounded-surface border border-dashed border-border bg-surface/40 px-4 py-5 text-left transition-colors hover:border-accent/50 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+        >
           <div className="flex items-start gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border/80 bg-surface/90">
               <AppIcon name="upload" className="h-5 w-5 text-accent" />
             </div>
-            <div>
-              <div className="text-sm font-medium text-fg">{S.upload.surfaceActionTitle}</div>
-              <p className="mt-1 text-sm leading-6 text-fg-muted">{S.upload.emptyHint}</p>
-            </div>
+            <div className="text-sm font-medium text-fg">{S.upload.surfaceActionTitle}</div>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-fg-muted">
             <span>{S.upload.pdfOnly}</span>
             <span className="h-1 w-1 rounded-full bg-border" />
             <span>{S.upload.maxSize(formatFileSize(MAX_FILE_SIZE))}</span>
           </div>
-        </div>
+        </button>
       )}
 
       {selectedFile && (
@@ -410,7 +427,7 @@ export default function UploadPanel() {
                               onClick={() => toggleFocusChip(chip.key)}
                               className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-sm transition-colors ${
                                 selected
-                                  ? 'border-accent bg-accent font-semibold text-accent-fg'
+                                  ? 'border-accent bg-accent font-semibold accent-solid-fg'
                                   : 'border-border bg-surface font-normal text-fg-secondary hover:border-accent/50 hover:text-fg'
                               }`}
                             >

@@ -1,18 +1,26 @@
 import { lazy, Suspense, useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import {
+  getCostSummary,
   getPaper,
   getPdfUrl,
+  getSettings,
   updatePaper,
+  type CostSummary,
   type EvidenceAnchor,
   type Paper,
   type PdfNavigationRequest,
+  type Settings,
 } from '@/lib/api';
 import { evidenceTarget } from '@/lib/evidence';
 import { useAnalysis } from '@/hooks/useAnalysis';
 import { useToast } from '@/components/Toast';
 import { S } from '@/lib/strings';
-import { buildChatStarterPrompts, buildWorkbenchStatusSummary } from '@/lib/workbenchSummaries';
+import {
+  buildAnalysisConfirmCopy,
+  buildChatStarterPrompts,
+  buildWorkbenchStatusSummary,
+} from '@/lib/workbenchSummaries';
 import WorkbenchHeader from '@/components/workbench/WorkbenchHeader';
 import type { CitationFocus } from '@/components/AnalysisPanel';
 import type { CitationTarget } from '@/components/ChatPanel';
@@ -53,6 +61,8 @@ export default function Workbench() {
   const [chatOpen, setChatOpen] = useState(false);
   const [chatDraft, setChatDraft] = useState('');
   const [agentChanging, setAgentChanging] = useState(false);
+  const [confirmSettings, setConfirmSettings] = useState<Settings | null>(null);
+  const [confirmCostSummary, setConfirmCostSummary] = useState<CostSummary | null>(null);
 
   const {
     status,
@@ -124,6 +134,19 @@ export default function Workbench() {
       cancelled = true;
     };
   }, [id]);
+
+  // 분석 확인 모달에 실제 공급사·실측 비용을 보여주기 위해 모달을 열 때 한 번 조회한다.
+  // 실패해도 상태를 덮어쓰지 않아 이전에 불러온 값이 있으면 그대로 유지되고, 없으면
+  // buildAnalysisConfirmCopy가 null을 받아 해당 줄을 조용히 숨긴다.
+  useEffect(() => {
+    if (!showAnalysisConfirm) return;
+    let cancelled = false;
+    getSettings().then((s) => { if (!cancelled) setConfirmSettings(s); }).catch(() => {});
+    getCostSummary().then((c) => { if (!cancelled) setConfirmCostSummary(c); }).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [showAnalysisConfirm]);
 
   useEffect(() => {
     if (status?.overall_status === 'completed' || status?.overall_status === 'error') {
@@ -260,23 +283,32 @@ export default function Workbench() {
     terminalState,
   });
   const agentMeta = getAgentMeta(paper.agent_used);
-  const primaryActionLabel = paper.status === 'completed' ? '재분석' : '분석 시작';
+  const isReanalyze = paper.status === 'completed';
+  const primaryActionLabel = isReanalyze ? '재분석' : '분석 시작';
+  const analysisConfirmCopy = buildAnalysisConfirmCopy({
+    isReanalyze,
+    provider: confirmSettings?.active_provider ?? confirmSettings?.ai_provider ?? null,
+    costSummary: confirmCostSummary,
+  });
 
   return (
     <div className="flex h-full flex-col">
       <Modal open={showAnalysisConfirm} onClose={() => setShowAnalysisConfirm(false)}>
-        <h3 className="mb-2 text-lg font-semibold text-fg">분석을 시작할까요?</h3>
-        <p className="mb-4 text-sm text-fg-muted">
-          논문 분석에 Gemini API를 사용해요.
-          예상 비용: <span className="font-medium text-accent">$0.5 ~ $2.0</span> / 논문
-        </p>
+        <h3 className="mb-2 text-lg font-semibold text-fg">{analysisConfirmCopy.title}</h3>
+        <div className="mb-4 space-y-1 text-sm text-fg-muted">
+          {analysisConfirmCopy.providerLine && <p>{analysisConfirmCopy.providerLine}</p>}
+          {analysisConfirmCopy.reanalyzeNotice && <p>{analysisConfirmCopy.reanalyzeNotice}</p>}
+          {analysisConfirmCopy.costLine && (
+            <p className="font-medium text-accent">{analysisConfirmCopy.costLine}</p>
+          )}
+        </div>
         <div className="flex gap-2">
           <button
             onClick={() => void onConfirmAnalysis()}
             className="btn-primary flex-1 py-2 text-sm"
           >
             <AppIcon name="play" className="mr-1 h-4 w-4" />
-            전체 분석 시작
+            {analysisConfirmCopy.confirmLabel}
           </button>
           <button
             onClick={() => setShowAnalysisConfirm(false)}

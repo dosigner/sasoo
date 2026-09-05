@@ -887,7 +887,7 @@ function VisualizationGallery({
               <span className={`badge text-2xs ${
                 item.tool === 'mermaid'
                   ? 'bg-accent/10 text-accent'
-                  : 'bg-warning/10 text-warning'
+                  : 'bg-warning/10 text-warning-fg'
               }`}>
                 {item.tool === 'mermaid' ? 'Mermaid' : 'PaperBanana'}
               </span>
@@ -1213,8 +1213,11 @@ export default function AnalysisPanel({
                 </h3>
               </div>
               <p className="mt-2 text-xs leading-relaxed text-fg-muted">
-                {visualSummary.summaryLine || '시각 검증 결과와 Figure를 한곳에서 확인할 수 있어요.'}
+                {visualSummary.figureLine || '시각 검증 결과와 Figure를 한곳에서 확인할 수 있어요.'}
               </p>
+              {visualSummary.detailLine && (
+                <p className="mt-1 text-2xs text-fg-muted">{visualSummary.detailLine}</p>
+              )}
             </div>
 
             <FigureGallery
@@ -1240,8 +1243,11 @@ export default function AnalysisPanel({
                 </h3>
               </div>
               <p className="mt-2 text-xs leading-relaxed text-fg-muted">
-                {visualSummary.summaryLine || '복구한 Table 구조와 저장한 CSV/HTML 자산을 한곳에서 확인할 수 있어요.'}
+                {visualSummary.tableLine || '복구한 Table 구조와 저장한 CSV/HTML 자산을 한곳에서 확인할 수 있어요.'}
               </p>
+              {visualSummary.detailLine && (
+                <p className="mt-1 text-2xs text-fg-muted">{visualSummary.detailLine}</p>
+              )}
             </div>
 
             <TableGallery

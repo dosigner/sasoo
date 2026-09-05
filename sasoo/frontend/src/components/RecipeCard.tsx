@@ -210,15 +210,13 @@ export default function RecipeCard({
             )}
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+            <table className="w-full min-w-[560px] text-xs">
               <thead>
                 <tr className="border-b border-border bg-surface/30">
-                  <th className="text-left font-semibold text-fg-muted px-3 py-2 w-8">#</th>
-                  <th className="text-left font-semibold text-fg-secondary px-3 py-2">Parameter</th>
-                  <th className="text-left font-semibold text-fg-secondary px-3 py-2">Value</th>
-                  <th className="text-left font-semibold text-fg-secondary px-3 py-2">Unit</th>
-                  <th className="text-left font-semibold text-fg-secondary px-3 py-2">Notes</th>
-                  <th className="text-left font-semibold text-fg-secondary px-3 py-2">{S.recipe.evidence.column}</th>
+                  <th scope="col" className="text-left font-semibold text-fg-muted px-3 py-2 w-8">#</th>
+                  <th scope="col" className="text-left font-semibold text-fg-secondary px-3 py-2">Parameter</th>
+                  <th scope="col" className="text-left font-semibold text-fg-secondary px-3 py-2">Value</th>
+                  <th scope="col" className="text-left font-semibold text-fg-secondary px-3 py-2">{S.recipe.evidence.column}</th>
                 </tr>
               </thead>
               <tbody>
@@ -228,13 +226,19 @@ export default function RecipeCard({
                   const target = evidenceTarget(anchor);
                   return (
                     <tr key={row.index} className="border-b border-border/50 last:border-b-0 hover:bg-surface-hover/30 transition-colors">
-                      <td className="px-3 py-2 font-mono tabular-nums text-fg-muted">{row.index + 1}</td>
-                      <td className="px-3 py-2 text-sm text-fg-secondary">{row.name || '-'}</td>
-                      <td className="px-3 py-2 font-mono text-sm tabular-nums text-accent">{row.value || '-'}</td>
-                      <td className="px-3 py-2 font-mono text-sm tabular-nums text-fg-muted">{row.unit || '-'}</td>
-                      <td className="px-3 py-2 text-xs text-fg-muted">{row.notes || '-'}</td>
-                      <td className="px-3 py-2">
-                        <div className="flex flex-wrap items-center gap-1.5">
+                      <td className="px-3 py-2 align-top font-mono tabular-nums text-fg-muted">{row.index + 1}</td>
+                      <td className="px-3 py-2 align-top">
+                        <div className="text-sm text-fg-secondary">{row.name || '-'}</div>
+                        {row.notes && (
+                          <div className="mt-0.5 text-xs text-fg-muted">{row.notes}</div>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 align-top font-mono text-sm tabular-nums">
+                        <span className="text-accent">{row.value || '-'}</span>
+                        {row.unit && <span className="ml-1 text-fg-muted">{row.unit}</span>}
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        <div className="flex min-w-[136px] flex-col items-start gap-1.5 whitespace-nowrap">
                           <Tooltip
                             content={<span className="block max-w-xs whitespace-pre-wrap">{evidenceTooltip(anchor)}</span>}
                           >
@@ -249,9 +253,11 @@ export default function RecipeCard({
                             <button
                               type="button"
                               onClick={() => onJumpToEvidence(anchor)}
-                              className="btn-ghost text-2xs px-1.5 py-0.5"
+                              className="btn-ghost gap-1 px-2 py-1 text-xs font-medium"
                               title={S.recipe.evidence.jump}
                             >
+                              <AppIcon name="arrow-right" className="w-3.5 h-3.5 shrink-0" />
+                              {S.recipe.evidence.jumpLabel}{' '}
                               {target.kind === 'confirmed'
                                 ? S.recipe.evidence.confirmedPage(target.page)
                                 : target.kind === 'found'
@@ -275,7 +281,7 @@ export default function RecipeCard({
       {parameters.length === 0 && (
         <CascadeIn index={3}>
         <div className="card p-3 mb-3 border-warning/20 bg-warning/5">
-          <p className="text-xs text-warning/80">
+          <p className="text-xs text-warning-fg">
             {S.recipe.noParams}
           </p>
         </div>
@@ -311,7 +317,7 @@ export default function RecipeCard({
                 className="flex items-start gap-2 bg-warning/5 border border-warning/20 rounded-lg px-3 py-2"
               >
                 <AppIcon name="warning" className="w-3 h-3 text-warning mt-0.5 shrink-0" />
-                <p className="text-xs text-warning/80 leading-relaxed">
+                <p className="text-xs text-warning-fg leading-relaxed">
                   {note}
                 </p>
               </div>
@@ -325,11 +331,11 @@ export default function RecipeCard({
       {missingInfo.length > 0 && (
         <CascadeIn index={6}>
         <div className="card p-3 mb-3 border-danger/20 bg-danger/5">
-          <h4 className="mb-1.5 text-2xs font-medium uppercase tracking-wide text-danger">{S.recipe.missingInfo}</h4>
+          <h4 className="mb-1.5 text-2xs font-medium uppercase tracking-wide text-danger-fg">{S.recipe.missingInfo}</h4>
           <ul className="space-y-1">
             {missingInfo.map((info, index) => (
-              <li key={index} className="text-xs text-danger/70 flex items-start gap-1.5">
-                <span className="text-danger mt-0.5">?</span>
+              <li key={index} className="text-xs text-danger-fg flex items-start gap-1.5">
+                <span className="text-danger-fg mt-0.5">?</span>
                 {info}
               </li>
             ))}

@@ -108,7 +108,7 @@ export default function Home() {
           <p className="mt-1 text-sm text-fg-muted">{S.home.subGreeting}</p>
         </section>
 
-        <UploadPanel />
+        <UploadPanel paperCount={papersTotal ?? 0} />
 
         <div className="mt-4 grid items-start gap-4 lg:grid-cols-3">
           <section className="card lg:col-span-2">

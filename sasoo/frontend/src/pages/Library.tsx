@@ -1,14 +1,14 @@
-import { useMemo, useState, useCallback, type KeyboardEvent } from 'react';
+import { useState, useCallback, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router';
 import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
   ChevronDown,
-  Loader2,
   AlertCircle,
 } from 'lucide-react';
 import { usePapers } from '@/hooks/usePapers';
+import { usePendingDelete } from '@/hooks/usePendingDelete';
 import { type Paper, type PaperStatus } from '@/lib/api';
 import { getAllAgents } from '@/lib/agents';
 import { LEVEL_LABELS, type LevelKey } from '@/components/LevelSlider';
@@ -46,7 +46,6 @@ function statusLabel(status: PaperStatus): string {
 function statusTone(status: PaperStatus): {
   line: string;
   panel: string;
-  badge: string;
   dot: string;
 } {
   switch (status) {
@@ -54,21 +53,18 @@ function statusTone(status: PaperStatus): {
       return {
         line: 'bg-success',
         panel: 'bg-success/5',
-        badge: 'border-success/20 bg-success/10 text-success',
         dot: 'bg-success',
       };
     case 'analyzing':
       return {
         line: 'bg-accent',
         panel: 'bg-accent/5',
-        badge: 'border-accent/20 bg-accent/10 text-accent',
         dot: 'bg-accent',
       };
     case 'error':
       return {
         line: 'bg-danger',
         panel: 'bg-danger/5',
-        badge: 'border-danger/20 bg-danger/10 text-danger',
         dot: 'bg-danger',
       };
     case 'pending':
@@ -76,7 +72,6 @@ function statusTone(status: PaperStatus): {
       return {
         line: 'bg-warning',
         panel: 'bg-warning/5',
-        badge: 'border-warning/20 bg-warning/10 text-warning',
         dot: 'bg-warning',
       };
   }
@@ -96,10 +91,6 @@ function handleInteractiveKeyDown(
 function activityLabel(paper: Paper): string {
   const date = paper.analyzed_at || paper.created_at;
   return date ? formatDate(date) : '-';
-}
-
-function statusMetaCount(papers: Paper[], status: PaperStatus): number {
-  return papers.filter((paper) => paper.status === status).length;
 }
 
 // 분석 시 실제 적용된 설명 수준 라벨. 값이 없으면(구 데이터·미분석) '미지정'.
@@ -270,11 +261,13 @@ export default function Library() {
     paperId: null,
     paperTitle: '',
   });
-  const [deleting, setDeleting] = useState(false);
+
+  const pendingDelete = usePendingDelete();
 
   const {
     papers,
     total,
+    completedTotal,
     page,
     totalPages,
     loading,
@@ -283,14 +276,14 @@ export default function Library() {
     setFilters,
     setSearch,
     goToPage,
+    refresh,
     deletePaper,
     availableTags,
   } = usePapers();
 
-  const activityCount = useMemo(
-    () => papers.filter((paper) => Boolean(paper.analyzed_at || paper.created_at)).length,
-    [papers]
-  );
+  // 삭제 예약 중인 논문은 목록에서만 낙관적으로 숨긴다. total/페이지네이션은
+  // 실제 삭제(커밋)가 끝나야 서버 값으로 갱신된다.
+  const visiblePapers = papers.filter((p) => !pendingDelete.isPending(String(p.id)));
 
   const handleOpenPaper = useCallback(
     (id: string) => {
@@ -307,20 +300,27 @@ export default function Library() {
     });
   }, []);
 
-  const confirmDelete = useCallback(async () => {
-    if (!deleteModal.paperId) return;
+  const confirmDelete = useCallback(() => {
+    const { paperId, paperTitle } = deleteModal;
+    if (!paperId) return;
+    setDeleteModal({ show: false, paperId: null, paperTitle: '' });
 
-    setDeleting(true);
-    try {
-      await deletePaper(deleteModal.paperId);
-      setDeleteModal({ show: false, paperId: null, paperTitle: '' });
-      toast.success(S.toast.paperDeleted);
-    } catch {
-      toast.error(S.toast.deleteFailed);
-    } finally {
-      setDeleting(false);
-    }
-  }, [deleteModal.paperId, deletePaper, toast]);
+    // 즉시 삭제하지 않고 6초 뒤로 미룬다. 그동안 목록에서는 낙관적으로 숨기고,
+    // 토스트의 "되돌리기"를 누르면 예약을 취소해 다시 보이게 한다.
+    pendingDelete.schedule(paperId, async () => {
+      try {
+        await deletePaper(paperId);
+      } catch {
+        await refresh();
+        toast.error(S.toast.deleteFailed);
+      }
+    });
+
+    toast.success(S.toast.paperDeleted, paperTitle, {
+      action: { label: S.library.undoDelete, onClick: () => pendingDelete.cancel(paperId) },
+      onDismiss: () => pendingDelete.flush(paperId),
+    });
+  }, [deleteModal, deletePaper, refresh, pendingDelete, toast]);
 
   const cancelDelete = useCallback(() => {
     setDeleteModal({ show: false, paperId: null, paperTitle: '' });
@@ -371,15 +371,13 @@ export default function Library() {
               {S.library.heroBody}
             </p>
             <div className="page-status-strip mt-3">
-              <span className="archive-inline-status archive-inline-status-muted">
-                {S.library.paperCount(total)}
-              </span>
-              <span className="archive-inline-status archive-inline-status-muted">
-                {S.library.collectionReady} {statusMetaCount(papers, 'completed')}
-              </span>
-              <span className="archive-inline-status archive-inline-status-muted">
-                {S.library.collectionActive} {activityCount}
-              </span>
+              <span>{S.library.paperCount(total)}</span>
+              {completedTotal !== null && (
+                <>
+                  <span className="h-1 w-1 rounded-full bg-border" />
+                  <span>{S.library.collectionReady(completedTotal)}</span>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -598,7 +596,7 @@ export default function Library() {
         </div>
       )}
 
-      {!loading && papers.length === 0 && (
+      {!loading && visiblePapers.length === 0 && (
         <div className="archive-panel px-6 py-16 text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-border bg-bg">
             <AppIcon name="library" className="w-6 h-6 text-fg-muted" />
@@ -630,7 +628,7 @@ export default function Library() {
         </div>
       )}
 
-      {!loading && papers.length > 0 && viewMode === 'list' && (
+      {!loading && visiblePapers.length > 0 && viewMode === 'list' && (
         <section className="overflow-x-auto rounded-surface border border-border/60 bg-surface/90">
           <table className="library-table min-w-[720px]">
             <thead>
@@ -665,7 +663,7 @@ export default function Library() {
               </tr>
             </thead>
             <tbody>
-              {papers.map((paper) => (
+              {visiblePapers.map((paper) => (
                 <PaperTableRow
                   key={paper.id}
                   paper={paper}
@@ -678,9 +676,9 @@ export default function Library() {
         </section>
       )}
 
-      {!loading && papers.length > 0 && viewMode === 'grid' && (
+      {!loading && visiblePapers.length > 0 && viewMode === 'grid' && (
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {papers.map((paper) => (
+          {visiblePapers.map((paper) => (
             <PaperArchiveCard
               key={paper.id}
               paper={paper}
@@ -781,7 +779,7 @@ export default function Library() {
             className="border border-danger/20 bg-danger/5 p-3"
             style={{ borderRadius: 'var(--radius-control)' }}
           >
-            <p className="text-xs leading-relaxed text-danger">
+            <p className="text-xs leading-relaxed text-danger-fg">
               <strong>{S.library.deleteDetails}</strong>
               <br />
               • {S.library.deleteItem1}
@@ -796,27 +794,16 @@ export default function Library() {
         <div className="flex items-center justify-end gap-2">
           <button
             onClick={cancelDelete}
-            disabled={deleting}
             className="btn-ghost text-sm"
           >
             {S.library.cancelBtn}
           </button>
           <button
             onClick={confirmDelete}
-            disabled={deleting}
             className="btn-danger text-sm"
           >
-            {deleting ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                {S.library.deleting}
-              </>
-            ) : (
-              <>
-                <AppIcon name="delete" className="w-3.5 h-3.5" />
-                {S.library.deleteBtn}
-              </>
-            )}
+            <AppIcon name="delete" className="w-3.5 h-3.5" />
+            {S.library.deleteBtn}
           </button>
         </div>
       </Modal>

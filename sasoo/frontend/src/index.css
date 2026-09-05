@@ -17,6 +17,9 @@
   --color-danger: rgb(var(--danger));
   --color-warning: rgb(var(--warning));
   --color-success: rgb(var(--success));
+  --color-warning-fg: rgb(var(--warning-fg));
+  --color-success-fg: rgb(var(--success-fg));
+  --color-danger-fg: rgb(var(--danger-fg));
 
   --color-surface: rgb(var(--surface));
   --color-surface-hover: rgb(var(--surface-hover));
@@ -293,12 +296,12 @@
 }
 
 @utility archive-inline-status-success {
-  @apply text-success;
+  @apply text-success-fg;
   border-color: rgb(var(--success) / 0.4);
 }
 
 @utility archive-inline-status-error {
-  @apply text-warning;
+  @apply text-warning-fg;
   border-color: rgb(var(--warning) / 0.4);
 }
 
@@ -517,6 +520,16 @@
   border-radius: var(--radius-pill);
 }
 
+@utility accent-solid-fg {
+  /* bg-accent 배경 위 텍스트 전용. 다크에서는 accent가 밝아져(5.99:1 대비 목표)
+     흰 텍스트(--accent-fg)로는 부족해 이 조합에서만 어두운 텍스트로 바꾼다. */
+  color: rgb(var(--accent-fg));
+
+  .dark & {
+    color: rgb(24 24 27);
+  }
+}
+
 @utility chip-tint {
   /* 워크벤치 공용 틴트 칩 — 보더 없는 저채도 배경 + 시맨틱 색 텍스트.
      워크벤치 헤더·우측 패널·질문 도우미 전용, 이 표면 밖의 status-pill/Badge는 무수정. */
@@ -544,7 +557,7 @@
 
 @utility chip-tint-success {
   background: rgb(var(--success) / 0.1);
-  color: rgb(var(--success));
+  color: rgb(var(--success-fg));
 
   .dark & {
     background: rgb(var(--success) / 0.16);
@@ -553,7 +566,7 @@
 
 @utility chip-tint-danger {
   background: rgb(var(--danger) / 0.1);
-  color: rgb(var(--danger));
+  color: rgb(var(--danger-fg));
 
   .dark & {
     background: rgb(var(--danger) / 0.16);
@@ -689,6 +702,11 @@
     --danger: 220 38 38;
     --warning: 217 119 6;
     --success: 22 163 74;
+    --warning-fg: 160 75 8;
+    --success-fg: 22 120 58;
+    /* danger 자체(220 38 38)는 자기 틴트 배경(danger/0.1) 위에서 4.14:1로 AA(4.5) 미달 —
+       한 단계 어둡힌 값(Tailwind red-700과 동일). 흰 배경 6.47:1, danger/0.1 틴트 위 5.54:1. */
+    --danger-fg: 185 28 28;
 
     /* Layout */
     --sidebar-width: 13rem;
@@ -725,13 +743,16 @@
     --border: 42 42 48;
     --fg: 244 244 245;
     --fg-secondary: 161 161 170;
-    --fg-muted: 112 112 122;
-    --accent: 124 90 232;
-    --accent-hover: 145 121 240;
+    --fg-muted: 138 138 148;
+    --accent: 158 130 250;
+    --accent-hover: 176 156 252;
     --accent-fg: 255 255 255;
     --danger: 239 90 90;
     --warning: 245 158 11;
     --success: 52 199 123;
+    --warning-fg: 245 158 11;
+    --success-fg: 52 199 123;
+    --danger-fg: 239 90 90;
 
     --icon-surface-border: rgba(255, 255, 255, 0.08);
     --icon-surface-tint: rgba(255, 255, 255, 0.05);
@@ -1205,9 +1226,19 @@
     @apply absolute inset-0 bg-transparent;
   }
 
+  /* 휴지 상태 기본값은 44px 원형 아이콘 버튼 하나뿐이다(overflow-hidden으로 텍스트를
+     가둔다). data-expanded일 때만 잠깐 폭·높이·패딩이 늘어나 카드 형태로 보인다.
+     라이트 모드 흰 배경 위에서 원형이 옅어 보이지 않도록 TableGallery/FigureGallery와
+     같은 근접 그림자(0 1px 2px, 0 2px 8px)를 기존 원거리 그림자 위에 겹친다. 다크는
+     표면 자체 대비가 충분해 원거리 그림자만 유지한다(그 카드 관례의 dark:shadow-none과 같은 취지). */
   .chat-launcher {
-    @apply flex min-h-16 items-center gap-3 rounded-surface border border-border/60 bg-surface/90 px-3.5 py-2.5 shadow-[0_18px_48px_rgba(0,0,0,0.22)] backdrop-blur-xl transition-[border-color,background-color] duration-200 hover:border-border/70;
+    @apply relative flex h-11 w-11 shrink-0 items-center justify-center gap-3 overflow-hidden rounded-full border border-border/60 bg-surface/90 p-0 shadow-[0_1px_2px_rgba(0,0,0,.04),0_2px_8px_rgba(0,0,0,.04),0_18px_48px_rgba(0,0,0,0.22)] backdrop-blur-xl transition-[width,height,padding,border-radius,border-color,background-color] duration-200 ease-out hover:border-border/70 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg dark:shadow-[0_18px_48px_rgba(0,0,0,0.22)];
+  }
+
+  .chat-launcher[data-expanded] {
+    @apply w-auto justify-start rounded-surface px-3.5 py-2.5;
     width: min(20rem, calc(100vw - 1.5rem));
+    height: 4rem;
   }
 
   .chat-launcher-ready {
@@ -1257,7 +1288,7 @@
       height: min(38rem, calc(100vh - 1rem));
     }
 
-    .chat-launcher {
+    .chat-launcher[data-expanded] {
       width: min(18rem, calc(100vw - 1rem));
     }
   }
@@ -1273,9 +1304,8 @@
       height: min(36rem, calc(100vh - 1rem));
     }
 
-    .chat-launcher {
+    .chat-launcher[data-expanded] {
       width: min(16rem, calc(100vw - 1rem));
-      border-radius: var(--radius-surface);
     }
   }
 
@@ -1465,6 +1495,11 @@
     .pdf-toolbar-btn:active,
     .chat-send-button:active {
       transform: none !important;
+    }
+
+    /* 런처의 원형↔카드 확장 전환도 movement다. 즉시 접히고 즉시 펼쳐진다. */
+    .chat-launcher {
+      transition: none !important;
     }
 
     /* I4: Figure/Table 카드 press-scale(active:scale-[0.96])도 movement이므로 끈다. */

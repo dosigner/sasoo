@@ -438,15 +438,15 @@ export default function Settings() {
             label={S.settings.openaiKey}
             badge={
               openaiKeyStatus ? (
-                <span className="text-2xs text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-sm">
+                <span className="text-2xs text-success-fg bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-sm">
                   {S.settings.keyConfigured} ({openaiKeyStatus})
                 </span>
               ) : openaiKeyUnreadable ? (
-                <span className="text-2xs text-danger bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded-sm">
+                <span className="text-2xs text-danger-fg bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded-sm">
                   {S.settings.keyUnreadable}
                 </span>
               ) : (
-                <span className="text-2xs text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded-sm">
+                <span className="text-2xs text-warning-fg bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded-sm">
                   {S.settings.keyNotConfigured}
                 </span>
               )
@@ -504,15 +504,15 @@ export default function Settings() {
             label={S.settings.geminiKey}
             badge={
               geminiKeyStatus ? (
-                <span className="text-2xs text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-sm">
+                <span className="text-2xs text-success-fg bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-sm">
                   {S.settings.keyConfigured} ({geminiKeyStatus})
                 </span>
               ) : geminiKeyUnreadable ? (
-                <span className="text-2xs text-danger bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded-sm">
+                <span className="text-2xs text-danger-fg bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded-sm">
                   {S.settings.keyUnreadable}
                 </span>
               ) : (
-                <span className="text-2xs text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded-sm">
+                <span className="text-2xs text-warning-fg bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded-sm">
                   {S.settings.keyNotConfigured}
                 </span>
               )

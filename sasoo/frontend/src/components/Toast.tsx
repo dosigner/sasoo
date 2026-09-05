@@ -7,20 +7,27 @@ import { AppIcon } from '@/components/icons';
 
 type ToastType = 'success' | 'error' | 'warning' | 'info';
 
-interface Toast {
+interface ToastOptions {
+  duration?: number;
+  /** 토스트 안에 보조 액션 버튼을 하나 보여준다 (예: "되돌리기"). */
+  action?: { label: string; onClick: () => void };
+  /** 액션 버튼이 아닌 경로(자동 만료, 수동 닫기)로 토스트가 사라질 때 호출된다. */
+  onDismiss?: () => void;
+}
+
+interface Toast extends ToastOptions {
   id: string;
   type: ToastType;
   message: string;
   description?: string;
-  duration?: number;
 }
 
 interface ToastContextValue {
   toast: {
-    success: (message: string, description?: string) => void;
-    error: (message: string, description?: string) => void;
-    warning: (message: string, description?: string) => void;
-    info: (message: string, description?: string) => void;
+    success: (message: string, description?: string, options?: ToastOptions) => void;
+    error: (message: string, description?: string, options?: ToastOptions) => void;
+    warning: (message: string, description?: string, options?: ToastOptions) => void;
+    info: (message: string, description?: string, options?: ToastOptions) => void;
   };
 }
 
@@ -69,6 +76,7 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
     let exitTimer: ReturnType<typeof setTimeout> | undefined;
     anim.finished
       .then(() => {
+        toast.onDismiss?.();
         setIsExiting(true);
         exitTimer = setTimeout(() => onRemove(toast.id), 200);
       })
@@ -101,6 +109,14 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
   };
 
   const handleClose = () => {
+    toast.onDismiss?.();
+    setIsExiting(true);
+    setTimeout(() => onRemove(toast.id), 200);
+  };
+
+  const handleActionClick = () => {
+    // 액션(예: 되돌리기)이 스스로 처리를 끝내므로 onDismiss는 부르지 않는다.
+    toast.action?.onClick();
     setIsExiting(true);
     setTimeout(() => onRemove(toast.id), 200);
   };
@@ -161,6 +177,14 @@ function ToastItem({ toast, onRemove }: ToastItemProps) {
                 {toast.description}
               </p>
             )}
+            {toast.action && (
+              <button
+                onClick={handleActionClick}
+                className="mt-1.5 text-xs font-semibold text-accent hover:underline"
+              >
+                {toast.action.label}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -196,16 +220,21 @@ const MAX_TOASTS = 5;
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const addToast = useCallback((type: ToastType, message: string, description?: string) => {
-    const id = `${Date.now()}-${Math.random()}`;
-    const newToast: Toast = { id, type, message, description };
+  const addToast = useCallback(
+    (type: ToastType, message: string, description?: string, options?: ToastOptions) => {
+      const id = `${Date.now()}-${Math.random()}`;
+      // 액션 버튼이 있는 토스트(예: 삭제 되돌리기)는 읽고 판단할 시간이 필요하니 6초를 기본값으로 둔다.
+      const duration = options?.duration ?? (options?.action ? 6000 : undefined);
+      const newToast: Toast = { id, type, message, description, ...options, duration };
 
-    setToasts((prev) => {
-      const updated = [newToast, ...prev];
-      // Keep only the newest MAX_TOASTS
-      return updated.slice(0, MAX_TOASTS);
-    });
-  }, []);
+      setToasts((prev) => {
+        const updated = [newToast, ...prev];
+        // Keep only the newest MAX_TOASTS
+        return updated.slice(0, MAX_TOASTS);
+      });
+    },
+    []
+  );
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -213,10 +242,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const contextValue: ToastContextValue = {
     toast: {
-      success: (message, description) => addToast('success', message, description),
-      error: (message, description) => addToast('error', message, description),
-      warning: (message, description) => addToast('warning', message, description),
-      info: (message, description) => addToast('info', message, description),
+      success: (message, description, options) => addToast('success', message, description, options),
+      error: (message, description, options) => addToast('error', message, description, options),
+      warning: (message, description, options) => addToast('warning', message, description, options),
+      info: (message, description, options) => addToast('info', message, description, options),
     },
   };
 

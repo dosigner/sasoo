@@ -20,6 +20,9 @@ interface UsePapersReturn {
   papers: Paper[];
   /** Total count of papers matching filters */
   total: number;
+  /** Server-side count of completed papers under the same (filter-free) scope.
+   * Null while a search/filter is active (denominator would not match `total`) or on fetch failure. */
+  completedTotal: number | null;
   /** Current page number */
   page: number;
   /** Total pages */
@@ -72,6 +75,7 @@ function useDebounce<T>(value: T, delay: number): T {
 export function usePapers(initialFilters?: PaperFilters): UsePapersReturn {
   const [papers, setPapers] = useState<Paper[]>([]);
   const [total, setTotal] = useState(0);
+  const [completedTotal, setCompletedTotal] = useState<number | null>(null);
   const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -125,6 +129,26 @@ export function usePapers(initialFilters?: PaperFilters): UsePapersReturn {
       setError(S.error.loadPapersFailed);
     } finally {
       if (mountedRef.current) setLoading(false);
+    }
+
+    // 분석 완료 수는 서버 total 기준. 검색·필터가 걸린 상태에선 위 total과 분모가
+    // 달라지므로(각각 다른 조건의 결과 수) 조회하지 않고 칩을 숨긴다.
+    const hasActiveFilters = Boolean(
+      filters.domain ||
+        filters.year ||
+        filters.status ||
+        filters.search ||
+        (filters.tags && filters.tags.length > 0)
+    );
+    if (hasActiveFilters) {
+      if (mountedRef.current) setCompletedTotal(null);
+      return;
+    }
+    try {
+      const completedResponse = await getPapers({ status: 'completed', page: 1, page_size: 1 });
+      if (mountedRef.current) setCompletedTotal(completedResponse.total);
+    } catch {
+      if (mountedRef.current) setCompletedTotal(null);
     }
   }, [filters]);
 
@@ -226,6 +250,7 @@ export function usePapers(initialFilters?: PaperFilters): UsePapersReturn {
   return {
     papers,
     total,
+    completedTotal,
     page: filters.page || 1,
     totalPages,
     loading,

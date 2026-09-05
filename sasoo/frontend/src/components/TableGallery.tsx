@@ -136,7 +136,7 @@ export default function TableGallery({
   return (
     <div className="space-y-4">
       {hasArtifactError ? (
-        <div className="flex items-center gap-2 rounded-lg border border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger">
+        <div className="flex items-center gap-2 rounded-lg border border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger-fg">
           <AppIcon name="error" className="h-3.5 w-3.5 text-danger" />
           <span>{effectiveError}</span>
         </div>
@@ -148,7 +148,7 @@ export default function TableGallery({
       )}
 
       {!hasArtifactError && !isPreparingArtifacts && isPartialArtifacts && (
-        <div className="flex items-center gap-2 rounded-lg border border-warning/20 bg-warning/10 px-3 py-2 text-xs text-warning">
+        <div className="flex items-center gap-2 rounded-lg border border-warning/20 bg-warning/10 px-3 py-2 text-xs text-warning-fg">
           <AppIcon name="warning" className="h-3.5 w-3.5 text-warning" />
           <span>{S.tables.partialWarning}</span>
         </div>
@@ -236,7 +236,7 @@ export default function TableGallery({
                 <div className="rounded-xl bg-bg/40 px-4 py-3">
                   <div className="flex flex-wrap items-center gap-2 text-2xs text-fg-muted">
                     {table.review_required && (
-                      <span className="status-pill border-warning/20 bg-warning/10 text-warning">
+                      <span className="status-pill border-warning/20 bg-warning/10 text-warning-fg">
                         {S.tables.reviewRequired}
                       </span>
                     )}

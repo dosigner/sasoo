@@ -300,7 +300,7 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
                 {formatCurrency(hero.currentCost)}
               </span>
               {hero.deltaKind === 'down' && (
-                <span className="text-xs font-mono tabular-nums text-success">
+                <span className="text-xs font-mono tabular-nums text-success-fg">
                   {L.deltaDown(hero.deltaPctAbs)}
                 </span>
               )}

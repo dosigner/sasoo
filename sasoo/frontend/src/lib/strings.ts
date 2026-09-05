@@ -142,6 +142,7 @@ export const S = {
     heroBody: 'Sasoo는 논문을 올리자마자 분류하고, figure와 recipe를 묶어 다음 분석의 출발점을 만들어요.',
     surfaceTitle: '논문 추가',
     surfaceBody: '첫 논문을 올리면 보관함과 워크벤치가 바로 이어져요.',
+    surfaceBodyReturning: '올린 논문은 보관함에 쌓이고, 분석은 워크벤치에서 이어져요.',
     stageSelect: '파일 선택',
     stagePrepare: '분석 준비',
     stageWorkbench: '워크벤치 진입',
@@ -156,8 +157,7 @@ export const S = {
     systemNotConfigured: '확인 필요',
     systemAutoOn: '업로드 후 바로 분석',
     systemAutoOff: '수동으로 분석 시작',
-    emptyHint: '드래그하거나 파일을 고르면 여기서 바로 다음 단계가 열려요.',
-    surfaceActionTitle: '지금 바로 PDF를 올리세요',
+    surfaceActionTitle: 'PDF를 여기에 놓거나 클릭해서 고르세요',
     recentAnalyses: '최근 작업',
     recentAnalysesEmpty: '논문을 분석하면 최근 기록이 여기에 쌓여요.',
     recentLibrary: '최근 보관함',
@@ -200,6 +200,34 @@ export const S = {
     recipeTab: '레시피',
     experimentTab: '실험 계획',
     experimentPending: '레시피가 준비되면 실험 계획서를 만들 수 있어요.',
+    // 그림/표 탭 헤더 첫 줄. 앱이 이미 계산한 figureCount/tableCount로만 만들어(모델
+    // 서술과 무관하게 항상 사실과 일치), 자기 결과를 부정하는 문장이 나오지 않게 한다.
+    visualSummary: {
+      both: (figureCount: number, tableCount: number) => `그림 ${figureCount}개와 표 ${tableCount}개를 추출했어요.`,
+      figuresOnly: (figureCount: number) => `그림 ${figureCount}개를 추출했어요. 표는 찾지 못했어요.`,
+      tablesOnly: (tableCount: number) => `표 ${tableCount}개를 추출했어요. 그림은 찾지 못했어요.`,
+      none: '그림과 표를 추출하지 못해 텍스트 분석만으로 진행했어요.',
+      figureTabCount: (figureCount: number) => `그림 ${figureCount}개를 추출했어요.`,
+      figureTabNone: '이 논문에서는 그림을 찾지 못했어요.',
+      tableTabCount: (tableCount: number) => `표 ${tableCount}개를 복구했어요.`,
+      tableTabNone: '이 논문에서는 표를 찾지 못했어요.',
+    },
+    analysisConfirm: {
+      titleFirst: '분석을 시작할까요?',
+      titleReanalyze: '다시 분석할까요?',
+      providerOpenAI: 'OpenAI',
+      providerGemini: 'Google Gemini',
+      providerLine: (provider: string) => `논문 분석에 ${provider}를 사용해요.`,
+      reanalyzeNotice: '기존 분석 결과(요약, 인용, 그림과 표, 레시피, 시각화)가 새 결과로 대체돼요.',
+      // per_paper_costs에는 날짜 필드가 없고 total_usd 내림차순으로만 정렬돼(backend
+      // api/settings.py) "최근 N편"을 가릴 수 없다. 정직하게 전체 이력 평균/최대로 표기한다.
+      costMeasured: (avg: string, max: string) => `전체 평균 $${avg} / 논문 (최대 $${max})`,
+      costEstimate: (provider: string) =>
+        `첫 분석이라 추정값이에요. ${provider} 기준 예상 비용은 $0.01 ~ $0.05 / 논문이에요.`,
+      costEstimateGeneric: '첫 분석이라 추정값이에요. 예상 비용은 논문당 $0.01 ~ $0.05예요.',
+      confirmFirst: '분석 시작',
+      confirmReanalyze: '다시 분석',
+    },
   },
 
   // ── PDF Viewer ──
@@ -267,14 +295,13 @@ export const S = {
     deleteItem3: '라이브러리 폴더에 있는 관련 파일',
     cancelBtn: '닫기',
     deleteBtn: '영구 삭제',
-    deleting: '삭제 중...',
     delete: '삭제',
+    undoDelete: '되돌리기',
     paperId: (id: string) => `논문 ID: ${id}`,
     heroKicker: 'Archive view',
     heroBody: '검색과 필터를 먼저 보고, 목록은 바로 아래에서 시작해요.',
     collectionCount: '보관된 기록',
-    collectionReady: '분석 완료',
-    collectionActive: '최근 활동',
+    collectionReady: (n: number) => `분석 완료 ${n}건`,
     toolsTitle: '탐색 도구',
     toolsBody: '지금 보관함에 있는 논문 기준으로 필요한 조건만 빠르게 좁혀요.',
     emptyCta: '첫 논문 추가하러 가기',
@@ -605,6 +632,9 @@ export const S = {
       candidatePage: (page: number) => `후보 위치 p.${page}`,
       claimedPageNote: (page: number) => `LLM 주장 p.${page}`,
       jump: '이 페이지로 이동',
+      // 좁은 패널에서도 눈에 띄는 점프 버튼 라벨. confirmedPage/foundPage/candidatePage
+      // 뒤에 붙여 "원문 p.4에서 확인"처럼 읽히게 한다(DEC-012 어휘는 그대로 둔다).
+      jumpLabel: '원문',
       method: {
         exact: '축자 일치',
         normalized: '표기 정규화 일치',
@@ -626,6 +656,16 @@ export const S = {
       },
       disclaimer: '인용이 논문 원문에 있는지 확인한 결과예요. 값의 과학적 타당성 검증은 아니에요.',
     },
+  },
+
+  // ── Experiment Plan Tab ──
+  experimentPlan: {
+    generateCostHint: '생성에는 비용이 들어요.',
+    regenerateTitle: '실험 계획서를 다시 만들까요?',
+    regenerateBody: '기존 계획서가 새 계획서로 대체돼요.',
+    regenerateCostLine: '논문 분석 1회와 비슷한 비용이 들어요.',
+    regenerateConfirm: '다시 생성',
+    cancel: '닫기',
   },
 
   // ── Mermaid Renderer ──
@@ -701,6 +741,15 @@ export const S = {
     unknownDomain: '알 수 없는 분야',
     unknownAgent: '알 수 없는 에이전트',
     fallbackQuote: '분석을 준비하고 있어요.',
+  },
+
+  // ── Chat launcher (질문 도우미 플로팅 버튼) ──
+  chat: {
+    launcherOpen: '질문 도우미 열기',
+    statusReady: '준비됨',
+    statusPending: '대기',
+    readyHint: '논문 맥락으로 바로 질문해요',
+    pendingHint: 'PDF 텍스트를 읽고 있어요',
   },
 
   // ── Titlebar ──
