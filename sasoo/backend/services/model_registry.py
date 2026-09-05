@@ -14,6 +14,7 @@ thinking_level 실값)의 이식이므로 바꾸면 동작 변경이다. 실값 
     "medium" — None이 아니다.
   - mermaid, chat: 실호출부(analysis_routes.py의 get_mermaid/repair_mermaid/
     chat 엔드포인트)가 thinking_level 인자를 아예 넘기지 않으므로 None이 맞다.
+    (mermaid는 2026-09-06에 high로 올렸다. 아래 레지스트리 주석 참조.)
 
 OpenAI 열 원칙(스펙 개정 1 R3/R4): 모델은 Luna 하나, effort만 변주.
 deep_dive는 high까지(xhigh 금지). screening·리졸버·naming은 최저 사고량 —
@@ -57,7 +58,10 @@ _REGISTRY: dict[str, dict[str, ModelChoice]] = {
         "recipe": ModelChoice(MODEL_FLASH_HQ, "medium"),
         "deep_dive": ModelChoice(MODEL_FLASH_HQ, "high"),
         "viz_planning": ModelChoice(MODEL_FLASH_HQ, "medium"),
-        "mermaid": ModelChoice(MODEL_FLASH_HQ, None),
+        # mermaid: 2026-09-06 사용자 결정으로 None(기본 medium)에서 high로. 다이어그램
+        # 코드는 문법이 틀리면 렌더링이 통째로 실패해 repair 호출이 따라붙는다. 실측 없음,
+        # 되돌리기 쉬움. chat은 None 그대로(DEC-021 후속).
+        "mermaid": ModelChoice(MODEL_FLASH_HQ, "high"),
         "chat": ModelChoice(MODEL_FLASH_HQ, None),
         "figure_explain": ModelChoice(MODEL_FLASH_HQ, "high"),
         "figure_resolver": ModelChoice(MODEL_FLASH_HQ, "low"),
@@ -77,7 +81,7 @@ _REGISTRY: dict[str, dict[str, ModelChoice]] = {
         "recipe": ModelChoice(MODEL_LUNA, "medium"),
         "deep_dive": ModelChoice(MODEL_LUNA, "high"),
         "viz_planning": ModelChoice(MODEL_LUNA, "medium"),
-        "mermaid": ModelChoice(MODEL_LUNA, "medium"),
+        "mermaid": ModelChoice(MODEL_LUNA, "high"),  # gemini 열과 같은 의도(2026-09-06)
         "chat": ModelChoice(MODEL_LUNA, "low"),
         "figure_explain": ModelChoice(MODEL_LUNA, "medium"),
         "figure_resolver": ModelChoice(MODEL_LUNA, "low"),

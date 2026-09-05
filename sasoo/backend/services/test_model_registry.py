@@ -61,11 +61,13 @@ class TestGeminiColumnMatchesProduction(unittest.TestCase):
         그 실값은 MODEL_FLASH_HQ다 — main 병합으로 3.6에서 3.7로 올라갔으므로
         리터럴이 아니라 상수로 비교한다(test_resolvers_low와 같은 이유). 문자열
         값 잠금은 services/test_model_pins.py에 있다."""
-        for role in ("mermaid", "chat"):
+        # 2026-09-06: mermaid만 사용자 결정으로 high. chat은 이식 당시 실값(None) 유지.
+        expected = {"mermaid": "high", "chat": None}
+        for role, effort in expected.items():
             with self.subTest(role=role):
                 choice = resolve(role, "gemini")
                 self.assertEqual(choice.model, MODEL_FLASH_HQ)
-                self.assertIsNone(choice.effort)
+                self.assertEqual(choice.effort, effort)
 
 
 class TestActiveProvider(unittest.TestCase):
