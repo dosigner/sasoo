@@ -7,6 +7,7 @@ import { type LevelKey } from '@/components/LevelSlider';
 import { LevelCards } from '@/components/profile/LevelCards';
 import { AreaPicker } from '@/components/profile/AreaPicker';
 import { SaveBar } from '@/components/settings/SaveBar';
+import { SettingSection, SettingRow, SegmentGroup } from '@/components/settings/SettingPrimitives';
 import { useToast } from '@/components/Toast';
 import { S } from '@/lib/strings';
 import { AppIcon } from '@/components/icons';
@@ -15,84 +16,29 @@ import { Select } from '@/components/ui';
 // ---------------------------------------------------------------------------
 // 연구자 프로필 — 연구 배경과 기본 설명 수준을 관리하는 전용 페이지.
 // analysis_focus(분석 초점)는 논문마다 다르므로 여기 두지 않고 업로드 화면에서만 받는다.
+// 레이아웃은 Settings.tsx와 같은 원시 컴포넌트(SettingSection/SettingRow/SegmentGroup)를 쓴다.
 // ---------------------------------------------------------------------------
 
 // 주요 연구 분야 - 최대 3개. key는 백엔드 research_areas로 그대로 저장된다.
 // AreaPicker의 max prop으로 넘긴다 - 상한 값을 두 곳에 따로 박지 않는다.
 const MAX_RESEARCH_AREAS = 3;
 
+// 아래 세 표의 key는 backend/api/analysis_context.py의 표와 집합이 같아야 한다
+// (test_analysis_context.py가 고정). 라벨은 S.profile이 단일 출처다.
+const toOptions = (labels: Record<string, string>) =>
+  Object.entries(labels).map(([key, label]) => ({ key, label }));
+
 // 분야 숙련도 — 5단계 세그먼트
-const FIELD_EXPERTISE_OPTIONS = [
-  { key: 'novice', label: '입문' },
-  { key: 'basic', label: '기초 이해' },
-  { key: 'major', label: '전공 수준' },
-  { key: 'research', label: '연구 수행' },
-  { key: 'expert', label: '전문가' },
-] as const;
+const FIELD_EXPERTISE_OPTIONS = toOptions(S.profile.fieldExpertise);
 const DEFAULT_FIELD_EXPERTISE = 'major';
 
 // 논문 읽기 경험 — 4단계 세그먼트
-const READING_EXPERIENCE_OPTIONS = [
-  { key: 'rare', label: '거의 없음' },
-  { key: 'occasional', label: '가끔 읽음' },
-  { key: 'regular', label: '정기적으로 읽음' },
-  { key: 'author', label: '작성·심사 경험' },
-] as const;
+const READING_EXPERIENCE_OPTIONS = toOptions(S.profile.readingExperience);
 const DEFAULT_READING_EXPERIENCE = 'regular';
 
 // 연구 역할 — 단일 선택 드롭다운
-const RESEARCH_ROLE_OPTIONS = [
-  { key: 'student', label: '학생 연구자' },
-  { key: 'grad_student', label: '대학원생' },
-  { key: 'postdoc', label: '연구원·박사후연구원' },
-  { key: 'professor', label: '교수·PI' },
-  { key: 'engineer', label: '엔지니어' },
-  { key: 'manager', label: '연구 관리자' },
-  { key: 'other', label: '기타' },
-] as const;
+const RESEARCH_ROLE_OPTIONS = toOptions(S.profile.researchRole);
 const DEFAULT_RESEARCH_ROLE = 'grad_student';
-
-// 5/4단계 세그먼트 컨트롤 — iOS식 인셋 트랙. 선택된 세그먼트가 트랙 위로
-// 살짝 떠오른 pill(surface + shadow)로 보이고, 누를 때 미세하게 눌린다(reduced-motion 존중).
-function SegmentGroup({
-  options,
-  value,
-  onChange,
-  ariaLabel,
-}: {
-  options: readonly { key: string; label: string }[];
-  value: string;
-  onChange: (key: string) => void;
-  ariaLabel: string;
-}) {
-  return (
-    <div
-      role="radiogroup"
-      aria-label={ariaLabel}
-      className="inline-flex max-w-full flex-wrap gap-1 rounded-control border border-border/50 bg-bg/60 p-1"
-    >
-      {options.map((opt) => {
-        const active = opt.key === value;
-        return (
-          <button
-            key={opt.key}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            onClick={() => onChange(opt.key)}
-            className={`rounded-control px-3.5 py-2 text-sm transition-all duration-150 ease-out motion-safe:active:scale-[0.97] ${
-              active
-                ? 'bg-surface font-medium text-fg shadow-xs'
-                : 'text-fg-muted hover:text-fg-secondary'
-            }`}
-          >
-            {opt.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 export default function Profile() {
   const { toast } = useToast();
@@ -225,7 +171,7 @@ export default function Profile() {
   }
 
   return (
-    <div className="page-container-compact">
+    <div className="page-container-settings">
       <section className="archive-panel panel-compact mb-4">
         <div className="page-header-dense gap-4 lg:flex lg:items-start lg:justify-between">
           <div>
@@ -234,7 +180,7 @@ export default function Profile() {
               {S.settings.researcherProfile}
             </h1>
             <p className="settings-hero-body mt-2 text-sm leading-6">
-              {S.settings.researcherProfileDesc}
+              {S.settings.researcherProfileDesc} {S.profile.defaultsNote}
             </p>
           </div>
           {/* 저장·되돌리기 버튼은 하단 저장바(SaveBar)로 옮겼다. */}
@@ -254,53 +200,26 @@ export default function Profile() {
         </div>
       )}
 
-      <section className="archive-panel panel-compact">
-        <div className="mb-4">
-          <div className="archive-kicker">{S.settings.sectionEdit}</div>
-          <h2 className="settings-panel-title mt-2 text-xl font-semibold tracking-[-0.04em]">
-            {S.profile.sectionTitle}
-          </h2>
-          <p className="settings-panel-description mt-2 max-w-2xl text-sm leading-6">
-            {S.profile.sectionDesc}
-          </p>
-        </div>
+      <div className="space-y-4">
+        {/* 1. 연구 배경 — 내가 어떤 분야에서 무엇을 연구하는지 */}
+        <SettingSection title={S.profile.backgroundTitle} description={S.profile.backgroundDesc}>
+          <SettingRow full label={S.settings.researchContext} description={S.settings.researchContextHelper}>
+            <textarea
+              value={researchContext}
+              onChange={(e) => setResearchContext(e.target.value)}
+              placeholder={S.settings.researchContextPlaceholder}
+              aria-label={S.settings.researchContext}
+              rows={3}
+              className="input resize-none"
+            />
+          </SettingRow>
 
-        <div className="space-y-8">
-          {/* 연구 배경 — 내가 어떤 분야에서 무엇을 연구하는지 */}
-          <div className="space-y-2">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-fg-muted">연구 배경</div>
-              <p className="mt-1 text-2xs text-fg-muted">내가 어떤 분야에서 무엇을 연구하는지 알려줘요.</p>
-            </div>
+          <SettingRow full label={S.settings.researchAreas}>
+            <AreaPicker value={researchAreas} onChange={setResearchAreas} max={MAX_RESEARCH_AREAS} />
+          </SettingRow>
 
-            <div className="settings-row-block">
-              <label htmlFor="research-context" className="mb-2 block text-sm font-medium text-fg-secondary">
-                {S.settings.researchContext}
-              </label>
-              <textarea
-                id="research-context"
-                value={researchContext}
-                onChange={(e) => setResearchContext(e.target.value)}
-                placeholder={S.settings.researchContextPlaceholder}
-                rows={3}
-                className="input resize-none"
-              />
-              <p className="text-2xs text-fg-muted mt-1">
-                {S.settings.researchContextHelper}
-              </p>
-            </div>
-
-            <div className="settings-row-block">
-              <label className="mb-2 block text-sm font-medium text-fg-secondary">
-                {S.settings.researchAreas}
-              </label>
-              <AreaPicker value={researchAreas} onChange={setResearchAreas} max={MAX_RESEARCH_AREAS} />
-            </div>
-
-            <div className="settings-row-block">
-              <label className="mb-2 block text-sm font-medium text-fg-secondary">
-                {S.settings.researchRole}
-              </label>
+          <SettingRow label={S.settings.researchRole}>
+            <div className="w-56">
               <Select
                 value={researchRole}
                 onValueChange={setResearchRole}
@@ -309,48 +228,34 @@ export default function Profile() {
                 aria-label={S.settings.researchRole}
               />
             </div>
-          </div>
+          </SettingRow>
+        </SettingSection>
 
-          {/* 설명 눈높이 — 분석이 나에게 설명하는 깊이와 관점 */}
-          <div className="space-y-2">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-fg-muted">설명 눈높이</div>
-              <p className="mt-1 text-2xs text-fg-muted">분석이 나에게 설명하는 깊이와 관점을 맞춰요.</p>
-            </div>
+        {/* 2. 설명 눈높이 — 분석이 나에게 설명하는 깊이와 관점 */}
+        <SettingSection title={S.profile.levelTitle} description={S.profile.levelDesc}>
+          <SettingRow full label={S.settings.defaultLevel}>
+            <LevelCards value={defaultLevel} onChange={setDefaultLevel} />
+          </SettingRow>
 
-            <div className="settings-row-block">
-              <label className="mb-2 block text-sm font-medium text-fg-secondary">
-                {S.settings.defaultLevel}
-              </label>
-              <LevelCards value={defaultLevel} onChange={setDefaultLevel} />
-            </div>
+          <SettingRow full label={S.settings.fieldExpertise}>
+            <SegmentGroup
+              options={FIELD_EXPERTISE_OPTIONS}
+              value={fieldExpertise}
+              onChange={setFieldExpertise}
+              ariaLabel={S.settings.fieldExpertise}
+            />
+          </SettingRow>
 
-            <div className="settings-row-block">
-              <label className="mb-2 block text-sm font-medium text-fg-secondary">
-                {S.settings.fieldExpertise}
-              </label>
-              <SegmentGroup
-                options={FIELD_EXPERTISE_OPTIONS}
-                value={fieldExpertise}
-                onChange={setFieldExpertise}
-                ariaLabel={S.settings.fieldExpertise}
-              />
-            </div>
-
-            <div className="settings-row-block">
-              <label className="mb-2 block text-sm font-medium text-fg-secondary">
-                {S.settings.readingExperience}
-              </label>
-              <SegmentGroup
-                options={READING_EXPERIENCE_OPTIONS}
-                value={readingExperience}
-                onChange={setReadingExperience}
-                ariaLabel={S.settings.readingExperience}
-              />
-            </div>
-          </div>
-        </div>
-      </section>
+          <SettingRow full label={S.settings.readingExperience}>
+            <SegmentGroup
+              options={READING_EXPERIENCE_OPTIONS}
+              value={readingExperience}
+              onChange={setReadingExperience}
+              ariaLabel={S.settings.readingExperience}
+            />
+          </SettingRow>
+        </SettingSection>
+      </div>
 
       <SaveBar
         changeCount={changedFields}

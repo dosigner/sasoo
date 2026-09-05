@@ -1,17 +1,16 @@
-import { AppIcon } from '@/components/icons';
-import type { AppIconName } from '@/components/icons';
 import { S } from '@/lib/strings';
 
-const AREAS: { id: string; icon: AppIconName }[] = [
-  { id: 'optics_photonics', icon: 'area-optics' },
-  { id: 'ai_ml', icon: 'area-ai' },
-  { id: 'robotics_control', icon: 'area-robotics' },
-  { id: 'electrical_electronics', icon: 'area-electrical' },
-  { id: 'computer_science', icon: 'area-cs' },
-  { id: 'physics_math', icon: 'area-physics' },
-  { id: 'bio_medical', icon: 'area-bio' },
-  { id: 'other', icon: 'area-other' },
-];
+// 키는 백엔드 analysis_context.py의 AREA_LABELS와 집합이 같아야 한다(test_analysis_context.py가 고정).
+const AREAS = [
+  'optics_photonics',
+  'ai_ml',
+  'robotics_control',
+  'electrical_electronics',
+  'computer_science',
+  'physics_math',
+  'bio_medical',
+  'other',
+] as const;
 
 interface Props {
   value: string[];
@@ -25,6 +24,9 @@ interface Props {
  * 검색 팝오버를 쓰지 않는다. 선택지가 8개뿐이라 전부 펼쳐 보이는 편이
  * 빠르다. 기존 구현은 팝오버를 열고 검색해서 고른 뒤 아래 칩으로 다시
  * 보여주는 3단 구조였다.
+ *
+ * 칩에 아이콘을 붙이지 않는다. 16px 선 아이콘 8종은 서로 구분되지 않고
+ * 바로 옆 라벨과 정보가 겹쳐 시각 잡음만 됐다.
  *
  * 상한(3개)에 도달하면 고르지 않은 칩만 비활성화한다. 선택된 칩은 계속
  * 해제할 수 있어야 한다.
@@ -51,8 +53,8 @@ export function AreaPicker({ value, onChange, max = 3 }: Props) {
   return (
     <div>
       <div className="flex flex-wrap gap-2">
-        {AREAS.map((area) => {
-          const selected = value.includes(area.id);
+        {AREAS.map((id) => {
+          const selected = value.includes(id);
           const blocked = atMax && !selected;
           const className = blocked
             ? 'area-chip area-chip-disabled'
@@ -62,17 +64,16 @@ export function AreaPicker({ value, onChange, max = 3 }: Props) {
 
           return (
             <button
-              key={area.id}
+              key={id}
               type="button"
               role="checkbox"
               aria-checked={selected}
               aria-disabled={blocked}
               disabled={blocked}
               className={className}
-              onClick={() => toggle(area.id)}
+              onClick={() => toggle(id)}
             >
-              <AppIcon name={area.icon} className="h-4 w-4 shrink-0" />
-              {S.areas[area.id]}
+              {S.areas[id]}
             </button>
           );
         })}

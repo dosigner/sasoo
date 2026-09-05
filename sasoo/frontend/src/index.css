@@ -305,28 +305,12 @@
   border-color: rgb(var(--warning) / 0.4);
 }
 
-@utility settings-panel-title {
-  @apply text-fg;
-}
-
-@utility settings-panel-description {
-  @apply text-fg-muted;
-}
-
 @utility settings-hero-body {
   @apply text-fg-muted;
 }
 
 @utility settings-hero-title {
   @apply text-fg;
-}
-
-@utility settings-appearance-option {
-  border-radius: var(--radius-control);
-}
-
-@utility settings-appearance-option-inactive {
-  @apply border-border bg-surface text-fg-muted hover:border-border hover:bg-surface-hover hover:text-fg;
 }
 
 @utility provider-card {
@@ -364,7 +348,7 @@
 }
 
 @utility area-chip {
-  /* 연구 분야 아이콘 칩. 8개뿐이라 검색 팝오버 없이 전부 펼친다.
+  /* 연구 분야 칩. 8개뿐이라 검색 팝오버 없이 전부 펼친다.
      provider-card/level-card와 같은 형태 체계지만 칩 크기라 radius는
      --radius-control을 쓴다. */
   @apply flex items-center gap-2 border px-3 py-2 text-sm transition-[border-color,background-color] duration-150;

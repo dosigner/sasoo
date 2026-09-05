@@ -26,38 +26,66 @@ export const S = {
   // ── Profile (연구자 프로필) ──
   profile: {
     heroKicker: 'Researcher profile',
-    sectionTitle: '기본 눈높이와 연구 배경',
-    sectionDesc: '여기서 정한 값이 새 논문 분석의 기본값으로 쓰여요.',
+    defaultsNote: '여기서 정한 값이 새 논문 분석의 기본값으로 쓰여요.',
+    backgroundTitle: '연구 배경',
+    backgroundDesc: '내가 어떤 분야에서 무엇을 연구하는지 알려줘요.',
+    levelTitle: '설명 눈높이',
+    levelDesc: '분석이 나에게 설명하는 깊이와 관점을 맞춰요.',
+    // 아래 세 표의 키는 backend/api/analysis_context.py의 표와 집합이 같아야 한다
+    // (test_analysis_context.py가 고정). 라벨만 여기서 바꾼다.
+    fieldExpertise: {
+      novice: '입문',
+      basic: '기초 이해',
+      major: '전공 수준',
+      research: '연구 수행',
+      expert: '전문가',
+    } as Record<string, string>,
+    readingExperience: {
+      rare: '거의 없음',
+      occasional: '가끔 읽음',
+      regular: '정기적으로 읽음',
+      author: '작성·심사 경험',
+    } as Record<string, string>,
+    researchRole: {
+      student: '학생 연구자',
+      grad_student: '대학원생',
+      postdoc: '연구원·박사후연구원',
+      professor: '교수·PI',
+      engineer: '엔지니어',
+      manager: '연구 관리자',
+      other: '기타',
+    } as Record<string, string>,
   },
 
   // ── Levels (설명 수준) ──
-  // 같은 개념(빛의 간섭)을 수준별 문체로 보여주는 프리뷰 문장. LevelSlider와
-  // LevelCards가 이 값을 공유한다 - 단일 출처.
+  // preview는 그 수준에서 분석이 실제로 따르는 규칙을 한 줄로 옮긴 것이다.
+  // backend/api/analysis_context.py의 EXPLANATION_LEVELS와 뜻이 같아야 한다
+  // (예시 문장은 분야가 고정돼 다른 분야 사용자에게 기준이 안 됐다).
+  // LevelSlider와 LevelCards가 이 값을 공유한다 - 단일 출처.
   levels: {
     elementary: {
       label: '초등학생',
-      preview: '빛 두 줄기가 만나면 물결처럼 겹쳐서 더 밝아지거나 어두워져요.',
+      preview: '전문용어 없이 일상 비유로 풀어 쓰고, 수식은 말로 설명해요.',
     },
     middle: {
       label: '중학생',
-      preview: '두 빛의 파동이 겹치면 마루끼리 만나 밝아지고, 마루와 골이 만나 어두워집니다.',
+      preview: '기초 과학 용어만 쓰고, 새 용어는 나올 때마다 한 줄로 정의해요.',
     },
     high: {
       label: '고등학생',
-      preview: '두 파동의 위상차가 0이면 보강간섭, π이면 상쇄간섭이 일어나 간섭무늬가 생깁니다.',
+      preview: '고교 과학 수준의 용어와 간단한 수식을 써요.',
     },
     undergrad: {
       label: '학부생',
-      preview: '두 간섭 광의 세기는 I = I₁ + I₂ + 2√(I₁I₂)cosΔφ로 위상차에 의해 결정됩니다.',
+      preview: '전공 기초 용어를 쓰고, 대학원 수준 개념은 짧게 배경을 붙여요.',
     },
     masters: {
       label: '석사생',
-      preview: '가시도(visibility)는 광원의 시간·공간 결맞음에 의해 제한되며 상호결맞음 함수로 기술됩니다.',
+      preview: '분야 표준 용어와 수식을 자유롭게 써요.',
     },
     phd: {
       label: '박사생',
-      preview:
-        '부분결맞음 조건에서 간섭항은 상호결맞음 함수 γ₁₂(τ)의 크기와 인수로 완전히 결정되며, van Cittert–Zernike 정리로 광원 분포와 연결됩니다.',
+      preview: '최신 문헌 맥락, 방법론의 한계, 미해결 논점까지 전문가 수준으로 다뤄요.',
     },
   },
 
@@ -198,6 +226,7 @@ export const S = {
     figuresTab: '그림',
     tablesTab: '표',
     recipeTab: '레시피',
+    guideTab: '읽기 안내',
     experimentTab: '실험 계획',
     experimentPending: '레시피가 준비되면 실험 계획서를 만들 수 있어요.',
     // 그림/표 탭 헤더 첫 줄. 앱이 이미 계산한 figureCount/tableCount로만 만들어(모델
@@ -228,6 +257,41 @@ export const S = {
       confirmFirst: '분석 시작',
       confirmReanalyze: '다시 분석',
     },
+  },
+
+  // ── Reading Guide ──
+  readingGuide: {
+    title: '읽기 안내',
+    intro: '논문에 나오는 기호와 전제된 개념, 섹션마다 무엇을 하려는지를 한 번에 정리해요.',
+    // 비용은 실측이 아니라 채팅 1회 기준의 정직한 비교로만 말한다.
+    costNotice: '질문 도우미 답변 한 번과 비슷한 비용이 들어요. 한 번 만들면 이 기기에 저장돼요.',
+    generate: '읽기 안내 만들기',
+    confirmTitle: '읽기 안내를 만들까요?',
+    confirmCta: '만들기',
+    close: '닫기',
+    loading: '저장된 안내를 확인하고 있어요',
+    generating: '읽기 안내를 만드는 중',
+    cancel: '취소',
+    regenerate: '다시 만들기',
+    regenerateTitle: '읽기 안내를 다시 만들까요?',
+    regenerateNotice: '지금 저장된 안내는 새로 만든 안내로 대체돼요.',
+    metaLine: (createdAt: string, level: string | null, cost: string | null) =>
+      [`${createdAt} 생성`, level ? `설명 수준 ${level}` : null, cost]
+        .filter(Boolean)
+        .join(', '),
+    levelMismatch: '지금 설명 수준과 달라요',
+    rawFallback: '형식을 해석하지 못해 원문 그대로 보여줘요',
+    glossaryTitle: '표기 사전',
+    glossaryFilter: '기호나 뜻으로 찾기',
+    glossaryEmpty: '조건에 맞는 기호가 없어요.',
+    glossaryHint: '항목을 누르면 PDF에서 그 기호를 찾아요.',
+    prerequisitesTitle: '선행 지식',
+    prerequisitesWhy: '이 논문에서:',
+    sectionsTitle: '섹션별 직관',
+    pageLabel: (page: number) => `p.${page}`,
+    pageJump: (page: number) => `${page}쪽으로 이동`,
+    errorTitle: '읽기 안내를 만들지 못했어요',
+    retry: '다시 시도',
   },
 
   // ── PDF Viewer ──
@@ -363,6 +427,7 @@ export const S = {
     researchRolePlaceholder: '역할을 선택하세요',
     // Library
     librarySection: '보관함 경로',
+    librarySectionDesc: '논문이 쌓이는 경로를 정해요.',
     libraryPath: '논문 저장 경로',
     libraryPathHelp:
       '올린 PDF와 분석 결과를 보관하는 폴더예요. 새로 올리는 논문부터 이 경로를 쓰고, 이미 있는 논문은 원래 위치를 그대로 봐요.',
@@ -384,6 +449,7 @@ export const S = {
     pdfVisualEngineOdl: '빠른 추출 (무료)',
     // Appearance
     appearance: '테마',
+    appearanceDesc: '현재 작업 환경에 맞게 화면 톤을 조정해요.',
     dark: '다크',
     light: '라이트',
     // API Key status
@@ -401,12 +467,12 @@ export const S = {
     imageQuality: '도해 품질',
     // Cost
     usageCosts: '사용량과 비용',
+    usageCostsDesc: '최근 분석이 얼마나 호출과 비용을 만들었는지 확인해요.',
     costLoadFailed: '비용 데이터를 불러오지 못했어요',
     heroKicker: 'Settings',
     heroBody: '지금 상태를 확인하고 필요한 설정부터 바로 조정해요.',
     statusConfigured: '정상 연결',
     statusMissing: '추가 설정 필요',
-    sectionEdit: '변경 입력',
   },
 
   // ── Cost Dashboard ──
