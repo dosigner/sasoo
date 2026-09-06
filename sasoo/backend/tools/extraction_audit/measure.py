@@ -240,7 +240,10 @@ class VlmCache:
                         ),
                         encoding="utf-8",
                     )
-            if table_resolver._has_meaningful_grid(result[0]):
+            # `_repair_with_vlm`은 실패하면 원본 격자를 그대로 돌려주면서 model에
+            # "heuristic"을 넣는다. 그 신호를 보지 않으면, 호출이 실패했는데 원본이
+            # 이미 온전했던 경우까지 성공으로 세어 분자가 부풀려진다.
+            if result[1] != "heuristic" and table_resolver._has_meaningful_grid(result[0]):
                 self.successes += 1
             return result
 
