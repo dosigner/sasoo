@@ -145,6 +145,9 @@ jobs:
         shell: pwsh
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          # verify:win-artifact의 Authenticode 검사를 건너뛴다(미서명이므로 반드시 실패).
+          # release.yml도 같은 이유로 같은 플래그를 쓴다. 나머지 검증은 그대로 돈다.
+          SASOO_ALLOW_UNSIGNED_WIN: "1"
         run: |
           pnpm build:backend
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
