@@ -63,6 +63,7 @@ class CryptoStartupMigrationTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch("main.init_db", new=AsyncMock()),
+            patch("api.settings._ensure_defaults", new=AsyncMock()),
             patch("main.get_library_root", return_value=Path("/tmp/library")),
             patch("services.log_setup.setup_logging"),
             patch(
@@ -96,6 +97,7 @@ class CryptoStartupMigrationTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch("main.init_db", new=AsyncMock()),
+            patch("api.settings._ensure_defaults", new=AsyncMock()),
             patch("main.get_library_root", return_value=Path("/tmp/library")),
             patch("services.log_setup.setup_logging"),
             patch("models.database.fetch_all", new=AsyncMock(return_value=rows)),

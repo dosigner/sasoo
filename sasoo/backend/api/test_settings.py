@@ -78,7 +78,7 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
         ):
             response = await settings.get_settings()
 
-        ensure_defaults.assert_awaited_once()
+        ensure_defaults.assert_not_awaited()
         self.assertEqual(response.library_path, platform_root)
 
     async def test_other_platform_path_in_storage_is_not_reported(self) -> None:
@@ -222,7 +222,7 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.image_provider, "openai")
         self.assertEqual(response.image_quality, "high")
 
-    async def test_get_settings_reports_credential_store_unavailable_for_plaintext_key(self) -> None:
+    async def test_get_settings_reads_plaintext_without_credential_store_migration(self) -> None:
         rows = [
             {"key": "gemini_api_key", "value": "legacy-plaintext-key"},
             {"key": "pdf_parser_mode", "value": "java"},
@@ -238,10 +238,9 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
             ),
             patch("api.settings._set_setting", new=AsyncMock()) as set_setting,
         ):
-            with self.assertRaises(HTTPException) as context:
-                await settings.get_settings()
+            response = await settings.get_settings()
 
-        self.assertEqual(context.exception.status_code, 503)
+        self.assertEqual(response.gemini_api_key, "legacy-p...-key")
         set_setting.assert_not_awaited()
 
     async def test_update_settings_reports_credential_store_unavailable_without_writing_key(self) -> None:
