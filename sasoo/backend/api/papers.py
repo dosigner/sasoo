@@ -38,7 +38,8 @@ from services.odl_parser import (
     resolve_paper_title,
     schedule_paper_artifacts_refresh,
 )
-from services.artifact_status import resolve_artifact_status_contract
+from services.artifact_status import get_visual_row_counts, resolve_artifact_status_contract
+from services.concurrency import run_pipeline_blocking
 from models.analysis_runs import request_cancel
 
 router = APIRouter(prefix="/api/papers", tags=["papers"])
@@ -63,38 +64,17 @@ _DOMAIN_NOISE_PATTERNS = [
 ]
 
 
-async def _get_visual_row_counts(paper_id: int) -> tuple[int, int]:
-    row = await fetch_one(
-        """
-        SELECT
-            (
-                SELECT COUNT(*)
-                FROM figures
-                WHERE paper_id = ?
-                  AND COALESCE(extraction_status, 'resolved') != 'rejected'
-            ) AS figure_count,
-            (
-                SELECT COUNT(*)
-                FROM tables
-                WHERE paper_id = ?
-                  AND COALESCE(extraction_status, 'resolved') != 'rejected'
-            ) AS table_count
-        """,
-        (paper_id, paper_id),
-    )
-    return int(row["figure_count"] or 0), int(row["table_count"] or 0)
-
-
 async def _paper_payload(
     row: dict,
     *,
     schedule_refresh: bool = False,
+    visual_counts: tuple[int, int] | None = None,
 ) -> dict:
     paper_id = int(row["id"])
     folder_name = str(row["folder_name"])
-    paper_dir = get_paper_dir(folder_name)
+    paper_dir = await run_pipeline_blocking(get_paper_dir, folder_name)
 
-    figure_count, table_count = await _get_visual_row_counts(paper_id)
+    figure_count, table_count = visual_counts if visual_counts is not None else await get_visual_row_counts(paper_id)
     payload = dict(row)
     try:
         artifact_status = await resolve_artifact_status_contract(
@@ -117,11 +97,17 @@ async def _paper_payload(
         )
         payload.update(_missing_pdf_payload())
 
-    pdf_files = sorted(paper_dir.glob("*.pdf")) if paper_dir.exists() else []
-    fallback_title = pdf_files[0].stem if pdf_files else str(payload.get("title") or "Untitled Paper")
-    payload["title"] = resolve_paper_title(str(payload.get("title") or ""), "", fallback_title)
+    payload["title"] = await run_pipeline_blocking(
+        _paper_title, paper_dir, str(payload.get("title") or "")
+    )
 
     return payload
+
+
+def _paper_title(paper_dir: Path, title: str) -> str:
+    pdf_files = sorted(paper_dir.glob("*.pdf")) if paper_dir.exists() else []
+    fallback = pdf_files[0].stem if pdf_files else title or "Untitled Paper"
+    return resolve_paper_title(title, "", fallback)
 
 
 def _missing_pdf_payload() -> dict[str, object]:
@@ -329,7 +315,8 @@ async def list_papers(
 
     # Count total
     count_row = await fetch_one(
-        f"SELECT COUNT(*) as cnt FROM papers {where_clause}", tuple(params)
+        f"SELECT COUNT(*) AS cnt, COALESCE(SUM(status = 'completed'), 0) AS completed_count "
+        f"FROM papers {where_clause}", tuple(params)
     )
     total = count_row["cnt"] if count_row else 0
 
@@ -340,15 +327,31 @@ async def list_papers(
         tuple(params) + (page_size, offset),
     )
 
-    papers = [
-        PaperResponse(
-            **await _paper_payload(
-                row,
+    paper_ids = tuple(int(row["id"]) for row in rows)
+    figure_counts: dict[int, int] = {}
+    table_counts: dict[int, int] = {}
+    if paper_ids:
+        placeholders = ",".join("?" for _ in paper_ids)
+        for table, counts in (("figures", figure_counts), ("tables", table_counts)):
+            count_rows = await fetch_all(
+                f"SELECT paper_id, COUNT(*) AS cnt FROM {table} "
+                f"WHERE paper_id IN ({placeholders}) "
+                "AND COALESCE(extraction_status, 'resolved') != 'rejected' GROUP BY paper_id",
+                paper_ids,
             )
-        )
+            counts.update((int(row["paper_id"]), int(row["cnt"])) for row in count_rows)
+
+    papers = [
+        PaperResponse(**await _paper_payload(
+            row,
+            visual_counts=(figure_counts.get(row["id"], 0), table_counts.get(row["id"], 0)),
+        ))
         for row in rows
     ]
-    return PaperListResponse(papers=papers, total=total, page=page, page_size=page_size)
+    return PaperListResponse(
+        papers=papers, total=total, page=page, page_size=page_size,
+        completed_count=int(count_row["completed_count"]) if count_row else 0,
+    )
 
 
 @router.get("/{paper_id}", response_model=PaperResponse)

@@ -11,7 +11,6 @@ import logging
 import os
 import re
 import shutil
-import sqlite3
 import subprocess
 import sys
 import time
@@ -23,7 +22,7 @@ from typing import Any
 
 import fitz  # PyMuPDF
 
-from models.database import DB_PATH, execute_insert, fetch_all, get_db, get_library_root
+from models.database import execute_insert, fetch_all, get_db, get_library_root
 from services.document_audit import _page_text_map, find_suspect_pages
 from services.document_manifest import build_document_manifest, resolve_paper_journal
 from services.figure_candidates import build_figure_candidates
@@ -257,17 +256,8 @@ def _java_runtime_available() -> bool:
 
 
 def get_configured_parser_mode() -> str:
-    """Read the parser mode from settings, defaulting to Java mode."""
-    try:
-        with sqlite3.connect(str(DB_PATH)) as conn:
-            row = conn.execute(
-                "SELECT value FROM settings WHERE key = 'pdf_parser_mode' LIMIT 1"
-            ).fetchone()
-    except Exception:
-        row = None
-
-    mode = (row[0] if row and row[0] else "java").strip().lower() if row else "java"
-    return mode if mode in SUPPORTED_MODES else "java"
+    """Return the only supported parser mode without reading settings."""
+    return "java"
 
 
 def get_extraction_pipeline_version() -> str:
@@ -524,6 +514,24 @@ def paper_visuals_are_current(
         )
         and _visual_files_are_current(paper_dir, manifest)
     )
+
+
+def paper_artifact_readiness(paper_dir: Path) -> tuple[bool, bool]:
+    """Check both contracts using one request-local manifest and PDF signature."""
+    pdf_path = _paper_pdf(paper_dir)
+    pipeline = _resolve_pipeline_request()
+    manifest = _load_manifest(paper_dir)
+    signature = get_pdf_signature(pdf_path)
+    text_ready = (
+        _text_manifest_is_current(manifest, signature, *pipeline)
+        and _cache_files_are_current(paper_dir, signature)
+        and _text_contract_files_are_current(paper_dir, manifest)
+    )
+    visual_ready = (
+        _visual_manifest_is_current(manifest, signature, *pipeline)
+        and _visual_files_are_current(paper_dir, manifest)
+    )
+    return text_ready, visual_ready
 
 
 def paper_artifacts_are_current(

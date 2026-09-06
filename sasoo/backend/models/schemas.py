@@ -105,6 +105,7 @@ class PaperResponse(BaseModel):
 class PaperListResponse(BaseModel):
     """Paginated list of papers."""
     papers: list[PaperResponse]
+    completed_count: Optional[int] = None
     total: int
     page: int
     page_size: int
