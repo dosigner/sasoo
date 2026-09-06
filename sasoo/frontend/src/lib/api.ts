@@ -63,6 +63,7 @@ export interface PaperUpdateData {
 }
 
 interface PaginatedResponse {
+  completed_count?: number;
   papers: Paper[];
   total: number;
   page: number;

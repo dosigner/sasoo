@@ -98,9 +98,6 @@ function activityLabel(paper: Paper): string {
   return date ? formatDate(date) : '-';
 }
 
-function statusMetaCount(papers: Paper[], status: PaperStatus): number {
-  return papers.filter((paper) => paper.status === status).length;
-}
 
 // 분석 시 실제 적용된 설명 수준 라벨. 값이 없으면(구 데이터·미분석) '미지정'.
 function explanationLevelLabel(paper: Paper): string {
@@ -275,6 +272,7 @@ export default function Library() {
   const {
     papers,
     total,
+    completedTotal,
     page,
     totalPages,
     loading,
@@ -374,9 +372,11 @@ export default function Library() {
               <span className="archive-inline-status archive-inline-status-muted">
                 {S.library.paperCount(total)}
               </span>
-              <span className="archive-inline-status archive-inline-status-muted">
-                {S.library.collectionReady} {statusMetaCount(papers, 'completed')}
-              </span>
+              {completedTotal !== null && (
+                <span className="archive-inline-status archive-inline-status-muted">
+                  {S.library.collectionReady} {completedTotal}
+                </span>
+              )}
               <span className="archive-inline-status archive-inline-status-muted">
                 {S.library.collectionActive} {activityCount}
               </span>
