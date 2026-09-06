@@ -1302,15 +1302,6 @@ _SYNTHESIS_SCHEMA = {
     ],
 }
 
-_STAGE_SCHEMAS = {
-    "visual": _VISUAL_SCHEMA,
-    "recipe": _RECIPE_SCHEMA,
-    "deep_dive": _DEEP_DIVE_SCHEMA,
-    "visualization": _VIZ_PLAN_SCHEMA,
-    "synthesis": _SYNTHESIS_SCHEMA,
-}
-
-
 def _find_paper_pdf(paper_dir: Path) -> Optional[Path]:
     """실제 업로드된 PDF 파일을 찾는다.
 
