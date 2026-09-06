@@ -145,6 +145,7 @@ jobs:
         shell: pwsh
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          SASOO_ALLOW_UNSIGNED_WIN: "1"
         run: |
           pnpm build:backend
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
