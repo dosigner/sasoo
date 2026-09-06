@@ -42,6 +42,7 @@ from models.schemas import (
     PaperBananaResponse,
     PhaseStatus,
     ReportResponse,
+    SynthesisResponse,
     TableInfo,
     TableListResponse,
     VisualizationItem,
@@ -79,13 +80,17 @@ from services.analysis_execution import (
     _MERMAID_SYNTAX_RULES,
     _config_hash,
     _generate_single_mermaid,
+    _generate_single_paperbanana,
     _get_visual_contract,
     _lookup_phase_result_with_staleness,
     _phase_result_snippet,
+    _run_synthesis,
     _sanitize_mermaid_code,
     _utcnow_iso,
     run_full_analysis,
 )
+
+_SYNTHESIS_CONTEXT_PHASES = ["screening", "citation", "visual", "recipe", "deep_dive"]
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
@@ -723,10 +728,11 @@ async def regenerate_visualization(paper_id: int, viz_id: int):
             status_code=404,
             detail=f"Visualization {viz_id} not found for paper {paper_id}.",
         )
-    if stored_item.get("tool") != "mermaid":
+    tool = stored_item.get("tool", "mermaid")
+    if tool not in ("mermaid", "paperbanana"):
         raise HTTPException(
             status_code=400,
-            detail="Only mermaid visualizations can be regenerated here.",
+            detail=f"Unknown visualization tool: {tool}",
         )
 
     # Rebuild the generation contexts the pipeline used
@@ -752,24 +758,127 @@ async def regenerate_visualization(paper_id: int, viz_id: int):
     ]
 
     provider = await active_provider()
-    code = await _generate_single_mermaid(
-        paper_id, stored_item, visualization_input, previous_results, provider=provider,
-    )
-    if not code:
-        raise HTTPException(status_code=502, detail="Regeneration produced empty Mermaid code.")
+    if tool == "paperbanana":
+        # 개념도는 파이프라인(_run_visualizations)과 같은 생성기로 다시 그린다(스펙 §7).
+        pb_result = await _generate_single_paperbanana(
+            paper_id,
+            stored_item,
+            visualization_input,
+            paper["folder_name"],
+            _phase_result_snippet(phase_rows.get("recipe"), 1800),
+            _phase_result_snippet(phase_rows.get("deep_dive"), 1800),
+            llm_provider=provider,
+        )
+        if not pb_result.get("image_path"):
+            raise HTTPException(
+                status_code=502,
+                detail=pb_result.get("error") or "Regeneration produced no image.",
+            )
+        new_fields = {
+            key: pb_result[key]
+            for key in ("image_url", "image_path", "provider", "duration_s", "cost_usd")
+            if pb_result.get(key) is not None
+        }
+    else:
+        code = await _generate_single_mermaid(
+            paper_id, stored_item, visualization_input, previous_results, provider=provider,
+        )
+        if not code:
+            raise HTTPException(status_code=502, detail="Regeneration produced empty Mermaid code.")
+        new_fields = {"mermaid_code": code}
+    new_fields.update({"status": "completed", "error_message": None})
 
-    updated = await _update_stored_visualization_item(
+    updated = await _update_stored_visualization_item(paper_id, viz_id, new_fields)
+    return VisualizationItem(**(updated or {**stored_item, **new_fields}))
+
+
+def _synthesis_response(paper_id: int, row: dict) -> SynthesisResponse:
+    data = row.get("parsed_result")
+    if not isinstance(data, dict) or "raw_text" in data:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Synthesis result for paper {paper_id} is not readable.",
+        )
+    return SynthesisResponse(
+        **data,
+        paper_id=paper_id,
+        model_used=row.get("model_used"),
+        cost_usd=row.get("cost_usd"),
+        created_at=row.get("created_at"),
+    )
+
+
+@router.get("/{paper_id}/synthesis", response_model=SynthesisResponse)
+async def get_synthesis(paper_id: int):
+    """저장된 최신 종합 결과를 돌려준다(스펙 §5.3). 없으면 404 — 프론트는 그때
+    기존 갤러리를 그리고 "종합 뷰 만들기" 버튼을 보인다(§7)."""
+    row = await get_latest_completed_phase_row(paper_id, "synthesis")
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No synthesis result for paper {paper_id}.",
+        )
+    return _synthesis_response(paper_id, row)
+
+
+@router.post("/{paper_id}/synthesis", response_model=SynthesisResponse)
+async def run_synthesis(paper_id: int):
+    """종합 스테이지만 다시 실행한다. 다이어그램은 건드리지 않는다(스펙 §7).
+
+    컨텍스트는 regenerate_visualization과 같은 방식으로 다시 조립한다 — 이 경로는
+    체인 밖이라 서버측 대화 상태가 없고, 폴백 프롬프트(Phase 1~4 결과 + 문서 요약)로
+    돈다. 캐시는 우회한다: "다시 만들기"가 같은 결과를 돌려주면 버튼이 거짓말이 된다.
+    """
+    paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
+    if paper is None:
+        raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
+
+    visualization_input = ""
+    body_text = ""
+    try:
+        document_context = await run_pipeline_blocking(
+            load_or_build_document_context, get_paper_dir(paper["folder_name"])
+        )
+        visualization_input = str(
+            document_context.get("phase_inputs", {}).get("visualization", "")
+        )
+        body_text = str(document_context.get("full_text", ""))
+    except FileNotFoundError:
+        pass
+
+    phase_rows = await get_latest_completed_phase_rows(
+        paper_id, phases=_SYNTHESIS_CONTEXT_PHASES,
+    )
+    previous_results = [
+        _phase_result_snippet(phase_rows[phase], 3000)
+        for phase in _SYNTHESIS_CONTEXT_PHASES
+        if phase in phase_rows
+    ]
+
+    provider = await active_provider()
+    status = AnalysisStatus(
+        paper_id=paper_id, overall_status="running", phases=[], progress_pct=0.0,
+    )
+    await _run_synthesis(
         paper_id,
-        viz_id,
-        {"mermaid_code": code, "status": "completed", "error_message": None},
+        visualization_input,
+        previous_results,
+        status,
+        # 잘라 넘기면 JSON이 깨져 파라미터 이름 목록이 조용히 비고, 그러면
+        # key_parameters가 전부 버려진다. 실측 최대 정상 recipe 본문이 12,416자다.
+        recipe_result=_phase_result_snippet(phase_rows.get("recipe"), 100_000),
+        body_text=body_text,
+        # 체인 밖이라 PDF 참조가 없다. 본문을 함께 주지 않으면 모델이 Phase 1~4
+        # 요약만 보고 수식 번호와 핵심 수치를 비운다(2026-09-06 Flow Matching 실측).
+        doc_text=body_text,
+        provider=provider,
+        use_cache=False,
     )
-    return VisualizationItem(**(updated or {**stored_item, "mermaid_code": code}))
 
-
-
-
-
-
+    row = await get_latest_completed_phase_row(paper_id, "synthesis")
+    if row is None:
+        raise HTTPException(status_code=502, detail="Synthesis produced no result.")
+    return _synthesis_response(paper_id, row)
 
 
 @router.get("/{paper_id}/report", response_model=ReportResponse)

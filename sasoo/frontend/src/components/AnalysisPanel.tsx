@@ -18,6 +18,7 @@ import {
   type Recipe,
   type MermaidDiagram,
   type VisualizationPlan,
+  type SynthesisResult,
   type PhaseStatusValue,
   type AnalysisPhase,
   type Figure,
@@ -34,7 +35,7 @@ import ExperimentPlanTab from './ExperimentPlanTab';
 import ReadingGuideTab from './ReadingGuideTab';
 import { ContentState } from '@/components/ui';
 import { AppIcon } from '@/components/icons';
-import { VisualizationGallery } from './VisualizationGallery';
+import { SynthesisView } from './synthesis/SynthesisView';
 import ProgressTracker from './ProgressTracker';
 
 // ---------------------------------------------------------------------------
@@ -50,6 +51,9 @@ interface AnalysisPanelProps {
   recipe: Recipe | null;
   mermaid: MermaidDiagram | null;
   visualizations: VisualizationPlan | null;
+  synthesis?: SynthesisResult | null;
+  /** 종합 뷰 만들기와 다시 만들기 뒤 훅 상태를 다시 읽는다. */
+  onRefreshSynthesis?: () => Promise<void>;
   isRunning: boolean;
   paperId?: string;
   paperLevel?: string | null;
@@ -73,6 +77,15 @@ export interface CitationFocus {
   anchor: string;
   /** monotonically increasing token so repeated clicks re-trigger the effect. */
   token: number;
+}
+
+/** 탭 전환 뒤 카드가 그려질 시간을 주고 스크롤한다. 정리 함수를 돌려준다. */
+function scrollToCitationAnchor(anchor: string): () => void {
+  const timer = window.setTimeout(() => {
+    const el = document.querySelector(`[data-citation-anchor="${anchor}"]`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 80);
+  return () => window.clearTimeout(timer);
 }
 
 // ---------------------------------------------------------------------------
@@ -703,6 +716,8 @@ export default function AnalysisPanel({
   recipe,
   mermaid: mermaidDiagram,
   visualizations,
+  synthesis,
+  onRefreshSynthesis,
   isRunning,
   paperId,
   paperLevel,
@@ -715,7 +730,7 @@ export default function AnalysisPanel({
   onCitationClick,
   terminalState,
 }: AnalysisPanelProps) {
-  const [activeTab, setActiveTab] = useState<'summary' | 'guide' | 'figures' | 'tables' | 'recipe'>('summary');
+  const [activeTab, setActiveTab] = useState<'summary' | 'synthesis' | 'guide' | 'figures' | 'tables' | 'recipe'>('summary');
 
   useEffect(() => {
     setActiveTab('summary');
@@ -726,12 +741,14 @@ export default function AnalysisPanel({
   useEffect(() => {
     if (!citationFocus) return;
     setActiveTab(citationFocus.tab);
-    const timer = window.setTimeout(() => {
-      const el = document.querySelector(`[data-citation-anchor="${citationFocus.anchor}"]`);
-      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 80);
-    return () => window.clearTimeout(timer);
+    return scrollToCitationAnchor(citationFocus.anchor);
   }, [citationFocus]);
+
+  // 종합 뷰의 그림 참조 클릭. 채팅 인용 칩과 같은 경로로 그림 탭의 카드로 간다.
+  const openFigureFromSynthesis = useCallback((anchor: string) => {
+    setActiveTab('figures');
+    scrollToCitationAnchor(anchor);
+  }, []);
 
   // Determine phase statuses
   const getPhaseStatus = (phaseName: AnalysisPhase): PhaseStatusValue => {
@@ -815,6 +832,7 @@ export default function AnalysisPanel({
 
   const tabs: Array<{ key: typeof activeTab; label: string; disabled?: boolean }> = [
     { key: 'summary', label: S.workbench.summaryTab },
+    { key: 'synthesis', label: S.synthesis.tabLabel },
     { key: 'guide', label: S.workbench.guideTab },
     { key: 'figures', label: S.workbench.figuresTab },
     { key: 'tables', label: S.workbench.tablesTab },
@@ -929,14 +947,26 @@ export default function AnalysisPanel({
                 expandedMeta={deepDiveSummary.expandedMeta}
                 tone={deepDiveSummary.tone}
                 citations={summaryCitations}
-              >
-                <VisualizationGallery
-                  visualizations={visualizations}
-                  legacyMermaid={mermaidDiagram}
-                  loading={getPhaseStatus('deep_dive') === 'running'}
-                />
-              </PhaseSection>
+              />
             </div>
+          </div>
+        )}
+
+        {activeTab === 'synthesis' && (
+          <div className="space-y-5">
+            <SynthesisView
+              paperId={paperId ? Number(paperId) : null}
+              synthesis={synthesis ?? null}
+              visualizations={visualizations}
+              legacyMermaid={mermaidDiagram}
+              deepDive={(results?.deep_dive as Record<string, unknown> | null) ?? null}
+              figures={figureList}
+              recipe={recipe}
+              analysisRunning={getPhaseStatus('deep_dive') === 'running'}
+              onRefreshSynthesis={onRefreshSynthesis}
+              onOpenFigure={openFigureFromSynthesis}
+              onOpenRecipe={() => setActiveTab('recipe')}
+            />
           </div>
         )}
 

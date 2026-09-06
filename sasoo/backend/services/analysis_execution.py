@@ -709,6 +709,10 @@ def _norm_ref_id(raw: object) -> str:
     return s.strip()
 
 
+
+
+
+
 def _build_top_by_norm(top_cited: list) -> dict:
     """정규화 키 → top_cited 항목. 동일 키 중복 시 첫 항목 우선(원본 병합 루프의 break 의미 보존)."""
     mapping: dict = {}
@@ -972,6 +976,7 @@ _PHASE_TO_ROLE = {
     "recipe": "recipe",
     "deep_dive": "deep_dive",
     "visualization": "viz_planning",
+    "synthesis": "synthesis",
 }
 
 # 폭주 반복이 뚫렸을 때의 손해 상한. 스키마 쪽 조치(마지막 속성을 숫자로)가 1차
@@ -1176,35 +1181,133 @@ def _stateless_digest(screening_result_text: str, citation_result_text: str) -> 
     return "\n\n".join(parts)
 
 
+# 기획 프롬프트가 예전부터 나열하던 category 어휘. 스펙 §5.4가 이걸 enum으로 못박는다
+# — 자유 문자열로 두면 프론트가 구획을 배정할 때 쓸 수 없는 값이 섞인다.
+_DIAGRAM_CATEGORIES = [
+    "experimental_protocol", "algorithm_flow", "signal_flow", "system_architecture",
+    "component_relationships", "timeline", "comparison", "equipment_appearance",
+    "optical_table_layout", "cell_molecule_schematic", "physical_setup",
+    "conceptual_illustration",
+]
+
 # 스펙 §5.4. 개념도 1개(PaperBanana)와 Mermaid 다이어그램을 분리하고, 구획(block)과
 # 종류(diagram_type)를 enum으로 고정한다. 마지막 속성은 숫자다(DEC-014).
 _VIZ_PLAN_SCHEMA = {
     "type": "object",
     "properties": {
-        "visualizations": {
+        "concept_illustration": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "description": {"type": "string"},
+                "category": {"type": "string", "enum": _DIAGRAM_CATEGORIES},
+            },
+            "required": ["title", "description", "category"],
+        },
+        "diagrams": {
             "type": "array",
+            "maxItems": 5,
             "items": {
                 "type": "object",
                 "properties": {
                     "title": {"type": "string"},
-                    "tool": {"type": "string", "enum": ["mermaid", "paperbanana"]},
-                    "diagram_type": {"type": "string"},
+                    "block": {"type": "string", "enum": ["method", "result"]},
+                    "diagram_type": {"type": "string", "enum": ["flowchart", "sequence"]},
                     "description": {"type": "string"},
-                    "category": {"type": "string"},
+                    "category": {"type": "string", "enum": _DIAGRAM_CATEGORIES},
                 },
-                "required": ["title", "tool", "description"],
+                "required": ["title", "block", "diagram_type", "description", "category"],
             },
-        }
+        },
+        "diagram_count": {"type": "integer"},
     },
-    "required": ["visualizations"],
+    "required": ["concept_illustration", "diagrams", "diagram_count"],
 }
 
+# 스펙 §5.3. 요약 문장 2개, 핵심 수치, 수식 체인, 결과 그림 선택, 핵심 파라미터 선택.
+# 모든 객체의 required는 전체 필드다 — 부분 준수는 provider별로 갈린다(DEC-020).
+# 마지막 속성은 숫자로 둔다(DEC-014: 마지막 자유서술 필드가 폭주의 자리였다).
+# 길이는 스키마가 아니라 _SYNTHESIS_INSTRUCTION이 부탁한다 — Gemini는 maxLength를
+# 무시하는 것이 실증됐다(2026-08-29).
+_SYNTHESIS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "problem_sentence": {"type": "string"},
+        "method_sentence": {"type": "string"},
+        "key_metrics": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string"},
+                    "value": {"type": "string"},
+                    "unit": {"type": "string"},
+                    "evidence": {"type": "string"},
+                },
+                "required": ["label", "value", "unit", "evidence"],
+            },
+        },
+        "equations": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "latex": {"type": "string"},
+                    "meaning": {"type": "string"},
+                    "symbols": {
+                        "type": "array",
+                        "maxItems": 4,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "symbol": {"type": "string"},
+                                "meaning": {"type": "string"},
+                            },
+                            "required": ["symbol", "meaning"],
+                        },
+                    },
+                    "paper_number": {"type": "string"},
+                },
+                "required": ["latex", "meaning", "symbols", "paper_number"],
+            },
+        },
+        "result_figures": {
+            "type": "array",
+            "maxItems": 4,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "figure_num": {"type": "string"},
+                    "interpretation": {"type": "string"},
+                },
+                "required": ["figure_num", "interpretation"],
+            },
+        },
+        "key_parameters": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}},
+                "required": ["name"],
+            },
+        },
+        "equation_count": {"type": "integer"},
+    },
+    "required": [
+        "problem_sentence", "method_sentence", "key_metrics", "equations",
+        "result_figures", "key_parameters", "equation_count",
+    ],
+}
 
 _STAGE_SCHEMAS = {
     "visual": _VISUAL_SCHEMA,
     "recipe": _RECIPE_SCHEMA,
     "deep_dive": _DEEP_DIVE_SCHEMA,
     "visualization": _VIZ_PLAN_SCHEMA,
+    "synthesis": _SYNTHESIS_SCHEMA,
 }
 
 
@@ -2049,7 +2152,7 @@ async def _run_deep_dive(
 # ---------------------------------------------------------------------------
 
 _MERMAID_SYNTAX_RULES = """CRITICAL RULES (Mermaid v10.x compatibility):
-1. Start with the diagram type keyword (flowchart TD, flowchart LR, sequenceDiagram, mindmap, etc.).
+1. Start with the diagram type keyword (flowchart TD, flowchart LR, or sequenceDiagram — those are the only supported types).
 2. NEVER use --- frontmatter blocks, accTitle/accDescr, or %%{init: ...}%% directives.
 3. Use simple alphanumeric node IDs (A, B, step1). NEVER use Korean in node IDs.
 4. ALWAYS wrap labels containing special characters in double quotes: A["레이저 소스 (1064nm)"].
@@ -2098,10 +2201,6 @@ B. sequenceDiagram:
    - Vary arrows: ->> 요청/명령, -->> 응답(점선), -x 실패, -) 비동기
    - Use Note over/left of/right of for annotations.
    - classDef/linkStyle are NOT supported here — do not use them.
-
-C. mindmap / timeline:
-   - classDef, style, linkStyle are NOT supported — never emit them.
-   - For mindmap, vary node shapes instead: root((중심)), (둥근), [사각], ((원)).
 
 EXAMPLE (flowchart pattern to imitate — structure, shapes, arrows, classes):
 flowchart TD
@@ -2231,6 +2330,53 @@ def _sanitize_mermaid_code(raw: str) -> str:
     return _filter_out_of_range_linkstyles(code.strip()).strip()
 
 
+# 구획별 Mermaid 상한(스펙 §5.4). 개념도 1 + method 3 + result 2 = 총 6.
+_VIZ_BLOCK_LIMITS = {"method": 3, "result": 2}
+
+
+def _normalize_viz_plan(plan_data: dict) -> list[dict]:
+    """기획 스키마(§5.4)를 생성 파이프라인이 쓰는 평평한 항목 리스트로 편다.
+
+    개념도가 항상 맨 앞(tool=paperbanana, block=concept)이고 그 뒤에 Mermaid가 온다.
+    "result 구획은 flowchart만"과 구획 상한은 프롬프트 부탁이 아니라 여기서 강제한다
+    — 모델이 넘겨도 초과분 생성 비용이 나가지 않게.
+
+    저장 형식은 기존과 같은 `{"visualizations": [...]}`다(get_visualizations 라우트와
+    프론트가 그대로 읽는다). 항목에 block 필드만 새로 붙는다.
+    """
+    items: list[dict] = []
+    concept = plan_data.get("concept_illustration")
+    if isinstance(concept, dict) and str(concept.get("title") or "").strip():
+        items.append({
+            "title": concept.get("title", ""),
+            "tool": "paperbanana",
+            "block": "concept",
+            "description": concept.get("description", ""),
+            "category": concept.get("category", "conceptual_illustration"),
+        })
+
+    counts = {"method": 0, "result": 0}
+    for diagram in plan_data.get("diagrams") or []:
+        if not isinstance(diagram, dict):
+            continue
+        block = diagram.get("block") if diagram.get("block") in _VIZ_BLOCK_LIMITS else "method"
+        diagram_type = diagram.get("diagram_type") or "flowchart"
+        if block == "result" and diagram_type != "flowchart":
+            continue
+        if counts[block] >= _VIZ_BLOCK_LIMITS[block]:
+            continue
+        counts[block] += 1
+        items.append({
+            "title": diagram.get("title", ""),
+            "tool": "mermaid",
+            "block": block,
+            "diagram_type": diagram_type,
+            "description": diagram.get("description", ""),
+            "category": diagram.get("category", ""),
+        })
+    return items
+
+
 async def _plan_visualizations(
     paper_id: int,
     visualization_input: str,
@@ -2244,8 +2390,9 @@ async def _plan_visualizations(
     provider: str = "gemini",
 ) -> list[dict]:
     """
-    Decide which visualizations (6-10) best help understand the paper's
-    methodology. Final stage of the stateful chain. Returns a plan as a list of dicts.
+    Decide which visualizations best help understand the paper's methodology.
+    Final stage of the stateful chain. Returns a plan as a list of dicts
+    (개념도 1개 + Mermaid 최대 5개, 스펙 §5.4).
     """
     phase_status = PhaseStatus(
         phase=AnalysisPhase.DEEP_DIVE,  # piggyback on deep_dive phase for status
@@ -2257,23 +2404,27 @@ async def _plan_visualizations(
 
     prev_context = "\n---\n".join(previous_results[:4])
 
-    instruction = """너는 연구 논문 분석 시스템의 시각화 기획자야.
+    instruction = """너는 연구 논문 분석 시스템의 시각화 기획자야. 종합 뷰의 두 구획
+(방법 흐름, 결과)에 들어갈 시각화를 기획해.
 
-반드시 6~10개의 시각화 항목을 반환해. 가장 임팩트 있는 것을 선택해.
-논문의 핵심 개념과 작동 원리를 시각적으로 설명하는 일러스트(paperbanana 개념도)를
-충분히 포함해 — 방법론 다이어그램만으로 채우지 마.
+concept_illustration(개념도, PaperBanana 일러스트) 1개를 반드시 낸다:
+논문의 물리적 설정이나 핵심 개념을 그림으로 보여주는 도식이다. 실험 장비가 없는
+이론 논문이면 문제 설정(입력·가정·목표) 도식으로 낸다. 비워 두지 마.
 
-각 시각화를 두 가지 도구 중 하나로 분류해:
-- "mermaid": 구조적/논리적 다이어그램 (플로우차트, 시퀀스, 마인드맵)
-- "paperbanana": 물리적/시각적 일러스트 (장비 셋업, 광학 레이아웃, 세포/분자 도식, 개념도)
+diagrams(Mermaid 다이어그램)는 최대 5개다. 각 항목의 block으로 구획을 정한다:
+- block="method"(최대 3): 절차·처리 순서는 diagram_type="flowchart",
+  신호나 시간 순서로 주고받는 상호작용은 diagram_type="sequence".
+- block="result"(최대 2): 조건·기법·성능의 비교 구조. diagram_type은 "flowchart"만
+  쓴다(sequence를 내면 버려진다).
+마인드맵·타임라인은 만들지 않는다.
 
-각 항목 필드: title(짧은 제목, 한국어), tool(mermaid|paperbanana),
-diagram_type(flowchart|sequence|mindmap),
-description(왜 필요한지·무엇을 보여주는지 2-3문장, 한국어),
-category(experimental_protocol|algorithm_flow|signal_flow|system_architecture|component_relationships|timeline|comparison|equipment_appearance|optical_table_layout|cell_molecule_schematic|physical_setup|conceptual_illustration).
+각 diagrams 항목 필드: title(짧은 제목, 한국어), block(method|result),
+diagram_type(flowchart|sequence), description(왜 필요한지·무엇을 보여주는지
+2-3문장, 한국어), category(위 enum 중 하나).
+diagram_count에는 diagrams의 개수를 넣는다.
 
-실험 방법을 최대한 이해할 수 있는 시각화를 우선시해.
-고려할 것: 프로세스 흐름, 파라미터 관계, 장비 구성, 신호 경로, 비교표."""
+제목·설명·다이어그램 레이블에 이모지를 쓰지 마.
+실험 방법을 최대한 이해할 수 있는 시각화를 우선시해."""
 
     prompt_chain = f"{instruction}\n\n{_doc_reference_phrase(provider)}와 이전 분석 단계 결과를 바탕으로 시각화 계획을 세워줘."
     prompt_fallback = (
@@ -2323,20 +2474,17 @@ category(experimental_protocol|algorithm_flow|signal_flow|system_architecture|co
         raw = "\n".join(lines).strip()
 
     try:
-        plan_data = json.loads(raw)
-        items = plan_data.get("visualizations", [])
-    except (json.JSONDecodeError, TypeError):
+        items = _normalize_viz_plan(json.loads(raw))
+    except (json.JSONDecodeError, TypeError, AttributeError):
         # Fallback: create a single default flowchart
         items = [{
             "title": "실험 프로세스 흐름도",
             "tool": "mermaid",
+            "block": "method",
             "diagram_type": "flowchart",
             "description": "논문의 실험 방법론 전체 흐름을 보여주는 플로우차트",
             "category": "experimental_protocol",
         }]
-
-    # Cap at 10
-    items = items[:10]
 
     # Store the plan in DB
     result_text = json.dumps({"visualizations": items}, ensure_ascii=False)
@@ -2363,7 +2511,7 @@ category(experimental_protocol|algorithm_flow|signal_flow|system_architecture|co
 # planner prompt no longer listing them — coerce anything outside this set to
 # flowchart so generation stays on a structurally supported type.
 # mindmap은 스펙 §5.5로 빠졌다(구획 배정에 쓸 수 없고 스타일 규칙도 안 받는다).
-_MERMAID_RENDERABLE_TYPES = {"flowchart", "sequence", "mindmap"}
+_MERMAID_RENDERABLE_TYPES = {"flowchart", "sequence"}
 
 
 async def _generate_single_mermaid(
@@ -2393,6 +2541,7 @@ async def _generate_single_mermaid(
 {_MERMAID_STYLE_RULES}
 
 추가 규칙: 모든 노드 레이블과 엣지 레이블을 반드시 한국어로 작성해.
+추가 규칙: 노드·엣지·subgraph 레이블에 이모지를 쓰지 마.
 
 분석 데이터와 논문 텍스트를 소스로 사용해:
 
@@ -2516,6 +2665,266 @@ async def _store_visualization_progress(
         )
 
 
+# ---------------------------------------------------------------------------
+# Phase 5: Synthesis (종합 스테이지, 스펙 §5.1~§5.3)
+# ---------------------------------------------------------------------------
+
+_SYNTHESIS_INSTRUCTION = """너는 논문 한 편을 한 화면으로 종합하는 정리자야. 아래 필드를
+채워. 없는 내용을 지어내지 말고, 논문에서 확인한 것만 써.
+
+- problem_sentence: 이 논문이 푸는 문제 한 문장(80자 안팎, 한국어).
+- method_sentence: 그 문제를 푸는 방법 한 문장(80자 안팎, 한국어).
+- key_metrics: 이 논문을 대표하는 핵심 수치 최대 3개.
+  label은 무엇의 값인지(한국어), value는 숫자 그대로, unit은 단위(무차원이면 "-",
+  비워 두지 마), evidence는 그 수치가 적힌 논문 원문 문장 한 개를 그대로 인용해.
+  인용에 그 숫자가 실제로 들어 있어야 한다 — 없으면 그 항목은 버려진다.
+- equations: 논문의 핵심 수식을 유도 순서로 2~5개. 논문 번호 순서가 아니라
+  "무엇에서 무엇이 나오는지" 순서다.
+  latex는 KaTeX가 렌더할 수 있는 LaTeX 본문만(달러 기호나 \\begin{equation} 없이),
+  meaning은 그 수식이 무슨 뜻인지 한 문장(60자 안팎, 한국어),
+  symbols는 그 수식에 나오는 기호와 뜻 최대 4쌍,
+  paper_number는 논문에 표기된 수식 번호("3" 같은 문자열)이고 번호가 없으면 빈 문자열.
+- result_figures: 결과를 가장 잘 보여주는 그림 2~4개. figure_num은 아래 제공한 그림
+  목록에 있는 값을 그대로 써(목록에 없는 번호는 버려진다). interpretation은 그 그림에서
+  무엇을 읽어야 하는지 한 문장(60자 안팎, 한국어).
+- key_parameters: 아래 제공한 레시피 파라미터 이름 목록에서, 재현 결과가 가장 민감하게
+  달라지는 것 최대 5개. name은 목록의 이름을 글자 그대로 쓴다(목록에 없으면 버려진다).
+- equation_count: equations의 개수.
+
+이모지를 쓰지 마."""
+
+
+# 이모지 제거용. 화살표(U+2190~21FF)와 수학 연산자(U+2200~22FF)는 일부러 제외한다 —
+# 수식 뜻과 단위 표기에 정상적으로 쓰이는 글자다.
+_EMOJI_RE = re.compile("[\U0001F000-\U0001FAFF☀-➿⬀-⯿️⃣]")
+
+
+def _strip_emoji(value):
+    """문자열(과 그 안에 중첩된 리스트·딕트)에서 이모지를 지운다."""
+    if isinstance(value, str):
+        return _EMOJI_RE.sub("", value).strip()
+    if isinstance(value, list):
+        return [_strip_emoji(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _strip_emoji(v) for k, v in value.items()}
+    return value
+
+
+def _norm_compact(value) -> str:
+    """공백을 지우고 소문자화한다(이름 대조용)."""
+    return re.sub(r"\s+", "", str(value or "")).casefold()
+
+
+def _norm_figure_num(value) -> str:
+    """'Fig. 3', 'Figure 3', ' 3 '을 모두 '3'으로 맞춘다.
+
+    LLM은 그림 목록에 "3"으로 준 값을 "Fig. 3"으로 돌려주는 일이 잦다. 접두사 차이만으로
+    유효한 참조를 버리면 결과 구획이 통째로 비어버린다.
+    """
+    return re.sub(r"^(figure|fig\.?)", "", _norm_compact(value))
+
+
+def _validate_synthesis(
+    data: dict, doc_text: str, figure_nums: list[str], param_names: list[str],
+) -> tuple[dict, dict]:
+    """종합 결과를 검증해 (정제된 dict, 버린 개수)를 돌려준다. 순수 함수.
+
+    - key_metrics: unit이 비었거나, value의 수치가 evidence 인용에 없거나, evidence의
+      수치가 논문 본문에 하나도 없으면 버린다(값 가드 #48의 수치 동치 검사 재사용 —
+      리터럴 일치가 아니라 Decimal 동치라 "1,550"과 "1550"이 같은 값으로 잡힌다).
+    - result_figures / key_parameters: 제공한 목록에 없는 참조를 버린다.
+    - 배열 상한을 자르고 모든 문자열에서 이모지를 지운다.
+
+    버린 개수는 상한 자르기를 세지 않는다 — 게이트 지표(스펙 §8 "핵심 수치 버림 비율")가
+    품질 신호여야 하고, 상한 초과는 품질 실패가 아니라 설계된 절단이다.
+    """
+    dropped = {"key_metrics": 0, "result_figures": 0, "key_parameters": 0}
+    out = _strip_emoji(dict(data))
+
+    doc_numbers = set()
+    if doc_text:
+        doc_numbers = {number for number, _ in _numeric_tokens(normalize_text(doc_text))}
+    else:
+        logger.info("synthesis.validate 본문 텍스트가 없어 evidence 수치의 본문 대조를 건너뛴다")
+
+    metrics = []
+    for metric in out.get("key_metrics") or []:
+        if not isinstance(metric, dict) or not str(metric.get("unit") or "").strip():
+            dropped["key_metrics"] += 1
+            continue
+        evidence_numbers = _numeric_tokens(normalize_text(metric.get("evidence") or ""))
+        evidence_values = [number for number, _ in evidence_numbers]
+        value_numbers = _numeric_tokens(normalize_text(metric.get("value") or ""))
+        if any(number not in evidence_values for number, _ in value_numbers):
+            dropped["key_metrics"] += 1
+            continue
+        if doc_numbers and evidence_values and not any(n in doc_numbers for n in evidence_values):
+            dropped["key_metrics"] += 1
+            continue
+        metrics.append(metric)
+    out["key_metrics"] = metrics[:3]
+
+    known_figures = {_norm_figure_num(n) for n in figure_nums}
+    figures = []
+    for ref in out.get("result_figures") or []:
+        if not isinstance(ref, dict) or _norm_figure_num(ref.get("figure_num")) not in known_figures:
+            dropped["result_figures"] += 1
+            continue
+        figures.append(ref)
+    out["result_figures"] = figures[:4]
+
+    known_params = {_norm_compact(n) for n in param_names}
+    params = []
+    for param in out.get("key_parameters") or []:
+        if not isinstance(param, dict) or _norm_compact(param.get("name")) not in known_params:
+            dropped["key_parameters"] += 1
+            continue
+        params.append(param)
+    out["key_parameters"] = params[:5]
+
+    equations = [eq for eq in (out.get("equations") or []) if isinstance(eq, dict)][:5]
+    for equation in equations:
+        equation["symbols"] = [s for s in (equation.get("symbols") or []) if isinstance(s, dict)][:4]
+    out["equations"] = equations
+
+    logger.info(
+        "synthesis.dropped key_metrics=%d result_figures=%d key_parameters=%d",
+        dropped["key_metrics"], dropped["result_figures"], dropped["key_parameters"],
+    )
+    return out, dropped
+
+
+def _recipe_param_names(recipe_result: str) -> list[str]:
+    """레시피 결과 JSON에서 parameters[].name 목록만 뽑는다(파싱 실패는 빈 목록)."""
+    try:
+        parsed = json.loads(_clean_llm_json(recipe_result or ""))
+    except (json.JSONDecodeError, TypeError):
+        return []
+    if not isinstance(parsed, dict):
+        return []
+    return [
+        str(p.get("name") or "")
+        for p in parsed.get("parameters") or []
+        if isinstance(p, dict) and p.get("name")
+    ]
+
+
+async def _run_synthesis(
+    paper_id: int,
+    visualization_input: str,
+    previous_results: list[str],
+    status: AnalysisStatus,
+    *,
+    recipe_result: str = "",
+    body_text: str = "",
+    system_instruction: str = "",
+    previous_interaction_id: Optional[str] = None,
+    pdf_uri: Optional[str] = None,
+    doc_text: str = "",
+    provider: str = "gemini",
+    use_cache: bool = True,
+) -> Optional[dict]:
+    """Phase 1~4 결과와 그림·레시피 목록을 묶어 종합 결과를 만들고 저장한다.
+
+    _plan_visualizations와 같은 뼈대다(체인 스테이지 + _phase_cache_key + phase 캐시).
+    body_text는 evidence의 수치를 대조할 논문 본문이다 — doc_text와 별개 인자인 이유는,
+    Gemini 체인에서 doc_text가 항상 빈 문자열이라(PDF 파트로 대신한다) 그걸 검증에 쓰면
+    주력 경로에서 검증이 조용히 무력화되기 때문이다.
+
+    실패하면 None을 돌려준다. 다이어그램 생성을 막지 않는 것이 이 스테이지의 계약이다.
+    """
+    choice = _stage_choice("synthesis", provider)
+
+    figure_rows = await fetch_all(
+        "SELECT figure_num, caption FROM figures WHERE paper_id = ? "
+        "ORDER BY COALESCE(page_number, 999999), figure_num",
+        (paper_id,),
+    )
+    figure_nums = [str(r["figure_num"] or "") for r in figure_rows if r["figure_num"]]
+    figure_list = "\n".join(
+        f"- {r['figure_num']}: {str(r['caption'] or '')[:200]}"
+        for r in figure_rows if r["figure_num"]
+    ) or "- (추출된 그림 없음)"
+    param_names = _recipe_param_names(recipe_result)
+    param_list = ", ".join(param_names) or "(추출된 파라미터 없음)"
+
+    instruction = (
+        f"{_SYNTHESIS_INSTRUCTION}\n\n"
+        f"--- 그림 목록(figure_num: 캡션) ---\n{figure_list}\n\n"
+        f"--- 레시피 파라미터 이름 ---\n{param_list}"
+    )
+    prev_context = "\n---\n".join(previous_results[:4])
+    prompt_chain = (
+        f"{instruction}\n\n{_doc_reference_phrase(provider)}와 이전 분석 단계 결과를 "
+        "바탕으로 종합해줘."
+    )
+    prompt_fallback = (
+        f"{instruction}\n\n--- 분석 결과 (Phase 1-4) ---\n{prev_context[:9000]}\n\n"
+        f"--- 관련 텍스트 요약 ---\n{visualization_input}"
+    )
+    cache_key = _phase_cache_key(
+        model=choice.model,
+        thinking=choice.effort or "",
+        system_instruction=system_instruction,
+        prompt=prompt_fallback,
+    )
+
+    if use_cache:
+        cached = await _get_cached_phase_result(
+            paper_id, "synthesis", cache_key,
+            provider=provider, model=choice.model, effort=choice.effort,
+        )
+        if cached is not None:
+            try:
+                return json.loads(cached["text"])
+            except (json.JSONDecodeError, TypeError):
+                return None
+
+    result = await _run_chain_stage(
+        phase="synthesis",
+        prompt_chain=prompt_chain,
+        prompt_fallback=prompt_fallback,
+        system_instruction=system_instruction,
+        previous_interaction_id=previous_interaction_id,
+        pdf_uri=pdf_uri,
+        doc_text=doc_text,
+        response_schema=_SYNTHESIS_SCHEMA,
+        restart_context=_build_chain_restart_context(previous_results),
+        provider=provider,
+    )
+    cost = _result_cost(result)
+    status.total_cost_usd += cost
+    status.total_tokens_in += result["tokens_in"]
+    status.total_tokens_out += result["tokens_out"]
+
+    try:
+        parsed = json.loads(_clean_llm_json(result["text"]))
+        if not isinstance(parsed, dict):
+            raise TypeError("synthesis 결과가 dict가 아님")
+    except (json.JSONDecodeError, TypeError) as err:
+        logger.warning("synthesis parse failed for paper %d: %s", paper_id, err)
+        return None
+
+    validated, dropped = _validate_synthesis(parsed, body_text, figure_nums, param_names)
+    validated["dropped"] = dropped
+
+    await _insert_analysis_result(
+        paper_id,
+        "synthesis",
+        json.dumps(validated, ensure_ascii=False),
+        result["model"],
+        result["tokens_in"],
+        result["tokens_out"],
+        cost,
+        cache_key,
+        interaction_id=result.get("interaction_id"),
+        provider=provider,
+        model=choice.model,
+        effort=choice.effort,
+    )
+    return validated
+
+
 async def _run_visualizations(
     paper_id: int,
     visualization_input: str,
@@ -2525,6 +2934,7 @@ async def _run_visualizations(
     deep_dive_result: str,
     status: AnalysisStatus,
     *,
+    body_text: str = "",
     system_instruction: str = "",
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
@@ -2533,10 +2943,31 @@ async def _run_visualizations(
 ) -> list[dict]:
     """
     Full visualization pipeline:
-    1. Gemini Pro 3 plans up to 10 visualizations
+    0. 종합 스테이지(_run_synthesis)를 먼저 돌려 저장한다
+    1. 개념도 1개 + Mermaid 최대 5개를 기획한다
     2. Generate each (Mermaid or PaperBanana) in parallel
     3. Store results in DB
     """
+    # 0. 종합 먼저(스펙 §7): 종합이 도착하면 프론트가 구획 5개 뼈대를 즉시 그리고
+    #    다이어그램 자리는 스켈레톤으로 채운다. 다이어그램 생성은 수 분이 걸린다.
+    #    실패는 삼킨다 — 종합이 없어도 다이어그램은 그대로 나와야 한다.
+    try:
+        await _run_synthesis(
+            paper_id,
+            visualization_input,
+            previous_results,
+            status,
+            recipe_result=recipe_result,
+            body_text=body_text,
+            system_instruction=system_instruction,
+            previous_interaction_id=previous_interaction_id,
+            pdf_uri=pdf_uri,
+            doc_text=doc_text,
+            provider=provider,
+        )
+    except Exception as synthesis_err:
+        logger.warning("synthesis stage failed for paper %d: %s", paper_id, synthesis_err)
+
     _image_settings = await _get_all_settings()
     visualization_cache_input = _visualization_cache_input(
         visualization_input=visualization_input,
@@ -2581,6 +3012,9 @@ async def _run_visualizations(
             "id": idx + 1,
             "title": item.get("title", f"Visualization {idx + 1}"),
             "tool": tool,
+            # 종합 뷰가 이 값으로 구획을 배정한다(스펙 §2). 기존 논문의 저장 행에는
+            # 없으므로 프론트가 category로 배정하는 폴백을 따로 갖는다.
+            "block": item.get("block", ""),
             "diagram_type": item.get("diagram_type", "flowchart"),
             "description": item.get("description", ""),
             "category": item.get("category", ""),
@@ -2992,6 +3426,7 @@ async def run_full_analysis(paper_id: int) -> None:
                     r3.get("text", ""),
                     r4.get("text", ""),
                     status,
+                    body_text=full_text,
                     system_instruction=viz_system_instruction,
                     previous_interaction_id=chain_prev_id,
                     pdf_uri=pdf_uri,

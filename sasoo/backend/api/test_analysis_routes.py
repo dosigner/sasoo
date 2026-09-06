@@ -2106,9 +2106,68 @@ class MermaidRepairAndRegenerateTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("플로우", captured["prompt"])
         update_mock.assert_awaited_once()
 
-    async def test_regenerate_rejects_non_mermaid_item(self):
+    async def test_regenerate_paperbanana_uses_pipeline_generator_and_persists(self):
+        """개념도 실패 자리의 "다시 생성"(스펙 §7)은 파이프라인과 같은 생성기로 돈다."""
         paper = {"id": 7, "title": "Paper", "folder_name": "folder"}
-        items = [{"id": 1, "tool": "paperbanana", "title": "img"}]
+        items = [{"id": 1, "tool": "paperbanana", "title": "개념도", "status": "error",
+                  "error_message": "rate limit"}]
+        generate = AsyncMock(return_value={
+            "image_path": "/lib/folder/paperbanana/concept.png",
+            "image_url": "/static/library/folder/paperbanana/concept.png",
+            "provider": "openai", "duration_s": 3.0, "cost_usd": 0.04,
+        })
+        update_mock = AsyncMock()
+        with (
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)),
+            patch("api.analysis_routes.get_paper_dir", return_value="/tmp/paper"),
+            patch("api.analysis_routes.load_or_build_document_context", return_value={"phase_inputs": {"visualization": "VIZ-CONTEXT"}}),
+            patch("api.analysis_routes.get_latest_completed_phase_row", new=AsyncMock(return_value=self._viz_row(items))),
+            patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value={
+                "recipe": _row("recipe", '{"title":"r"}'),
+                "deep_dive": _row("deep_dive", '{"as_is":"a"}'),
+            })),
+            patch("api.analysis_routes.execute_update", new=update_mock),
+            patch("api.analysis_routes._generate_single_paperbanana", new=generate),
+        ):
+            response = await analysis_routes.regenerate_visualization(7, 1)
+
+        self.assertEqual(response.image_url, "/static/library/folder/paperbanana/concept.png")
+        self.assertEqual(response.status, "completed")
+        self.assertIsNone(response.error_message)
+        args, kwargs = generate.await_args
+        self.assertEqual(args[1]["title"], "개념도")
+        self.assertEqual(args[2], "VIZ-CONTEXT")
+        self.assertEqual(args[3], "folder")
+        self.assertEqual((args[4], args[5]), ('{"title":"r"}', '{"as_is":"a"}'))
+        self.assertEqual(kwargs["llm_provider"], "gemini")
+        update_mock.assert_awaited_once()
+        saved = json.loads(update_mock.call_args.args[1][0])
+        self.assertEqual(saved["items"][0]["image_path"], "/lib/folder/paperbanana/concept.png")
+        self.assertEqual(saved["items"][0]["status"], "completed")
+
+    async def test_regenerate_paperbanana_failure_is_502_and_not_persisted(self):
+        paper = {"id": 7, "title": "Paper", "folder_name": "folder"}
+        items = [{"id": 1, "tool": "paperbanana", "title": "개념도"}]
+        update_mock = AsyncMock()
+        with (
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)),
+            patch("api.analysis_routes.get_paper_dir", return_value="/tmp/paper"),
+            patch("api.analysis_routes.load_or_build_document_context", return_value={"phase_inputs": {}}),
+            patch("api.analysis_routes.get_latest_completed_phase_row", new=AsyncMock(return_value=self._viz_row(items))),
+            patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value={})),
+            patch("api.analysis_routes.execute_update", new=update_mock),
+            patch("api.analysis_routes._generate_single_paperbanana",
+                  new=AsyncMock(return_value={"error": "no provider"})),
+        ):
+            with self.assertRaises(Exception) as ctx:
+                await analysis_routes.regenerate_visualization(7, 1)
+        self.assertEqual(getattr(ctx.exception, "status_code", None), 502)
+        self.assertEqual(ctx.exception.detail, "no provider")
+        update_mock.assert_not_awaited()
+
+    async def test_regenerate_rejects_unknown_tool(self):
+        paper = {"id": 7, "title": "Paper", "folder_name": "folder"}
+        items = [{"id": 1, "tool": "svg", "title": "img"}]
 
         with (
             patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)),
@@ -3532,6 +3591,89 @@ class GetRecipeEvidenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response["recipe"], row["parsed_result"])
 
 
+class SynthesisRouteTests(unittest.IsolatedAsyncioTestCase):
+    """종합 스테이지 라우트(스펙 §5.3, §7).
+
+    POST는 종합만 다시 쓴다 — 다이어그램(visualization 행)은 손대지 않는 것이 계약이다.
+    """
+
+    PAYLOAD = {
+        "problem_sentence": "문제 한 문장",
+        "method_sentence": "방법 한 문장",
+        "key_metrics": [{"label": "손실", "value": "0.35", "unit": "dB",
+                         "evidence": "loss was 0.35 dB"}],
+        "equations": [{"latex": "E=mc^2", "meaning": "뜻",
+                       "symbols": [{"symbol": "E", "meaning": "에너지"}],
+                       "paper_number": "3"}],
+        "result_figures": [{"figure_num": "1", "interpretation": "해석"}],
+        "key_parameters": [{"name": "펌프 출력"}],
+        "equation_count": 1,
+        "dropped": {"key_metrics": 0, "result_figures": 0, "key_parameters": 0},
+    }
+
+    def _synthesis_row(self):
+        return _row(
+            "synthesis",
+            json.dumps(self.PAYLOAD, ensure_ascii=False),
+            parsed_result=dict(self.PAYLOAD),
+            model_used="gemini-flash",
+        )
+
+    async def test_get_returns_404_without_stored_row(self):
+        with patch("api.analysis_routes.get_latest_completed_phase_row",
+                   new=AsyncMock(return_value=None)):
+            with self.assertRaises(Exception) as ctx:
+                await analysis_routes.get_synthesis(7)
+        self.assertEqual(getattr(ctx.exception, "status_code", None), 404)
+
+    async def test_get_returns_stored_synthesis(self):
+        with patch("api.analysis_routes.get_latest_completed_phase_row",
+                   new=AsyncMock(return_value=self._synthesis_row())):
+            response = await analysis_routes.get_synthesis(7)
+
+        self.assertEqual(response.paper_id, 7)
+        self.assertEqual(response.problem_sentence, "문제 한 문장")
+        self.assertEqual(response.equations[0].symbols[0].symbol, "E")
+        self.assertEqual(response.equation_count, 1)
+        self.assertEqual(response.model_used, "gemini-flash")
+        # 다시 만들기 모달이 "지난 실행 $x.xxxx"로 보이는 값
+        self.assertEqual(response.cost_usd, 0.3)
+
+    async def test_post_writes_only_a_synthesis_row(self):
+        paper = {"id": 7, "title": "Paper", "folder_name": "folder"}
+
+        async def _fake_call(contents, **kwargs):
+            return {"text": json.dumps(self.PAYLOAD, ensure_ascii=False),
+                    "model": "gemini", "tokens_in": 10, "tokens_out": 20}
+
+        insert = AsyncMock(return_value=1)
+        update = AsyncMock()
+        with (
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)),
+            patch("api.analysis_routes.active_provider", new=AsyncMock(return_value="gemini")),
+            patch("api.analysis_routes.get_paper_dir", return_value="/tmp/paper"),
+            patch("api.analysis_routes.load_or_build_document_context",
+                  return_value={"phase_inputs": {"visualization": "VIZ"},
+                                "full_text": "loss was 0.35 dB"}),
+            patch("api.analysis_routes.get_latest_completed_phase_rows",
+                  new=AsyncMock(return_value={
+                      "recipe": _row("recipe", '{"parameters":[{"name":"펌프 출력"}]}'),
+                  })),
+            patch("api.analysis_routes.get_latest_completed_phase_row",
+                  new=AsyncMock(return_value=self._synthesis_row())),
+            patch("api.analysis_routes.execute_update", new=update),
+            patch("services.analysis_execution.call_interaction", new=_fake_call),
+            patch("services.analysis_execution.fetch_all",
+                  new=AsyncMock(return_value=[{"figure_num": "1", "caption": "첫 그림"}])),
+            patch("services.analysis_execution.execute_insert", new=insert),
+            patch("services.analysis_execution.execute_update", new=update),
+        ):
+            response = await analysis_routes.run_synthesis(7)
+
+        self.assertEqual(response.problem_sentence, "문제 한 문장")
+        # 새로 쓴 행은 synthesis 하나뿐이고, visualization 행은 갱신되지 않았다.
+        self.assertEqual([call.args[1][1] for call in insert.await_args_list], ["synthesis"])
+        update.assert_not_awaited()
 
 
 if __name__ == "__main__":

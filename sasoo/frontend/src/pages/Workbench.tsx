@@ -78,6 +78,8 @@ export default function Workbench() {
     recipe,
     mermaid,
     visualizations,
+    synthesis,
+    refreshSynthesis,
     isRunning,
     error: analysisError,
     startAnalysis,
@@ -448,6 +450,8 @@ export default function Workbench() {
                 recipe={recipe}
                 mermaid={mermaid}
                 visualizations={visualizations}
+                synthesis={synthesis}
+                onRefreshSynthesis={refreshSynthesis}
                 isRunning={isRunning}
                 paperId={paperId}
                 paperLevel={paper.explanation_level}

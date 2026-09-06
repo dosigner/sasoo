@@ -8,6 +8,7 @@ import {
   type Recipe,
   type MermaidDiagram,
   type VisualizationPlan,
+  type SynthesisResult,
   type PhaseInfo,
   runAnalysis as apiRunAnalysis,
   getAnalysisStatus,
@@ -17,6 +18,7 @@ import {
   getRecipe,
   getMermaid,
   getVisualizations,
+  getSynthesis,
   ApiError,
 } from '@/lib/api';
 
@@ -39,6 +41,8 @@ interface UseAnalysisReturn {
   mermaid: MermaidDiagram | null;
   /** Visualization plan: up to 5 items, Mermaid + PaperBanana mix */
   visualizations: VisualizationPlan | null;
+  /** Phase 5 종합 뷰 결과 (available after synthesis stage, alongside visualizations) */
+  synthesis: SynthesisResult | null;
   /** Whether the analysis is currently running */
   isRunning: boolean;
   /** Whether we are polling for status */
@@ -49,6 +53,8 @@ interface UseAnalysisReturn {
   startAnalysis: () => Promise<boolean>;
   /** Manually refresh status & results */
   refresh: () => Promise<void>;
+  /** Re-fetch synthesis only (e.g. after runSynthesis regenerates it) */
+  refreshSynthesis: () => Promise<void>;
   /** Reset state (e.g., when navigating away) */
   reset: () => void;
 }
@@ -76,6 +82,7 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [mermaid, setMermaid] = useState<MermaidDiagram | null>(null);
   const [visualizations, setVisualizations] = useState<VisualizationPlan | null>(null);
+  const [synthesis, setSynthesis] = useState<SynthesisResult | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -116,6 +123,7 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
     setRecipe(null);
     setMermaid(null);
     setVisualizations(null);
+    setSynthesis(null);
     setIsRunning(false);
     setIsPolling(false);
     setError(null);
@@ -244,6 +252,24 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
         ) {
           if (!isSessionActive(sessionId)) return;
           fetchedPhases.current.add('deep_dive');
+        }
+
+        // 종합은 시각화보다 먼저 읽는다. 아래 시각화 블록은 항목을 받으면 return으로
+        // 빠져나가므로 뒤에 두면 저장된 종합이 있어도 영영 읽히지 않는다.
+        if (
+          completedPhases.includes('deep_dive') &&
+          !fetchedPhases.current.has('synthesis')
+        ) {
+          try {
+            const syn = await getSynthesis(targetPaperId);
+            if (!isSessionActive(sessionId)) return;
+            if (syn) {
+              setSynthesis(syn);
+              fetchedPhases.current.add('synthesis');
+            }
+          } catch (err) {
+            console.warn('[useAnalysis] Failed to fetch synthesis:', err);
+          }
         }
 
         // Fetch visualizations after deep_dive completes (they generate in parallel)
@@ -403,6 +429,18 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
     }
   }, [isSessionActive, paperId, pollStatus, startPolling]);
 
+  const refreshSynthesis = useCallback(async () => {
+    if (!paperId) return;
+    const sessionId = analysisSessionRef.current;
+    try {
+      const syn = await getSynthesis(paperId);
+      if (!isSessionActive(sessionId)) return;
+      setSynthesis(syn);
+    } catch (err) {
+      console.warn('[useAnalysis] Failed to refresh synthesis:', err);
+    }
+  }, [paperId, isSessionActive]);
+
   const reset = useCallback(() => {
     beginNewSession();
   }, [beginNewSession]);
@@ -472,11 +510,13 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
     recipe,
     mermaid,
     visualizations,
+    synthesis,
     isRunning,
     isPolling,
     error,
     startAnalysis,
     refresh,
+    refreshSynthesis,
     reset,
   };
 }

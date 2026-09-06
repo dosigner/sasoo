@@ -34,6 +34,11 @@ interface MermaidRendererProps {
    * diagram source.
    */
   onRepair?: (code: string, errorMessage: string) => Promise<string | null>;
+  /**
+   * 종합 뷰 카드용. 헤더와 설명과 코드 편집기를 숨기고 렌더 결과만 그린다.
+   * 렌더 사다리와 LLM 복구와 테마 재렌더는 그대로 동작한다.
+   */
+  compact?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -312,6 +317,7 @@ export default function MermaidRenderer({
   loading = false,
   title,
   onRepair,
+  compact = false,
 }: MermaidRendererProps) {
   const [showCode, setShowCode] = useState(false);
   const [editableCode, setEditableCode] = useState('');
@@ -499,6 +505,8 @@ export default function MermaidRenderer({
 
   return (
     <div>
+      {!compact && (
+      <>
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-fg flex items-center gap-2">
@@ -600,8 +608,11 @@ export default function MermaidRenderer({
         </div>
       )}
 
+      </>
+      )}
+
       {/* Rendered diagram */}
-      <div className="card p-0 overflow-hidden">
+      <div className={compact ? 'overflow-hidden' : 'card p-0 overflow-hidden'}>
         {isRendering && (
           <div className="flex flex-col items-center justify-center py-12 gap-2">
             {isRepairing ? (

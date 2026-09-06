@@ -69,6 +69,8 @@ _REGISTRY: dict[str, dict[str, ModelChoice]] = {
         "subfigure": ModelChoice(MODEL_FLASH_HQ, "low"),
         "naming": ModelChoice(MODEL_FLASH_LITE, "minimal"),
         "viz_image_plan": ModelChoice(MODEL_PRO, "medium"),
+        # Phase 5 종합 스테이지, effort는 3편 게이트에서 high와 비교 후 확정(스펙 §5.2)
+        "synthesis": ModelChoice(MODEL_FLASH_HQ, "medium"),
         "image": ModelChoice(MODEL_IMAGE, None),
     },
     "openai": {
@@ -89,6 +91,8 @@ _REGISTRY: dict[str, dict[str, ModelChoice]] = {
         "subfigure": ModelChoice(MODEL_LUNA, "low"),
         "naming": ModelChoice(MODEL_LUNA, "low"),
         "viz_image_plan": ModelChoice(MODEL_LUNA, "medium"),
+        # Phase 5 종합 스테이지, effort는 3편 게이트에서 high와 비교 후 확정(스펙 §5.2)
+        "synthesis": ModelChoice(MODEL_LUNA, "medium"),
         "image": ModelChoice(MODEL_IMAGE_OPENAI, None),
     },
 }

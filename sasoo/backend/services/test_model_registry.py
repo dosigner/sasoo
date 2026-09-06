@@ -166,6 +166,26 @@ class TestPdfParseRole(unittest.TestCase):
         spy.assert_any_call("pdf_parse", "gemini")
 
 
+class TestSynthesisRole(unittest.TestCase):
+    """Phase 5 종합 스테이지. effort는 3편 게이트에서 high와 비교 후 확정(스펙 §5.2) — 지금은 medium."""
+
+    def test_resolves_on_both_providers(self):
+        for provider in ("gemini", "openai"):
+            with self.subTest(provider=provider):
+                choice = resolve("synthesis", provider)
+                self.assertEqual(choice.effort, "medium")
+
+    def test_gemini_uses_flash_hq(self):
+        self.assertEqual(resolve("synthesis", "gemini").model, MODEL_FLASH_HQ)
+
+    def test_openai_uses_luna(self):
+        self.assertEqual(resolve("synthesis", "openai").model, "gpt-5.6-luna")
+
+    def test_not_in_provider_override_table(self):
+        """DEC-022: 표는 비어 있어야 한다 — synthesis도 예외가 아니다."""
+        self.assertNotIn("synthesis", model_registry._ROLE_PROVIDER_OVERRIDE)
+
+
 class TestRegistryShape(unittest.TestCase):
     def test_unknown_role_raises(self):
         with self.assertRaises(KeyError):
