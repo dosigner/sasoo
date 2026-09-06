@@ -1,0 +1,74 @@
+[
+  {
+    "paper": "pi0",
+    "provider": "gemini",
+    "stage": "visual",
+    "effort": "low",
+    "elapsed_s": 9.9,
+    "tokens_in": 9705,
+    "tokens_out": 1032,
+    "status": "completed",
+    "cost_usd": 0.0111
+  },
+  {
+    "paper": "pi0",
+    "provider": "gemini",
+    "stage": "recipe",
+    "effort": "medium",
+    "elapsed_s": 12.9,
+    "tokens_in": 11840,
+    "tokens_out": 3714,
+    "status": "completed",
+    "cost_usd": 0.0228
+  },
+  {
+    "paper": "pi0",
+    "provider": "luna-mixed",
+    "stage": "deep_dive",
+    "effort": "high",
+    "elapsed_s": 94.0,
+    "tokens_in": 26217,
+    "tokens_out": 9382,
+    "tokens_reasoning": 4299,
+    "doc_text_chars": 87479,
+    "restart_context_chars": 5958,
+    "status": "completed",
+    "cost_usd": 0.0165
+  },
+  {
+    "paper": "openvla",
+    "provider": "gemini",
+    "stage": "visual",
+    "effort": "low",
+    "elapsed_s": 9.8,
+    "tokens_in": 20105,
+    "tokens_out": 1103,
+    "status": "completed",
+    "cost_usd": 0.0192
+  },
+  {
+    "paper": "openvla",
+    "provider": "gemini",
+    "stage": "recipe",
+    "effort": "medium",
+    "elapsed_s": 47.4,
+    "tokens_in": 22310,
+    "tokens_out": 2828,
+    "status": "completed",
+    "cost_usd": 0.0273
+  },
+  {
+    "paper": "openvla",
+    "provider": "luna-mixed",
+    "stage": "deep_dive",
+    "effort": "high",
+    "elapsed_s": 85.6,
+    "tokens_in": 40383,
+    "tokens_out": 8878,
+    "tokens_reasoning": 2588,
+    "doc_text_chars": 135720,
+    "restart_context_chars": 6133,
+    "status": "completed",
+    "cost_usd": 0.0187
+  }
+]

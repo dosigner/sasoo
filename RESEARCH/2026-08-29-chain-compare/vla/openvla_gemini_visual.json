@@ -1,0 +1,22 @@
+{
+  "quality_summary": "전반적으로 모델 아키텍처 다이어그램(Fig. 1, Fig. 2), 실제 로봇 실험 환경 및 세부 과제 사진(Fig. 7, 8, 9, 10, 11), 그리고 성능 및 처리량을 나타낸 막대그래프(Fig. 3, 4, 5, 6)가 매우 명확하고 깔끔하게 구성되어 있어. 실험 표(Table 1~12)에도 오차 범위(± StdErr)와 롤아웃 횟수가 꼼꼼하게 명시되어 통계적 신뢰성을 확보했어. 다만 본문에 명시적인 수식 블록이 없어 토큰화 방식이나 loss 함수를 수식 수준에서 검증하기는 어렵고 텍스트 설명에 의존해야 하는 아쉬움이 있어.",
+  "key_findings_from_visuals": [
+    "Fig. 1 & Fig. 2: OpenVLA는 DINOv2와 SigLIP의 시각 인코더 특성을 채널 방향으로 결합(concatenation)한 후 2계층 MLP Projector를 거쳐 Llama 2 (7B) 백본에 입력하고, 로봇의 7차원 연속 액션을 256개 빈으로 이산화하여 토큰으로 예측하는 구조임.",
+    "Fig. 3 & Table 4: BridgeData V2 (WidowX) 평가에서 OpenVLA는 평균 성공률 70.6%를 기록하여 RT-2-X(50.6%), Octo(20.0%), RT-1-X(18.5%)를 크게 앞섬. 단, 인터넷 사전학습 지식이 많이 필요한 시맨틱 일반화(Semantic Generalization)에서는 RT-2-X(38.8%)가 OpenVLA(36.3%)보다 소폭 높음.",
+    "Fig. 4 & Table 6: Google Robot 플랫폼 평가에서 OpenVLA는 85.0%, RT-2-X는 78.3%의 평균 성공률을 보여 7B 모델임에도 55B 파라미터인 RT-2-X와 대등하거나 높은 성능을 달성함.",
+    "Fig. 5 & Table 7: Franka 환경 파인튜닝 실험에서 단일 명령 과제는 Diffusion Policy(scratch)가 우세하나, 다중 객체 및 언어 접지(Language Grounding)가 필요한 복잡한 과제에서는 사전학습된 OpenVLA(평균 67.2%, 58.3%)가 가장 높은 적응 성능을 보임.",
+    "Table 1 & Table 8: PEFT(매개변수 효율적 튜닝) 기법 비교에서 전체 파라미터의 1.4%만 학습하는 LoRA (rank=32, 64)가 68.2%의 성공률을 기록하여 Full Fine-Tuning(69.7%)과 거의 대등한 성능을 보임. 반면 비전 인코더를 동결(Frozen vision, 47.0%)하거나 마지막 레이어만 학습(30.3%)하면 성능이 급감함.",
+    "Fig. 6 & Table 2 & Table 5 & Table 11: int8 양자화는 추가 연산 오버헤드로 추론 속도가 느려져(A5000에서 1.2Hz) 비차단 제어 시 성공률이 58.1%로 떨어졌으나, int4 양자화는 VRAM을 7.0GB로 대폭 줄이면서도 bfloat16(71.3%)과 동등한 71.9% 성공률을 유지함. 차단 제어(Blocking control, Table 11) 적용 시 int8 역시 74.4%로 정상 성능을 회복함.",
+    "Table 9 & Table 10: Ablation 연구를 통해 OpenX 데이터셋 사전학습 제외 시 성공률이 76.3%에서 45.6%로 30%p 이상 급감하고, DINOv2 제거 시 40.6%로 떨어지는 것을 확인하여 대규모 로봇 데이터 사전학습과 이중 비전 인코더의 기여도를 입증함.",
+    "Table 12: 시뮬레이션 벤치마크(LIBERO)에서도 LoRA로 파인튜닝된 OpenVLA가 평균 성공률 76.5%(평균 순위 1.5)로 가장 높은 성능을 기록함."
+  ],
+  "diagram_types": [
+    "schematic",
+    "graph",
+    "photograph",
+    "table"
+  ],
+  "equations_found": 0,
+  "figure_count": 11,
+  "tables_found": 12
+}

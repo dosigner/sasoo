@@ -1,0 +1,23 @@
+{
+  "quality_summary": "본 논문은 실로봇 실험 환경, 네트워크 아키텍처, 어텐션 맵, 데이터 스케일링 곡선 및 다양한 정량 평가 표를 체계적으로 제시하고 있어 전반적인 시각자료의 완성도가 높음. 다만 Figure 3의 아키텍처 다이어그램 내부 세부 텍스트/수식 폰트 해상도가 다소 낮아 세부 레이어 명칭 판독 시 확대가 필요하며, 실로봇 실험 특성상 Table 2, 3, 4, 5, 7, 13 등 성능 평가 수치에 분산(표준오차 또는 오차 막대)이 기재되지 않은 점은 통계적 유의성 검증 측면에서 아쉬움.",
+  "key_findings_from_visuals": [
+    "Fig. 1 & Fig. 3: RT-1의 핵심 아키텍처는 Universal Sentence Encoder(USE) 텍스트 임베딩을 FiLM 레이어를 통해 ImageNet 사전학습 EfficientNet-B3에 조건화(16M 파라미터)하고, 81개 토큰을 TokenLearner를 통해 이미지당 8개 토큰으로 압축한 뒤 8개 self-attention layer를 가진 Decoder-only Transformer(19M 파라미터, 총 ~35M)에 입력하여 11차원 이산화 행동 토큰(256 bins)을 예측하도록 설계됨.",
+    "Table 2: 700개 이상 태스크 기준 평가에서 RT-1은 Seen Tasks(97%), Unseen Tasks(76%), Distractors(83%), Backgrounds(59%)로 베이스라인인 Gato(최대 65%), BC-Z(최대 72%), BC-Z XL(최대 56%) 대비 전 항목에서 우수한 성공률을 보임.",
+    "Table 3: 실제 주방(Kitchen) 환경의 난이도별 평가(L1: 조명/배치 변화, L2: 미확인 방해물 추가, L3: 싱크대 근처 등 급격한 환경 변화)에서 RT-1은 All 평균 70%(L1: 88%, L2: 75%, L3: 50%)를 기록하여 Gato(All 30%), BC-Z(All 45%) 대비 강인함을 보임.",
+    "Table 4 & Table 9: 시뮬레이션 데이터를 추가 학습했을 때 실제 환경에서의 기본 성능 하락은 2%p(92%->90%)에 불과하면서, 시뮬레이션에서만 본 객체에 대한 실환경 성공률은 23%에서 87%(+64%p), 미확인 스킬 조합은 7%에서 33%(+26%p)로 크게 향상됨.",
+    "Table 5 & Table 10: 서로 다른 로봇 형태인 Kuka IIWA(QT-Opt bin-picking 209k 에피소드) 데이터를 Everyday Robots에 결합했을 때, 기존 교실 평가 성능은 92%에서 90%로 유지되면서 bin-picking 평가 성공률은 22%에서 39%(+17%p)로 2배 가까이 상승함.",
+    "Table 6 & Table 11: SayCan 장기 과제(Long-horizon) 계획/실행 평가에서 RT-1은 Kitchen1에서 67%, 새로운 환경인 Kitchen2에서도 67%의 실행 성공률을 유지하여 일반화 저하로 Kitchen2에서 0%~13%로 급락한 Gato 및 BC-Z와 현격한 차이를 보임.",
+    "Table 7 & Fig. 9: 데이터 스케일링 분석 결과, 전체 데이터 크기를 줄이는 것(% Data)보다 과제 다양성을 줄이는 것(% Tasks: 75%로 축소 시 Seen 86%, Unseen 67%)이 일반화 성능에 훨씬 치명적임을 확인하여 '데이터 양보다 데이터 다양성이 더 중요하다'는 결론을 뒷받침함.",
+    "Table 13: 아키텍처 절제(Ablation) 연구에서 행동 이산화 제거(Continuous actions, Seen 68%), 사전학습 제거(w/o pre-training, Unseen 43%), 관측 히스토리 제거(w/o history, Distractors 50%) 시 성능 저하가 뚜렷하며, Auto-regressive actions는 성능 향상 없이 추론 시간만 15ms에서 36ms로 2배 이상 지연시킴을 확인.",
+    "Fig. 13: Transformer 어텐션 맵 시각화에서 특정 레이어/헤드(Layer 2 Head 6, Layer 4 Head 2)가 파지 대상 물체(과자 봉지, 캔) 및 상호작용 지점(서랍 손잡이)에 정밀하게 집중하여 방해물에 대한 강인성을 획득함을 보여줌."
+  ],
+  "diagram_types": [
+    "schematic",
+    "photograph",
+    "graph",
+    "attention_map"
+  ],
+  "equations_found": 0,
+  "figure_count": 13,
+  "tables_found": 13
+}

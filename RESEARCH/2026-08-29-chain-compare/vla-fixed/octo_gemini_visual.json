@@ -1,0 +1,21 @@
+{
+  "quality_summary": "전반적으로 아키텍처 다이어그램(Fig. 2), 데이터셋 구성 파이차트(Fig. 3), 실험 셋업 사진(Fig. 4/Fig. 7), 성능 비교 바 차트(Fig. 5), 스케일링 라인 그래프(Fig. 6) 및 표(Table I~VII)가 체계적이고 직관적으로 제시되어 있어 가독성이 높음. 다만 실제 로봇 평가 특성상 시행 횟수(trial 수)가 10~20회 수준으로 적은 편인데, Fig. 5, Fig. 6, Table I, Table II 등에 오차 막대(error bar)나 신뢰구간(confidence interval) 표기가 누락되어 있어 통계적 유의성 검증 측면에서는 다소 아쉬움이 있음.",
+  "key_findings_from_visuals": [
+    "Fig. 1: Octo 모델의 개요를 나타내는 다이어그램으로, 800k 로봇 궤적 사전학습, 유연한 태스크(언어 지시문 및 목표 이미지)/관찰값/행동 공간 정의 지원, 그리고 다양한 로봇 플랫폼으로의 Zero-shot 및 미세조정(Finetuning) 파이프라인을 시각화함.",
+    "Fig. 2: Octo 아키텍처 모식도로, 텍스트(T5 인코더)와 이미지(얕은 CNN 패치 인코더)를 토큰화한 뒤 트랜스포머 백본과 Block-wise attention 마스킹을 거쳐 Readout 토큰([CLS] 유사)을 통해 Diffusion Action Head에서 액션 청크를 예측하는 구조를 명확히 보여줌. 미세조정 시 백본 파라미터는 유지하면서 신규 관찰값 및 액션 헤드를 유연하게 추가하는 방식을 도식화함.",
+    "Fig. 3 & Table III: 사전학습에 사용된 Open X-Embodiment 25개 데이터셋의 샘플링 비율을 파이차트 및 표로 나타냄. Fractal(17.0%), Kuka(17.0%), Bridge(17.0%), BC-Z(9.1%) 등이 주된 비중을 차지함을 확인 가능함.",
+    "Fig. 5: Zero-Shot 평가 성능 바 차트에서 Octo(93M)는 WidowX, UR5, RT-1 Robot 세 플랫폼 모두에서 오픈소스 베이스라인인 RT-1-X(35M)를 크게 상회하며, 파라미터 수가 훨씬 큰 RT-2-X(55B)와 유사한 성공률을 달성함을 보여줌 (오차 막대 미제공).",
+    "Fig. 6: 모델 스케일링 그래프로, Octo-Tiny(10M), Octo-Small(27M), Octo-Base(93M)로 파라미터 크기가 증가함에 따라 UR5와 WidowX 환경 모두에서 Zero-shot 성공률이 우상향(단조 증가)함을 보여줌.",
+    "Table I: 6개 도메인에 대한 미세조정(Finetuning) 평가 결과, Octo(평균 72%)가 바닥부터 학습한 ResNet+Transformer(평균 20%) 및 사전학습 시각 표현인 VC-1(평균 15%) 대비 압도적인 성능 우위를 보임. 특히 힘-토크 센서 입력(Berkeley Insertion: 70%) 및 관절 위치 제어(Berkeley Pick-Up: 60%, Bimanual: 80%) 등 새로운 입출력 공간에서도 성공적으로 동작함을 증명함.",
+    "Table II & Table VI: 모델 Ablation 결과로, 제안된 Octo-Small 구조(83%) 대비 단일 로봇 데이터셋 사용 시 43%, 이산화 액션 예측 시 18%, 연속 액션 MSE 손실 시 35%, ResNet-50 백본 사용 시 70%로 성능이 저하되어 Diffusion 액션 헤드와 트랜스포머 기반 ViT 구조의 타당성을 뒷받침함.",
+    "Table VII: 제로샷 일반화 분석 표에서 In-distribution(85%) 및 Novel objects(80%)에 대해서는 높은 일반화 성능을 보이지만, Novel environment(40%)와 사전학습에서 보지 못한 새로운 기술(Novel skill, 5%)에서는 성능 저하가 심함을 정량적으로 드러냄."
+  ],
+  "diagram_types": [
+    "schematic",
+    "graph",
+    "photograph"
+  ],
+  "equations_found": 1,
+  "figure_count": 7,
+  "tables_found": 7
+}

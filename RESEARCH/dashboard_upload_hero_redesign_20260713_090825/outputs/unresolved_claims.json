@@ -1,0 +1,18 @@
+[
+  {
+    "claim_id": "clm_009",
+    "text": "상위 SaaS 절반 이상 벤토 채택이라는 특정 퍼센트 통계 (트렌드 블로그 반복 인용 수치)",
+    "risk": "high",
+    "claim_type": "numeric",
+    "source_ids": [
+      "src_052",
+      "src_053"
+    ],
+    "counter_search": "원 데이터 추적 검색 수행 — 인용 블로그 어디에도 방법론·원 자료 링크 없음, 플랫폼 공식 발표 부재. 확인도 반박도 불가하여 단정 불가 판정",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": false,
+    "status": "unresolved",
+    "status_reason": "high-risk인데 primary_source=false"
+  }
+]

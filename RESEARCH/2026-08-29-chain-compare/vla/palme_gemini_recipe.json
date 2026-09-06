@@ -1,0 +1,132 @@
+{
+  "title": "PaLM-E 체화 멀티모달 언어 모델 학습 및 로봇 계획 수립 실험 레시피",
+  "objective": "사전학습된 대규모 언어 모델(PaLM)에 연속적인 시각 및 센서 관측 인코딩을 직접 주입하여, 시각-언어 범용 태스크와 다중 로봇 체화(Embodied) 추론·계획 수립 태스크를 동시에 수행하는 엔드투엔드 멀티모달 모델 학습 및 평가.",
+  "parameters": [
+    {
+      "name": "pretrained_llm_backbones",
+      "value": "8B, 62B, 540B parameters (PaLM)",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We base PaLM-E on the pre-trained 8B, 62B, and 540B parameter variants of PaLM as the decoder-only LLM into which we inject the continuous observations through the input encoders.",
+      "notes": "Section 5: 언어 백본으로 사용된 사전학습 PaLM 모델 규모."
+    },
+    {
+      "name": "vision_encoder_architectures",
+      "value": "ViT-4B, ViT-22B, ViT+TL (TokenLearner), OSRT",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We consider several variants, including the 4 billion parameter model from Chen et al. (2022), which we refer to as ViT-4B, and a similar 22 billion parameter model, ViT-22B (Dehghani et al., 2023)",
+      "notes": "Section 4: 비전 인코더 옵션."
+    },
+    {
+      "name": "combined_model_scales",
+      "value": "PaLM-E-12B (8B LLM + 4B ViT), PaLM-E-84B (62B LLM + 22B ViT), PaLM-E-562B (540B LLM + 22B ViT)",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We refer to an 8B LLM combined with a 4B ViT as PaLM-E-12B, similarly a 62B LLM + 22B ViT as PaLM-E-84B, and 540B LLM + 22B ViT as PaLM-E-562B.",
+      "notes": "Section 5: 통합 모델의 파라미터 구성."
+    },
+    {
+      "name": "vocabulary_size",
+      "value": "256000",
+      "source_tag": "explicit",
+      "evidence_page": 4,
+      "evidence_quote": "In our case, |W| = 256 000 (Chowdhery et al., 2022).",
+      "notes": "Section 4: 토큰 임베딩 공간 차원 관련 어휘 사전 크기."
+    },
+    {
+      "name": "loss_function",
+      "value": "Cross-entropy loss averaged over non-prefix tokens",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The loss function is therefore a cross-entropy loss averaged over the individual non-prefix tokens w^i_{n_i+1:L_i}.",
+      "notes": "Section 5: 멀티모달 프리픽스를 제외한 텍스트 타깃 토큰에 대한 교차 엔트로피 손실."
+    },
+    {
+      "name": "embodied_data_mixture_ratio",
+      "value": "8.9",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "The sampling frequencies are set such that only 8.9% of the full mixture is embodied data, and there are several tasks for each embodiment.",
+      "notes": "Section 5 & App. A: Full Mixture 학습 데이터 내 로봇 체화 데이터 비율.",
+      "unit": "%"
+    },
+    {
+      "name": "full_mixture_sampling_distribution",
+      "value": "WebLI (52.4%), VQ2A (13.1%), CC3M (13.1%), VQG (5.2%), Object Aware (5.2%), OKVQA (0.5%), VQAv2 (0.5%), COCO (0.5%), Wikipedia text (0.5%), Mobile Manipulator (3.1%), Language Table (4.2%), TAMP (1.6%)",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "Table 6: Dataset sampling frequency and ratio for the “full mixture” referred to in experiments.",
+      "notes": "Appendix A, Table 6: 전체 데이터 혼합 비율."
+    },
+    {
+      "name": "finetuning_steps_language_table",
+      "value": "9000",
+      "source_tag": "explicit",
+      "evidence_page": 16,
+      "evidence_quote": "To train the finetuned versions of these models, we train a pretrained PaLM-E model for 9,000 additional steps, in order to support a data complexity sweep without training several separate models from scratch on slightly different versions of the full mixture.",
+      "notes": "Appendix B.2: Language-Table 미세조정 스텝 수.",
+      "unit": "steps"
+    },
+    {
+      "name": "mobile_manipulation_dataset_size",
+      "value": "2912",
+      "source_tag": "explicit",
+      "evidence_page": 8,
+      "evidence_quote": "We train the model by using the runs from (Ahn et al., 2022), which contains 2912 sequences.",
+      "notes": "Section 6.4: 모바일 매니퓰레이션 학습용 시퀀스 개수.",
+      "unit": "sequences"
+    },
+    {
+      "name": "tamp_full_dataset_size",
+      "value": "96000",
+      "source_tag": "explicit",
+      "evidence_page": 7,
+      "evidence_quote": "the input representations are trained on a dataset containing 96,000 training scenes of solely the TAMP environment",
+      "notes": "Section 6.2: TAMP 전체 훈련 데이터 크기.",
+      "unit": "scenes"
+    },
+    {
+      "name": "control_frequency_language_table",
+      "value": "1",
+      "source_tag": "explicit",
+      "evidence_page": 7,
+      "evidence_quote": "PaLM-E outputs language subgoals at 1 Hz to the policies from Lynch et al. (2022), that output low-level robot actions at 5 Hz.",
+      "notes": "Section 6.3: 상위 계획 수립 주기(PaLM-E 1 Hz, 하위 정책 5 Hz).",
+      "unit": "Hz"
+    }
+  ],
+  "steps": [
+    "1. 사전학습된 PaLM 언어 모델(8B, 62B, 540B)과 사전학습된 비전 인코더(ViT-4B, ViT-22B) 또는 OSRT 모델을 준비함.",
+    "2. 비전 인코더 출력 임베딩 차원을 LLM 토큰 임베딩 차원으로 투영하는 어파인 변환 프로젝터(Affine Projection ψ) 또는 MLP를 구성함.",
+    "3. 입력 시퀀스를 구성할 때, 텍스트 프롬프트 내에 특수 토큰(예: <img>, <obj>)을 삽입하고, 해당 위치에 비전/센서 인코더가 생성한 연속 임베딩 벡터를 인터리빙하여 멀티모달 문장(Prefix)을 형성함.",
+    "4. 대규모 웹 비전-언어 데이터셋(WebLI, CC3M, VQ2A 등)과 로봇 도메인 데이터(Mobile Manipulator, Language Table, TAMP)를 Table 6의 샘플링 비율(로봇 데이터 비중 8.9%)로 혼합(Full Mixture)하여 배치 데이터셋을 구성함.",
+    "5. 멀티모달 프리픽스 뒤에 이어지는 타깃 텍스트 토큰에 대해서만 교차 엔트로피 손실(Cross-entropy loss)을 계산하여 엔드투엔드로 모델 파라미터를 학습함 (실험 조건에 따라 LLM을 동결하거나 전체 미세조정).",
+    "6. Language-Table 등 특정 다운스트림 도메인 미세조정 시 사전학습된 PaLM-E 체크포인트로부터 9,000 스텝 추가 학습을 수행함.",
+    "7. 로봇 제어 루프에서 1 Hz 주기로 현재 관측 이미지 및 상위 명령을 PaLM-E에 입력하여 자연어 서브골(Subgoal)을 디코딩하고, 이를 하위 제어 정책(예: RT-1, Interactive Language Policy)에 전달하여 실행함."
+  ],
+  "materials": [
+    "WebLI dataset (Chen et al., 2022)",
+    "VQ2A & VQG datasets (Changpinyo et al., 2022)",
+    "CC3M dataset (Sharma et al., 2018)",
+    "Object Aware dataset (Piergiovanni et al., 2022)",
+    "OKVQA dataset (Marino et al., 2019)",
+    "VQAv2 dataset (Goyal et al., 2017)",
+    "COCO Captions dataset (Chen et al., 2015)",
+    "Wikipedia text corpus",
+    "SayCan / Mobile Manipulator dataset (2912 sequences, Ahn et al., 2022)",
+    "Language-Table dataset (Lynch et al., 2022)",
+    "TAMP simulation dataset (96,000 scenes, Driess et al., 2020)"
+  ],
+  "missing_info": [
+    "학습 최적화 알고리즘 (AdamW, Adafactor 등 옵티마이저 명시 누락)",
+    "학습률 (Learning rate) 기본값 및 스케줄러(Warmup, Cosine decay 등) 세부 설정",
+    "배치 사이즈 (Per-device batch size 및 Effective global batch size 누락)",
+    "사용한 하드웨어 장비 (TPU v4 pod 슬라이스 규모 등 연산 자원 명시 부재)",
+    "전체 사전학습 스텝 수 또는 에포크 수 (Language-Table 9,000 steps 미세조정 외에 Full mixture 사전학습 총량 누락)",
+    "난수 시드 (Random seed) 및 학습 소프트웨어 프레임워크 버전 (JAX/Flax/TensorFlow/PyTorch 등)",
+    "데이터 증강 (Data augmentation) 전략 및 입력 이미지 해상도/크롭 파라미터"
+  ],
+  "reproducibility_score": 0.32,
+  "safety_notes": "실제 하드웨어 로봇(Mobile Manipulator 및 Tabletop 로봇 팔) 환경에서 자율 제어 루프 실행 시 충돌 및 급격한 관절 구동 위험이 있으므로 비상 정지(E-stop) 메커니즘을 구비하고 소프트웨어 액션 범위를 하위 정책 레벨에서 사전 클리핑해야 함. 가열 기기(오븐, 전자레인지) 조작 환경에서는 이상 발열 감시 장치가 필수적임."
+}

@@ -1,0 +1,23 @@
+{
+  "quality_summary": "논문에 수록된 모델 구조도, 데이터 분포 도넛 차트, 태스크 수행 사진, 성능 비교 막대 및 꺾은선 그래프는 전반적으로 가독성이 양호해. 다만 Fig. 7, Fig. 9, Fig. 11, Fig. 13 등의 성능 평가 그래프에서 에러 바(오차 막대)나 표준편차가 누락되어 있어, 태스크당 10회 시행(small sample size)에 기반한 결과의 통계적 유의성을 검증하기 어려운 한계가 보여.",
+  "key_findings_from_visuals": [
+    "Fig. 1: 사전 훈련된 VLM 백본(PaliGemma)과 별도의 action expert를 결합하여 Flow Matching 방식으로 연속적인 로봇 제어 액션을 생성하는 전체 시스템 파이프라인을 도식화함.",
+    "Fig. 3: VLM 백본(SigLIP + Gemma 2.6B)과 액션 전용 MoE 형태의 Action Expert(300M) 구조를 보여주며, 멀티 로봇 환경(14 DoF 양팔, 18 DoF 모바일 조작기 등)에 적용되는 데이터 흐름을 명시함.",
+    "Fig. 4: 사전 훈련 데이터셋의 구성비를 도넛 차트로 제시함. Open X-Embodiment(OXE)가 9.1%를 차지하며, 자체 수집한 Pi 데이터셋(특히 Bimanual UR5e가 51%로 과반 차지)이 주를 이룸을 확인함.",
+    "Fig. 5: 실험에 활용된 7가지 로봇 하드웨어 구성(UR5e, Franka, Bimanual UR5e, Bimanual Trossen, Bimanual ARX, Mobile Trossen, Mobile Fibocom)의 실물 사진을 제시함.",
+    "Fig. 7: 사전 훈련 직후 Out-of-box 평가에서 π0가 Shirt Folding, Bussing Easy/Hard, Grocery Bagging, Toast 작업 전반에서 베이스라인(OpenVLA, Octo, π0-small)을 큰 폭으로 상회함을 보여줌. 하지만 10회 시행 평균에 대한 오차 막대가 없어 결과의 분산 확인은 불가능함.",
+    "Fig. 9: 언어 명령 추종 평가에서 고수준 VLM 명령(π0-HL)이나 인간 가이드(π0-human)를 받았을 때 기본(π0-flat) 및 π0-small 대비 높은 Task Progress를 기록함을 막대그래프로 나타냄.",
+    "Fig. 11: 파인튜닝 데이터양(1, 5, 10시간)에 따른 전이 학습 성능 곡선을 보여주며, 스크래치 학습(π0 scratch, ACT, DP) 대비 사전 훈련된 π0가 적은 데이터(1시간)에서도 현저히 높은 초기 성능 및 수렴 속도를 보임을 확인 가능함.",
+    "Fig. 13: 사전 훈련에 포함된 고난도 작업(세탁물 개기, 건조기 비우기 등)과 미포함 작업(상자 접기, 계란 담기 등)에 대한 파인튜닝 결과로, Out-of-box 및 Scratch 대비 Fine-tuned π0가 가장 높은 성공률을 달성함을 보여줌.",
+    "Fig. 14: Flow Matching 시 노이즈가 높은 구간(낮은 τ)에 가중치를 두는 잘린 베타 분포(Shifted Beta Distribution, s=0.999)의 확률 밀도 함수 형태를 그래프로 제시함.",
+    "Table I: RTX 4090 GPU 기준 추론 지연시간을 분해하여 제시함(온보드 총 73 ms, 오프보드 통신 포함 86 ms). 10스텝의 액션 forward pass가 27 ms를 차지하여 실시간 제어 요건(20~50Hz)을 충족함을 정량적으로 보임."
+  ],
+  "diagram_types": [
+    "schematic",
+    "graph",
+    "photograph"
+  ],
+  "equations_found": 3,
+  "figure_count": 14,
+  "tables_found": 1
+}

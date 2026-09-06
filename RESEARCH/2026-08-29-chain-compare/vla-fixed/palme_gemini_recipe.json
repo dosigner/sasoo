@@ -1,0 +1,104 @@
+{
+  "title": "PaLM-E 체화 멀티모달 언어 모델 학습 및 로봇 제어 평가 레시피",
+  "objective": "사전학습된 거대 언어 모델(PaLM)에 연속적인 비전/상태 센서 인코딩을 인터리빙 토큰 형태로 주입하여 종단간(end-to-end) 학습시킴으로써, 다양한 로봇 조작 계획(planning), 체화 질의응답(Embodied VQA), 일반 시각-언어(VQA, Captioning) 작업을 통합 수행하는 PaLM-E 모델을 구축하고 평가함.",
+  "parameters": [
+    {
+      "name": "architecture",
+      "value": "PaLM (Decoder-only Transformer LLM) combined with ViT or OSRT encoders via affine projection/MLP",
+      "source_tag": "explicit",
+      "evidence_page": 4,
+      "evidence_quote": "PaLM-E is a decoder-only LLM that generates textual completions autoregressively given a prefix or prompt. We call our model PaLM-E, since we use PaLM (Chowdhery et al., 2022) as the pre-trained language model, and make it Embodied.",
+      "notes": "Section 3 & Section 4에 기술됨. PaLM-E-12B (8B LLM + 4B ViT), PaLM-E-84B (62B LLM + 22B ViT), PaLM-E-562B (540B LLM + 22B ViT)",
+      "unit": ""
+    },
+    {
+      "name": "pretrained_model",
+      "value": "PaLM (8B, 62B, 540B) and ViT (4B, 22B)",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We base PaLM-E on the pre-trained 8B, 62B, and 540B parameter variants of PaLM as the decoder-only LLM into which we inject the continuous observations through the input encoders.",
+      "notes": "Section 5에 기술됨.",
+      "unit": ""
+    },
+    {
+      "name": "loss_function",
+      "value": "Cross-entropy loss averaged over non-prefix tokens",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The loss function is therefore a cross-entropy loss averaged over the individual non-prefix tokens wi_{ni+1:Li}.",
+      "notes": "Section 5에 기술됨. prefix 이후의 타깃 텍스트 토큰에 대해서만 cross-entropy 계산.",
+      "unit": ""
+    },
+    {
+      "name": "vocabulary_size",
+      "value": "256000",
+      "source_tag": "explicit",
+      "evidence_page": 4,
+      "evidence_quote": "The mapping γ is typically represented as a large embedding matrix of size k × |W| and trained end-to-end. In our case, |W| = 256 000 (Chowdhery et al., 2022).",
+      "notes": "Section 3 Token embedding space에 명시됨.",
+      "unit": "tokens"
+    },
+    {
+      "name": "fine_tuning_strategy",
+      "value": "Co-training across full mixture (8.9% embodied robotics data + 91.1% web vision-language/text data) or freezing LLM and training encoders only",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "The sampling frequencies are set such that only 8.9% of the full mixture is embodied data, and there are several tasks for each embodiment.",
+      "notes": "Section 5 & Section 6 Co-training across tasks 및 Table 6에 명시됨.",
+      "unit": ""
+    },
+    {
+      "name": "training_steps",
+      "value": "9000",
+      "source_tag": "explicit",
+      "evidence_page": 16,
+      "evidence_quote": "To train the finetuned versions of these models, we train a pretrained PaLM-E model for 9,000 additional steps, in order to support a data complexity sweep without training several separate models from scratch on slightly different versions of the full mixture.",
+      "notes": "Appendix B.2 Interactive Language Table 실험의 파인튜닝 스텝 수.",
+      "unit": "steps"
+    },
+    {
+      "name": "training_data_size",
+      "value": "TAMP: 96,000 scenes (full) / 320 examples (1% subset); Mobile Manipulation: 2912 sequences",
+      "source_tag": "explicit",
+      "evidence_page": 7,
+      "evidence_quote": "Tab. 1 shows results for 3-5 objects when training on 1% of the dataset, which corresponds to only 320 examples for each of the two planning tasks.",
+      "notes": "Section 6.2, 6.4 및 Appendix에 기술됨.",
+      "unit": "samples"
+    },
+    {
+      "name": "control_frequency",
+      "value": "1",
+      "source_tag": "explicit",
+      "evidence_page": 7,
+      "evidence_quote": "PaLM-E outputs language subgoals at 1 Hz to the policies from Lynch et al. (2022), that output low-level robot actions at 5 Hz.",
+      "notes": "Section 6.3 실로봇 제어 루프 주기 (PaLM-E 고수준 지시: 1 Hz, 하위 제어기: 5 Hz).",
+      "unit": "Hz"
+    }
+  ],
+  "steps": [
+    "1. 사전학습된 대규모 언어 모델(PaLM 8B, 62B, 540B)과 비전 인코더(ViT-4B, ViT-22B 또는 OSRT, State MLP)를 준비하고, 비전 임베딩 차원을 LLM 입력 임베딩 차원 k로 매핑하는 프로젝터(선형 사상 또는 MLP ψ)를 구성한다.",
+    "2. 입력 프롬프트 텍스트 내의 특수 토큰 위치에 비전 인코더에서 생성된 토큰 임베딩 벡터 시퀀스를 동적으로 삽입하여 멀티모달 문장(multimodal sentence prefix)을 생성한다.",
+    "3. 전체 데이터 혼합(Full mixture: WebLI 52.4%, CC3M 13.1%, VQ2A 13.1%, VQG 5.2%, Object Aware 5.2%, VQAv2/OKVQA/COCO 각 0.5%, 위키피디아 0.5%, 로봇 데이터 8.9%)을 표 6의 샘플링 비율에 맞춰 데이터 파이프라인을 구축한다.",
+    "4. 프리픽스(prefix) 토큰을 제외한 목표 텍스트 토큰에 대해 자가회귀(autoregressive) 교차 엔트로피 손실(cross-entropy loss)을 계산하여 종단간 역전파로 프로젝터, 비전 인코더, 언어 모델을 공동 학습(또는 LLM을 freeze한 상태로 인코더만 학습)한다.",
+    "5. 로봇 제어 환경(TAMP, Language-Table, Mobile Manipulator)에서 PaLM-E가 생성한 고수준 텍스트 서브골/스킬을 저수준 정책 네트워크(예: RT-1, Interactive Language policy)에 1Hz 주기로 전달하고, 환경 피드백 이미지를 받아 폐루프(closed-loop)로 재계획(replanning)을 수행한다."
+  ],
+  "materials": [
+    "WebLI (Web-scale Language-Image) 데이터셋",
+    "VQ2A, VQG, CC3M, Object-Aware 데이터셋",
+    "OK-VQA, VQAv2, COCO Captioning 데이터셋",
+    "Language-Table 로봇 조작 궤적 데이터셋",
+    "Mobile Manipulation (SayCan/RT-1) 2,912개 시퀀스 궤적 데이터",
+    "TAMP(Task and Motion Planning) 합성 시뮬레이션 데이터셋"
+  ],
+  "missing_info": [
+    "optimizer 종류 및 세부 하이퍼파라미터 (Adam/AdamW 여부, beta1, beta2, weight decay 등 명시 누락)",
+    "learning_rate 기본값, warmup step 수, learning rate scheduler 감쇠 곡선 형태 미기재",
+    "batch_size 및 effective batch size 미표기",
+    "전체 공동 학습(pre-training/co-training)에 소요된 총 num_epochs 또는 global train steps 미기재",
+    "사용된 하드웨어 자원 사양(TPU v4 pod 슬라이스 크기 또는 GPU_type, 분산 학습 프레임워크 버전) 및 총 학습 시간(training_time) 누락",
+    "데이터 증강 기법(augmentation_strategy: 텍스트 및 이미지 augmentation 적용 여부) 미상세",
+    "재현을 위한 random_seed 설정값 미기재"
+  ],
+  "reproducibility_score": 0.35,
+  "safety_notes": "실제 로봇 환경(Mobile Manipulator, Tabletop Pusher)에서 폐루프 자율 제어 시 PaLM-E가 물리적으로 위험한 동작(충돌, 낙하 등)을 지시하지 않도록 하위 제어기 단의 물리적 안전 제한 범위(safety bound) 및 비상 정지(E-stop) 시스템이 필요함. 또한 모델의 오판단에 의한 파손을 방지해야 함."
+}

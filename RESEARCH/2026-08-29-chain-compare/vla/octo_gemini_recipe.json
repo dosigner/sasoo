@@ -1,0 +1,359 @@
+{
+  "title": "Octo 범용 로봇 정책 사전학습 및 파인튜닝 파이프라인",
+  "objective": "다양한 로봇 플랫폼, 센서 구성, 태스크 명세(자연어 및 목표 이미지)를 단일 모델로 제어하고 새로운 환경 및 액션 공간으로 신속하게 파인튜닝 가능한 트랜스포머 기반 범용 로봇 정책(Octo)을 사전학습하고 검증함.",
+  "parameters": [
+    {
+      "name": "model_architecture_backbone",
+      "value": "Vision Transformer (ViT-Small / ViT-Base mirroring structure)",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We trained two variants of our model: Octo-Small with a transformer backbone that mirrors the size of a ViT-S, and Octo-Base with a transformer backbone that mirrors the size of a ViT-B [22].",
+      "notes": "Section III-D 및 Table V에 명시",
+      "unit": ""
+    },
+    {
+      "name": "octo_small_layers",
+      "value": "12",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "Octo-Small 12 384 1536 6 27M",
+      "notes": "Table V",
+      "unit": "layers"
+    },
+    {
+      "name": "octo_small_hidden_dim",
+      "value": "384",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "Octo-Small 12 384 1536 6 27M",
+      "notes": "Table V",
+      "unit": "dimensions"
+    },
+    {
+      "name": "octo_small_mlp_dim",
+      "value": "1536",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "Octo-Small 12 384 1536 6 27M",
+      "notes": "Table V",
+      "unit": "dimensions"
+    },
+    {
+      "name": "octo_small_heads",
+      "value": "6",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "Octo-Small 12 384 1536 6 27M",
+      "notes": "Table V",
+      "unit": "heads"
+    },
+    {
+      "name": "octo_small_params",
+      "value": "27M",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "Octo-Small 12 384 1536 6 27M",
+      "notes": "Table V",
+      "unit": "parameters"
+    },
+    {
+      "name": "octo_base_layers",
+      "value": "12",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "Octo-Base 12 768 3072 12 93M",
+      "notes": "Table V",
+      "unit": "layers"
+    },
+    {
+      "name": "octo_base_hidden_dim",
+      "value": "768",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "Octo-Base 12 768 3072 12 93M",
+      "notes": "Table V",
+      "unit": "dimensions"
+    },
+    {
+      "name": "octo_base_mlp_dim",
+      "value": "3072",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "Octo-Base 12 768 3072 12 93M",
+      "notes": "Table V",
+      "unit": "dimensions"
+    },
+    {
+      "name": "octo_base_heads",
+      "value": "12",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "Octo-Base 12 768 3072 12 93M",
+      "notes": "Table V",
+      "unit": "heads"
+    },
+    {
+      "name": "octo_base_params",
+      "value": "93M",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "Octo-Base 12 768 3072 12 93M",
+      "notes": "Table V",
+      "unit": "parameters"
+    },
+    {
+      "name": "language_encoder",
+      "value": "t5-base (111M), frozen",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "For datasets containing language annotations, we use a pretrained t5-base (111M) transformer model [74] that produces a sequence of 16 language embedding tokens.",
+      "notes": "Section III-A, Appendix D 및 Appendix E",
+      "unit": ""
+    },
+    {
+      "name": "image_patch_size",
+      "value": "16 x 16",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "The images are passed through a shallow convolution stack, then split into a sequence of flattened patches [22] of size 16 × 16.",
+      "notes": "Appendix D",
+      "unit": "pixels"
+    },
+    {
+      "name": "image_resolution_3rd_person",
+      "value": "256 x 256 (256 tokens)",
+      "source_tag": "explicit",
+      "evidence_page": 14,
+      "evidence_quote": "Concretely, for the 3rd person camera we apply stochastic crops followed be a resize to 256×256, followed by color jitter.",
+      "notes": "Appendix D 및 Appendix E",
+      "unit": "pixels"
+    },
+    {
+      "name": "image_resolution_wrist",
+      "value": "128 x 128 (64 tokens)",
+      "source_tag": "explicit",
+      "evidence_page": 14,
+      "evidence_quote": "For the wrist camera, we apply the same procedure except without the random crop and resizing to 128 × 128 instead.",
+      "notes": "Appendix D 및 Appendix E",
+      "unit": "pixels"
+    },
+    {
+      "name": "diffusion_action_head_architecture",
+      "value": "3-layer MLP, hidden dimension 256, residual connections, layer normalization",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "The diffusion action head consists of a 3-layer MLP with a hidden dimension of 256, residual connections, and layer normalization.",
+      "notes": "Appendix D",
+      "unit": ""
+    },
+    {
+      "name": "diffusion_steps",
+      "value": "20",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "We use the standard DDPM objective as introduced by [34] with a cosine noise schedule [66] and 20 diffusion steps.",
+      "notes": "Appendix D",
+      "unit": "steps"
+    },
+    {
+      "name": "diffusion_noise_schedule",
+      "value": "Cosine noise schedule",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The hyperparameters α, γ, and σ correspond to the noise schedule: we use the standard cosine schedule from [66].",
+      "notes": "Section III-C 및 Appendix D",
+      "unit": ""
+    },
+    {
+      "name": "observation_history_frames",
+      "value": "2",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We train using 2 frames of observation history; in our preliminary experiments, we found significantly diminishing gains beyond the first additional frame.",
+      "notes": "Section III-D",
+      "unit": "frames"
+    },
+    {
+      "name": "optimizer",
+      "value": "AdamW",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We use the AdamW optimizer [51] with an inverse square root decay learning rate schedule [97], with weight decay of 0.1 and gradient clipping of 1.0.",
+      "notes": "Section III-D",
+      "unit": ""
+    },
+    {
+      "name": "pretraining_learning_rate",
+      "value": "3e-4",
+      "source_tag": "explicit",
+      "evidence_page": 14,
+      "evidence_quote": "Learning Rate 3e-4",
+      "notes": "Table IV",
+      "unit": ""
+    },
+    {
+      "name": "pretraining_warmup_steps",
+      "value": "2000",
+      "source_tag": "explicit",
+      "evidence_page": 14,
+      "evidence_quote": "Warmup Steps 2000",
+      "notes": "Table IV",
+      "unit": "steps"
+    },
+    {
+      "name": "pretraining_lr_schedule",
+      "value": "Inverse square root decay (reciprocal square-root)",
+      "source_tag": "explicit",
+      "evidence_page": 14,
+      "evidence_quote": "LR Scheduler reciprocal square-root",
+      "notes": "Table IV",
+      "unit": ""
+    },
+    {
+      "name": "weight_decay",
+      "value": "0.1",
+      "source_tag": "explicit",
+      "evidence_page": 14,
+      "evidence_quote": "Weight Decay 0.1",
+      "notes": "Table IV",
+      "unit": ""
+    },
+    {
+      "name": "gradient_clipping_threshold",
+      "value": "1.0",
+      "source_tag": "explicit",
+      "evidence_page": 14,
+      "evidence_quote": "Gradient Clip Threshold 1",
+      "notes": "Table IV",
+      "unit": ""
+    },
+    {
+      "name": "pretraining_batch_size",
+      "value": "2048",
+      "source_tag": "explicit",
+      "evidence_page": 14,
+      "evidence_quote": "Batch Size 2048",
+      "notes": "Table IV",
+      "unit": ""
+    },
+    {
+      "name": "pretraining_steps",
+      "value": "300000",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The ViT-B was trained for 300k steps with a batch size of 2048 using a TPU v4-128 pod, which took 14 hours.",
+      "notes": "Section III-D",
+      "unit": "steps"
+    },
+    {
+      "name": "pretraining_hardware",
+      "value": "TPU v4-128 pod",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The ViT-B was trained for 300k steps with a batch size of 2048 using a TPU v4-128 pod, which took 14 hours.",
+      "notes": "Section III-D",
+      "unit": ""
+    },
+    {
+      "name": "pretraining_time",
+      "value": "14",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The ViT-B was trained for 300k steps with a batch size of 2048 using a TPU v4-128 pod, which took 14 hours.",
+      "notes": "Section III-D",
+      "unit": "hours"
+    },
+    {
+      "name": "finetuning_steps",
+      "value": "50000",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "In all finetuning experiments, we employ the same recipe: given a small target domain dataset with around 100 trajectories, we finetune for 50k steps using a cosine decay learning rate decay with linear warmup.",
+      "notes": "Section III-C",
+      "unit": "steps"
+    },
+    {
+      "name": "finetuning_lr_schedule",
+      "value": "Cosine decay with linear warmup",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "In all finetuning experiments, we employ the same recipe: given a small target domain dataset with around 100 trajectories, we finetune for 50k steps using a cosine decay learning rate decay with linear warmup.",
+      "notes": "Section III-C",
+      "unit": ""
+    },
+    {
+      "name": "finetuning_hardware_and_time",
+      "value": "Single NVIDIA A5000 GPU (24GB VRAM), ~5 hours",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "A finetuning run of the same model on a single NVIDIA A5000 GPU with 24GB of VRAM takes approximately 5 hours and can be sped up with multi-GPU training.",
+      "notes": "Section III-D",
+      "unit": ""
+    },
+    {
+      "name": "pretraining_dataset_size",
+      "value": "800k trajectories (25 datasets from Open X-Embodiment)",
+      "source_tag": "explicit",
+      "evidence_page": 1,
+      "evidence_quote": "Octo is a transformer-based policy pretrained on 800k diverse robot episodes from the Open X-Embodiment dataset [67].",
+      "notes": "Abstract, Section III-B, Table III",
+      "unit": "trajectories"
+    },
+    {
+      "name": "finetuning_dataset_size",
+      "value": "~100 demonstrations",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "Each of the finetuning setups uses ∼ 100 in-domain demonstrations and finetunes in < 5 hours on a NVIDIA A5000 GPU",
+      "notes": "Section IV",
+      "unit": "trajectories"
+    },
+    {
+      "name": "software_framework",
+      "value": "JAX (with PyTorch compatible dataloaders)",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "Finetuning scripts for Octo models, in JAX. Model pretraining pipeline for Octo pretraining on the Open X-Embodiment dataset, in JAX.",
+      "notes": "Section III-E",
+      "unit": ""
+    },
+    {
+      "name": "data_loader_shuffle_buffer",
+      "value": "Up to 500k frames (with max 100 subsampled steps per trajectory)",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "We solved this issue by shuffling and interleaving frames from different trajectories before decoding the images, allowing us to fit a much larger shuffle buffer (up to 500k). We also subsample at most 100 randomly chosen steps from each training trajectory during data loading to avoid “over-crowding” the shuffle buffer with single, very long episodes.",
+      "notes": "Appendix E",
+      "unit": "frames"
+    }
+  ],
+  "steps": [
+    "1. 데이터 큐레이션 및 전처리: Open X-Embodiment 데이터셋에서 카메라 영상 및 delta end-effector 제어를 포함하는 25개 데이터셋(총 800k 에피소드)을 선별. 그리퍼 액션 공간을 통일(+1: open, 0: closed)하고 누락된 카메라 채널은 zero-padding 처리함.",
+    "2. 데이터 로딩 파이프라인 구성: 이미지 디코딩 전 여러 궤적의 프레임을 인터리빙하여 최대 500k 크기의 셔플 버퍼를 구성하고, 긴 에피소드의 버퍼 독점을 막기 위해 각 궤적당 최대 100스텝을 무작위 추출함.",
+    "3. 입력 토큰화 (Tokenization): 자연어 지시문은 사전학습된 T5-base(111M, 파라미터 고정)를 거쳐 16개의 토큰으로 변환. 3인칭 카메라는 256x256 해상도로 크롭/리사이즈 후 16x16 패치(256개 토큰)로 변환하고 손목(wrist) 카메라는 128x128 리사이즈 후 16x16 패치(64개 토큰)로 변환. 여기에 학습 가능한 위치 임베딩(position embedding)을 더함.",
+    "4. 태스크 및 목표 증강/조건화: Hindsight Goal Relabeling을 사용하여 미래 시점의 상태를 목표 이미지로 무작위 할당. 학습 중 자연어 지시문 또는 목표 이미지를 무작위로 zero-out하여 두 모달리티 조건화를 모두 지원하도록 함.",
+    "5. 트랜스포머 백본 구성 및 인과 마스킹 (Causal Masking): 이전 및 현재 타임스텝의 관측치와 태스크 토큰만 참조할 수 있도록 Block-wise Causal Masking을 적용하고, 상태 정보를 수집하는 Readout 토큰을 삽입(BERT의 [CLS] 역할).",
+    "6. 사전학습 (Pretraining): AdamW 옵티마이저(lr=3e-4, reciprocal square-root schedule, warmup=2000 steps, weight decay=0.1, grad clip=1.0)와 배치 크기 2048로 TPU v4-128 Pod에서 300k 스텝(약 14시간) 동안 DDPM 확산 손실 함수(20 diffusion steps, cosine noise schedule)를 이용해 3계층 MLP 액션 헤드와 전체 모델을 사전학습함.",
+    "7. 타겟 도메인 파인튜닝 (Finetuning): 약 100회의 타겟 도메인 시연 데이터를 대상으로, 신규 센서 입력이나 액션 공간이 추가될 경우 가벼운 인코더나 신규 액션 헤드만 추가하고 전체 모델 가중치를 풀 파인튜닝(50k steps, cosine decay schedule with linear warmup, 단일 NVIDIA A5000 GPU 기준 약 5시간 소요)함."
+  ],
+  "equipment": [
+    "TPU v4-128 Pod (사전학습용)",
+    "NVIDIA A5000 GPU (24GB VRAM, 파인튜닝용)",
+    "실제 평가용 로봇 플랫폼: Trossen WidowX 250, Universal Robots UR5, RT-1 Robot, Franka Emika Panda, ALOHA Bimanual (ViperX arms) 등"
+  ],
+  "materials": [
+    "Open X-Embodiment Dataset (25 curated sub-datasets including Fractal, Kuka, Bridge, BC-Z, etc.)",
+    "FMB Benchmark Dataset",
+    "Pretrained T5-base Language Model Weights (111M parameters)",
+    "Polymetis 로봇 제어 프레임워크 및 R2D2 Franka 컨트롤러"
+  ],
+  "missing_info": [
+    "학습 전반의 정확한 Random Seed 미기재",
+    "AdamW 옵티마이저의 beta1, beta2, epsilon 상세 하이퍼파라미터 미기재 (일반적인 기본값 사용으로 추정되나 명시되지 않음)",
+    "파인튜닝 시 적용된 구체적인 Base Learning Rate 및 Warmup Step 수 미기재 (스케줄러 종류는 cosine decay로 명시됨)",
+    "사용된 Python, JAX, Flax, Optax의 구체적인 프레임워크 버전 번호 미기재",
+    "FP16/BF16/FP32 등 사용된 연산 정밀도(precision) 미명시"
+  ],
+  "reproducibility_score": 0.88,
+  "safety_notes": "실제 로봇에 배포 및 실행 시 제어 주파수(5Hz~15Hz) 및 임피던스 컨트롤러의 급격한 모션 변화로 인한 충돌 위험에 대비하여 하드웨어 비상 정지(E-Stop) 장치를 확보해야 함. 특히 파인튜닝 초기 단계에서는 미지의 영역으로의 과도한 토크 출력을 방지하기 위한 소프트웨어 조인트 제한(joint limits)을 설정할 것. 또한 단일 3인칭 카메라 관측 위주 모델은 손목 카메라의 깊이 지각 부족으로 인해 그리퍼 충돌 위험이 발생할 수 있으므로 주의 필요함."
+}

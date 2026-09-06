@@ -1,0 +1,164 @@
+{
+  "title": "π0: Flow Matching 기반 범용 로봇 제어 비전-언어-행동(VLA) 모델 학습 및 평가 레시피",
+  "objective": "사전학습된 VLM(PaliGemma) 백본에 별도의 액션 전문가(Action Expert)와 Flow Matching 기법을 결합하여, 다양한 이기종 로봇(cross-embodiment) 환경에서 고주파(최대 50Hz) 연속 제어 및 멀티 스테이지 복합 조작을 수행하는 범용 로봇 파운데이션 모델을 사전학습하고 다운스트림 태스크에 파인튜닝한다.",
+  "parameters": [
+    {
+      "name": "pretrained_model",
+      "value": "PaliGemma (3B parameter VLM based on Gemma 2B)",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "PaliGemma is an open-source 3 billion parameter VLM that offers a convenient trade-off between size and performance.",
+      "notes": "Section IV: 텍스트 및 이미지 임베딩 백본으로 사용됨",
+      "unit": ""
+    },
+    {
+      "name": "architecture",
+      "value": "PaliGemma VLM (3.0B) + Action Expert Transformer (~300M), Total ~3.3B parameters",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We add 300M parameters for the action expert (which is initialized from scratch) for a total of 3.3 billion parameters.",
+      "notes": "Section IV & Appendix B: VLM 백본과 액션 전문가의 가중치는 셀프 어텐션 레이어를 통해서만 상호작용함",
+      "unit": ""
+    },
+    {
+      "name": "hidden_units",
+      "value": "VLM backbone: width=2048, mlp_dim=16384, head_dim=256; Action expert: width=1024, mlp_dim=4096, head_dim=256",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "PaliGemma is based on the Gemma 2B [49] language model, which uses multi-query attention [44] and a configuration of {width=2048, depth=18, mlp dim=16,384, num heads=18, num kv heads=1, head dim=256}. Since the experts interact only in the self-attention layers, width and mlp dim do not necessarily need to match between experts. To speed up inference (which requires multiple forward passes of the action expert), we downsize the action expert to {width=1024, mlp dim=4096}, resulting in a parameter count of ∼300M.",
+      "notes": "Appendix B: VLM 백본과 액션 전문가의 세부 차원 구성",
+      "unit": ""
+    },
+    {
+      "name": "num_layers",
+      "value": "18",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "{width=2048, depth=18, mlp dim=16,384, num heads=18, num kv heads=1, head dim=256}",
+      "notes": "Appendix B: Gemma 2B 기반 depth=18",
+      "unit": ""
+    },
+    {
+      "name": "action_horizon",
+      "value": "50",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "where At = [at, at+1, ..., at+H−1] corresponds to an action chunk of future actions (we use H = 50 for our tasks)",
+      "notes": "Section IV: 예측 액션 청크 크기 H=50",
+      "unit": "steps"
+    },
+    {
+      "name": "action_dimension",
+      "value": "18",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "The configuration vector qt and action vectors at always have the dimensionality of the largest robot in the dataset (18 in our case, to accommodate two 6-DoF arms, 2 grippers, a mobile base, and a vertically actuated torso).",
+      "notes": "Section V-A: 최대 로봇 차원에 맞춰 제로 패딩 처리",
+      "unit": "dim"
+    },
+    {
+      "name": "loss_function",
+      "value": "Conditional Flow Matching Loss (L_tau(theta)) with linear-Gaussian optimal transport path",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "During training, we supervise these action tokens using a conditional flow matching loss [28, 32], L τ (θ) = Ep(At|ot),q(Aτ t |At) ||vθ(Aτ t , ot) − u(Aτ t |At)||2",
+      "notes": "Section IV: Flow matching 기반 벡터 필드 학습 손실 함수",
+      "unit": ""
+    },
+    {
+      "name": "timestep_sampling_distribution",
+      "value": "Beta((s - tau)/s; 1.5, 1) with s = 0.999",
+      "source_tag": "explicit",
+      "evidence_page": 16,
+      "evidence_quote": "The distribution is given by p(τ ) = Beta( s−τ s ; 1.5, 1) and is visualized in Figure 14. We use s = 0.999 in our experiments",
+      "notes": "Appendix B: 노이즈가 높은 낮은 타임스텝에 더 많은 가중치를 부여하는 시프티드 베타 분포",
+      "unit": ""
+    },
+    {
+      "name": "flow_matching_integration_steps",
+      "value": "10",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We use 10 integration steps (corresponding to δ = 0.1) in our experiments.",
+      "notes": "Section IV: Forward Euler 적분 규칙 사용, step size delta = 0.1",
+      "unit": "steps"
+    },
+    {
+      "name": "training_steps",
+      "value": "700,000 (main model) / 160,000 (compute parity model)",
+      "source_tag": "explicit",
+      "evidence_page": 7,
+      "evidence_quote": "which is trained for only 160k steps (as opposed to 700k steps for our main model)",
+      "notes": "Section VI-A: 사전학습 단계의 총 업데이트 스텝 수",
+      "unit": "steps"
+    },
+    {
+      "name": "training_data_size",
+      "value": "10,000+ hours (903M timesteps own data + Open X-Embodiment dataset)",
+      "source_tag": "explicit",
+      "evidence_page": 3,
+      "evidence_quote": "we utilize a much larger dataset, with about 10,000 hours of demonstrations, complemented by the open-source OXE dataset [10].",
+      "notes": "Section II & Section V-A: 자체 데이터 903M 스텝(단일 암 106M, 듀얼 암 797M) 및 오픈소스 OXE Magic Soup(전체의 9.1%)",
+      "unit": "hours"
+    },
+    {
+      "name": "dataset_weighting_exponent",
+      "value": "0.43",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "we weight each task-robot combination by n 0.43, where n is the number of samples for that combination, such that over-represented combinations are down-weighted.",
+      "notes": "Section V-A: 데이터 불균형 완화를 위한 n^0.43 가중치 적용",
+      "unit": ""
+    },
+    {
+      "name": "control_frequency",
+      "value": "20 Hz (UR5e, Franka), 50 Hz (모든 기타 바이매뉴얼 및 모바일 플랫폼)",
+      "source_tag": "explicit",
+      "evidence_page": 16,
+      "evidence_quote": "For the 20Hz UR5e and Franka robots, we run inference every 0.8 seconds (after executing 16 actions), and for all other robots, which run at 50Hz, we run inference every 0.5 seconds (after executing 25 actions).",
+      "notes": "Appendix D: 로봇 플랫폼별 제어 주파수 및 오픈루프 실행 주기",
+      "unit": "Hz"
+    },
+    {
+      "name": "GPU_type",
+      "value": "NVIDIA GeForce RTX 4090",
+      "source_tag": "explicit",
+      "evidence_page": 16,
+      "evidence_quote": "The operations were timed on an NVIDIA GeForce RTX 4090 consumer-grade GPU.",
+      "notes": "Appendix D: 추론 지연 시간(온보드 73ms, 오프보드 86ms) 측정 환경",
+      "unit": ""
+    },
+    {
+      "name": "fine_tuning_strategy",
+      "value": "1 to 100+ hours of curated task-specific demonstrations",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "Different tasks require very different datasets, with the simplest of the tasks necessitating only 5 hours and the most complex tasks using 100 or more hours of data.",
+      "notes": "Section V-A & Section VI-C: 다운스트림 태스크에 대해 사전학습된 기본 가중치를 고품질 큐레이션 데이터로 파인튜닝",
+      "unit": "hours"
+    },
+    {
+      "name": "evaluation_metric",
+      "value": "Normalized score averaged over 10 episodes per task (1.0 for full success, fractional for partial success)",
+      "source_tag": "explicit",
+      "evidence_page": 7,
+      "evidence_quote": "The evaluation metric uses a normalized score averaged over 10 episodes per task and method, where an episode receives a score of 1.0 for a full success, and a fractional score for partial success.",
+      "notes": "Section VI-A: 태스크별 세부 루브릭 기반 정량 평가",
+      "unit": ""
+    }
+  ],
+  "steps": [
+    "1. 데이터셋 구성 및 전처리: 자체 수집한 7개 로봇 플랫폼(68개 태스크, 903M 타임스텝) 및 오픈소스 OXE Magic Soup 데이터를 수집하고, 태스크-로봇 조합별 샘플 수 n에 대해 n^0.43 가중치를 적용하여 배치 샘플러를 구성함. 최대 로봇 상태/액션 차원(18)에 맞춰 미사용 차원은 제로 패딩 처리하고 누락된 카메라 뷰는 마스킹함.",
+    "2. 모델 아키텍처 구축: 사전학습된 PaliGemma(Gemma 2B 기반, width=2048, depth=18, mlp_dim=16384)에 스크래치로부터 초기화되는 Action Expert(width=1024, depth=18, mlp_dim=4096, 약 300M 파라미터)를 결합함. 관측값([이미지, 언어 지시어], [로봇 상태])과 노이즈가 추가된 액션 청크(H=50) 사이에 블록별 인과 어텐션 마스크(Blockwise Causal Attention Mask)를 설정함.",
+    "3. 대규모 사전학습 (Pre-training): 700,000 스텝 동안 혼합 데이터셋에서 Conditional Flow Matching Loss로 학습함. Flow matching 타임스텝 tau는 p(tau) = Beta((s-tau)/s; 1.5, 1) (s=0.999) 분포에서 샘플링하고, 노이즈 액션 chunk에 대해 denoising vector field u(A_t^tau | A_t) = A_t - epsilon을 예측하도록 최적화함.",
+    "4. 다운스트림 파인튜닝 (Post-training): 복잡한 조작 태스크(세탁물 개기, 식탁 정리, 박스 조립 등)에 대해 사전학습된 가중치를 로드한 후 태스크당 1~100+ 시간 분량의 고품질 데이터셋으로 추가 파인튜닝함.",
+    "5. 추론 및 로봇 제어 (Inference Deployment): 관측값 ot에 대해 프리픽스(Key/Value)를 캐싱하고, 표준 정규분포 노이즈 A_t^0 ~ N(0, I)에서 시작하여 Forward Euler 적분(delta=0.1, 10단계)을 수행해 H=50 크기의 액션 청크를 도출함. 시간적 앙상블 없이 20Hz 로봇은 0.8초마다(16 액션 실행 후), 50Hz 로봇은 0.5초마다(25 액션 실행 후) 오픈루프로 실행함."
+  ],
+  "materials": [
+    "PaliGemma 사전학습 가중치 (Google)",
+    "Open X-Embodiment (OXE) Magic Soup 로봇 조작 데이터셋",
+    "BridgeData v2, DROID 데이터셋",
+    "Physical Intelligence 자체 10,000+ 시간 다중 로봇 시연 데이터셋"
+  ],
+  "safety_notes": "실제 로봇(특히 고주파 50Hz 구동 및 모바일 베이스가 결합된 Bimanual/Mobile ALOHA 셋업)에서 오픈루프 청크 실행 중 예측 실패 시 충돌 위험이 있으므로 비상 정지(E-stop) 버튼을 항상 확보하고 하드웨어 보호 가드를 설치해야 함. 또한 날카롭거나 깨지기 쉬운 식기류 및 가열 기기(토스터, 전자레인지) 취급 시 주의가 필요함."
+}

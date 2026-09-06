@@ -1,0 +1,157 @@
+{
+  "title": "RT-2(Robotics Transformer 2): 거대 VLM 기반 비전-언어-액션(VLA) 공동 파인튜닝 및 실시간 폐루프 로봇 제어 레시피",
+  "objective": "웹 스케일 VQA/이미지 캡셔닝 사전학습 데이터와 로봇 조작 궤적 데이터를 함께 공동 파인튜닝(co-fine-tuning)하여, 언어 이해·시각 추론 역량이 실시간 저수준 7DoF 로봇 제어 행동으로 직접 전이되는 Vision-Language-Action(VLA) 모델을 구축하고 평가함.",
+  "parameters": [
+    {
+      "name": "architecture",
+      "value": "ViT-22B image encoder with projection layer and 32B parameter 50-layer UL2 encoder-decoder backbone",
+      "source_tag": "explicit",
+      "evidence_page": 20,
+      "evidence_quote": "The PaLI-X model architecture consists of a ViT-22B Dehghani et al. (2023) to process images, which can accept sequences of n images, leading to n× k tokens per image, where k is the number of patches per image. The image tokens passing over a projection layer is then consumed by an encoder-decoder backbone of 32B parameters and 50 layers, similar to UL2 Tay et al. (2023)",
+      "notes": "RT-2-PaLI-X-55B 모델의 상세 구조",
+      "unit": ""
+    },
+    {
+      "name": "num_layers",
+      "value": "50",
+      "source_tag": "explicit",
+      "evidence_page": 20,
+      "evidence_quote": "The image tokens passing over a projection layer is then consumed by an encoder-decoder backbone of 32B parameters and 50 layers, similar to UL2 Tay et al. (2023)",
+      "notes": "PaLI-X 백본의 UL2 인코더-디코더 레이어 수",
+      "unit": "layers"
+    },
+    {
+      "name": "pretrained_model",
+      "value": "PaLI-X 5B, PaLI-X 55B, PaLM-E 12B, PaLI 3B",
+      "source_tag": "explicit",
+      "evidence_page": 21,
+      "evidence_quote": "We perform co-fine-tuning on pre-trained models from the PaLI-X (Chen et al., 2023a) 5B & 55B model, PaLI (Chen et al., 2023b) 3B model and the PaLM-E (Driess et al., 2023) 12B model.",
+      "notes": "공동 파인튜닝에 사용된 사전학습된 VLM 모델군",
+      "unit": ""
+    },
+    {
+      "name": "learning_rate",
+      "value": "1e-3",
+      "source_tag": "explicit",
+      "evidence_page": 21,
+      "evidence_quote": "For RT-2-PaLI-X-55B, we use learning rate 1e-3 and batch size 2048 and co-fine-tune the model for 80K gradient steps whereas for RT-2-PaLI-X-5B, we use the same learning rate and batch size and co-fine-tune the model for 270K gradient steps.",
+      "notes": "RT-2-PaLI-X (5B 및 55B) 파인튜닝 학습률",
+      "unit": ""
+    },
+    {
+      "name": "batch_size",
+      "value": "2048",
+      "source_tag": "explicit",
+      "evidence_page": 21,
+      "evidence_quote": "For RT-2-PaLI-X-55B, we use learning rate 1e-3 and batch size 2048 and co-fine-tune the model for 80K gradient steps whereas for RT-2-PaLI-X-5B, we use the same learning rate and batch size and co-fine-tune the model for 270K gradient steps.",
+      "notes": "RT-2-PaLI-X (5B 및 55B) 파인튜닝 배치 사이즈",
+      "unit": ""
+    },
+    {
+      "name": "learning_rate",
+      "value": "4e-4",
+      "source_tag": "explicit",
+      "evidence_page": 21,
+      "evidence_quote": "For RT-2-PaLM-E-12B, we use learning rate 4e-4 and batch size 512 to co-fine-tune the model for 1M gradient steps.",
+      "notes": "RT-2-PaLM-E-12B 파인튜닝 학습률",
+      "unit": ""
+    },
+    {
+      "name": "batch_size",
+      "value": "512",
+      "source_tag": "explicit",
+      "evidence_page": 21,
+      "evidence_quote": "For RT-2-PaLM-E-12B, we use learning rate 4e-4 and batch size 512 to co-fine-tune the model for 1M gradient steps.",
+      "notes": "RT-2-PaLM-E-12B 파인튜닝 배치 사이즈",
+      "unit": ""
+    },
+    {
+      "name": "learning_rate",
+      "value": "1e-3",
+      "source_tag": "explicit",
+      "evidence_page": 21,
+      "evidence_quote": "For RT-2-PaLI-3B model used for Language-Table results in Table 1, we use learning rate 1e-3 and batch size 128 to co-fine-tune the model for 300K gradient steps.",
+      "notes": "RT-2-PaLI-3B (Language-Table 시뮬레이션용) 파인튜닝 학습률",
+      "unit": ""
+    },
+    {
+      "name": "batch_size",
+      "value": "128",
+      "source_tag": "explicit",
+      "evidence_page": 21,
+      "evidence_quote": "For RT-2-PaLI-3B model used for Language-Table results in Table 1, we use learning rate 1e-3 and batch size 128 to co-fine-tune the model for 300K gradient steps.",
+      "notes": "RT-2-PaLI-3B 파인튜닝 배치 사이즈",
+      "unit": ""
+    },
+    {
+      "name": "loss_function",
+      "value": "next token prediction objective (behavior cloning loss)",
+      "source_tag": "explicit",
+      "evidence_page": 21,
+      "evidence_quote": "Both models are trained with the next token prediction objective, which corresponds to the behavior cloning loss in robot learning.",
+      "notes": "VLM의 자기회귀적 다음 토큰 예측 손실 함수를 모방학습(BC) 손실로 사용",
+      "unit": ""
+    },
+    {
+      "name": "training_data_size",
+      "value": "1B web training examples (from 10B WebLI) combined with 13-robot 17-month manipulation dataset",
+      "source_tag": "explicit",
+      "evidence_page": 19,
+      "evidence_quote": "The bulk of this data consists of the WebLI dataset, which is around 10B image-text pairs across 109 languages, filtered to the top 10% scoring cross-modal similarity examples to give 1B training examples. Many other captioning and vision question answering datasets are included as well",
+      "notes": "웹 스케일 VLM 데이터와 RT-1 수집 로봇 데이터 결합",
+      "unit": "examples"
+    },
+    {
+      "name": "fine_tuning_strategy",
+      "value": "co-fine-tuning with 50% robotics data mixture for RT-2-PaLI-X and 66% for RT-2-PaLM-E",
+      "source_tag": "explicit",
+      "evidence_page": 19,
+      "evidence_quote": "RT-2-PaLI-X weights the robotics dataset such that it makes up about 50% of the training mixture for co-fine-tuning. RT-2-PaLM-E weights the robotics dataset to be about 66% of the training mixture.",
+      "notes": "로봇 데이터 단독 파인튜닝 대신 사전학습 웹 데이터와 특정 비율로 혼합하여 파국적 망각 방지",
+      "unit": ""
+    },
+    {
+      "name": "action_discretization_bins",
+      "value": "256",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The continuous dimensions (all dimensions except for the discrete termination command) are discretized into 256 bins uniformly. Thus, the robot action can be represented using ordinals of the discrete bins as 8 integer numbers.",
+      "notes": "연속적인 6-DoF 위치/회전 변위 및 그리퍼 확장을 256개 빈으로 균일 양자화",
+      "unit": "bins"
+    },
+    {
+      "name": "control_frequency",
+      "value": "1-3 Hz for 55B, 5 Hz for 5B",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "The largest model we evaluated, the 55B parameter RT-2-PaLI-X-55B model, can run at a frequency of 1-3 Hz. The smaller version of that model, consisting of 5B parameters, can run at a frequency of around 5 Hz.",
+      "notes": "멀티 TPU 클라우드 서비스 환경에서 실시간 닫힌 루프 제어 주기",
+      "unit": "Hz"
+    },
+    {
+      "name": "evaluation_metric",
+      "value": "task success rate across 6k real-world robot trajectories",
+      "source_tag": "explicit",
+      "evidence_page": 7,
+      "evidence_quote": "We evaluate our approach and several baselines with about 6,000 evaluation trajectories in a variety of conditions, which we describe in the following sections.",
+      "notes": "Seen tasks, Unseen environments/objects/backgrounds, Emergent skills에 대한 성공률(%)",
+      "unit": "%"
+    }
+  ],
+  "steps": [
+    "1. 액션 토큰화 매핑: 로봇 엔드이펙터의 6-DoF 위치/회전 변위, 그리퍼 개폐 상태를 [0, 255] 사이 256개 구간으로 균일하게 이산화(discretization)하고 에피소드 종료 플래그를 추가하여 8개의 정수로 구성된 문자열 형태('terminate Δpos_x Δpos_y Δpos_z Δrot_x Δrot_y Δrot_z gripper_extension')로 포맷팅한다. PaLI-X의 경우 1000 이하의 숫자 토큰을 직접 할당하고, PaLM-E의 경우 가장 사용 빈도가 낮은 256개 토큰을 액션 어휘로 덮어쓰기(symbol tuning)한다.",
+    "2. 멀티모달 학습 데이터셋 구성: 1B 규모의 필터링된 WebLI 및 웹 VQA/캡셔닝 데이터셋과 RT-1의 로봇 조작 궤적 데이터(13대 로봇, 17개월 수집)를 결합한다. 로봇 샘플은 'Q: what action should the robot take to [task instruction]? A:' 형태의 VQA 포맷 텍스트와 카메라 이미지 쌍으로 변환한다.",
+    "3. 공동 파인튜닝(Co-fine-tuning) 세팅: RT-2-PaLI-X의 경우 로봇 데이터 가중치를 배치 내 약 50%로, RT-2-PaLM-E의 경우 약 66%로 샘플링 가중치를 부여한다. 사전학습된 가중치(PaLI-X 5B/55B 또는 PaLM-E 12B)를 로드한다.",
+    "4. 모델 훈련 최적화: Next-token prediction 손실(자연어 및 액션 토큰 일괄 적용)을 사용하여 훈련을 진행한다. RT-2-PaLI-X-55B는 LR 1e-3, Batch 2048 조건에서 80K gradient steps 동안 훈련하고; RT-2-PaLI-X-5B는 LR 1e-3, Batch 2048에서 270K gradient steps; RT-2-PaLM-E-12B는 LR 4e-4, Batch 512에서 1M gradient steps 동안 훈련한다.",
+    "5. (선택적) Chain-of-Thought 파인튜닝: 고차원 추론이 필요한 경우 액션 직전에 자연어 계획('Plan: [목적] Action: [토큰열]')을 명시하는 증강 데이터를 구성하여 수백 스텝(a few hundred gradient steps) 동안 추가 미세조정한다.",
+    "6. 분산 클라우드 추론 배포: 파인튜닝된 대규모 모델(55B 등)을 멀티 TPU 클라우드 서버에 배포하고, 로봇 제어 루프에서 네트워크를 통해 쿼리하도록 구성한다. 디코딩 시 유효한 액션 토큰만 샘플링되도록 어휘 제약(output constraint)을 적용하여 1~5 Hz 주기로 닫힌 루프(closed-loop) 제어를 수행한다."
+  ],
+  "materials": [
+    "WebLI 데이터셋 (109개 언어, 10B 이미지-텍스트 쌍에서 유사도 상위 10% 필터링된 1B 예제)",
+    "웹 VQA 및 이미지 캡셔닝 공개 데이터셋",
+    "RT-1 로봇 조작 데모 데이터셋 (13대 모바일 매니퓰레이터로 17개월간 오피스 주방 환경에서 수집한 7가지 기본 스킬 궤적 데이터)",
+    "Language-Table 시뮬레이션 및 실환경 벤치마크 데이터셋"
+  ],
+  "reproducibility_score": 0.35,
+  "safety_notes": "초대형 VLA 모델을 실로봇에 연동할 때 네트워크 지연(latency spike) 또는 디코딩 이상으로 인한 급격한 궤적 변화가 발생할 수 있으므로, 액션 토큰 디코딩 직후 하드웨어 레벨에서 속도/가속도 제한 필터(safety limits) 및 비상 정지(e-stop) 장치를 반드시 구성해야 함. 또한 모델이 예측하지 못한 위험 행동을 하지 않도록 추론 시 액션 토큰 어휘 제약(constrained sampling)을 필수적으로 유지해야 함."
+}

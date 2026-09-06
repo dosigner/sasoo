@@ -1,0 +1,23 @@
+{
+  "quality_summary": "전반적으로 다이어그램(구조도), 로봇 환경 사진, 막대그래프, 표 등이 체계적으로 잘 정리되어 있어 가독성이 높다. 실제 로봇 롤아웃 실험 설정 사진과 수치 결과 표에 오차 막대(StdErr)가 명시되어 있어 결과의 신뢰도를 파악하기 좋다. 다만 독립된 수식 블록은 전혀 사용되지 않고 본문 텍스트 내에서 수식 표현이 처리되었다.",
+  "key_findings_from_visuals": [
+    "Fig. 1: OpenVLA 모델의 고수준 파이프라인 개요도로, 970k 로봇 에피소드 데이터로부터 ViT와 Llama 2 7B를 결합한 VLM을 fine-tuning하여 7-DoF 로봇 액션을 discrete token 형태로 예측하는 폐루프 제어 정책을 도식화함.",
+    "Fig. 2: DINOv2와 SigLIP의 시각 feature를 channel-wise concat한 뒤 2층 MLP Projector를 거쳐 Llama 2 7B LLM의 입력 공간으로 매핑하고, 최종 출력을 Action De-Tokenizer를 통해 7D continuous robot action으로 복원하는 아키텍처 구조를 명확히 보여줌.",
+    "Fig. 3: BridgeData V2 WidowX 로봇 평가에서 OpenVLA는 평균 성공률 70.6%를 달성하여 RT-2-X(50.6%), Octo(20.0%), RT-1-X(18.5%)를 크게 상회함. 다만 Semantic Generalization 축에서는 RT-2-X(38.8%)가 OpenVLA(36.3%)보다 다소 높은 성능을 보임.",
+    "Fig. 4: Google Robot 플랫폼 평가에서 OpenVLA는 평균 85.0%, RT-2-X는 78.3%로 오차 범위 내에서 유사한 고성능을 기록하며, 베이스라인인 RT-1-X(33.3%) 및 Octo(26.7%)를 압도함.",
+    "Fig. 5: 새로운 로봇(Franka-Tabletop, Franka-DROID)에 대한 적응 실험에서 OpenVLA는 전체 평균 63.8% 수준으로 가장 높은 평균 성능을 보임. 단, 좁은 단일 지시 태스크에서는 scratch로 학습한 Diffusion Policy가 더 우세한 경향이 관찰됨.",
+    "Fig. 6: 다양한 GPU 환경에서의 OpenVLA 추론 속도(Hz)를 비교하며, RTX 4090 및 H100에서 bfloat16과 int4 양자화 적용 시 약 6Hz 이상의 처리량을 달성함을 보여줌.",
+    "Table 1: 파라미터 효율적 미세조정(PEFT) 실험에서 전체 파라미터의 1.4%만 학습하는 LoRA(rank=32, 64)가 68.2%의 성공률을 기록하여 Full Fine-Tuning(69.7%)과 대등한 성능을 내면서 VRAM 요구량을 163.3GB에서 약 60GB로 크게 절감함을 입증함.",
+    "Table 2: 4-bit 양자화(int4) 시 성공률 71.9%로 bfloat16(71.3%)과 동등한 성능을 유지하면서 VRAM을 16.8GB에서 7.0GB로 대폭 감소시킴. 반면 int8은 58.1%로 성능이 떨어지는데, 이는 non-blocking 제어 환경에서 8-bit 연산 오버헤드로 인한 제어 주기 저하(1.2Hz) 때문임이 Table 11(blocking control 실험 시 int8 성공률 74.4%)을 통해 규명됨.",
+    "Table 9: 모델 구성 요소에 대한 ablation 실험으로, OpenX 데이터셋 학습을 제외(OpenVLA-Bridge)하면 성공률이 76.3%에서 45.6%로 30%p 이상 급락하고, DINOv2 제거(SigLIP 단독) 시 40.6%로 추가 하락함을 보여줌.",
+    "Table 10: Vision Encoder를 Freeze한 경우(SigLIP 85%->LLaVA 25%)보다 Vision Encoder까지 함께 Fine-tuning한 경우(각각 95%, 90%)가 압도적으로 높은 성공률을 기록하여 VLA 모델에서 시각 인코더 적응의 필수성을 입증함."
+  ],
+  "diagram_types": [
+    "schematic",
+    "graph",
+    "photograph"
+  ],
+  "equations_found": 0,
+  "figure_count": 11,
+  "tables_found": 12
+}

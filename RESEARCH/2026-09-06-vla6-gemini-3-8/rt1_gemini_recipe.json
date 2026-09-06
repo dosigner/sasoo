@@ -1,0 +1,167 @@
+{
+  "title": "RT-1 (Robotics Transformer 1) 모델 학습 및 실시간 로봇 제어 실험 레시피",
+  "objective": "대규모 다중 태스크 실세계 로봇 조작 데이터와 자연어 명령어를 기반으로, 시각-언어 토큰화와 트랜스포머 디코더를 활용하여 실시간(3Hz) 제어가 가능하고 새로운 태스크/물체/환경에 대해 우수한 제로샷 일반화 능력을 보이는 엔드투엔드 로봇 제어 정책(Policy)을 학습하고 평가함.",
+  "parameters": [
+    {
+      "name": "architecture",
+      "value": "FiLM-conditioned EfficientNet-B3 + TokenLearner + Decoder-only Transformer",
+      "source_tag": "explicit",
+      "evidence_page": 2,
+      "evidence_quote": "a FiLM (Perez et al., 2018) conditioned EfficientNet (Tan & Le, 2019), a TokenLearner (Ryoo et al., 2021), and a Trans-former (Vaswani et al., 2017).",
+      "notes": "Sec. 4 및 Figure 1(a)에 명시된 전체 모델 아키텍처 파이프라인 구성."
+    },
+    {
+      "name": "num_layers",
+      "value": "EfficientNet-B3: 26 layers of MBConv blocks and FiLM layers; Transformer: 8 self-attention layers",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "RT-1’s image and instruction tokenization via FiLM EfficientNet-B3 is a total of 16M parameters, with 26 layers of MBConv blocks and FiLM layers, which output 81 vision-language tokens.",
+      "notes": "Sec. 5.1에 명시된 인코더 레이어 수 및 트랜스포머 8 self-attention 레이어(Page 6)."
+    },
+    {
+      "name": "hidden_units",
+      "value": "512",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "outputs a spatial feature map of shape 9×9×512 from the final convolutional layer.",
+      "notes": "EfficientNet-B3 최종 컨볼루션 레이어 피처 맵 채널 차원이며 토큰 차원으로 전달됨(8 tokens x 512, Fig. 3)."
+    },
+    {
+      "name": "weight_initialization",
+      "value": "FiLM dense layers (fc, hC) initialized to zero (identity initialization); EfficientNet-B3 pretrained on ImageNet; USE pretrained",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "we initialize the weights of the dense layers (fc and hC ) which produce the FiLM affine transformation to zero, allowing the FiLM layer to initially act as an identity and preserve the function of the pretrained weights.",
+      "notes": "사전학습된 가중치 파괴를 방지하기 위한 FiLM affine dense layer zero-initialization 기법."
+    },
+    {
+      "name": "training_data_size",
+      "value": "130,000 episodes",
+      "source_tag": "explicit",
+      "evidence_page": 7,
+      "evidence_quote": "Our primary dataset consists of ∼130k robot demonstrations, collected with a fleet of 13 robots over the course of 17 months.",
+      "notes": "Sec. 5.2에 명시된 실세계 로봇 시연 데이터셋 규모 (744개 태스크)."
+    },
+    {
+      "name": "test_data_split",
+      "value": "Seen tasks: 744 instructions (>200 evaluated); Unseen tasks: 53 held-out tasks (21 evaluated)",
+      "source_tag": "explicit",
+      "evidence_page": 23,
+      "evidence_quote": "We evaluate policy performance on 53 tasks that are held out during training. While the unseen instructions’ specific combinations of skills and objects are not seen during training, other combinations of the same skills and objects are present in the training set.",
+      "notes": "학습에 배제된 53개 held-out 태스크 중 21개 또는 53개 전체를 일반화 평가에 사용(Appendix D.1)."
+    },
+    {
+      "name": "loss_function",
+      "value": "Categorical cross-entropy with causal masking (Behavioral Cloning)",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "We use a standard categorical cross-entropy entropy objective and causal masking that was utilized in prior Transformer-based controllers (Reed et al., 2022; Lee et al., 2022a).",
+      "notes": "이산화된 액션 토큰 예측을 위한 표준 교차 엔트로피 손실 함수."
+    },
+    {
+      "name": "evaluation_metric",
+      "value": "Task success rate (binary reward r in {0, 1})",
+      "source_tag": "explicit",
+      "evidence_page": 3,
+      "evidence_quote": "At the end of an episode, the agent will be given a binary reward r ∈ {0, 1} indicating whether the robot performed the instruction i. The goal is to learn a policy π that maximizes the average reward",
+      "notes": "태스크 성공 여부를 판별하는 이진 보상 기반 성공률."
+    },
+    {
+      "name": "pretrained_model",
+      "value": "ImageNet pretrained EfficientNet-B3, Universal Sentence Encoder (USE)",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "passing images through an ImageNet pretrained EfficientNet-B3 (Tan & Le, 2019) model",
+      "notes": "비전 특징 추출기 및 언어 명령어 임베딩 모델로 각각 활용."
+    },
+    {
+      "name": "control_frequency",
+      "value": "3",
+      "source_tag": "explicit",
+      "evidence_page": 7,
+      "evidence_quote": "Based on our experiments this requirement corresponds to at least 3Hz control frequency and the resulting inference time budget for the model, given other latencies in the system, to be less than 100ms.",
+      "notes": "실시간 폐루프 제어를 위한 모델 제어 주기."
+    },
+    {
+      "name": "fixed_waiting_latency",
+      "value": "280",
+      "source_tag": "explicit",
+      "evidence_page": 20,
+      "evidence_quote": "To accomplish this, we introduce a fixed-time waiting mechanism that waits a certain amount of time (280ms, the max observed latency of all components) after the state, that was used to compute the next action, has been captured",
+      "notes": "지터(jitter) 방지 및 일정한 제어 주기 유지를 위한 대기 시간 메커니즘.",
+      "unit": "ms"
+    },
+    {
+      "name": "image_resolution",
+      "value": "300x300",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "which takes 6 images of resolution 300×300 as input and outputs a spatial feature map of shape 9×9×512 from the final convolutional layer.",
+      "notes": "입력 카메라 이미지의 공간 해상도 (RGB 3개 채널)."
+    },
+    {
+      "name": "image_history_length",
+      "value": "6",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "RT-1 tokenizes a history of 6 images by passing images through an ImageNet pretrained EfficientNet-B3 (Tan & Le, 2019) model",
+      "notes": "정책에 공급되는 연속 관측 프레임 수."
+    },
+    {
+      "name": "action_discretization_bins",
+      "value": "256",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "To tokenize actions, each action dimension in RT-1 is discretized into 256 bins.",
+      "notes": "각 액션 차원을 균등 분할한 이산화 빈(bin) 수."
+    },
+    {
+      "name": "action_dimensions",
+      "value": "11",
+      "source_tag": "explicit",
+      "evidence_page": 4,
+      "evidence_quote": "The actions consist of seven dimensions for the arm movement (x, y, z, roll, pitch, yaw, opening of the gripper), three dimensions for base movement (x, y, yaw) and a discrete dimension to switch between three modes: controlling the arm, the base, or terminating the episode.",
+      "notes": "팔 조작 7차원 + 모바일 베이스 3차원 + 모드 전환 1차원."
+    },
+    {
+      "name": "token_learner_compression_ratio",
+      "value": "81 to 8 tokens",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The inclusion of TokenLearner subsamples the 81 visual tokens that come out of the pre-trained FiLM-EfficientNet layers to just 8 final tokens that are then passed on to our Transformer layers.",
+      "notes": "프레임당 81개의 비전-언어 토큰을 8개로 압축 (총 6개 이미지 = 48개 토큰)."
+    },
+    {
+      "name": "model_parameter_count",
+      "value": "35M",
+      "source_tag": "explicit",
+      "evidence_page": 2,
+      "evidence_quote": "Despite its size (35M parameters), it does this at 3 Hz, due to its efficient yet high-capacity architecture",
+      "notes": "토큰화기(16M) + 트랜스포머 디코더(19M)의 총 파라미터 수."
+    },
+    {
+      "name": "multi_robot_data_mix_ratio",
+      "value": "2:1",
+      "source_tag": "explicit",
+      "evidence_page": 27,
+      "evidence_quote": "With these modifications, we mix both datasets with the 2:1 (RT-1 data : Kuka data) ratio and train RT-1 to obtain the final model.",
+      "notes": "이종 로봇 데이터 혼합 실험(RT-1 EDR 데이터 vs Kuka QT-Opt 데이터)의 샘플링 비율."
+    }
+  ],
+  "steps": [
+    "데이터 수집: 13대의 Everyday Robots 모바일 매니퓰레이터(7-DoF 팔, 2핑거 그리퍼, 모바일 베이스 탑재)를 사용해 VR 리모트 컨트롤러로 총 744개 태스크, 약 130,000건의 텔레오퍼레이션 성공 시연 에피소드를 17개월간 수집함.",
+    "자연어 명령어 임베딩: 입력된 자연어 명령어(예: 'pick iced tea can')를 사전학습된 Universal Sentence Encoder(USE)에 입력하여 512차원의 텍스트 임베딩 벡터를 추출함.",
+    "시각-언어 조기 융합(Early Fusion): 최근 6개 프레임의 시점별 RGB 이미지(해상도 300x300)를 ImageNet 사전학습된 EfficientNet-B3에 순차 입력하고, 각 MBConv 블록 사이에 FiLM(Feature-wise Linear Modulation) 레이어를 삽입하여 텍스트 임베딩으로 특징맵을 조건화함. 이때 FiLM 밀집층의 가중치를 0으로 초기화(Identity-initialization)하여 사전학습된 가중치 손상을 방지함. 최종 레이어에서 이미지당 9x9x512 형상의 특징맵(81개 토큰)을 출력함.",
+    "토큰 압축(TokenLearner): 공간 어텐션 기반 TokenLearner 모듈을 통해 프레임당 81개로 펼쳐진 토큰을 8개의 핵심 토큰으로 소프트 압축함. 6개 프레임에 대해 총 48개(6x8)의 시각-언어 토큰(각 512차원)을 생성하고 위치 임베딩(Positional Encoding)을 추가함.",
+    "동작 생성 및 이산화(Action Discretization): 11차원 액션(팔 조작 x, y, z, roll, pitch, yaw, gripper opening 7차원 + 베이스 이동 x, y, yaw 3차원 + 모드 전환 플래그 1차원)을 각 차원별로 균등 256개 빈(bin)으로 이산화함.",
+    "정책 네트워크 학습(Behavioral Cloning): 8개 self-attention 레이어로 구성된 디코더 전용(Decoder-only) 트랜스포머에 48개 토큰을 통과시키며, 원본 시연 동작 토큰과의 범주형 교차 엔트로피(Categorical Cross-entropy) 손실을 인과 마스킹(Causal Masking) 하에서 최적화함. (이때 자기회귀 방식이 아닌 비자기회귀 병렬 예측 수행).",
+    "실시간 제어 배포: 실제 로봇 배포 시 연속 윈도우 간 중복되는 프레임의 토큰 연산 결과를 재사용(캐싱)하고, 센서 캡처 후 액션 실행 전 최대 관측 지연시간인 280ms 동안 고정 대기(Fixed-time waiting)를 거쳐 3Hz의 안정적인 제어 주기로 동작을 실행함."
+  ],
+  "materials": [
+    "일상적인 사무실 주방 식음료 및 물품 (Coke can, Pepsi can, Redbull can, 7up can, Iced tea can, Green jalapeno chip bag, Blue chip bag, Brown chip bag, Multigrain chips, Green rice chip bag, Apple, Orange, Water bottle, Sponge, Rxbar blueberry, Rxbar chocolate, Paper bowl, White bowl, Napkin dispenser, Large glass jar of pistachios, Scooper 등)",
+    "실세계 오피스 키친 환경 (트레이닝용 Robot classroom 및 실제 평가용 Kitchen1, Kitchen2 카운터탑 및 서랍 가구)",
+    "평가용 방해물(Distractor) 물체 및 다양한 패턴의 식탁보(Tablecloth)"
+  ],
+  "reproducibility_score": 0.58,
+  "safety_notes": "모바일 매니퓰레이터 로봇의 자율 주행 및 매니퓰레이션 작동 중 기구부 충돌, 서랍 파손, 물체 낙하 방지를 위해 비상 정지(E-stop) 시스템을 상시 구비해야 하며, 본 모델은 모델 카드(Model Card)에 명시된 바와 같이 연구용 프로토타입으로 인간과의 직접적인 물리적 상호작용(Human-Robot Interaction)에 안전하도록 설계/검증되지 않았음. (Figure 7: 'Not suitable for interaction with humans.') 또한 원격 조작 시연 수집 시 운전자의 직접 시야선(direct line-of-sight)을 유지해야 함(Appendix C.2). 및 배포 환경에서 주변 인원의 접근을 엄격히 제한해야 함."
+}

@@ -1,0 +1,89 @@
+{
+  "title": "PaLM-E: 체화된 멀티모달 언어 모델(Embodied Multimodal Language Model) 훈련 및 미세조정 레시피",
+  "objective": "사전학습된 LLM(PaLM)과 Vision Transformer(ViT) 등을 통합하여, 일반 비전-언어 태스크 및 다양한 로봇 조작 태스크(TAMP, Language-Table, Mobile Manipulation)를 다중 태스크 학습(co-training) 방식으로 엔드투엔드로 해결하는 멀티모달 제너럴리스트 모델을 구축하고 전이 학습 성능을 확보함.",
+  "parameters": [
+    {
+      "name": "architecture",
+      "value": "Prefix-decoder-only Transformer combining ViT/OSRT encoder and PaLM decoder",
+      "source_tag": "explicit",
+      "evidence_page": 4,
+      "evidence_quote": "PaLM-E is a decoder-only LLM that generates textual completions autoregressively given a prefix or prompt. We call our model PaLM-E, since we use PaLM (Chowdhery et al., 2022) as the pre-trained language model, and make it Embodied.",
+      "notes": "Section 3 아키텍처 설명",
+      "unit": ""
+    },
+    {
+      "name": "pretrained_model",
+      "value": "PaLM (8B, 62B, 540B), ViT (4B, 22B)",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We refer to an 8B LLM combined with a 4B ViT as PaLM-E-12B, similarly a 62B LLM + 22B ViT as PaLM-E-84B, and 540B LLM + 22B ViT as PaLM-E-562B.",
+      "notes": "Section 5 기본 사전학습 모델 구성",
+      "unit": ""
+    },
+    {
+      "name": "loss_function",
+      "value": "cross-entropy loss averaged over non-prefix text tokens",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The loss function is therefore a cross-entropy loss averaged over the individual non-prefix tokens w_{n_i+1:L_i}^i.",
+      "notes": "Section 5 훈련 목적 함수",
+      "unit": ""
+    },
+    {
+      "name": "fine_tuning_strategy",
+      "value": "Full model finetuning vs. LLM frozen (training only input encoder and projection layer)",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "When training PaLM-E, one way is to update the parameters of all these components. However, LLMs show impressive reasoning capabilities if supplied with a suitable prompt (Wei et al., 2022). Therefore, we investigate whether it is possible to freeze the LLM and to just train the input encoders",
+      "notes": "Section 5 모델 동결/미세조정 전략",
+      "unit": ""
+    },
+    {
+      "name": "training_data_size",
+      "value": "Full mixture containing WebLI (52.4%), VQ2A (13.1%), CC3M (13.1%), VQG (5.2%), Object Aware (5.2%), robot data (<10%: Language Table 4.2%, Mobile Manipulator 3.1%, TAMP 1.6%)",
+      "source_tag": "inferred",
+      "evidence_page": 15,
+      "evidence_quote": "Dataset in full mixture Sampling frequency %\nWebli (Chen et al., 2022) 100 52.4\nVQ2A (Changpinyo et al., 2022) 25 13.1\nVQG (Changpinyo et al., 2022) 10 5.2\nCC3M (Sharma et al., 2018) 25 13.1\nObject Aware (Piergiovanni et al., 2022) 10 5.2",
+      "notes": "Table 6의 샘플링 빈도 및 비율에서 도출. 로봇 데이터 합계 8.9%",
+      "unit": "%"
+    },
+    {
+      "name": "epochs",
+      "value": "9,000 steps (for Interactive Language-Table finetuning sweep)",
+      "source_tag": "explicit",
+      "evidence_page": 16,
+      "evidence_quote": "To train the finetuned versions of these models, we train a pretrained PaLM-E model for 9,000 additional steps, in order to support a data complexity sweep without training several separate models from scratch on slightly different versions of the full mixture.",
+      "notes": "Appendix B.2 언어-테이블 미세조정 스텝 수",
+      "unit": "steps"
+    },
+    {
+      "name": "evaluation_metric",
+      "value": "Task success rate, VQA accuracy, F1 score (failure detection & affordance), CIDEr/BLEU",
+      "source_tag": "explicit",
+      "evidence_page": 9,
+      "evidence_quote": "Table 4: Mobile manipulation environment: failure detection and affordance prediction (F1 score).",
+      "notes": "Table 1, Table 2, Table 4, Table 5에 제시된 메트릭",
+      "unit": ""
+    }
+  ],
+  "steps": [
+    "1. 사전학습된 대규모 언어 모델(PaLM 8B, 62B, 540B)과 시각 인코더(ViT 4B, 22B 또는 사전학습된 OSRT)를 준비한다.",
+    "2. 이미지, 상태 벡터 또는 3D OSRT 슬롯 표현을 LLM의 토큰 임베딩 차원(k)에 매핑하기 위한 학습 가능한 아핀 변환(MLP 투영층 ψ)을 구성한다.",
+    "3. 텍스트 시퀀스 내의 특정 위치(예: <img> 태그 위치)에 인코더로부터 추출된 연속형 임베딩 벡터를 동적으로 삽입하여 멀티모달 문장(multimodal sentence) 프리픽스를 생성한다.",
+    "4. 전체 학습 믹스(Table 6: WebLI 52.4%, VQ2A 13.1%, CC3M 13.1%, 로봇 데이터 8.9% 등)를 구성하고, 타깃 텍스트 토큰에 대해서만 교차 엔트로피 손실(Cross-Entropy Loss)을 계산한다.",
+    "5. 전체 파라미터를 공동 미세조정(Full finetuning)하거나 또는 LLM을 동결(Frozen)한 채 인코더 및 프로젝터만 업데이트하는 방식으로 엔드투엔드 최적화를 수행한다.",
+    "6. Language-Table 등 특정 다운스트림 도메인의 경우 사전학습된 체크포인트에서 9,000 step 추가 미세조정을 거쳐 폐루프(closed-loop) 제어 정책과 연동한다."
+  ],
+  "materials": [
+    "WebLI 데이터셋 (Chen et al., 2022)",
+    "VQ2A 및 VQG 데이터셋 (Changpinyo et al., 2022)",
+    "CC3M (Conceptual Captions 3M) 데이터셋 (Sharma et al., 2018)",
+    "Object Aware 사전학습 데이터셋 (Piergiovanni et al., 2022)",
+    "OK-VQA, VQAv2, COCO Captioning 벤치마크",
+    "Language-Table 로봇 데이터셋 (Lynch et al., 2022)",
+    "SayCan 모바일 조작 데이터셋 (2,912 시퀀스, Ahn et al., 2022)",
+    "TAMP 시뮬레이션 데이터셋 (96,000 씬, Driess et al., 2020)"
+  ],
+  "reproducibility_score": 0.25,
+  "safety_notes": "실제 로봇(모바일 매니퓰레이터 및 언어-테이블 조작 로봇) 환경에서 자율 주행 및 매니퓰레이션 롤아웃 수행 시 기계적 충돌, 외부 교란으로 인한 예측 불가능한 거동, 주변 작업자 접촉 사고에 대비하여 하드웨어 비상 정지(E-stop) 시스템을 상시 대기시켜야 함. 독점 모델 및 비공개 대규모 데이터셋 사용으로 인한 모델 유출 주의 필요함."
+}

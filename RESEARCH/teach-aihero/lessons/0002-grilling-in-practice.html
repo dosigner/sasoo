@@ -1,0 +1,80 @@
+<meta charset="utf-8">
+<title>레슨 2 · grilling 실전 체험</title>
+<link rel="stylesheet" href="../assets/course.css">
+<main>
+<p class="kicker">Lesson 0002 · 읽기 5분 + 실습 10분</p>
+<h1>grilling 실전 체험</h1>
+<p class="lede">AI Hero 팩의 심장인 인터뷰 프리미티브를 배우고, 읽자마자 SASOO의 실제 미결 사안 하나로 직접 그릴당해 봅니다. 이 레슨의 승리 조건은 하나예요. 그릴이 끝났을 때 "내가 뭘 결정했고 뭘 아직 안 했는지"가 종이에 적을 수 있을 만큼 선명해지는 것.</p>
+
+<h2>1. 한 문장 정의</h2>
+<p>grilling은 <strong>계획이나 아이디어를 결정 트리로 펼쳐 놓고, 가지가 하나도 남지 않을 때까지 라운드 단위로 집요하게 묻는 인터뷰</strong>입니다. superpowers의 brainstorming과 목적은 같지만, 진행 방식이 훨씬 구조적이에요.</p>
+
+<h2>2. 네 가지 계약</h2>
+<ol>
+<li><strong>결정 트리와 frontier.</strong> 모든 결정은 하위 결정을 낳습니다. frontier는 "전제가 이미 정리돼서 지금 물을 수 있는 결정들"이에요. 아직 안 정해진 답에 기대는 질문은 다음 라운드로 미룹니다.</li>
+<li><strong>라운드마다 frontier 전체를 한 번에.</strong> 질문은 번호가 붙고, 각 질문에 에이전트의 추천 답이 딸려 옵니다. 사용자는 라운드 단위로 답하고, 답이 트리를 재구성해 다음 frontier를 엽니다.</li>
+<li><strong>사실은 에이전트 몫, 결정은 사용자 몫.</strong> 파일이나 코드에서 확인 가능한 것을 사용자에게 묻는 건 반칙입니다. 에이전트가 서브에이전트를 보내 조사하고, 그동안 나머지 frontier를 계속 물어요.</li>
+<li><strong>frontier가 비면 끝. 단 확인 전에는 행동 금지.</strong> 모든 가지를 방문했고 조용히 가정된 것이 없을 때 인터뷰가 끝나고, 사용자가 "공유된 이해에 도달했다"고 확인하기 전까지는 실행으로 넘어가지 않습니다.</li>
+</ol>
+<div class="callout">
+Phase 1 최종 리뷰에서 겪은 것과 비교해 보세요. 그때는 리뷰어가 발견한 5건을 제가 한 번에 수정 지시했는데, grilling은 그 반대 방향입니다. <strong>구현 전에</strong> 결정의 가지를 전부 드러내서, 나중에 리뷰가 잡을 결함을 미리 줄이는 도구예요.
+</div>
+
+<h2>3. 세 가지 진입로</h2>
+<table>
+<tr><th>스킬</th><th>언제</th><th>남기는 것</th></tr>
+<tr><td><span class="sk">grilling</span></td><td>포장 없이 인터뷰만 원할 때</td><td>대화 자체</td></tr>
+<tr><td><span class="sk">grill-me</span></td><td>저장소 밖의 글, 계획, 설계</td><td>없음 (무상태)</td></tr>
+<tr><td><span class="sk">grill-with-docs</span></td><td>작업 디렉토리 안. 사실상 기본값</td><td>CONTEXT.md와 ADR</td></tr>
+</table>
+<p>저장소가 있으면 grill-with-docs가 항상 낫습니다. 같은 인터뷰에 기록이 남으니까요. 오늘 실습은 저장소를 어지럽히지 않는 것이 제약이라 원시형인 grilling을 씁니다.</p>
+
+<h2>4. 실습: 진짜 미결 사안으로 그릴당하기</h2>
+<p>SASOO에는 Phase 1이 남긴 실제 미결 사안이 있어요. 학습용 가짜 주제가 아니라 이걸로 합니다. 채팅으로 돌아가서 아래 중 하나를 고르고 <strong>"그릴 시작"</strong>이라고 말하세요.</p>
+<ul>
+<li><strong>주제 A. near-miss quote 노출</strong> — 인용은 원문에서 확인됐지만 페이지가 어긋난 경우(UNVERIFIED_PAGE_MISMATCH), 찾아낸 텍스트를 UI와 CSV에 보여줄 것인가, 숨길 것인가. 최종 리뷰가 Phase 2 최우선 후보로 꼽은 사안입니다.</li>
+<li><strong>주제 B. 과학표기 동치</strong> — 값 가드가 0.0045와 "4.5×10⁻³"를 다른 값으로 보는 문제. 첫 실측에서 실제로 발견된 미검증 사례예요. 어디까지 동치로 인정할지가 결정 트리의 뿌리입니다.</li>
+</ul>
+<div class="callout ok">
+실습 중 확인할 것 세 가지. ① 질문마다 추천 답이 붙어 있는가 ② 코드로 확인 가능한 사실을 나에게 묻지 않는가 ③ 내 답이 다음 라운드의 질문을 바꾸는가. 이 셋이 보이면 스킬이 계약대로 작동하는 겁니다.
+</div>
+
+<h2>5. 확인 퀴즈</h2>
+
+<div class="quiz" data-answer="b" data-why="전제가 정리된 결정들만이 지금 물을 수 있는 frontier입니다.">
+<p class="q">Q1. frontier의 정의로 맞는 것은?</p>
+<label><input type="radio" name="q1" value="a"> 트리에서 아직 방문하지 않은 모든 결정</label>
+<label><input type="radio" name="q1" value="b"> 전제가 정리돼 지금 물을 수 있는 결정</label>
+<label><input type="radio" name="q1" value="c"> 사용자가 가장 중요하다고 표시한 결정</label>
+<label><input type="radio" name="q1" value="d"> 에이전트가 추천 답을 준비해 둔 결정</label>
+<p class="feedback"></p>
+</div>
+
+<div class="quiz" data-answer="c" data-why="사실 조사는 에이전트가 서브에이전트로 처리하고, 결정만 사용자에게 옵니다.">
+<p class="q">Q2. 그릴 중 "figures 테이블에 bbox 컬럼이 있나요?"라는 질문이 나에게 왔다면?</p>
+<label><input type="radio" name="q2" value="a"> 정상이다. 프로젝트 지식은 사용자 몫이니까</label>
+<label><input type="radio" name="q2" value="b"> 정상이다. 라운드에 포함된 질문이니까</label>
+<label><input type="radio" name="q2" value="c"> 계약 위반이다. 코드로 확인 가능한 사실이니까</label>
+<label><input type="radio" name="q2" value="d"> 계약 위반이다. 질문에 번호가 없었으니까</label>
+<p class="feedback"></p>
+</div>
+
+<div class="quiz" data-answer="a" data-why="frontier가 비어도 사용자의 공유 이해 확인 전에는 실행으로 넘어가지 않습니다.">
+<p class="q">Q3. 인터뷰의 올바른 종료 순서는?</p>
+<label><input type="radio" name="q3" value="a"> frontier가 빈다, 사용자가 확인한다, 그다음 행동</label>
+<label><input type="radio" name="q3" value="b"> 사용자가 확인한다, frontier가 빈다, 그다음 행동</label>
+<label><input type="radio" name="q3" value="c"> 추천 답이 모두 채택되면 에이전트가 바로 행동</label>
+<label><input type="radio" name="q3" value="d"> 정해진 라운드 수를 소진하면 자동으로 종료</label>
+<p class="feedback"></p>
+</div>
+
+<h2>6. 다음 걸음</h2>
+<ul>
+<li><strong>1차 소스</strong>: <code>~/.claude/skills/grilling/SKILL.md</code>. 23줄짜리 원문이라 1분이면 읽습니다. 이 레슨의 모든 내용이 저기서 왔어요.</li>
+<li>실습을 마치면 그릴 결과(결정된 것과 남은 것)를 학습 기록으로 남겨 드립니다.</li>
+<li>다음 레슨 후보: setup-matt-pocock-skills 실전 실행, 또는 grill-with-docs로 승격해서 오늘 결정을 ADR로 남기기.</li>
+</ul>
+
+<footer>궁금한 점은 에이전트(교사)에게 바로 물어보세요. · <a href="0001-aihero-pack-map.html">레슨 1</a> · <a href="../reference/aihero-map.html">치트시트</a> · <a href="../MISSION.md">미션</a></footer>
+</main>
+<script src="../assets/quiz.js"></script>

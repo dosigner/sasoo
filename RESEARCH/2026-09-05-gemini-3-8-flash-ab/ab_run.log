@@ -1,0 +1,70 @@
+##### gemini-3.7-flash rep 1
+paper 43: Saliency Optimization from Robust Background Detection
+  pdf=Zhu_Saliency_Optimization_from_2014_CVPR_paper.pdf  figures=33 tables=13
+
+gemini PDF 업로드 중... done
+[citation/gemini] model=gemini-3.7-flash effort=low ... 5.0s  in=2664 out=1105 reasoning=0 cached=0 retries=0 $0.006142
+[visual/gemini] model=gemini-3.7-flash effort=low ... 6.4s  in=5788 out=937 reasoning=0 cached=0 retries=0 $0.007855
+[recipe/gemini] model=gemini-3.7-flash effort=medium ... 9.2s  in=4759 out=2411 reasoning=530 cached=0 retries=0 $0.012611
+
+saved to /Users/dongj/dev/논문_사수_개발중/sasoo/backend/outputs/provider_compare
+saved /Users/dongj/.claude/jobs/edc48ac3/tmp/ab_gemini-3.7-flash_r1.json
+##### gemini-3.7-flash rep 2
+paper 43: Saliency Optimization from Robust Background Detection
+  pdf=Zhu_Saliency_Optimization_from_2014_CVPR_paper.pdf  figures=33 tables=13
+
+gemini PDF 업로드 중... done
+[citation/gemini] model=gemini-3.7-flash effort=low ... 5.8s  in=2664 out=1296 reasoning=0 cached=0 retries=0 $0.006858
+[visual/gemini] model=gemini-3.7-flash effort=low ... 7.2s  in=5788 out=966 reasoning=0 cached=0 retries=0 $0.007964
+[recipe/gemini] model=gemini-3.7-flash effort=medium ... 8.8s  in=4759 out=2547 reasoning=703 cached=0 retries=0 $0.013121
+
+saved to /Users/dongj/dev/논문_사수_개발중/sasoo/backend/outputs/provider_compare
+saved /Users/dongj/.claude/jobs/edc48ac3/tmp/ab_gemini-3.7-flash_r2.json
+##### gemini-3.7-flash rep 3
+paper 43: Saliency Optimization from Robust Background Detection
+  pdf=Zhu_Saliency_Optimization_from_2014_CVPR_paper.pdf  figures=33 tables=13
+
+gemini PDF 업로드 중... done
+[citation/gemini] model=gemini-3.7-flash effort=low ... 5.9s  in=2664 out=1314 reasoning=0 cached=0 retries=0 $0.006926
+[visual/gemini] model=gemini-3.7-flash effort=low ... 9.8s  in=5788 out=978 reasoning=0 cached=0 retries=0 $0.008008
+[recipe/gemini] model=gemini-3.7-flash effort=medium ... 10.7s  in=4759 out=3393 reasoning=1118 cached=0 retries=0 $0.016293
+
+saved to /Users/dongj/dev/논문_사수_개발중/sasoo/backend/outputs/provider_compare
+saved /Users/dongj/.claude/jobs/edc48ac3/tmp/ab_gemini-3.7-flash_r3.json
+##### gemini-3.8-flash rep 1
+paper 43: Saliency Optimization from Robust Background Detection
+  pdf=Zhu_Saliency_Optimization_from_2014_CVPR_paper.pdf  figures=33 tables=13
+
+gemini PDF 업로드 중... done
+[citation/gemini] model=gemini-3.8-flash effort=low ... 6.9s  in=2664 out=1276 reasoning=0 cached=0 retries=0 $0.006783
+[visual/gemini] model=gemini-3.8-flash effort=low ... 6.9s  in=5788 out=1017 reasoning=0 cached=0 retries=0 $0.008155
+[recipe/gemini] model=gemini-3.8-flash effort=medium ... 13.8s  in=4759 out=4045 reasoning=2136 cached=0 retries=0 $0.018738
+[deep_dive/gemini] model=gemini-3.8-flash effort=high ... 26.9s  in=4950 out=6317 reasoning=3475 cached=0 retries=0 $0.027401
+
+saved to /Users/dongj/dev/논문_사수_개발중/sasoo/backend/outputs/provider_compare
+saved /Users/dongj/.claude/jobs/edc48ac3/tmp/ab_gemini-3.8-flash_r1.json
+##### gemini-3.8-flash rep 2
+paper 43: Saliency Optimization from Robust Background Detection
+  pdf=Zhu_Saliency_Optimization_from_2014_CVPR_paper.pdf  figures=33 tables=13
+
+gemini PDF 업로드 중... done
+[citation/gemini] model=gemini-3.8-flash effort=low ... 6.1s  in=2664 out=1269 reasoning=0 cached=0 retries=0 $0.006757
+[visual/gemini] model=gemini-3.8-flash effort=low ... 7.6s  in=5788 out=1089 reasoning=0 cached=0 retries=0 $0.008425
+[recipe/gemini] model=gemini-3.8-flash effort=medium ... 9.5s  in=4759 out=2628 reasoning=769 cached=0 retries=0 $0.013424
+[deep_dive/gemini] model=gemini-3.8-flash effort=high ... 35.0s  in=4950 out=8485 reasoning=5620 cached=0 retries=0 $0.035531
+
+saved to /Users/dongj/dev/논문_사수_개발중/sasoo/backend/outputs/provider_compare
+saved /Users/dongj/.claude/jobs/edc48ac3/tmp/ab_gemini-3.8-flash_r2.json
+##### gemini-3.8-flash rep 3
+paper 43: Saliency Optimization from Robust Background Detection
+  pdf=Zhu_Saliency_Optimization_from_2014_CVPR_paper.pdf  figures=33 tables=13
+
+gemini PDF 업로드 중... done
+[citation/gemini] model=gemini-3.8-flash effort=low ... 5.9s  in=2664 out=1274 reasoning=0 cached=0 retries=0 $0.006776
+[visual/gemini] model=gemini-3.8-flash effort=low ... 7.3s  in=5788 out=1096 reasoning=0 cached=0 retries=0 $0.008451
+[recipe/gemini] model=gemini-3.8-flash effort=medium ... 11.6s  in=4759 out=3097 reasoning=599 cached=0 retries=0 $0.015183
+[deep_dive/gemini] model=gemini-3.8-flash effort=high ... 20.5s  in=4950 out=4855 reasoning=2134 cached=0 retries=0 $0.021919
+
+saved to /Users/dongj/dev/논문_사수_개발중/sasoo/backend/outputs/provider_compare
+saved /Users/dongj/.claude/jobs/edc48ac3/tmp/ab_gemini-3.8-flash_r3.json
+##### ALL DONE

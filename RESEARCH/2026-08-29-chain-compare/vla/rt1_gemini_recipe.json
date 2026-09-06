@@ -1,0 +1,57 @@
+{
+  "title": "RT-1 (Robotics Transformer 1) 모델 구조 및 모바일 매니퓰레이션 모사 학습(Imitation Learning) 레시피",
+  "objective": "자연어 명령과 시계열 카메라 이미지를 입력받아 3Hz 실시간 제어가 가능한 토큰화된 로봇 조작 행동(이산 행동 공간)을 생성하는 고용량 트랜스포머 모델 RT-1을 구축하고, 대규모 멀티태스크 실로봇 데이터셋을 통한 제로샷 일반화 및 강인성을 확보한다.",
+  "parameters": [
+    {"name": "model_architecture", "value": "FiLM conditioned EfficientNet-B3 + TokenLearner + Decoder-only Transformer", "source_tag": "explicit", "evidence_page": 2, "evidence_quote": "a FiLM (Perez et al., 2018) conditioned EfficientNet (Tan & Le, 2019), a TokenLearner (Ryoo et al., 2021), and a Transformer (Vaswani et al., 2017).", "notes": "Section 4 & Figure 1a"},
+    {"name": "total_parameters", "value": "35", "source_tag": "explicit", "evidence_page": 2, "evidence_quote": "Despite its size (35M parameters), it does this at 3 Hz", "unit": "M parameters"},
+    {"name": "image_tokenizer_parameters", "value": "16", "source_tag": "explicit", "evidence_page": 5, "evidence_quote": "RT-1’s image and instruction tokenization via FiLM EfficientNet-B3 is a total of 16M parameters, with 26 layers of MBConv blocks and FiLM layers", "unit": "M parameters"},
+    {"name": "transformer_parameters", "value": "19", "source_tag": "explicit", "evidence_page": 6, "evidence_quote": "The Transformer is a decoder-only sequence model with 8 self-attention layers and 19M total parameters that outputs action tokens.", "unit": "M parameters"},
+    {"name": "input_image_resolution", "value": "300x300", "source_tag": "explicit", "evidence_page": 5, "evidence_quote": "takes 6 images of resolution 300×300 as input and outputs a spatial feature map of shape 9×9×512 from the final convolutional layer.", "unit": "pixels"},
+    {"name": "input_history_length", "value": "6", "source_tag": "explicit", "evidence_page": 5, "evidence_quote": "RT-1 tokenizes a history of 6 images by passing images through an ImageNet pretrained EfficientNet-B3", "unit": "frames"},
+    {"name": "text_embedding_model", "value": "Universal Sentence Encoder", "source_tag": "explicit", "evidence_page": 5, "evidence_quote": "The instruction is first embedded via Universal Sentence Encoder (Cer et al., 2018).", "notes": "USE embedding dimension = 512"},
+    {"name": "tokens_per_image_before_tokenlearner", "value": "81", "source_tag": "explicit", "evidence_page": 5, "evidence_quote": "We instead flatten the output feature map from the EfficientNet into 81 visual tokens which are passed on to the later layers of the network."},
+    {"name": "tokens_per_image_after_tokenlearner", "value": "8", "source_tag": "explicit", "evidence_page": 5, "evidence_quote": "subsamples the 81 visual tokens that come out of the pre-trained FiLM-EfficientNet layers to just 8 final tokens that are then passed on to our Transformer layers."},
+    {"name": "transformer_total_input_tokens", "value": "48", "source_tag": "explicit", "evidence_page": 6, "evidence_quote": "These 8 tokens per-image are then concatenated with the other images in the history, forming 48 total tokens (with added position encoding) to be fed into the Transformer backbone of RT-1."},
+    {"name": "transformer_num_layers", "value": "8", "source_tag": "explicit", "evidence_page": 6, "evidence_quote": "The Transformer is a decoder-only sequence model with 8 self-attention layers and 19M total parameters that outputs action tokens.", "unit": "layers"},
+    {"name": "action_discretization_bins", "value": "256", "source_tag": "explicit", "evidence_page": 6, "evidence_quote": "To tokenize actions, each action dimension in RT-1 is discretized into 256 bins.", "unit": "bins"},
+    {"name": "action_space_dimensions", "value": "11", "source_tag": "explicit", "evidence_page": 4, "evidence_quote": "seven dimensions for the arm movement (x, y, z, roll, pitch, yaw, opening of the gripper), three dimensions for base movement (x, y, yaw) and a discrete dimension to switch between three modes: controlling the arm, the base, or terminating the episode.", "unit": "dimensions"},
+    {"name": "loss_function", "value": "Categorical cross-entropy with causal masking", "source_tag": "explicit", "evidence_page": 6, "evidence_quote": "We use a standard categorical cross-entropy entropy objective and causal masking that was utilized in prior Transformer-based controllers (Reed et al., 2022; Lee et al., 2022a)."},
+    {"name": "training_dataset_episodes", "value": "~130k", "source_tag": "explicit", "evidence_page": 7, "evidence_quote": "Our primary dataset consists of ∼130k robot demonstrations, collected with a fleet of 13 robots over the course of 17 months.", "unit": "episodes"},
+    {"name": "training_dataset_tasks", "value": "744", "source_tag": "explicit", "evidence_page": 7, "evidence_quote": "Total 744", "notes": "Table 1, skills breakdown across 12 categories", "unit": "tasks"},
+    {"name": "control_frequency", "value": "3", "source_tag": "explicit", "evidence_page": 4, "evidence_quote": "RT-1 performs closed-loop control and commands actions at 3 Hz until it either yields a “terminate” action or hits a pre-set time step limit.", "unit": "Hz"},
+    {"name": "fixed_latency_waiting_time", "value": "280", "source_tag": "explicit", "evidence_page": 20, "evidence_quote": "To accomplish this, we introduce a fixed-time waiting mechanism that waits a certain amount of time (280ms, the max observed latency of all components)", "unit": "ms"},
+    {"name": "multi_robot_data_mixing_ratio", "value": "2:1 (RT-1 data : Kuka data)", "source_tag": "explicit", "evidence_page": 27, "evidence_quote": "we mix both datasets with the 2:1 (RT-1 data : Kuka data) ratio and train RT-1 to obtain the final model.", "notes": "Kuka QT-Opt bin picking dataset contains 209k episodes"}
+  ],
+  "steps": [
+    "1. 데이터 수집: 13대의 Everyday Robots 모바일 매니퓰레이터와 2개의 VR 원격 조작기를 사용하여 17개월 동안 744개 태스크(12개 스킬 범주)에 대해 약 13만 건의 인간 시연 에피소드를 수집함.",
+    "2. 행동 공간 정의 및 이산화: 로봇 행동을 11개 차원(팔 7-DOF: x, y, z, roll, pitch, yaw, gripper + 베이스 3-DOF: x, y, yaw + 3가지 모드 전환: arm, base, terminate)으로 구성하고, 각 차원의 경계 범위 내에서 균등하게 256개 bin으로 이산화(discretization)함.",
+    "3. 언어 및 이미지 토큰화(Vision-Language Tokenization): 자연어 지시문을 Universal Sentence Encoder로 512차원 임베딩한 뒤, 6장의 시계열 이미지(300x300 해상도)를 입력받는 ImageNet 사전학습 EfficientNet-B3의 26개 MBConv 블록 사이에 FiLM 레이어(가중치는 0으로 초기화하여 identity mapping 보존)로 조건화하여 9x9x512(81개 토큰)의 특징 맵을 추출함.",
+    "4. 공간 토큰 압축(TokenLearner): 이미지당 생성된 81개 비전-언어 토큰을 TokenLearner 모듈을 통해 어텐션 기반으로 소프트 선택하여 8개 토큰으로 축소함(6장 이미지 기준 총 48개 토큰 구성).",
+    "5. 트랜스포머 인과적 모델링: 위치 임베딩이 추가된 48개 토큰 시퀀스를 8개 self-attention 레이어(19M 파라미터)를 가진 Decoder-only Transformer 백본에 입력하고, 이전 연구(Reed et al., 2022)의 범주형 교차 엔트로피(Categorical Cross-Entropy) 손실 함수와 인과적 마스킹(Causal Masking)을 적용하여 행동 토큰을 학습함 (추론 속도 확보를 위해 auto-regressive action conditioning은 배제).",
+    "6. 실시간 로봇 제어 배포: 3Hz 제어 주기를 충족하기 위해 슬라이딩 윈도우 토큰 재사용 기법을 적용하고, 제어 지연 변동에 따른 지터(jitter)를 방지하기 위해 280ms의 고정 대기 메커니즘을 적용하여 폐루프(closed-loop) 제어로 액션을 실행함."
+  ],
+  "equipment": [
+    "Everyday Robots 모바일 매니퓰레이터 (7-DOF arm, 2-fingered gripper, mobile base)",
+    "VR 리모컨 (2 virtual reality remotes for tele-operation)",
+    "Kuka IIWA 로봇 (QT-Opt 데이터셋용)",
+    "Robot Classroom 및 실제 오피스 주방 환경 (Kitchen1, Kitchen2)"
+  ],
+  "materials": [
+    "사전학습 가중치: ImageNet pre-trained EfficientNet-B3",
+    "언어 모델: Universal Sentence Encoder (Cer et al., 2018)",
+    "실로봇 시연 데이터셋: ~130,000 demonstration episodes (744 tasks)",
+    "시뮬레이션 및 이종 데이터 (선택 사항): RetinaGAN 변환 시뮬레이션 데이터 518k trajectories, Kuka QT-Opt bin-picking 데이터 209k episodes",
+    "실험용 일상 사물 세트 (음료수 캔, 과자 봉지, 과일, 서랍, 스펀지 등)"
+  ],
+  "missing_info": [
+    "옵티마이저 상세 파라미터 (Adam, AdamW 여부 및 beta1, beta2, epsilon 값 부재)",
+    "구체적인 학습률(learning_rate) 수치 및 스케줄러(warmup steps, cosine decay 등)",
+    "학습 배치 크기(batch_size) 및 총 학습 에폭(num_epochs) / 스텝(steps)",
+    "하드웨어 훈련 리소스 (사용된 TPU/GPU 종류, 개수, 총 학습 소요 시간)",
+    "프레임워크 버전 (TensorFlow / JAX / PyTorch 버전 미표기 - 오픈소스 링크만 제공)",
+    "가중치 정규화 기법(Weight decay, Dropout rate) 및 데이터 증강(Augmentation) 파이프라인 구체 정보",
+    "난수 시드(random_seed)"
+  ],
+  "reproducibility_score": 0.58,
+  "safety_notes": "실제 로봇 팔 및 이동형 베이스가 오피스 주방 환경에서 물체 파지 및 이동을 수행하므로 비상 정지(E-stop) 장치를 상시 확보해야 하며, 사전 정의된 타임스텝 한도(time step limit) 및 모드 전환(terminate) 검증이 필수적임. 사람과의 직접 상호작용은 안전상 권장되지 않음(Model Card 명시). Target pose 추적 실패 시 충돌 위험에 유의해야 함."
+}
