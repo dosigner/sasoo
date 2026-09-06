@@ -59,6 +59,7 @@ export default defineConfig({
     target: 'es2022',
     outDir: 'dist',
     sourcemap: true,
+    manifest: true,
     chunkSizeWarningLimit: 1600,
     rollupOptions: {
       onwarn(warning, warn) {
@@ -81,7 +82,7 @@ export default defineConfig({
               id.includes('remark-math') ||
               id.includes('rehype-highlight') ||
               id.includes('rehype-katex') ||
-              id.includes('katex')
+              (id.includes('katex') && !id.includes('/mermaid/node_modules/'))
             ) {
               return 'markdown';
             }
@@ -101,7 +102,6 @@ export default defineConfig({
             id.includes('/src/components/ChatPanel') ||
             id.includes('/src/components/FigureGallery') ||
             id.includes('/src/components/TableGallery') ||
-            id.includes('/src/components/MermaidRenderer') ||
             id.includes('/src/hooks/useAnalysis')
           ) {
             return 'workbench';
