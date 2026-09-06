@@ -21,6 +21,17 @@ sasoo/.codex/
 AGENTS.md
 PRD_Sasoo_v3.0.md
 docs/marketing/
+docs/product-decisions.md
+
+# 도구가 만든 산출물. 원본 문서와 코드로 다시 만들 수 있으므로 추적하지 않는다.
+.omo/
+.scratch/
+output/
+sasoo/.impeccable/
+
+# RESEARCH에는 실측 문서와 측정 결과만 담는다. 측정 입력으로 쓴 논문 원문 PDF는
+# 제3자 저작물이고 6편만으로 63MB라서, 저장소에 넣지 않고 로컬에만 둔다.
+RESEARCH/**/*.pdf
 
 # 저장소 어디에 생기든 무시한다. sasoo/.gitignore에도 같은 규칙이 있지만
 # 루트에 npm을 잘못 돌리면 여기서만 걸린다(실측 2026-08-30, 루트에 151MB가 쌓여 있었다).

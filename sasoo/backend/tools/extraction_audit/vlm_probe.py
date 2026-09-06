@@ -66,7 +66,7 @@ async def probe_candidate(candidate: dict, manifest: dict, paper_dir: Path, *, m
             ],
             lane="pipeline",
             model=MODEL_FLASH_HQ,
-            # 3.7 Flash는 minimal을 거부한다(400). low가 이 모델의 최저치다.
+            # 3.7/3.8 Flash는 minimal을 거부한다(400). low가 이 모델의 최저치다.
             thinking_level="low",
             store=False,
         )
@@ -147,7 +147,7 @@ async def _probe_with_crop(candidate: dict, crop_path: Path) -> dict:
             ],
             lane="pipeline",
             model=MODEL_FLASH_HQ,
-            # 3.7 Flash는 minimal을 거부한다(400). low가 이 모델의 최저치다.
+            # 3.7/3.8 Flash는 minimal을 거부한다(400). low가 이 모델의 최저치다.
             thinking_level="low",
             store=False,
         )

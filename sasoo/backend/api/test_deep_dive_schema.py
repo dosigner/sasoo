@@ -10,7 +10,7 @@ recipe 쪽 잠금(test_recipe_output_bounds.py)과 같은 원칙을 공유한다
 마지막 속성은 자유서술 문자열로 두지 않는다.
 """
 
-import api.analysis_routes as analysis_routes
+import services.analysis_execution as analysis_routes
 
 _PROPS = analysis_routes._DEEP_DIVE_SCHEMA["properties"]
 

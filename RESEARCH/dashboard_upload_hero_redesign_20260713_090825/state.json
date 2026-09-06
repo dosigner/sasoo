@@ -1,0 +1,74 @@
+{
+  "session_id": "dashboard_upload_hero_redesign_20260713_090825",
+  "topic": "요즘 스타일의 SaaS/AI 대시보드 겸 업로드 메인(hero) 페이지 redesign 사례 — 논문 첨삭/분석 웹앱 Home 재설계용 실제 제품 레퍼런스",
+  "created_at": "2026-07-13T09:08:25Z",
+  "updated_at": "2026-07-13T12:00:00Z",
+  "status": "COMPLETED",
+  "current_phase": 7,
+  "requirements": {
+    "focus": [
+      "실제 제품 레퍼런스",
+      "대시보드+업로드 진입점 레이아웃/IA",
+      "업로드 우선 UX 인터랙션",
+      "usage/cost/recent 대시보드 컴포넌트",
+      "2025-2026 디자인 트렌드"
+    ],
+    "output_format": "design_reference_collection + pattern_analysis + 적용안",
+    "scope": {
+      "timeframe": {
+        "recency": "2024-2026"
+      },
+      "geography": {
+        "global": true
+      }
+    },
+    "sources": {
+      "required_types": [
+        "real_products",
+        "design_galleries",
+        "design_system_docs"
+      ],
+      "min_quality": "C"
+    },
+    "audience": "product_developer_designer",
+    "special_requirements": [
+      "실제 제품명+URL 명시",
+      "레이아웃 구조 서술",
+      "논문사수 Home 적용 방식 연결"
+    ]
+  },
+  "plan": {
+    "subtopics": [
+      "모던 SaaS 앱 홈/대시보드 hero 레이아웃 (Linear, Vercel, Notion, Raycast 등)",
+      "업로드 우선 진입점 UX (Gamma, v0, ChatGPT, Claude, Perplexity, Dropbox 등)",
+      "AI 문서 분석/작문 도구 홈 화면 (Grammarly, Paperpal, SciSpace, Elicit, Consensus 등 경쟁군)",
+      "대시보드 데이터 표현 컴포넌트 (bento grid, stat tile, usage/cost 위젯)",
+      "2025-2026 대시보드/hero 디자인 트렌드 (Mobbin, Dribbble, Godly 등 갤러리)"
+    ]
+  },
+  "progress": {
+    "phase_1": "completed",
+    "phase_2": "completed",
+    "phase_3": "completed",
+    "phase_4": "completed",
+    "phase_5": "completed",
+    "phase_6": "completed",
+    "phase_7": "completed"
+  },
+  "sources_count": 54,
+  "artifacts": {
+    "agent_results": 5,
+    "claim_ledger": 18,
+    "report_sections": 5
+  },
+  "errors": [],
+  "verification": {
+    "passed": true,
+    "signature": "7ff11ede069c199cbd6bed99b5ffadae6fdfdd70a97c8704df63868ddb50c354",
+    "verified_count": 17,
+    "unresolved_count": 1,
+    "refuted_count": 0,
+    "checked_at": "2026-07-13T02:53:22.004210+00:00",
+    "checker": "validate_ledger.py"
+  }
+}

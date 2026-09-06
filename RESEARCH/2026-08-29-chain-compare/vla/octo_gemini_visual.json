@@ -1,0 +1,22 @@
+{
+  "quality_summary": "전반적으로 아키텍처 다이어그램(Fig. 1, 2)과 실험 셋업 사진(Fig. 4, 7), 정량 평가 그래프/표(Fig. 5, 6, Table I~VII)가 매우 깔끔하고 체계적으로 구성되어 있음. 다만 실제 로봇 실험의 특성상 시도 횟수(trial count)가 10~40회 수준으로 제한되어 있으며, 성공률 수치에 오차 막대(error bar)나 신뢰구간(confidence interval)이 표기되지 않은 점은 통계적 유의성 검증 측면에서 다소 아쉬움.",
+  "key_findings_from_visuals": [
+    "Fig. 2: Octo의 Transformer 백본 구조를 도식화함. 텍스트(T5 인코더)와 이미지(얕은 CNN 패치 분할)를 토큰화한 뒤 Block-wise causal masking을 적용하며, 별도의 Readout 토큰([CLS] 유사)을 두어 3계층 MLP 기반 Diffusion Action Head로 액션 청크(Action chunk)를 디코딩함. 파인튜닝 시 백본 가중치를 유지한 채 새 관측치나 액션 헤드를 추가하는 모듈형 구조를 명확히 보여줌.",
+    "Fig. 3 & Table III: Open X-Embodiment 데이터셋 중 25개 데이터셋(총 800k 에피소드)을 선별한 훈련 데이터 가중치 파이차트 및 목록. Fractal, Kuka, Bridge 데이터셋이 각각 17.0%로 가장 큰 비중(합계 51%)을 차지하며 나머지는 다양성 및 크기에 따라 가중치가 조정됨.",
+    "Fig. 5: Zero-shot 평가 비교 막대 그래프. 3가지 로봇 셋업(WidowX, UR5, RT-1 Robot)에서 Octo(93M)가 RT-1-X(35M) 대비 일관되게 높은 성공률(평균 약 29%p 향상)을 보이며, 초대형 모델인 RT-2-X(55B)와 유사한 수준의 성공률을 달성함.",
+    "Fig. 6: 모델 스케일링 곡선. 모델 크기가 Octo-Tiny(10M)에서 Octo-Small(27M), Octo-Base(93M)로 커짐에 따라 UR5 및 WidowX에서의 Zero-shot 성공률이 우상향하는 추세를 명확히 나타냄.",
+    "Table I: 6개 도메인에 대한 100회 내외 데모 기반 Finetuning 성공률 표. Octo(평균 72%)가 처음부터 학습한 스크래치 베이스라인(20%) 및 VC-1 사전학습 표현(15%) 대비 압도적인 성능 격차(+52%p 이상)를 기록함. 특히 힘-토크 센서 입력(Berkeley Insertion) 및 관절 제어(Berkeley Pick-Up, Berkeley Bimanual) 같은 새로운 관측/액션 공간에서도 높은 적응력을 보임.",
+    "Table II & Table VI: 모델 구성요소 Ablation 표. Diffusion 헤드(83%)가 이산화 액션(18%)이나 MSE 헤드(35%)보다 성능이 월등하며, ViT 구조(83%)가 ResNet-50 결합형(70%)보다 전이 능력이 우수함을 보임. 또한 25개 데이터셋 혼합(83%)이 단일 데이터셋(43%)이나 RT-X 혼합(60%) 대비 성능 이득을 줌.",
+    "Table VII: Zero-shot 일반화 세부 분석 표. In-distribution(85%) 및 Novel objects(80%)에서는 뛰어난 성능을 보이나, Novel environment(40%)나 전혀 보지 못한 동작 기술(Novel skill, 5%)에서는 성공률이 급격히 저하되는 일반화 한계점을 명시함."
+  ],
+  "diagram_types": [
+    "schematic",
+    "photograph",
+    "pie chart",
+    "bar chart",
+    "line graph"
+  ],
+  "equations_found": 1,
+  "figure_count": 7,
+  "tables_found": 7
+}

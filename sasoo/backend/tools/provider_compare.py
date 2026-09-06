@@ -175,7 +175,7 @@ def build_visual_figure_desc(meta: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def screening_prompt(screening_input: str):
-    from api import analysis_routes as ar
+    from services import analysis_execution as ar
 
     prompt = f"""논문 텍스트:
 {screening_input}
@@ -210,7 +210,7 @@ def citation_prompt(phase_inputs: dict, sections: dict, paper_authors: str):
     top_cited가 비면(참고문헌 파싱 실패 등) 프로덕션도 LLM을 호출하지 않는다 —
     이 도구도 None을 돌려줘 상위 루프가 스킵하게 한다.
     """
-    from api import analysis_routes as ar
+    from services import analysis_execution as ar
     from services.citation_analyzer import analyze_citations
 
     citation_body = str(phase_inputs.get("citation_body", ""))
@@ -222,7 +222,7 @@ def citation_prompt(phase_inputs: dict, sections: dict, paper_authors: str):
         paper_authors=paper_authors,
     )
     local_result = analysis.to_dict()
-    top_refs = local_result.get("top_cited", [])[:10]
+    top_refs = ar._select_citation_top_refs(local_result)
     if not top_refs:
         return None, None, local_result
 
@@ -249,7 +249,7 @@ def citation_prompt(phase_inputs: dict, sections: dict, paper_authors: str):
 인용 스타일: {local_result.get('citation_style', 'numbered')}
 셀프 인용: {local_result.get('self_citation_count', 0)}건 (비율: {local_result.get('self_citation_ratio', 0):.1%})
 
-가장 많이 인용된 상위 10개 참고문헌과 인용 맥락:
+가장 많이 인용된 상위 {ar._CITATION_TOP_N}개 참고문헌과 인용 맥락:
 {top_refs_text}
 [논문 본문 발췌 (맥락용)]
 {citation_body[:3000]}
@@ -263,13 +263,13 @@ def citation_prompt(phase_inputs: dict, sections: dict, paper_authors: str):
 - why_cited는 왜 자주 인용됐는지 2-3문장(한국어)으로 써.
 - 참고문헌의 실제 내용·존재 여부·학계 전체 영향력은 검증된 것처럼 말하지 마.
 - key_influences는 위에 제시된 참고문헌 안에서만 골라 — 목록에 없는 연구를 추가하지 마.
-- summary는 전체 인용 패턴 평가 2-3문장(한국어). limitations에는 상위 10개와 본문 발췌만 본 평가라는 한계를 한 문장으로 남겨.
+- summary는 전체 인용 패턴 평가 2-3문장(한국어). limitations에는 상위 {ar._CITATION_TOP_N}개와 본문 발췌만 본 평가라는 한계를 한 문장으로 남겨.
 """
     return prompt, ar._CITATION_SCHEMA, local_result
 
 
 def visual_prompt(meta: dict):
-    from api import analysis_routes as ar
+    from services import analysis_execution as ar
 
     figure_desc = build_visual_figure_desc(meta)
     text = f"{ar._VISUAL_INSTRUCTION}\n\n위 논문 PDF를 직접 보고 시각 요소를 분석해줘.{figure_desc}"
@@ -277,7 +277,7 @@ def visual_prompt(meta: dict):
 
 
 def recipe_prompt():
-    from api import analysis_routes as ar
+    from services import analysis_execution as ar
 
     # 도메인 힌트(domain_hint)는 스크리닝 결과에 의존하는데 이 도구는 스테이지를
     # 독립 실행하므로 생략한다 — 나머지 지시문은 _run_recipe와 동일.
@@ -303,7 +303,7 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
 
 
 def deep_dive_prompt():
-    from api import analysis_routes as ar
+    from services import analysis_execution as ar
 
     text = f"{ar._DEEP_DIVE_INSTRUCTION}\n\n위 논문 PDF를 바탕으로 포괄적인 심층 분석을 제공해줘."
     return text, ar._DEEP_DIVE_SCHEMA
@@ -436,7 +436,7 @@ async def run_one(
                 {"type": "text", "text": prompt},
             ]
         else:
-            from api.analysis_routes import _OPENAI_DOC_TEXT_CHAR_LIMIT
+            from services.analysis_execution import _OPENAI_DOC_TEXT_CHAR_LIMIT
 
             if len(doc_text) >= _OPENAI_DOC_TEXT_CHAR_LIMIT:
                 doc_label = f"[논문 본문({_OPENAI_DOC_TEXT_CHAR_LIMIT:,}자 절단)]"
@@ -603,7 +603,7 @@ async def main_async() -> None:
     phase_inputs = doc_ctx["phase_inputs"]
     sections = doc_ctx["sections"]
 
-    from api.analysis_routes import _OPENAI_DOC_TEXT_CHAR_LIMIT
+    from services.analysis_execution import _OPENAI_DOC_TEXT_CHAR_LIMIT
 
     doc_text = full_text[:_OPENAI_DOC_TEXT_CHAR_LIMIT]
 

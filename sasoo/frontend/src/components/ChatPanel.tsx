@@ -15,6 +15,10 @@ import { chatWithAgent, type ChatDoneMeta, type ChatMessage } from '@/lib/api';
 import { createTokenBuffer } from '@/lib/tokenBuffer';
 import { getAgentMeta } from '@/lib/agents';
 import { detectCitations, type CitationType } from '@/lib/citations';
+import { S } from '@/lib/strings';
+
+// 런처가 원형으로 접힌 채 유지되는 기본 시간(첫 ready 전환 시 확장 카드를 보여주는 시간).
+const LAUNCHER_INTRO_MS = 3000;
 
 // Tokens are routed to their own bubble by id, so two turns can never bleed
 // into each other the way appending to the tail of the array would.
@@ -100,6 +104,20 @@ export default function ChatPanel({
   const agentColor = agent?.color || '#5e6ad2';
   const hasMessages = messages.length > 0;
   const busy = messages.some((msg) => msg.status === 'pending' || msg.status === 'streaming');
+
+  // 런처는 평소 원형 아이콘 버튼으로 접혀 있다가, ready가 false→true로 바뀌는
+  // 순간에만 한 번 확장 카드를 보여주고 자동으로 다시 접힌다. 이미 ready 상태로
+  // 마운트되면(재방문·탭 이동) prevReadyRef의 초기값이 곧 ready와 같아 건너뛴다.
+  const [showLauncherIntro, setShowLauncherIntro] = useState(false);
+  const prevReadyRef = useRef(ready);
+  useEffect(() => {
+    const wasReady = prevReadyRef.current;
+    prevReadyRef.current = ready;
+    if (wasReady || !ready) return;
+    setShowLauncherIntro(true);
+    const timer = window.setTimeout(() => setShowLauncherIntro(false), LAUNCHER_INTRO_MS);
+    return () => window.clearTimeout(timer);
+  }, [ready]);
 
   useEffect(() => {
     abortRef.current?.abort();
@@ -323,25 +341,39 @@ export default function ChatPanel({
           <button
             type="button"
             onClick={onToggleOpen}
+            data-expanded={showLauncherIntro || undefined}
             className={`chat-launcher ${ready ? 'chat-launcher-ready' : 'chat-launcher-pending'}`}
-            aria-label={ready ? '질문 도우미 열기' : readyMessage}
-            title={ready ? '질문 도우미 열기' : readyMessage}
+            aria-label={
+              ready
+                ? `${S.chat.launcherOpen}, ${S.chat.statusReady}, ${S.chat.readyHint}`
+                : `${S.chat.statusPending}. ${readyMessage}`
+            }
+            title={ready ? S.chat.launcherOpen : S.chat.pendingHint}
           >
             <span
-              className="flex h-11 w-11 items-center justify-center rounded-full"
+              className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
               style={{ backgroundColor: ready ? `${agentColor}20` : 'rgb(var(--fg-muted) / 0.2)' }}
             >
               <Bot className="h-5 w-5" style={ready ? { color: agentColor } : undefined} />
+              <span
+                aria-hidden="true"
+                className="absolute right-0 top-0 h-1.5 w-1.5 rounded-full"
+                style={{
+                  backgroundColor: ready ? agentColor : 'rgb(var(--fg-muted))',
+                  boxShadow: '0 0 0 2px rgb(var(--surface))',
+                }}
+              />
             </span>
-            <span className="min-w-0 text-left">
+            {/* 원형 휴지 상태에서는 overflow-hidden에 가려 보이지 않다가, 첫 ready
+                전환 순간에만 data-expanded로 잠깐 드러난다. 접근성 정보는 위 aria-label이
+                항상 담당하므로 이 텍스트는 스크린 리더에서 숨긴다. */}
+            <span aria-hidden="true" className="min-w-0 text-left">
               <span className="block text-sm font-semibold text-fg">
-                질문 도우미
+                {S.workbench.assistant}
               </span>
               <span className="mt-0.5 flex items-center gap-2 text-2xs text-fg-muted">
-                <span className={ready ? 'chip-tint chip-tint-success' : 'text-2xs font-normal text-fg-muted'}>
-                  {ready ? '준비됨' : '대기'}
-                </span>
-                <span className="truncate">{ready ? '논문 맥락으로 바로 질문해요' : 'PDF 텍스트를 읽고 있어요'}</span>
+                <span className="chip-tint chip-tint-success">{S.chat.statusReady}</span>
+                <span className="truncate">{S.chat.readyHint}</span>
               </span>
             </span>
           </button>

@@ -1,0 +1,348 @@
+{
+  "title": "LEO 위성 추적 속도 모사를 위한 100 Gbps 코히런트 자유공간 광통신(FSO) 및 적응광학 추적 실험 레시피",
+  "objective": "저궤도(LEO) 우주선의 겉보기 각속도(~1.5 deg/s) 및 대기 난류 환경을 드론과 코너큐브 재귀반사기(CCR)로 모사하여, 머신비전과 피에조 팁/틸트 적응광학(AO) 보정 시스템을 결합해 단일모드 광섬유(SMF) 결합을 유지하고 100 Gbps급 무중단 코히런트 광통신 링크를 실증함.",
+  "parameters": [
+    {
+      "name": "wavelength",
+      "value": "1550",
+      "source_tag": "explicit",
+      "evidence_page": 4,
+      "evidence_quote": "Table 1. Mount parameters.\nTransmit laser\nWavelength 1550 nm",
+      "notes": "통신용 레이저 파장",
+      "unit": "nm"
+    },
+    {
+      "name": "power",
+      "value": "11.7",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The in-fiber transmit power was limited to a maximum of 11.7 dBm to avoid saturation of the QPD and mitigate the effect of prompt reflections, largely from the refractive elements of the beam expander.",
+      "notes": "광섬유 내 송신 레이저 파워 (QPD 포화 및 광학계 역반사 방지 목적의 상한)",
+      "unit": "dBm"
+    },
+    {
+      "name": "beam_waist_initial",
+      "value": "1.14",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "where it is transmitted from a fiber to free-space collimator as a beam of waist radius w0 = 1.14 mm.",
+      "notes": "파이버 콜리메이터 출력 직후 빔 허리 반지름",
+      "unit": "mm"
+    },
+    {
+      "name": "beam_waist_expanded",
+      "value": "17.1",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The transmitted portion of the beam is expanded by a 15× Galilean beam expander (GBE) to a waist radius of w0 = 17.1 mm from an aperture diameter of 50 mm.",
+      "notes": "15배 빔 확장기 통과 후 최종 빔 허리 반지름",
+      "unit": "mm"
+    },
+    {
+      "name": "magnification",
+      "value": "15",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The transmitted portion of the beam is expanded by a 15× Galilean beam expander (GBE) to a waist radius of w0 = 17.1 mm from an aperture diameter of 50 mm.",
+      "notes": "갈릴레이 빔 확장기(GBE) 배율",
+      "unit": "x"
+    },
+    {
+      "name": "aperture",
+      "value": "50",
+      "source_tag": "explicit",
+      "evidence_page": 4,
+      "evidence_quote": "Table 1. Mount parameters.\nTransceiver aperture 50 mm",
+      "notes": "광 트랜시버 광학계 구경 직경",
+      "unit": "mm"
+    },
+    {
+      "name": "focal_length",
+      "value": "500",
+      "source_tag": "explicit",
+      "evidence_page": 2,
+      "evidence_quote": "We use a commercially available MV camera with an f = 500 mm lens, giving a 1.0◦ × 0.75◦ field of view.",
+      "notes": "머신비전(MV) 추적용 카메라 렌즈 초점거리",
+      "unit": "mm"
+    },
+    {
+      "name": "field_of_view",
+      "value": "1.0 x 0.75",
+      "source_tag": "explicit",
+      "evidence_page": 2,
+      "evidence_quote": "giving a 1.0◦ × 0.75◦ field of view.",
+      "notes": "머신비전 카메라 시야각",
+      "unit": "deg"
+    },
+    {
+      "name": "pixel_scale",
+      "value": "9",
+      "source_tag": "explicit",
+      "evidence_page": 4,
+      "evidence_quote": "Table 1. Mount parameters.\nPixel scale 9 µrad/pixel",
+      "notes": "머신비전 카메라 픽셀당 각도 분해능",
+      "unit": "µrad/pixel"
+    },
+    {
+      "name": "beacon_wavelength",
+      "value": "532",
+      "source_tag": "explicit",
+      "evidence_page": 4,
+      "evidence_quote": "Table 1. Mount parameters.\nBeacon wavelength 532 nm",
+      "notes": "드론 페이로드 비콘 LED 파장",
+      "unit": "nm"
+    },
+    {
+      "name": "tip_tilt_bandwidth",
+      "value": "200",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "During this experiment, the tip/tilt loop was operated at 200 Hz.",
+      "notes": "피에조 팁/틸트 적응광학 피드백 제어 루프 동작 주파수",
+      "unit": "Hz"
+    },
+    {
+      "name": "tip_tilt_actuation_range",
+      "value": "±2",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The Piezo platform has a specified closed-loop angular resolution of 50 nrad and actuation range of ± 2 mrad in two dimensions.",
+      "notes": "피에조 팁/틸트 미러 구동 범위 (2차원)",
+      "unit": "mrad"
+    },
+    {
+      "name": "tip_tilt_resolution",
+      "value": "50",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The Piezo platform has a specified closed-loop angular resolution of 50 nrad and actuation range of ± 2 mrad in two dimensions.",
+      "notes": "피에조 팁/틸트 미러 폐루프 각도 분해능",
+      "unit": "nrad"
+    },
+    {
+      "name": "mount_command_rate",
+      "value": "10",
+      "source_tag": "explicit",
+      "evidence_page": 4,
+      "evidence_quote": "we further limited the camera acquisition and command rates to 10 Hz.",
+      "notes": "마운트 제어 명령 및 MV 카메라 영상 획득 속도",
+      "unit": "Hz"
+    },
+    {
+      "name": "mount_slew_speed",
+      "value": "50",
+      "source_tag": "explicit",
+      "evidence_page": 2,
+      "evidence_quote": "This mount provides smooth, accurate tracking and slew speeds of up to 50 deg/s for rapid acquisition.",
+      "notes": "마운트 최대 선회(slew) 속도",
+      "unit": "deg/s"
+    },
+    {
+      "name": "modulation_baud_rate",
+      "value": "27.95",
+      "source_tag": "explicit",
+      "evidence_page": 4,
+      "evidence_quote": "The 1550 nm laser communications signal under test was generated by a commercially-off-the-shelf C form-factor (CFP) 27.95 Gbaud dual polarization quadrature phase shift keying (DP-QPSK) digital coherent optics (DCO) module, with net line rate of 118.8 Gbps",
+      "notes": "DP-QPSK DCO 모듈 변조 심볼 전송률",
+      "unit": "Gbaud"
+    },
+    {
+      "name": "net_line_rate",
+      "value": "118.8",
+      "source_tag": "explicit",
+      "evidence_page": 4,
+      "evidence_quote": "with net line rate of 118.8 Gbps, typical of high-capacity optical fiber transport networks.",
+      "notes": "순수 물리 전송 라인 레이트",
+      "unit": "Gbps"
+    },
+    {
+      "name": "edfa_gain",
+      "value": "20",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "via an erbium-doped fiber amplifier (EDFA) nominally providing 20 dB gain and < 5 dB noise.",
+      "notes": "광섬유 증폭기 공칭 이득",
+      "unit": "dB"
+    },
+    {
+      "name": "edfa_noise_figure",
+      "value": "< 5",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "nominally providing 20 dB gain and < 5 dB noise.",
+      "notes": "광섬유 증폭기 잡음 지수",
+      "unit": "dB"
+    },
+    {
+      "name": "ber_threshold",
+      "value": "4.5e-3",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "In-fiber commissioning of the DCO module demonstrated the threshold power corresponding to a FEC-correctable BER of 4.5 × 10−3 is approximately − 30 dBm",
+      "notes": "FEC 정정 가능한 비트 오차율(BER) 상한 임계치",
+      "unit": ""
+    },
+    {
+      "name": "rx_sensitivity_threshold",
+      "value": "-30",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "is approximately − 30 dBm",
+      "notes": "FEC 정정 한계에 해당하는 수신 광출력 임계치",
+      "unit": "dBm"
+    },
+    {
+      "name": "fso_monitoring_pd_sample_rate",
+      "value": "2",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "Therefore, a 90:10 splitter sends 10% of the received light to a monitoring photodetector to capture received power information at 2 kHz.",
+      "notes": "대기 난류 페이딩 분석용 모니터링 포토디텍터 샘플링 속도",
+      "unit": "kHz"
+    },
+    {
+      "name": "fiber_coupling_loss",
+      "value": "-8",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "Table 2. Demonstration link budget.\nSingle-mode fiber coupling loss − 8 dB",
+      "notes": "단일모드 파이버(SMF) 결합 손실",
+      "unit": "dB"
+    },
+    {
+      "name": "propagation_distance_drone",
+      "value": "500–700",
+      "source_tag": "explicit",
+      "evidence_page": 2,
+      "evidence_quote": "and a line-of-sight distance of 500–700 m for a folded link length of up to 1.4 km.",
+      "notes": "드론 단방향 시선 거리 (왕복 경로 길이는 최대 1.4 km)",
+      "unit": "m"
+    },
+    {
+      "name": "tracking_angular_velocity",
+      "value": "1.5",
+      "source_tag": "explicit",
+      "evidence_page": 2,
+      "evidence_quote": "we maintain the SMF coupled link at angular velocities up to ∼ 1.5 deg/s, representative of the apparent motion of spacecraft in LEO.",
+      "notes": "최대 방위각 추적 각속도",
+      "unit": "deg/s"
+    },
+    {
+      "name": "drone_speed",
+      "value": "60",
+      "source_tag": "explicit",
+      "evidence_page": 9,
+      "evidence_quote": "The drone reached a maximum speed of 60 km/h, corresponding to an azimuth tracking rate of 1.5 deg/s.",
+      "notes": "고속 비행 시험 시 드론 수평 이동 속도 (사양상 최대 65 km/h)",
+      "unit": "km/h"
+    },
+    {
+      "name": "drone_altitude",
+      "value": "120",
+      "source_tag": "explicit",
+      "evidence_page": 2,
+      "evidence_quote": "flying at an altitude of 120 m over the Swan River",
+      "notes": "드론 비행 고도",
+      "unit": "m"
+    },
+    {
+      "name": "terminal_altitude",
+      "value": "34",
+      "source_tag": "explicit",
+      "evidence_page": 2,
+      "evidence_quote": "our deployable optical terminal was located on the roof of the physics building at the University of Western Australia Crawley campus, approximately 34 m above sea level.",
+      "notes": "지상 단말 설치 위치 해발 고도",
+      "unit": "m"
+    },
+    {
+      "name": "temperature_flight1",
+      "value": "30",
+      "source_tag": "explicit",
+      "evidence_page": 7,
+      "evidence_quote": "Table 3. Atmospheric conditions in Perth for flight dates.\nTemperature (◦C) 30 [2022/04/07]",
+      "notes": "1차 테스트 비행일(2022/04/07) 대기 온도",
+      "unit": "°C"
+    },
+    {
+      "name": "temperature_flight2",
+      "value": "25",
+      "source_tag": "explicit",
+      "evidence_page": 7,
+      "evidence_quote": "Table 3. Atmospheric conditions in Perth for flight dates.\nTemperature (◦C) 25 [2022/04/21]",
+      "notes": "2차 고속 비행일(2022/04/21) 대기 온도",
+      "unit": "°C"
+    },
+    {
+      "name": "pressure_flight1",
+      "value": "1014",
+      "source_tag": "explicit",
+      "evidence_page": 7,
+      "evidence_quote": "Table 3. Atmospheric conditions in Perth for flight dates.\nPressure (hPa) 1014 [2022/04/07]",
+      "notes": "1차 테스트 비행일 대기압",
+      "unit": "hPa"
+    },
+    {
+      "name": "pressure_flight2",
+      "value": "1023",
+      "source_tag": "explicit",
+      "evidence_page": 7,
+      "evidence_quote": "Table 3. Atmospheric conditions in Perth for flight dates.\nPressure (hPa) 1023 [2022/04/21]",
+      "notes": "2차 고속 비행일 대기압",
+      "unit": "hPa"
+    },
+    {
+      "name": "turbulence_strength_Cn2",
+      "value": "5e-14",
+      "source_tag": "inferred",
+      "evidence_page": 10,
+      "evidence_quote": "For the round trip link distance of 1.2 km at 1550 nm, this would correspond to a upper bound C2n of 5 × 10−14 m−2/3 throughout the experiment.",
+      "notes": "Fried 파라미터 r0가 수신기 직경(50 mm)보다 크고 1.2 km 왕복 거리(1550 nm) 조건에서 유도된 대기 굴절률 구조 상수 상한값",
+      "unit": "m^-2/3"
+    },
+    {
+      "name": "f_number_mv",
+      "value": "10",
+      "source_tag": "inferred",
+      "evidence_page": 2,
+      "evidence_quote": "Transceiver aperture 50 mm ... We use a commercially available MV camera with an f = 500 mm lens",
+      "notes": "렌즈 초점거리 f = 500 mm를 트랜시버 광학 구경 50 mm 기준으로 계산: N = f / D = 500 / 50 = 10",
+      "unit": ""
+    },
+    {
+      "name": "fresnel_number",
+      "value": "0.337",
+      "source_tag": "inferred",
+      "evidence_page": 2,
+      "evidence_quote": "w0 = 17.1 mm ... line-of-sight distance of 500–700 m for a folded link length of up to 1.4 km ... Wavelength 1550 nm",
+      "notes": "왕복 전파 거리 L = 1.4 km, 파장 lambda = 1550 nm, 빔 반경 w = 17.1 mm 기준 프레넬 수: N_F = w^2 / (lambda * L) = (17.1e-3)^2 / (1550e-9 * 1400) = 2.924e-4 / 2.17e-3 ≈ 0.135 (단방향 700m 기준 N_F = 0.270, 수신기 구경 a=25mm 기준 N_F = 0.337). 1보다 작아 원거리장 회절 영역에 해당함.",
+      "unit": ""
+    }
+  ],
+  "steps": [
+    "1. [광학 단말 및 송신 시스템 구성] 단일모드 광섬유(SMF)를 통해 CFP DCO 모듈의 1550 nm DP-QPSK 광 신호(118.8 Gbps)를 EDFA(이득 20 dB, 잡음 지수 < 5 dB)에 인가하여 증폭한다. 광파워 미터로 출력이 11.7 dBm을 초과하지 않도록 조정한 후 브레드보드 상의 콜리메이터(waist radius 1.14 mm)로 입사시킨다.",
+    "2. [자유공간 송수신 광학계 정렬] 콜리메이터 출사 빔을 50:50 빔스플리터(BS)로 통과시킨 뒤 15x 갈릴레이 빔 확장기(GBE)를 통해 빔 허리 직경 17.1 mm(구경 직경 50 mm)로 확장한다. 확장된 빔을 2축 피에조 팁/틸트 미러(TTM, 구동 범위 ±2 mrad)와 정적 발사 미러(LM)를 통해 타깃 방향으로 발사한다.",
+    "3. [사전 핫스팟 캘리브레이션] 고정된 정적 링크(600 m 및 2.4 km 지점의 CCR)를 대상으로 532 nm 비콘 광학계를 확인하고, 반사된 1550 nm 레이저가 수신 SMF로 최적 결합되는 머신비전 카메라 픽셀 좌표('핫스팟')와 4분할 포토다이오드(QPD) 영점을 사전에 캘리브레이션한다.",
+    "4. [수신 분기 및 모니터링 시스템 구축] 복귀된 빔이 빔스플리터를 통과하여 수신 SMF로 결합되도록 구성하고, 90:10 광 파이버 스플리터를 통해 90%는 DCO 수신 모듈(1 Hz 전력/BER 모니터링)로, 10%는 2 kHz 고속 모니터링 광검출기(PD)로 전달하여 대기 난류 페이딩을 기록한다. 빔스플리터에서 반사된 광은 집광 렌즈를 거쳐 QPD로 입사시켜 도달각(AoA) 오차를 검출하도록 한다.",
+    "5. [드론 페이로드 준비 및 이륙] 드론에 2인치 CCR, 4개의 532 nm 녹색 LED 비콘, 짐벌 카메라, GPS/기압고도계, 921.2 MHz LoRa 송신기를 장착한다. 드론을 호수 상공 120 m 고도로 이륙시키고 지상 단말과 500~700 m 시선 거리를 유지하도록 위치시킨다.",
+    "6. [1단계: LoRa/GPS 기반 조동 추적] 드론의 GPS 좌표를 LoRa 무선 통신을 통해 단말기 단일보드 컴퓨터(SBC)로 전송하고, 좌표를 고도/방위각 각도로 변환하여 PlaneWave L-350 마운트를 드론 방향으로 지향시킨다.",
+    "7. [2단계: 머신비전(MV) 폐루프 추적] MV 카메라(f = 500 mm, 대역통과 녹색 필터 장착) 시야각(1.0° x 0.75°) 내에 532 nm 비콘 LED가 포착되면 10 Hz 속도로 영상 임계처리를 수행하여 중심 좌표를 추출한다. 핫스팟과의 픽셀 오차를 각도 오차로 환산한 후 PID 루프를 통해 마운트 오프셋 속도를 제어한다.",
+    "8. [3단계: 200 Hz 팁/틸트 적응광학 정밀 추적 루프 결합] CCR에 반사된 1550 nm 신호가 QPD에 감지되면 200 Hz 폐루프 PID를 가동하여 피에조 TTM을 구동함으로써 바람에 의한 드론 버펫팅 및 대기 난류에 의한 도달각(AoA) 오차(< 2 mrad)를 보정하고 단일모드 광섬유 결합을 유지한다.",
+    "9. [고속 LEO 궤적 비행 및 실시간 100 Gbps 데이터 전송] 드론을 최대 60 km/h로 비행시켜 방위각 각속도 최대 1.5 deg/s를 인가하면서, 100 Gbps(DP-QPSK) 코히런트 통신의 pre-FEC BER, 수신 광전력(1 Hz DCO 및 2 kHz 고속 PD), MV 및 TTM 추적 오차를 연속 기록한다."
+  ],
+  "materials": [
+    "단일모드 광섬유 (SMF, 코어 직경 8~10 µm)",
+    "단일모드 90:10 광섬유 탭 스플리터 (90:10 Fiber Splitter)",
+    "광학용 무반사 코팅 브로드밴드 녹색 필터 (Broadband green optical filter)",
+    "광학 브레드보드 및 마운팅 기구물"
+  ],
+  "missing_info": [
+    "광섬유-자유공간 콜리메이터(FFC)의 정확한 모델명 및 초점거리",
+    "머신비전(MV) 카메라의 정확한 센서 모델명 및 픽셀 크기",
+    "QPD(사분할 포토다이오드) 전단 집광 렌즈의 초점거리",
+    "피에조 팁/틸트 미러(TTM) 제어기 및 QPD 폐루프 PID 제어기 게인 파라미터(Kp, Ki, Kd)",
+    "CFP DCO 모듈 및 EDFA의 세부 제조사/모델 번호",
+    "드론 기종 및 짐벌 안정화 장치의 세부 규격"
+  ],
+  "reproducibility_score": 0.82,
+  "safety_notes": "1550 nm 레이저는 비가시광선 파장이므로 망막 및 각막 손상을 방지하기 위해 정렬 및 실험 중 1550 nm 전용 보안경을 반드시 착용해야 함. 또한 드론 야외 비행 시 현지 항공 규정(고도 120 m 제한 등) 및 수면 위 선박 충돌 방지 등 안전 수칙을 준수해야 함. 광 증폭기(EDFA) 출력단 취급 시 화상 및 단말 손상에 주의할 것."
+}

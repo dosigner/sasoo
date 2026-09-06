@@ -1,0 +1,95 @@
+<meta charset="utf-8">
+<title>레슨 1 · AI Hero 팩 전체 지도</title>
+<link rel="stylesheet" href="../assets/course.css">
+<main>
+<p class="kicker">Lesson 0001 · 약 8분</p>
+<h1>AI Hero 팩 전체 지도</h1>
+<p class="lede">이 레슨 하나로 팩의 뼈대를 머리에 넣습니다. 목표는 세 가지예요. 메인 플로우 5단계를 기억하기, superpowers와의 관계를 한 문장으로 말하기, 지금 당장 SASOO에 쓸 수 있는 스킬을 고르기.</p>
+
+<h2>1. 팩을 한 문장으로</h2>
+<p>AI Hero 팩은 <strong>"아이디어를 배포까지 옮기는 메인 플로우 하나"</strong>와 그 옆에 붙는 보조 스킬들의 모음이고, 길을 잃으면 <span class="sk">ask-matt</span>에게 물어보면 됩니다. superpowers가 세션 안의 절차를 규정한다면, AI Hero는 <strong>저장소에 상태를 남기는 것</strong>(CONTEXT.md, ADR, 이슈 트래커의 티켓)이 특징이에요.</p>
+
+<h2>2. 메인 플로우 5단계</h2>
+<div class="flow">
+  <span class="step">① grill-with-docs</span><span class="arrow">→</span>
+  <span class="step">② to-spec</span><span class="arrow">→</span>
+  <span class="step">③ to-tickets</span><span class="arrow">→</span>
+  <span class="step">④ implement</span><span class="arrow">→</span>
+  <span class="step">⑤ code-review</span>
+</div>
+<p>말로 풀면 이렇습니다. 아이디어를 <strong>인터뷰로 벼리고</strong>(①, 배운 것은 CONTEXT.md와 ADR로 남음), 스레드를 <strong>스펙으로 압축하고</strong>(②), 스펙을 <strong>의존 관계가 명시된 티켓들로 쪼개고</strong>(③), 티켓마다 <strong>새 세션에서 tdd로 구현하고</strong>(④), <strong>Standards와 Spec 2축 리뷰로 마감</strong>합니다(⑤).</p>
+<div class="callout">
+핵심 규칙 하나만 기억하세요. <strong>①에서 ③까지는 한 컨텍스트에서 끊지 않고, ④는 티켓마다 새로 시작한다.</strong> 앞 단계의 사고가 티켓에 압축되므로 구현 세션의 컨텍스트는 버려도 됩니다. SASOO Phase 1에서 쓴 subagent-driven-development의 "태스크마다 새 구현자" 원칙과 같은 발상이에요.
+</div>
+
+<h2>3. 플로우 밖의 세 갈래</h2>
+<ul>
+<li><strong>온램프</strong>: 밖에서 굴러들어온 버그와 요청은 <span class="sk">triage</span>(누락), 잡기 어려운 버그는 <span class="sk">diagnosing-bugs</span>, 한 세션에 안 담기는 큰 안개 작업은 <span class="sk">wayfinder</span>. 셋 다 결과물이 메인 플로우로 합류합니다.</li>
+<li><strong>어휘 계층</strong>: <span class="sk">domain-modeling</span>은 프로젝트 용어를, <span class="sk">codebase-design</span>(누락)은 모듈 설계 어휘를 담당해요. 다른 스킬들이 아래에서 이걸 끌어다 씁니다.</li>
+<li><strong>독립 스킬</strong>: <span class="sk">research</span>(백그라운드 조사), <span class="sk">handoff</span>(이동식 인수인계), <span class="sk">resolving-merge-conflicts</span>, <span class="sk">wait-what</span>(재설명), <span class="sk">writing-for-agents</span> 등은 플로우와 무관하게 필요할 때 바로 씁니다.</li>
+</ul>
+
+<h2>4. 이 환경에 적용하는 법</h2>
+<p>중요한 사실 두 가지가 있어요.</p>
+<div class="callout ok">
+<strong>① 핵심 의존성은 채워졌습니다.</strong> 처음엔 6개가 누락돼 있었지만, 의존 관계 실측(설치 스킬들이 참조하는지 grep) 후 필수인 grilling과 tdd, 그리고 prototype을 원본 저장소에서 보충했어요. 남은 누락은 triage, wizard, codebase-design 3개인데 각각 해당 상황(외부 이슈 유입, 사람 전용 절차, improve-codebase-architecture 사용)이 생길 때 채우면 됩니다.
+</div>
+<div class="callout warn">
+<strong>② CLAUDE.md가 superpowers를 기본으로 지정하고 있습니다.</strong> 두 프로세스 스택을 한 작업에 섞으면 서로의 전제(계획 파일 vs 티켓, 리뷰 루프 방식)가 충돌해요. 그래서 현실적인 적용 순서는 이렇습니다.
+</div>
+<ol>
+<li><strong>지금 바로</strong>: 독립 스킬을 니치에 투입. SASOO 기준으로 가장 값어치 있는 후보는 <span class="sk">domain-modeling</span>(Evidence, Anchor, display_status 같은 용어를 CONTEXT.md와 ADR로 정착)과 <span class="sk">diagnosing-bugs</span>(재현 어려운 버그), <span class="sk">research</span>(인용 파일을 남기는 백그라운드 조사)입니다.</li>
+<li><strong>실험 후</strong>: 다음 기능(예: Phase 2 Evidence Workspace)에서 grill-with-docs → to-spec 구간만 시험해 보고, superpowers의 brainstorming → writing-plans와 산출물 품질을 비교합니다.</li>
+<li><strong>결정은 마지막에</strong>: 전면 전환은 비교 데이터가 쌓인 뒤 CLAUDE.md 개정으로만. 그 전에는 superpowers가 기본입니다.</li>
+</ol>
+<p>메인 플로우를 쓰기로 하면 첫 실행 전에 <span class="sk">setup-matt-pocock-skills</span>를 한 번 돌려 이슈 트래커와 문서 레이아웃을 설정해야 한다는 것도 기억해 두세요.</p>
+
+<h2>5. 확인 퀴즈</h2>
+<p>답을 보기 전에 기억에서 꺼내 보세요. 인출 연습이 저장 강도를 만듭니다.</p>
+
+<div class="quiz" data-answer="b" data-why="grill-with-docs는 인터뷰 결과를 CONTEXT.md와 ADR로 남기는 상태 유지형입니다.">
+<p class="q">Q1. superpowers의 brainstorming에 대응하는 AI Hero 스킬은?</p>
+<label><input type="radio" name="q1" value="a"> to-tickets</label>
+<label><input type="radio" name="q1" value="b"> grill-with-docs</label>
+<label><input type="radio" name="q1" value="c"> improve-codebase</label>
+<label><input type="radio" name="q1" value="d"> wait-what</label>
+<p class="feedback"></p>
+</div>
+
+<div class="quiz" data-answer="c" data-why="wayfinder는 산출물이 아니라 결정의 지도를 그린 뒤 to-spec으로 합류합니다.">
+<p class="q">Q2. 한 세션에 담기지 않는 크고 안개 낀 작업의 시작점은?</p>
+<label><input type="radio" name="q2" value="a"> grill-me</label>
+<label><input type="radio" name="q2" value="b"> to-spec</label>
+<label><input type="radio" name="q2" value="c"> wayfinder</label>
+<label><input type="radio" name="q2" value="d"> handoff</label>
+<p class="feedback"></p>
+</div>
+
+<div class="quiz" data-answer="a" data-why="①에서 ③까지 한 컨텍스트 유지, ④는 티켓마다 새 세션입니다.">
+<p class="q">Q3. 메인 플로우의 컨텍스트 규칙으로 맞는 것은?</p>
+<label><input type="radio" name="q3" value="a"> 티켓 분할까지 유지하고 구현마다 새로</label>
+<label><input type="radio" name="q3" value="b"> 스펙 작성까지 유지하고 분할마다 새로</label>
+<label><input type="radio" name="q3" value="c"> 다섯 단계 전부를 한 세션에서 유지</label>
+<label><input type="radio" name="q3" value="d"> 모든 단계마다 컨텍스트를 새로 시작</label>
+<p class="feedback"></p>
+</div>
+
+<div class="quiz" data-answer="c" data-why="triage, wizard와 함께 아직 안 채운 3개 중 하나입니다. 나머지 셋은 설치돼 있어요.">
+<p class="q">Q4. 다음 중 아직 설치되지 않은 스킬은?</p>
+<label><input type="radio" name="q4" value="a"> grilling</label>
+<label><input type="radio" name="q4" value="b"> prototype</label>
+<label><input type="radio" name="q4" value="c"> codebase-design</label>
+<label><input type="radio" name="q4" value="d"> wait-what</label>
+<p class="feedback"></p>
+</div>
+
+<h2>6. 다음 걸음</h2>
+<ul>
+<li>빠른 참조는 <a href="../reference/aihero-map.html">치트시트</a>에 있습니다. 스킬 25개의 한 줄 요약과 설치 현황표예요.</li>
+<li><strong>1차 소스 추천</strong>: <code>~/.claude/skills/ask-matt/SKILL.md</code>를 한 번 통독하세요. 이 레슨의 원본이고, 팩 저자가 직접 쓴 가장 신뢰할 문서입니다. 배경 철학은 <a href="https://www.aihero.dev">aihero.dev</a>에서.</li>
+<li>다음 레슨 후보: ① grilling을 실전으로 겪어보기(작은 아이디어 하나를 인터뷰당해 보기) ② setup-matt-pocock-skills를 SASOO에 실전 실행 ③ domain-modeling으로 SASOO 용어집 만들기.</li>
+</ul>
+
+<footer>궁금한 점은 에이전트(교사)에게 바로 물어보세요. "Q3이 왜 그런지 다시 설명해줘"처럼 어떤 질문이든 좋습니다. · <a href="../MISSION.md">미션</a> · <a href="../reference/aihero-map.html">치트시트</a></footer>
+</main>
+<script src="../assets/quiz.js"></script>

@@ -3,12 +3,15 @@ import type {
   AnalysisPhase,
   AnalysisResults,
   AnalysisStatus,
+  CostSummary,
   Figure,
   Recipe,
   Table,
   VisualizationPlan,
 } from '@/lib/api';
 import { getAgentMeta } from '@/lib/agents';
+import { attachEvidence, parseRecipeParameters, summarizeAnchoredEvidence } from '@/lib/evidence';
+import { S } from '@/lib/strings';
 
 type PhaseTone = 'primary' | 'muted' | 'practical';
 
@@ -20,10 +23,32 @@ export interface MetaItem {
 
 export interface PhaseSummary {
   summaryLine: string | null;
+  /** visual 전용 보조 줄. 모델의 quality_summary가 개수와 모순되지 않을 때만 채워진다. */
+  detailLine?: string | null;
+  /** visual 전용. 그림 탭 헤더가 쓰는, 그림 개수 중심 문장. */
+  figureLine?: string;
+  /** visual 전용. 표 탭 헤더가 쓰는, 표 개수 중심 문장. */
+  tableLine?: string;
   collapsedMeta: Array<string | { text: string; accent?: boolean }>;
   expandedMeta: string[];
   metaItems: MetaItem[];
   tone: PhaseTone;
+}
+
+// 모델이 만든 visual.quality_summary가 앱이 이미 아는 figureCount/tableCount와
+// 모순되는지 판정하는 순수 함수. 개수가 1개 이상인데 서술에 부정 표현이 섞이면
+// (예: "그림과 표를 추출하지 못했다") 모순으로 보고 렌더링에서 제외한다.
+const QUALITY_SUMMARY_NEGATION_MARKERS = ['추출하지 못', '찾지 못', '없', 'not extracted', 'no figure', 'no table', 'not found'];
+
+export function qualitySummaryContradictsCounts(
+  qualitySummary: string,
+  figureCount: number,
+  tableCount: number,
+): boolean {
+  if (figureCount <= 0 && tableCount <= 0) return false;
+  const text = qualitySummary.trim().toLowerCase();
+  if (!text) return false;
+  return QUALITY_SUMMARY_NEGATION_MARKERS.some((marker) => text.includes(marker.toLowerCase()));
 }
 
 // screening 메타 그리드 값 한국어 매핑. AnalysisResults.screening의 원본 필드(estimated_complexity,
@@ -191,13 +216,44 @@ export function buildPhaseSummary(
       typeof visual.tables_found === 'number' && visual.tables_found > 0
         ? visual.tables_found
         : tables.length;
+
+    // 첫 줄은 앱이 확실히 아는 사실(figureCount/tableCount)로만 만든다. 모델의
+    // quality_summary는 이 개수와 모순될 수 있어(예: 실제로 뽑았는데 "추출 못함"이라고
+    // 서술) 보조 문장(detailLine)으로 강등하고, 모순이면 아예 숨긴다.
+    const summaryLine =
+      figureCount > 0 && tableCount > 0
+        ? S.workbench.visualSummary.both(figureCount, tableCount)
+        : figureCount > 0
+          ? S.workbench.visualSummary.figuresOnly(figureCount)
+          : tableCount > 0
+            ? S.workbench.visualSummary.tablesOnly(tableCount)
+            : S.workbench.visualSummary.none;
+
+    const figureLine =
+      figureCount > 0
+        ? S.workbench.visualSummary.figureTabCount(figureCount)
+        : tableCount > 0
+          ? S.workbench.visualSummary.figureTabNone
+          : S.workbench.visualSummary.none;
+
+    const tableLine =
+      tableCount > 0
+        ? S.workbench.visualSummary.tableTabCount(tableCount)
+        : figureCount > 0
+          ? S.workbench.visualSummary.tableTabNone
+          : S.workbench.visualSummary.none;
+
+    const rawQualitySummary = typeof visual.quality_summary === 'string' ? visual.quality_summary.trim() : '';
+    const detailLine =
+      rawQualitySummary && !qualitySummaryContradictsCounts(rawQualitySummary, figureCount, tableCount)
+        ? shortText(rawQualitySummary, '')
+        : null;
+
     return {
-      summaryLine: shortText(
-        visual.quality_summary,
-        figureCount > 0 || tableCount > 0
-          ? '추출한 figure와 table을 함께 정리했어요.'
-          : '추출한 시각 자료가 없어요.'
-      ),
+      summaryLine,
+      detailLine,
+      figureLine,
+      tableLine,
       collapsedMeta: [
         figureCount > 0 ? `Figure ${figureCount}개` : 'Figure 없음',
         tableCount > 0 ? `표 ${tableCount}개` : '표 없음',
@@ -216,8 +272,27 @@ export function buildPhaseSummary(
     const params = Array.isArray(recipeResult.parameters) ? recipeResult.parameters.length : 0;
     const confidence = percent(recipeResult.confidence);
     const title = typeof recipeResult.title === 'string' ? recipeResult.title : '';
+
+    // 상단 요약줄에 title을 그대로 쓰면 바로 아래 RecipeCard 본문 제목과 같은 문장이
+    // 두 번 나온다(중복). 대신 파라미터 수·근거 확인 수라는 사실 요약으로 채운다.
+    // RecipeCard.tsx의 evidenceCounts와 동일하게 attachEvidence(파싱→fail-closed 앵커
+    // 결합)를 거쳐 계산해, 화면 표에 실제로 보이는 숫자와 어긋나지 않게 한다. recipe
+    // 객체(evidence 포함) 없이 results.recipe만 있는 경우엔 근거 수를 계산할 수 없어
+    // 고정 문구로 대체한다.
+    const evidenceCounts = recipe
+      ? summarizeAnchoredEvidence(
+          attachEvidence(parseRecipeParameters(recipeResult.parameters), recipe.evidence ?? null),
+        )
+      : null;
+    const summaryLine =
+      params > 0
+        ? evidenceCounts
+          ? `파라미터 ${params}개, 근거 확인 ${evidenceCounts.verified}건`
+          : '재현 파라미터와 근거를 정리했어요.'
+        : '레시피 정보를 더 확인해야 해요.';
+
     return {
-      summaryLine: title || (params > 0 ? '실험 재현을 위한 핵심 정보를 정리했어요.' : '레시피 정보를 더 확인해야 해요.'),
+      summaryLine,
       collapsedMeta: [
         title ? '레시피 추출됨' : recipe ? '레시피 준비됨' : '레시피 없음',
         params > 0 ? `파라미터 ${params}개` : '파라미터 없음',
@@ -518,6 +593,60 @@ function buildWorkbenchStatusSummaryCore({
     totalCount,
     staleModel,
     progressRatio,
+  };
+}
+
+export interface AnalysisConfirmCopy {
+  title: string;
+  providerLine: string | null;
+  reanalyzeNotice: string | null;
+  costLine: string | null;
+  confirmLabel: string;
+}
+
+// 분석 확인 모달 문구. costSummary가 null이면 조회 전이거나 조회 실패한 것이므로
+// 비용 줄은 숨긴다(추정값을 잘못 보여주는 것보다 안전) — per_paper_costs가 빈 배열로
+// 정상 응답한 경우에만 "첫 분석" 추정 문구를 보여준다.
+//
+// avg/max는 "최근 N편"이 아니라 전체 이력 기준이다: per_paper_costs(backend
+// api/settings.py)에는 날짜 필드가 없고 total_usd 내림차순으로만 정렬돼 있어 프론트에서
+// 최근 순서를 재구성할 수 없다. 최근인 척하는 라벨보다 "전체 평균"이라는 정직한 라벨을 쓴다.
+export function buildAnalysisConfirmCopy({
+  isReanalyze,
+  provider,
+  costSummary,
+}: {
+  isReanalyze: boolean;
+  provider: 'openai' | 'gemini' | null;
+  costSummary: CostSummary | null;
+}): AnalysisConfirmCopy {
+  const providerName =
+    provider === 'openai'
+      ? S.workbench.analysisConfirm.providerOpenAI
+      : provider === 'gemini'
+        ? S.workbench.analysisConfirm.providerGemini
+        : null;
+
+  const hasHistory = Boolean(costSummary && costSummary.per_paper_costs.length > 0);
+  const costLine = !costSummary
+    ? null
+    : hasHistory
+      ? S.workbench.analysisConfirm.costMeasured(
+          costSummary.totals.avg_cost_per_paper.toFixed(3),
+          Math.max(...costSummary.per_paper_costs.map((p) => p.total_usd)).toFixed(3),
+        )
+      : providerName
+        ? S.workbench.analysisConfirm.costEstimate(providerName)
+        : S.workbench.analysisConfirm.costEstimateGeneric;
+
+  return {
+    title: isReanalyze ? S.workbench.analysisConfirm.titleReanalyze : S.workbench.analysisConfirm.titleFirst,
+    providerLine: providerName ? S.workbench.analysisConfirm.providerLine(providerName) : null,
+    reanalyzeNotice: isReanalyze ? S.workbench.analysisConfirm.reanalyzeNotice : null,
+    costLine,
+    confirmLabel: isReanalyze
+      ? S.workbench.analysisConfirm.confirmReanalyze
+      : S.workbench.analysisConfirm.confirmFirst,
   };
 }
 

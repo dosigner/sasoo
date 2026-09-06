@@ -1,20 +1,15 @@
-import { useState, useCallback, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
-import { Markdown } from '@/components/Markdown';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { Markdown, type MarkdownCitationOptions } from '@/components/Markdown';
+import { type CitationTarget } from '@/lib/citations';
 import {
   BookOpen,
   GitBranch,
   Loader2,
   Circle,
   AlertCircle,
-  RefreshCw,
-  FolderDown,
-  Download,
 } from 'lucide-react';
 import {
   type ArtifactStatus,
-  getStaticUrl,
-  repairMermaid,
-  regenerateVisualization,
   type AnalysisResults,
   type AnalysisStatus,
   type EvidenceAnchor,
@@ -23,7 +18,7 @@ import {
   type Recipe,
   type MermaidDiagram,
   type VisualizationPlan,
-  type VisualizationItem,
+  type SynthesisResult,
   type PhaseStatusValue,
   type AnalysisPhase,
   type Figure,
@@ -31,16 +26,16 @@ import {
 } from '@/lib/api';
 import { buildPhaseSummary, buildWorkbenchStatusSummary } from '@/lib/workbenchSummaries';
 import { S } from '@/lib/strings';
-import { assetExtension, downloadBlob, safeAssetFilename } from '@/lib/download';
 import { extractOutline } from '@/lib/mdOutline';
 import SectionOutline from './SectionOutline';
 import FigureGallery from './FigureGallery';
 import TableGallery from './TableGallery';
 import RecipeCard from './RecipeCard';
 import ExperimentPlanTab from './ExperimentPlanTab';
+import ReadingGuideTab from './ReadingGuideTab';
 import { ContentState } from '@/components/ui';
 import { AppIcon } from '@/components/icons';
-const MermaidRenderer = lazy(() => import('./MermaidRenderer'));
+import { SynthesisView } from './synthesis/SynthesisView';
 import ProgressTracker from './ProgressTracker';
 
 // ---------------------------------------------------------------------------
@@ -56,13 +51,22 @@ interface AnalysisPanelProps {
   recipe: Recipe | null;
   mermaid: MermaidDiagram | null;
   visualizations: VisualizationPlan | null;
+  synthesis?: SynthesisResult | null;
+  /** 종합 뷰 만들기와 다시 만들기 뒤 훅 상태를 다시 읽는다. */
+  onRefreshSynthesis?: () => Promise<void>;
   isRunning: boolean;
   paperId?: string;
   paperLevel?: string | null;
   onJumpToFigurePage?: (figure: Figure) => void;
   onJumpToTablePage?: (table: Table) => void;
   onJumpToEvidence?: (anchor: EvidenceAnchor) => void;
+  /** 읽기 안내의 섹션 페이지 클릭. */
+  onGuideJumpToPage?: (page: number) => void;
+  /** 읽기 안내의 표기 사전 항목 클릭. page가 있으면 그 페이지부터 찾는다. */
+  onGuideSearchInPdf?: (term: string, page: number | null) => void;
   citationFocus?: CitationFocus | null;
+  /** 요약 탭 페이즈 본문(스크리닝·인용 분석·심층 분석)의 인용 칩 클릭. 채팅과 동일한 그림/표/페이지 이동. */
+  onCitationClick?: (target: CitationTarget) => void;
   terminalState?: 'cancelled' | null;
 }
 
@@ -73,6 +77,15 @@ export interface CitationFocus {
   anchor: string;
   /** monotonically increasing token so repeated clicks re-trigger the effect. */
   token: number;
+}
+
+/** 탭 전환 뒤 카드가 그려질 시간을 주고 스크롤한다. 정리 함수를 돌려준다. */
+function scrollToCitationAnchor(anchor: string): () => void {
+  const timer = window.setTimeout(() => {
+    const el = document.querySelector(`[data-citation-anchor="${anchor}"]`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 80);
+  return () => window.clearTimeout(timer);
 }
 
 // ---------------------------------------------------------------------------
@@ -170,6 +183,8 @@ interface PhaseSectionProps {
   metaItems?: { label: string; value: string; accent?: boolean }[];
   tone?: 'primary' | 'muted' | 'practical';
   children?: React.ReactNode;
+  /** 있으면 본문 마크다운의 "Fig. 3" 같은 참조를 인용 칩으로 치환한다. */
+  citations?: MarkdownCitationOptions;
 }
 
 function PhaseSection({
@@ -184,6 +199,7 @@ function PhaseSection({
   metaItems = [],
   tone = 'muted',
   children,
+  citations,
 }: PhaseSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const outline = useMemo(() => (content ? extractOutline(content) : []), [content]);
@@ -335,7 +351,7 @@ function PhaseSection({
                 <SectionOutline outline={outline} scopeRef={contentRef} />
               )}
               <div className="analysis-content" ref={contentRef}>
-                <Markdown headingAnchors>{content}</Markdown>
+                <Markdown headingAnchors citations={citations}>{content}</Markdown>
               </div>
             </div>
           )}
@@ -691,302 +707,6 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
 // Main Component
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// PaperBanana Image Viewer (inline)
-// ---------------------------------------------------------------------------
-
-function PaperBananaViewer({ item }: { item: VisualizationItem }) {
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
-
-  // Download the generated illustration. Served same-origin from the backend
-  // (/static/...), so fetching it into a blob is enough.
-  const handleDownload = useCallback(async () => {
-    if (!item.image_url) return;
-    setSaving(true);
-    setSaveError('');
-    try {
-      const res = await fetch(getStaticUrl(item.image_url));
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      const base = safeAssetFilename(item.title, 'illustration');
-      downloadBlob(`${base}.${assetExtension(item.image_url)}`, blob);
-    } catch (err) {
-      console.error('Illustration download failed:', err);
-      setSaveError(S.figures.saveFailed);
-    } finally {
-      setSaving(false);
-    }
-  }, [item.image_url, item.title]);
-
-  if (item.status === 'error') {
-    return (
-      <div className="flex flex-col items-center justify-center py-6 text-center">
-        <AlertCircle className="w-6 h-6 text-danger mb-2" />
-        <p className="text-sm text-danger">{S.mermaid.illustrationFailed}</p>
-        {item.error_message && (
-          <p className="text-2xs text-fg-muted mt-1">{item.error_message}</p>
-        )}
-      </div>
-    );
-  }
-
-  if (!item.image_url) {
-    return (
-      <div className="flex items-center justify-center py-8" role="status" aria-busy="true">
-        <Loader2 className="w-5 h-5 text-accent animate-spin" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="group relative overflow-hidden rounded-lg border border-border">
-      <img
-        src={getStaticUrl(item.image_url)}
-        alt={item.title}
-        className="w-full h-auto object-contain bg-surface"
-        loading="lazy"
-      />
-      <button
-        onClick={handleDownload}
-        disabled={saving}
-        className="absolute right-2 top-2 flex items-center justify-center rounded-md border border-border/60 bg-surface/90 p-1.5 text-fg-muted opacity-0 shadow-xs backdrop-blur-sm transition hover:text-fg focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-50"
-        aria-label={S.figures.saveImage}
-        title={S.figures.saveImage}
-      >
-        {saving ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Download className="h-4 w-4" />
-        )}
-      </button>
-      {saveError && (
-        <p className="flex items-center gap-1 border-t border-border px-2 py-1 text-2xs text-danger">
-          <AlertCircle className="h-3 w-3" />
-          {saveError}
-        </p>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Visualization Gallery (renders multiple items)
-// ---------------------------------------------------------------------------
-
-function VisualizationGallery({
-  visualizations,
-  legacyMermaid,
-  loading,
-}: {
-  visualizations: VisualizationPlan | null;
-  legacyMermaid: MermaidDiagram | null;
-  loading: boolean;
-}) {
-  // Locally regenerated/repaired items override the fetched plan until the
-  // next reload (the backend persists them too).
-  const [itemOverrides, setItemOverrides] = useState<Record<number, VisualizationItem>>({});
-  const [regeneratingIds, setRegeneratingIds] = useState<Record<number, boolean>>({});
-  const [regenerateErrors, setRegenerateErrors] = useState<Record<number, string>>({});
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState('');
-
-  const handleExportAll = useCallback(
-    async (paperId: number, items: VisualizationItem[]) => {
-      setExporting(true);
-      setExportError('');
-      try {
-        const { exportVisualizationsZip } = await import('@/lib/vizExport');
-        await exportVisualizationsZip(paperId, items);
-      } catch {
-        setExportError(S.mermaid.exportFailed);
-      } finally {
-        setExporting(false);
-      }
-    },
-    []
-  );
-
-  const handleRegenerate = useCallback(
-    async (paperId: number, vizId: number) => {
-      setRegeneratingIds((prev) => ({ ...prev, [vizId]: true }));
-      setRegenerateErrors((prev) => ({ ...prev, [vizId]: '' }));
-      try {
-        const updated = await regenerateVisualization(paperId, vizId);
-        setItemOverrides((prev) => ({ ...prev, [vizId]: updated }));
-      } catch {
-        setRegenerateErrors((prev) => ({
-          ...prev,
-          [vizId]: S.mermaid.regenerateFailed,
-        }));
-      } finally {
-        setRegeneratingIds((prev) => ({ ...prev, [vizId]: false }));
-      }
-    },
-    []
-  );
-
-  const makeRepairHandler = useCallback(
-    (paperId: number, vizId: number | null) =>
-      async (code: string, errorMessage: string): Promise<string | null> => {
-        try {
-          const result = await repairMermaid(paperId, {
-            mermaid_code: code,
-            error_message: errorMessage,
-            viz_id: vizId,
-          });
-          return result.mermaid_code || null;
-        } catch {
-          return null;
-        }
-      },
-    []
-  );
-
-  // If we have the new visualization plan, use it
-  if (visualizations && visualizations.items.length > 0) {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 mb-2">
-          <AppIcon name="experiment" className="w-4 h-4 text-accent" />
-          <span className="text-sm font-semibold text-fg">
-            {S.mermaid.visualizations}
-          </span>
-          <span className="badge text-2xs bg-accent/10 text-accent">
-            {visualizations.items.length}
-          </span>
-          <button
-            onClick={() =>
-              handleExportAll(
-                visualizations.paper_id,
-                visualizations.items.map((it) => itemOverrides[it.id] ?? it)
-              )
-            }
-            disabled={exporting}
-            className="btn-ghost text-2xs px-2 py-0.5 ml-auto"
-            title={S.mermaid.exportAll}
-          >
-            {exporting ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <FolderDown className="w-3 h-3" />
-            )}
-            {exporting ? S.mermaid.exporting : S.mermaid.exportAll}
-          </button>
-        </div>
-        {exportError && <p className="text-2xs text-danger">{exportError}</p>}
-        {visualizations.items.map((rawItem) => {
-          const item = itemOverrides[rawItem.id] ?? rawItem;
-          const isRegenerating = !!regeneratingIds[item.id];
-          return (
-          <div key={item.id} className="space-y-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-fg-secondary">
-                {item.id}. {item.title}
-              </span>
-              <span className={`badge text-2xs ${
-                item.tool === 'mermaid'
-                  ? 'bg-accent/10 text-accent'
-                  : 'bg-warning/10 text-warning'
-              }`}>
-                {item.tool === 'mermaid' ? 'Mermaid' : 'PaperBanana'}
-              </span>
-              {item.tool === 'mermaid' && (
-                <button
-                  onClick={() => handleRegenerate(visualizations.paper_id, item.id)}
-                  disabled={isRegenerating}
-                  className="btn-ghost text-2xs px-2 py-0.5 ml-auto"
-                  title={S.mermaid.regenerate}
-                >
-                  <RefreshCw
-                    className={`w-3 h-3 ${isRegenerating ? 'animate-spin' : ''}`}
-                  />
-                  {isRegenerating ? S.mermaid.regenerating : S.mermaid.regenerate}
-                </button>
-              )}
-            </div>
-            {regenerateErrors[item.id] && (
-              <p className="text-2xs text-danger">{regenerateErrors[item.id]}</p>
-            )}
-            {item.description && (
-              <p className="text-xs text-fg-muted leading-relaxed">
-                {item.description}
-              </p>
-            )}
-            {item.tool === 'mermaid' && item.mermaid_code ? (
-              <Suspense fallback={<div className="flex items-center gap-2 py-4 justify-center"><Loader2 className="w-4 h-4 text-accent animate-spin" /></div>}>
-                <MermaidRenderer
-                  diagram={{
-                    paper_id: visualizations.paper_id,
-                    mermaid_code: item.mermaid_code,
-                    diagram_type: item.diagram_type,
-                    description: item.description,
-                  }}
-                  loading={false}
-                  title={item.title}
-                  onRepair={makeRepairHandler(visualizations.paper_id, item.id)}
-                />
-              </Suspense>
-            ) : item.tool === 'paperbanana' ? (
-              <PaperBananaViewer item={item} />
-            ) : item.status === 'error' ? (
-              <div className="text-sm text-danger py-2">
-                {item.error_message || S.mermaid.generationFailed}
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 py-4 justify-center" role="status" aria-busy="true">
-                <Loader2 className="w-4 h-4 text-accent animate-spin" />
-                <span className="text-xs text-fg-muted">{S.mermaid.generating}</span>
-              </div>
-            )}
-          </div>
-          );
-        })}
-      </div>
-    );
-  }
-
-  // If deep_dive is done but visualizations haven't arrived yet, show generating state
-  if (!loading && !legacyMermaid) {
-    return (
-      <div>
-        <h3 className="text-sm font-semibold text-fg mb-3 flex items-center gap-2">
-          <AppIcon name="experiment" className="w-4 h-4 text-accent" />
-          {S.mermaid.visualizations}
-        </h3>
-        <div className="card flex flex-col items-center justify-center py-8 text-center">
-          <Loader2 className="w-6 h-6 text-accent animate-spin mb-2" />
-          <p className="text-sm text-fg-muted">
-            {S.mermaid.generating}
-          </p>
-          <p className="text-2xs text-fg-muted mt-1">
-            {S.mermaid.generatingTime}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // Fallback: legacy single mermaid diagram
-  return (
-    <Suspense fallback={<div className="flex items-center gap-2 py-4 justify-center"><Loader2 className="w-4 h-4 text-accent animate-spin" /></div>}>
-      <MermaidRenderer
-        diagram={legacyMermaid}
-        loading={loading}
-        onRepair={
-          legacyMermaid
-            ? makeRepairHandler(legacyMermaid.paper_id, null)
-            : undefined
-        }
-      />
-    </Suspense>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main Component
-// ---------------------------------------------------------------------------
-
 export default function AnalysisPanel({
   status,
   artifactStatus,
@@ -996,15 +716,21 @@ export default function AnalysisPanel({
   recipe,
   mermaid: mermaidDiagram,
   visualizations,
+  synthesis,
+  onRefreshSynthesis,
   isRunning,
   paperId,
+  paperLevel,
   onJumpToFigurePage,
   onJumpToTablePage,
   onJumpToEvidence,
+  onGuideJumpToPage,
+  onGuideSearchInPdf,
   citationFocus,
+  onCitationClick,
   terminalState,
 }: AnalysisPanelProps) {
-  const [activeTab, setActiveTab] = useState<'summary' | 'figures' | 'tables' | 'recipe' | 'experiment'>('summary');
+  const [activeTab, setActiveTab] = useState<'summary' | 'synthesis' | 'guide' | 'figures' | 'tables' | 'recipe'>('summary');
 
   useEffect(() => {
     setActiveTab('summary');
@@ -1015,12 +741,14 @@ export default function AnalysisPanel({
   useEffect(() => {
     if (!citationFocus) return;
     setActiveTab(citationFocus.tab);
-    const timer = window.setTimeout(() => {
-      const el = document.querySelector(`[data-citation-anchor="${citationFocus.anchor}"]`);
-      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 80);
-    return () => window.clearTimeout(timer);
+    return scrollToCitationAnchor(citationFocus.anchor);
   }, [citationFocus]);
+
+  // 종합 뷰의 그림 참조 클릭. 채팅 인용 칩과 같은 경로로 그림 탭의 카드로 간다.
+  const openFigureFromSynthesis = useCallback((anchor: string) => {
+    setActiveTab('figures');
+    scrollToCitationAnchor(anchor);
+  }, []);
 
   // Determine phase statuses
   const getPhaseStatus = (phaseName: AnalysisPhase): PhaseStatusValue => {
@@ -1061,6 +789,31 @@ export default function AnalysisPanel({
 
   const figureList = figures?.figures ?? [];
   const tableList = tables?.tables ?? [];
+
+  // 요약 탭 인용 칩: 실제로 존재하는 그림/표 번호만 칩으로 바꾼다(논문에 없는 Fig. 9는
+  // 그대로 텍스트로 둔다). figure_num/table_num은 "3a" 같은 라벨일 수 있어 갤러리 카드의
+  // data-citation-anchor와 같은 방식(첫 숫자만 추출)으로 번호를 뽑는다.
+  const extractCitationNum = (label: string | null | undefined): number | null => {
+    const match = label?.match(/\d+/)?.[0];
+    return match ? parseInt(match, 10) : null;
+  };
+  const figureNumbers = new Set(
+    figureList.map((f) => extractCitationNum(f.figure_num)).filter((n): n is number => n !== null),
+  );
+  const tableNumbers = new Set(
+    tableList.map((t) => extractCitationNum(t.table_num)).filter((n): n is number => n !== null),
+  );
+  // 페이지 참조는 PDF 페이지 수를 모르므로 항상 칩으로 둔다(브리프 §7).
+  const summaryCitations: MarkdownCitationOptions | undefined = onCitationClick
+    ? {
+        onClick: onCitationClick,
+        isAllowed: (target: CitationTarget) =>
+          target.type === 'page' ||
+          (target.type === 'figure' && figureNumbers.has(target.n)) ||
+          (target.type === 'table' && tableNumbers.has(target.n)),
+      }
+    : undefined;
+
   const screeningSummary = buildPhaseSummary('screening', results, recipe, figureList, tableList, visualizations);
   const citationSummary = buildPhaseSummary('citation', results, recipe, figureList, tableList, visualizations);
   const visualSummary = buildPhaseSummary('visual', results, recipe, figureList, tableList, visualizations);
@@ -1077,14 +830,13 @@ export default function AnalysisPanel({
     terminalState,
   });
 
-  const visibleTab = activeTab === 'experiment' && !recipeReady ? 'summary' : activeTab;
-
-  const tabs: Array<{ key: 'summary' | 'figures' | 'tables' | 'recipe' | 'experiment'; label: string; disabled?: boolean }> = [
+  const tabs: Array<{ key: typeof activeTab; label: string; disabled?: boolean }> = [
     { key: 'summary', label: S.workbench.summaryTab },
+    { key: 'synthesis', label: S.synthesis.tabLabel },
+    { key: 'guide', label: S.workbench.guideTab },
     { key: 'figures', label: S.workbench.figuresTab },
     { key: 'tables', label: S.workbench.tablesTab },
     { key: 'recipe', label: S.workbench.recipeTab },
-    { key: 'experiment', label: S.workbench.experimentTab, disabled: !recipeReady },
   ];
 
   return (
@@ -1129,7 +881,7 @@ export default function AnalysisPanel({
                 onClick={() => !tab.disabled && setActiveTab(tab.key)}
                 disabled={tab.disabled}
                 className={`segmented-control__item ${
-                  visibleTab === tab.key ? 'segmented-control__item-active' : ''
+                  activeTab === tab.key ? 'segmented-control__item-active' : ''
                 } ${tab.disabled ? 'segmented-control__item-disabled' : ''}`}
               >
                 {tab.label}
@@ -1141,7 +893,7 @@ export default function AnalysisPanel({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto scroll-stable px-5 py-4">
-        {visibleTab === 'summary' && (
+        {activeTab === 'summary' && (
           <div className="space-y-5">
             {status &&
               status.overall_status !== 'pending' &&
@@ -1168,6 +920,7 @@ export default function AnalysisPanel({
                 expandedMeta={screeningSummary.expandedMeta}
                 metaItems={screeningSummary.metaItems}
                 tone={screeningSummary.tone}
+                citations={summaryCitations}
               />
 
               <PhaseSection
@@ -1180,6 +933,7 @@ export default function AnalysisPanel({
                 collapsedMeta={citationSummary.collapsedMeta}
                 expandedMeta={citationSummary.expandedMeta}
                 tone={citationSummary.tone}
+                citations={summaryCitations}
               />
 
               <PhaseSection
@@ -1192,18 +946,42 @@ export default function AnalysisPanel({
                 collapsedMeta={deepDiveSummary.collapsedMeta}
                 expandedMeta={deepDiveSummary.expandedMeta}
                 tone={deepDiveSummary.tone}
-              >
-                <VisualizationGallery
-                  visualizations={visualizations}
-                  legacyMermaid={mermaidDiagram}
-                  loading={getPhaseStatus('deep_dive') === 'running'}
-                />
-              </PhaseSection>
+                citations={summaryCitations}
+              />
             </div>
           </div>
         )}
 
-        {visibleTab === 'figures' && (
+        {activeTab === 'synthesis' && (
+          <div className="space-y-5">
+            <SynthesisView
+              paperId={paperId ? Number(paperId) : null}
+              synthesis={synthesis ?? null}
+              visualizations={visualizations}
+              legacyMermaid={mermaidDiagram}
+              deepDive={(results?.deep_dive as Record<string, unknown> | null) ?? null}
+              figures={figureList}
+              recipe={recipe}
+              analysisRunning={getPhaseStatus('deep_dive') === 'running'}
+              onRefreshSynthesis={onRefreshSynthesis}
+              onOpenFigure={openFigureFromSynthesis}
+              onOpenRecipe={() => setActiveTab('recipe')}
+            />
+          </div>
+        )}
+
+        {/* 다른 탭과 달리 언마운트하지 않는다 — 생성 중(비용 발생) 탭을 옮기면 훅의
+            cleanup이 요청을 중단해 결과가 버려진다. hidden으로만 숨긴다. */}
+        <div hidden={activeTab !== 'guide'}>
+          <ReadingGuideTab
+            paperId={paperId ?? null}
+            level={paperLevel}
+            onJumpToPage={onGuideJumpToPage}
+            onSearchInPdf={onGuideSearchInPdf}
+          />
+        </div>
+
+        {activeTab === 'figures' && (
           <div className="space-y-5">
             <div className="border border-border/45 bg-surface/40 px-4 py-4" style={{ borderRadius: 'var(--radius-surface)' }}>
               <div className="flex items-center gap-2">
@@ -1213,8 +991,11 @@ export default function AnalysisPanel({
                 </h3>
               </div>
               <p className="mt-2 text-xs leading-relaxed text-fg-muted">
-                {visualSummary.summaryLine || '시각 검증 결과와 Figure를 한곳에서 확인할 수 있어요.'}
+                {visualSummary.figureLine || '시각 검증 결과와 Figure를 한곳에서 확인할 수 있어요.'}
               </p>
+              {visualSummary.detailLine && (
+                <p className="mt-1 text-2xs text-fg-muted">{visualSummary.detailLine}</p>
+              )}
             </div>
 
             <FigureGallery
@@ -1230,7 +1011,7 @@ export default function AnalysisPanel({
           </div>
         )}
 
-        {visibleTab === 'tables' && (
+        {activeTab === 'tables' && (
           <div className="space-y-5">
             <div className="border border-border/45 bg-surface/40 px-4 py-4" style={{ borderRadius: 'var(--radius-surface)' }}>
               <div className="flex items-center gap-2">
@@ -1240,8 +1021,11 @@ export default function AnalysisPanel({
                 </h3>
               </div>
               <p className="mt-2 text-xs leading-relaxed text-fg-muted">
-                {visualSummary.summaryLine || '복구한 Table 구조와 저장한 CSV/HTML 자산을 한곳에서 확인할 수 있어요.'}
+                {visualSummary.tableLine || '복구한 Table 구조와 저장한 CSV/HTML 자산을 한곳에서 확인할 수 있어요.'}
               </p>
+              {visualSummary.detailLine && (
+                <p className="mt-1 text-2xs text-fg-muted">{visualSummary.detailLine}</p>
+              )}
             </div>
 
             <TableGallery
@@ -1256,7 +1040,7 @@ export default function AnalysisPanel({
           </div>
         )}
 
-        {visibleTab === 'recipe' && (
+        {activeTab === 'recipe' && (
           <div className="space-y-5">
             <div className="border border-border/45 bg-surface/40 px-4 py-4" style={{ borderRadius: 'var(--radius-surface)' }}>
               <div className="flex items-center gap-2">
@@ -1275,32 +1059,25 @@ export default function AnalysisPanel({
               loading={getPhaseStatus('recipe') === 'running'}
               onJumpToEvidence={onJumpToEvidence}
             />
-          </div>
-        )}
 
-        {visibleTab === 'experiment' && (
-          <div className="space-y-5">
-            {recipeReady && paperId ? (
-              <div className="border border-border/45 bg-surface/40 px-4 py-4" style={{ borderRadius: 'var(--radius-surface)' }}>
-                <div className="mb-3 flex items-center gap-2">
-                  <AppIcon name="experiment" className="w-4 h-4 text-success" />
-                  <span className="text-sm font-medium text-fg">
-                    {S.workbench.experimentTab}
-                  </span>
-                </div>
-                <ExperimentPlanTab
-                  paperId={paperId}
-                  recipeAvailable={recipeReady}
-                />
+            {/* 실험 계획은 레시피에서 파생되므로 별도 탭이 아니라 이 탭의 하위 섹션이다. */}
+            <div className="border-t border-border/45 pt-5">
+              <div className="mb-3 flex items-center gap-2">
+                <AppIcon name="experiment" className="h-4 w-4 text-accent" />
+                <h3 className="text-sm font-[650] text-fg">{S.workbench.experimentTab}</h3>
               </div>
-            ) : (
-              <ContentState
-                icon={(props) => <AppIcon name="experiment" {...props} />}
-                title={S.workbench.experimentTab}
-                description={S.workbench.experimentPending}
-                tone="muted"
-              />
-            )}
+              {recipeReady && paperId ? (
+                <ExperimentPlanTab paperId={paperId} recipeAvailable={recipeReady} />
+              ) : (
+                <ContentState
+                  icon={(props) => <AppIcon name="experiment" {...props} />}
+                  title={S.workbench.experimentTab}
+                  description={S.workbench.experimentPending}
+                  tone="muted"
+                  compact
+                />
+              )}
+            </div>
           </div>
         )}
       </div>

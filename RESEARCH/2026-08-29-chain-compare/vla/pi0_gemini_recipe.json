@@ -1,0 +1,141 @@
+{
+  "title": "π0(Pi-Zero) Vision-Language-Action Flow Matching 모델 학습 및 배포 레시피",
+  "objective": "사전 훈련된 VLM 백본(PaliGemma)에 Flow Matching 기반 Action Expert를 결합하여 고빈도(최대 50Hz) 액션 청크를 제어할 수 있는 범용 로봇 파운데이션 모델(VLA)을 사전 훈련 및 다운스트림 태스크에 맞춤 미세조정(Fine-tuning)함.",
+  "parameters": [
+    {
+      "name": "model_architecture",
+      "value": "PaliGemma-based VLM Backbone + Flow Matching Action Expert",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "While in principle our model can be initialized from scratch or fine-tuned from any VLM backbone, in practice we use PaliGemma [5] as our base model.",
+      "notes": "PaliGemma 3B VLM 백본(Gemma 2B 기반)에 Flow Matching Action Expert(300M)가 결합된 형태."
+    },
+    {
+      "name": "total_parameters",
+      "value": "3.3B",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We add 300M parameters for the action expert (which is initialized from scratch) for a total of 3.3 billion parameters.",
+      "notes": "VLM 백본 3B + Action Expert 300M"
+    },
+    {
+      "name": "action_horizon (H)",
+      "value": "50",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "where At = [at, at+1, ..., at+H−1] corresponds to an action chunk of future actions (we use H = 50 for our tasks)",
+      "notes": "모델이 한 번의 추론에서 예측하는 미래 액션 청크의 스텝 수"
+    },
+    {
+      "name": "max_action_and_state_dim (d)",
+      "value": "18",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "The configuration vector qt and action vectors at always have the dimensionality of the largest robot in the dataset (18 in our case, to accommodate two 6-DoF arms, 2 grippers, a mobile base, and a vertically actuated torso).",
+      "notes": "하위 차원의 로봇 상태/액션 벡터는 18차원으로 제로 패딩 처리됨."
+    },
+    {
+      "name": "loss_function",
+      "value": "Conditional Flow Matching Loss (L2 loss against target vector field)",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "During training, we supervise these action tokens using a conditional flow matching loss [28, 32], L τ (θ) = Ep(At|ot),q(Aτ t |At) ||vθ(Aτ t , ot) − u(Aτ t |At)||2",
+      "notes": "Linear-Gaussian 최적 수송 확률 경로를 가정한 Flow Matching 목적함수"
+    },
+    {
+      "name": "flow_matching_integration_steps",
+      "value": "10",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We use 10 integration steps (corresponding to δ = 0.1) in our experiments.",
+      "notes": "추론 시 Forward Euler 적분 규칙 사용 (δ = 0.1)"
+    },
+    {
+      "name": "flow_matching_timestep_distribution",
+      "value": "Shifted Beta Distribution: Beta((s-τ)/s; 1.5, 1) with s=0.999",
+      "source_tag": "explicit",
+      "evidence_page": 16,
+      "evidence_quote": "The distribution is given by p(τ ) = Beta( s−τ s ; 1.5, 1) and is visualized in Figure 14. We use s = 0.999 in our experiments",
+      "notes": "노이즈가 많은 낮은 timesteps 구간(high noise levels)에 가중치를 부여함."
+    },
+    {
+      "name": "dataset_size_pretraining_timesteps",
+      "value": "903M",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "To learn dexterous and more complex tasks, we also use 903M timesteps of data from our own datasets, where 106M steps are from single-arm robots and 797M are from dual-arm robots.",
+      "notes": "자체 수집 데이터 약 903M 스텝(10,000시간) + OXE 데이터셋(전체의 9.1%)"
+    },
+    {
+      "name": "dataset_weighting_exponent",
+      "value": "n^0.43",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "we weight each task-robot combination by n 0.43, where n is the number of samples for that combination, such that over-represented combinations are down-weighted.",
+      "notes": "데이터 불균형 완화를 위한 샘플 가중치 조절 계수"
+    },
+    {
+      "name": "training_steps_pretraining",
+      "value": "700,000",
+      "source_tag": "explicit",
+      "evidence_page": 7,
+      "evidence_quote": "which is trained for only 160k steps (as opposed to 700k steps for our main model)",
+      "notes": "메인 사전 훈련 모델 기준 700k 스텝 학습 (Parity 모델은 160k 스텝)"
+    },
+    {
+      "name": "vlm_backbone_hyperparameters",
+      "value": "width=2048, depth=18, mlp_dim=16384, num_heads=18, num_kv_heads=1, head_dim=256",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "PaliGemma is based on the Gemma 2B [49] language model, which uses multi-query attention [44] and a configuration of {width=2048, depth=18, mlp dim=16,384, num heads=18, num kv heads=1, head dim=256}.",
+      "notes": "Multi-Query Attention(MQA) 구조의 Gemma 2B 백본"
+    },
+    {
+      "name": "action_expert_hyperparameters",
+      "value": "width=1024, depth=18, mlp_dim=4096, num_heads=18, num_kv_heads=1, head_dim=256",
+      "source_tag": "inferred",
+      "evidence_page": 15,
+      "evidence_quote": "Since the experts interact only in the self-attention layers, width and mlp dim do not necessarily need to match between experts. To speed up inference (which requires multiple forward passes of the action expert), we downsize the action expert to {width=1024, mlp dim=4096}, resulting in a parameter count of ∼300M.",
+      "notes": "width=1024, mlp_dim=4096은 명시됨. self-attention 레이어에서 상호작용하므로 depth(18), head_dim(256), num_heads(18) 등은 백본 구조와 공유되도록 구성됨을 추론 가능함."
+    },
+    {
+      "name": "control_frequency",
+      "value": "20Hz ~ 50Hz",
+      "source_tag": "explicit",
+      "evidence_page": 16,
+      "evidence_quote": "For the 20Hz UR5e and Franka robots, we run inference every 0.8 seconds (after executing 16 actions), and for all other robots, which run at 50Hz, we run inference every 0.5 seconds (after executing 25 actions).",
+      "notes": "UR5e/Franka는 20Hz (16액션 실행 후 재추론), 기타 로봇은 50Hz (25액션 실행 후 재추론)"
+    },
+    {
+      "name": "gpu_type_inference",
+      "value": "NVIDIA GeForce RTX 4090",
+      "source_tag": "explicit",
+      "evidence_page": 16,
+      "evidence_quote": "The operations were timed on an NVIDIA GeForce RTX 4090 consumer-grade GPU.",
+      "notes": "추론 벤치마크 환경 (온보드 73ms, 오프보드 86ms)"
+    }
+  ],
+  "steps": [
+    "1. 데이터 수집 및 전처리: 7가지 로봇 구성에서 68개 태스크의 데이터(10,000시간, 903M 타임스텝)와 OXE Magic Soup 데이터셋(9.1%)을 취합하고, 최대 액션/상태 차원인 18차원에 맞춰 제로 패딩 적용 및 n^0.43 가중치를 부여해 샘플링 믹스처를 구성함.",
+    "2. 모델 초기화: PaliGemma 3B VLM 가중치로 관측 인코더 및 백본을 초기화하고, Action Expert(300M, width=1024, mlp_dim=4096)는 스크래치(난수)로 초기화함.",
+    "3. 사전 훈련(Pre-training): (1) 관측 [I_t, l_t]를 VLM 백본에 입력하고, 로봇 관절 상태 q_t 및 표준정규분포에서 샘플링된 노이즈가 섞인 액션 청크 A_t^τ(H=50)를 Action Expert에 입력함. (2) 블록별 인과 어텐션 마스크(관측 블록 -> 상태 블록 -> 액션 블록)를 적용함. (3) 타임스텝 τ를 Shifted Beta 분포(s=0.999)에서 샘플링하여 Conditional Flow Matching Loss로 전체 700,000 스텝 동안 모델을 사전 훈련함.",
+    "4. 다운스트림 태스크 미세조정(Post-training): 사전 훈련된 체크포인트를 불러와 특정 고난도 태스크(예: 세탁물 개기, 식탁 정리 등 5~100+ 시간 분량 데이터)에 대해 지도학습 미세조정을 수행함.",
+    "5. 로봇 실시간 추론 및 배치 배포: (1) 카메라 이미지 및 텍스트 프롬프트를 인코딩하고 관측 Prefix 토큰의 Key/Value 캐시를 저장함. (2) 액션 Expert에서 Forward Euler 적분(10 integration steps, δ=0.1)을 수행하여 미래 50 스텝의 액션 청크를 복원함. (3) 50Hz 로봇의 경우 생성된 50개 액션 중 25개를 개루프(Open-loop)로 순차 실행한 뒤(0.5초 주기) 새로운 관측으로 다시 추론하여 연속 제어를 달성함."
+  ],
+  "materials": [
+    "PaliGemma 3B 사전 훈련 가중치 (Gemma 2B + SigLIP)",
+    "Open X-Embodiment (OXE) 데이터셋 (Magic Soup 서브셋)",
+    "자체 구축 크로스 임바디먼트 로봇 조작 데이터셋 (10,000시간, 903M 타임스텝)",
+    "다운스트림 태스크 시연 데이터셋 (5 ~ 100+ 시간 분량)"
+  ],
+  "missing_info": [
+    "학습 시 사용된 옵티마이저 종류 및 세부 하이퍼파라미터 (AdamW의 learning rate, weight decay, beta1, beta2, warmup steps, lr scheduler 등 전무)",
+    "사전 훈련 및 파인튜닝 시의 배치 크기 (Batch size / Effective batch size 미기재)",
+    "사전 훈련 시 사용된 하드웨어 사양 (학습용 GPU/TPU 종류, 분산 학습 노드 수 미기재)",
+    "난수 시드 (Random seed) 미공개",
+    "학습 프레임워크 및 라이브러리 버전 (PyTorch, JAX, Flax 등 버전 미기재)",
+    "데이터 증강 기법(Data Augmentation strategy)의 세부 적용 파라미터 미기재"
+  ],
+  "reproducibility_score": 0.45,
+  "safety_notes": "실제 로봇 매니퓰레이터(UR5e, Franka, ALOHA 등) 및 모바일 베이스 구동 시 충돌 방지를 위해 비상 정지(E-stop) 시스템을 반드시 구비해야 하며, 50Hz 고빈도 개루프 액션 실행 중 지연이나 드리프트로 인한 기구적 한계 초과를 소프트웨어 레벨에서 감시해야 함."
+}

@@ -63,6 +63,7 @@ export interface PaperUpdateData {
 }
 
 interface PaginatedResponse {
+  completed_count?: number;
   papers: Paper[];
   total: number;
   page: number;
@@ -136,7 +137,7 @@ export interface Figure {
 export interface PdfNavigationRequest {
   page: number;
   requestId: string;
-  source: 'figure' | 'table' | 'citation' | 'recipe';
+  source: 'figure' | 'table' | 'citation' | 'recipe' | 'guide';
   /** 선택 — bbox는 PDF 포인트·좌하단 원점. 없으면 페이지 이동만 한다. */
   highlight?: { bbox: [number, number, number, number] } | null;
 }
@@ -283,6 +284,8 @@ export interface VisualizationItem {
   image_path: string | null;
   status: 'pending' | 'generating' | 'completed' | 'error';
   error_message: string | null;
+  /** 종합 뷰가 배정한 구획. 기존 논문(종합 도입 전 생성)에는 없어서 null. */
+  block: 'concept' | 'method' | 'result' | null;
 }
 
 export interface VisualizationPlan {
@@ -291,6 +294,48 @@ export interface VisualizationPlan {
   total_count: number;
   model_used: string;
   planned_at: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Synthesis (Phase 5 종합 뷰) types
+// ---------------------------------------------------------------------------
+
+export interface SynthesisMetric {
+  label: string;
+  value: string;
+  unit: string;
+  evidence: string;
+}
+
+export interface SynthesisEquation {
+  latex: string;
+  meaning: string;
+  symbols: { symbol: string; meaning: string }[];
+  paper_number: string;
+}
+
+export interface SynthesisFigureRef {
+  figure_num: string;
+  interpretation: string;
+}
+
+export interface SynthesisParameterRef {
+  name: string;
+}
+
+export interface SynthesisResult {
+  paper_id: number;
+  problem_sentence: string;
+  method_sentence: string;
+  key_metrics: SynthesisMetric[];
+  equations: SynthesisEquation[];
+  result_figures: SynthesisFigureRef[];
+  key_parameters: SynthesisParameterRef[];
+  equation_count: number;
+  dropped: Record<string, number>;
+  model_used: string | null;
+  cost_usd: number | null;
+  created_at: string | null;
 }
 
 // Settings types
@@ -676,6 +721,25 @@ export async function getVisualizations(
   paperId: string
 ): Promise<VisualizationPlan> {
   return request<VisualizationPlan>(`/analysis/${paperId}/visualizations`);
+}
+
+export async function getSynthesis(
+  paperId: string | number
+): Promise<SynthesisResult | null> {
+  try {
+    return await request<SynthesisResult>(`/analysis/${paperId}/synthesis`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null;
+    throw err;
+  }
+}
+
+export async function runSynthesis(
+  paperId: string | number
+): Promise<SynthesisResult> {
+  return request<SynthesisResult>(`/analysis/${paperId}/synthesis`, {
+    method: 'POST',
+  });
 }
 
 // ---------------------------------------------------------------------------

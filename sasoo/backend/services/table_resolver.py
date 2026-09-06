@@ -302,11 +302,13 @@ async def resolve_table_candidates(
             suspect_pages=suspect_pages,
             grid=grid,
         )
-        needs_vlm_repair = bool(unresolved_reasons) and (
-            bool(candidate.get("plausible_ruled_bbox"))
-            or bool(candidate.get("best_caption_id"))
-            or (isinstance(page_number, int) and page_number in suspect_pages)
-        )
+        # 캡션이 없는 후보는 아래 3단계 캡션 게이트에서 전량 폐기되므로, 격자를 복원해도
+        # 그 결과를 쓰지 않는다. 실측(2026-09-01): VLM 호출 77건 중 55건(71%)이 이 경우였고
+        # 정체는 대부분 그래프의 범례 박스였다(`ruled_bbox_without_grid` 46건).
+        # 캡션 텍스트가 있으면 옛 조건의 `or bool(best_caption_id)`가 자동으로 참이므로,
+        # 결과를 실제로 쓰는 호출은 하나도 잃지 않는다.
+        has_caption = bool(captions_by_id.get(candidate.get("best_caption_id") or "", {}).get("text"))
+        needs_vlm_repair = has_caption and bool(unresolved_reasons)
         prepared.append(
             {
                 "candidate": candidate,

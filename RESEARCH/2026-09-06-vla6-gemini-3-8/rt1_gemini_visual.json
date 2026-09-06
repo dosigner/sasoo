@@ -1,0 +1,21 @@
+{
+  "quality_summary": "전반적으로 실험 결과 표, 아키텍처 다이어그램, 환경 및 어텐션 시각화 사진이 매우 풍부하고 구조적으로 잘 정리되어 있어. 다만 Fig. 1과 Fig. 3의 아키텍처 다이어그램 내부 세부 텍스트 및 수식 심볼의 해상도가 다소 낮아 일부 텐서 차원이나 수식이 흐릿하게 보이며, 대규모 실제 로봇 평가(3000회 이상)임에도 불구하고 주요 결과 표(Table 2, 3, 6, 7, 13 등)에 오차 막대(error bar)나 통계적 유의성 검정(p-value, 신뢰구간)이 누락되어 변동성을 파악하기 어렵다는 점은 아쉬워.",
+  "key_findings_from_visuals": [
+    "Fig. 1 & Fig. 3: RT-1의 모델 파이프라인은 USE 언어 임베딩이 FiLM을 통해 EfficientNet-B3 중간에 주입되어 81개의 토큰(9x9x512)을 생성하고, 이를 TokenLearner가 8개로 대폭 압축한 뒤 Transformer 디코더(8층, 19M 파라미터)로 전달하는 구조임. 6스텝 히스토리를 묶어 총 48개 토큰을 처리하며 3Hz 실시간 제어를 달성함.",
+    "Table 2: Seen task에서 RT-1은 97% 성공률을 달성해 Gato(65%) 및 BC-Z(72%)를 크게 앞서며, 특히 방해물(Distractors) 평가에서 83% 대 43~47%로 외란 강인성에서 큰 격차를 보임.",
+    "Table 3 & Fig. 4: 실제 주방의 3단계 일반화(L1~L3) 실험에서 RT-1은 전체 70%를 기록한 반면 Gato는 L3(새로운 물체/위치)에서 0%로 급락함. 다만 L3에서 RT-1도 50% 성공률로 떨어져 복잡한 다중 분포 변화(distribution shift)에서는 여전히 성능 한계가 관찰됨.",
+    "Table 4 & Table 5 (Fig. 6): 시뮬레이션 데이터를 혼합했을 때 실환경 성능 저하 없이 시뮬레이션 전용 물체 성능이 23%에서 87%로 대폭 상승(+64%p)함. 또한 Kuka 로봇의 bin-picking 데이터를 혼합했을 때 원본 작업 성능 저하는 2%p에 불과하면서 EDR 로봇의 bin-picking 성능이 22%에서 39%로 향상되어 이종 로봇 형태(morphology) 간 전이 가능성을 입증함.",
+    "Table 6: SayCan 프레임워크와 결합한 장기 작업(Long-horizon) 실험에서 Kitchen1과 2 모두 67% 실행 성공률을 유지해, 환경 변화(Kitchen2) 시 0%나 13%로 무너진 Gato 및 BC-Z 대비 뛰어난 환경 강인성을 보여줌.",
+    "Table 7 & Fig. 9: 데이터셋 절제(Ablation) 실험 결과, 데이터 양을 줄이는 것(% Data)보다 작업 다양성(% Tasks)을 25% 줄였을 때 일반화 성능이 훨씬 가파르게 하락함(Diversity가 Quantity보다 핵심임을 시각적으로 증명).",
+    "Table 13: 핵심 구조 절제 실험에서 연속 액션(Gaussian)을 사용할 경우 Seen(-29%p), Unseen(-33%p), Distractor(-46%p) 전반에서 치명적인 성능 저하가 발생해 액션 이산화(Tokenization)가 다봉 분포(multimodal distribution) 모사에 필수적임을 보여줌. 또한 자기회귀(Autoregressive) 액션 예측은 성능 이득 없이 추론 지연만 15ms에서 36ms로 2배 이상 증가시킴.",
+    "Fig. 13: Transformer의 어텐션 맵 시각화에서 Layer 2 Head 6은 조작 대상 물체(할라피뇨 칩 봉지, 펩시 캔 등)와 그리퍼 접촉부에 집중하고, 서랍 열기 작업에서는 Layer 4 Head 2가 서랍 손잡이에 선택적으로 주의를 집중하는 affordance 특징이 뚜렷하게 관찰됨."
+  ],
+  "diagram_types": [
+    "schematic",
+    "graph",
+    "photograph"
+  ],
+  "equations_found": 0,
+  "figure_count": 13,
+  "tables_found": 13
+}

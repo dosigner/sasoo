@@ -12,77 +12,11 @@ import CostDashboard from '@/components/CostDashboard';
 import { useToast } from '@/components/Toast';
 import { ProviderCards, type Provider } from '@/components/settings/ProviderCards';
 import { SaveBar } from '@/components/settings/SaveBar';
+import { SettingSection, SettingRow, SegmentGroup } from '@/components/settings/SettingPrimitives';
 import { Select, Toggle } from '@/components/ui';
 import { S } from '@/lib/strings';
 import { applyTheme, readStoredTheme, type Theme } from '@/lib/theme';
 import { AppIcon } from '@/components/icons';
-
-// ---------------------------------------------------------------------------
-// L1 layout primitives — narrow single column, row-based settings.
-// ---------------------------------------------------------------------------
-
-function SettingSection({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="archive-panel panel-compact">
-      <h2 className="text-sm font-semibold tracking-apple-body text-fg">{title}</h2>
-      {description && (
-        <p className="mt-1 text-xs text-fg-muted">{description}</p>
-      )}
-      <div className="mt-3 flex flex-col gap-1">{children}</div>
-    </section>
-  );
-}
-
-function SettingRow({
-  label,
-  description,
-  badge,
-  full = false,
-  children,
-}: {
-  label: string;
-  description?: React.ReactNode;
-  badge?: React.ReactNode;
-  full?: boolean;
-  children: React.ReactNode;
-}) {
-  if (full) {
-    return (
-      <div className="settings-row-block">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-fg">{label}</span>
-          {badge}
-        </div>
-        {description && (
-          <p className="mt-0.5 text-xs text-fg-muted">{description}</p>
-        )}
-        <div className="mt-2">{children}</div>
-      </div>
-    );
-  }
-  return (
-    <div className="settings-row-block flex items-center justify-between gap-4">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-fg">{label}</span>
-          {badge}
-        </div>
-        {description && (
-          <p className="mt-0.5 text-xs text-fg-muted">{description}</p>
-        )}
-      </div>
-      <div className="shrink-0">{children}</div>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -409,7 +343,7 @@ export default function Settings() {
         to="/profile"
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-accent transition-colors hover:text-accent-hover"
       >
-        <AppIcon name="agents" className="w-4 h-4" />
+        <AppIcon name="profile" className="w-4 h-4" />
         {S.settings.openProfileLink}
         <AppIcon name="arrow-right" className="w-3.5 h-3.5" />
       </Link>
@@ -438,15 +372,15 @@ export default function Settings() {
             label={S.settings.openaiKey}
             badge={
               openaiKeyStatus ? (
-                <span className="text-2xs text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-sm">
+                <span className="text-2xs text-success-fg bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-sm">
                   {S.settings.keyConfigured} ({openaiKeyStatus})
                 </span>
               ) : openaiKeyUnreadable ? (
-                <span className="text-2xs text-danger bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded-sm">
+                <span className="text-2xs text-danger-fg bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded-sm">
                   {S.settings.keyUnreadable}
                 </span>
               ) : (
-                <span className="text-2xs text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded-sm">
+                <span className="text-2xs text-warning-fg bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded-sm">
                   {S.settings.keyNotConfigured}
                 </span>
               )
@@ -504,15 +438,15 @@ export default function Settings() {
             label={S.settings.geminiKey}
             badge={
               geminiKeyStatus ? (
-                <span className="text-2xs text-success bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-sm">
+                <span className="text-2xs text-success-fg bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-sm">
                   {S.settings.keyConfigured} ({geminiKeyStatus})
                 </span>
               ) : geminiKeyUnreadable ? (
-                <span className="text-2xs text-danger bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded-sm">
+                <span className="text-2xs text-danger-fg bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded-sm">
                   {S.settings.keyUnreadable}
                 </span>
               ) : (
-                <span className="text-2xs text-warning bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded-sm">
+                <span className="text-2xs text-warning-fg bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded-sm">
                   {S.settings.keyNotConfigured}
                 </span>
               )
@@ -608,7 +542,7 @@ export default function Settings() {
         {/* 3. 보관함 */}
         <SettingSection
           title={S.settings.librarySection}
-          description="논문이 쌓이는 경로를 정해요."
+          description={S.settings.librarySectionDesc}
         >
           <SettingRow full label={S.settings.libraryPath}>
             <div className="flex flex-wrap gap-2">
@@ -648,32 +582,18 @@ export default function Settings() {
         </SettingSection>
 
         {/* 4. 화면 */}
-        <SettingSection title={S.settings.appearance} description="현재 작업 환경에 맞게 화면 톤을 조정해요.">
-          <div className="flex items-center gap-3 py-3">
-            <button
-              onClick={() => setTheme('dark')}
-              className={`settings-appearance-option flex items-center gap-2 px-4 py-3 border transition-colors ${
-                theme === 'dark'
-                  ? 'settings-appearance-option-active border-accent bg-accent/10 text-accent'
-                  : 'settings-appearance-option-inactive'
-              }`}
-              style={{ borderRadius: 'var(--radius-control)' }}
-            >
-              <AppIcon name="moon" className="w-4 h-4" />
-              <span className="text-sm">{S.settings.dark}</span>
-            </button>
-            <button
-              onClick={() => setTheme('light')}
-              className={`settings-appearance-option flex items-center gap-2 px-4 py-3 border transition-colors ${
-                theme === 'light'
-                  ? 'settings-appearance-option-active border-accent bg-accent/10 text-accent'
-                  : 'settings-appearance-option-inactive'
-              }`}
-              style={{ borderRadius: 'var(--radius-control)' }}
-            >
-              <AppIcon name="sun" className="w-4 h-4" />
-              <span className="text-sm">{S.settings.light}</span>
-            </button>
+        <SettingSection title={S.settings.appearance} description={S.settings.appearanceDesc}>
+          {/* 프로필의 숙련도·읽기 경험과 같은 세그먼트 컨트롤이다. */}
+          <div className="settings-row-block">
+            <SegmentGroup
+              options={[
+                { key: 'dark', label: S.settings.dark, icon: 'moon' },
+                { key: 'light', label: S.settings.light, icon: 'sun' },
+              ]}
+              value={theme}
+              onChange={(key) => setTheme(key as Theme)}
+              ariaLabel={S.settings.appearance}
+            />
           </div>
         </SettingSection>
 
@@ -681,7 +601,7 @@ export default function Settings() {
         <div id="cost" ref={costSectionRef}>
           <SettingSection
             title={S.settings.usageCosts}
-            description="최근 분석이 얼마나 호출과 비용을 만들었는지 확인해요."
+            description={S.settings.usageCostsDesc}
           >
             <CostDashboard />
           </SettingSection>

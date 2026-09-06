@@ -383,9 +383,9 @@ class ReadBudgetStateTests(unittest.IsolatedAsyncioTestCase):
         from unittest.mock import AsyncMock
         from services import analysis_supervisor as sup
 
-        rows = [{"cost_usd": 3.0}, {"cost_usd": None}, {"cost_usd": 2.25}]
+        row = {"spending": 5.25}
         with patch.dict(sys.modules, {"api.settings": self._settings_stub({"monthly_budget_limit": "12.5"})}), \
-             patch("models.database.fetch_all", new=AsyncMock(return_value=rows)):
+             patch("models.database.fetch_one", new=AsyncMock(return_value=row)):
             spending, limit = await sup.read_budget_state()
 
         self.assertEqual(limit, 12.5)
@@ -396,7 +396,7 @@ class ReadBudgetStateTests(unittest.IsolatedAsyncioTestCase):
         from services import analysis_supervisor as sup
 
         with patch.dict(sys.modules, {"api.settings": self._settings_stub({})}), \
-             patch("models.database.fetch_all", new=AsyncMock(return_value=[])):
+             patch("models.database.fetch_one", new=AsyncMock(return_value={"spending": 0})):
             spending, limit = await sup.read_budget_state()
 
         self.assertEqual(limit, 50.0)
@@ -408,9 +408,9 @@ class ReadBudgetStateTests(unittest.IsolatedAsyncioTestCase):
         from unittest.mock import AsyncMock
         from services import analysis_supervisor as sup
 
-        fetch_mock = AsyncMock(return_value=[])
+        fetch_mock = AsyncMock(return_value={"spending": 0})
         with patch.dict(sys.modules, {"api.settings": self._settings_stub({"monthly_budget_limit": "50.0"})}), \
-             patch("models.database.fetch_all", new=fetch_mock):
+             patch("models.database.fetch_one", new=fetch_mock):
             await sup.read_budget_state()
 
         query, params = fetch_mock.await_args.args

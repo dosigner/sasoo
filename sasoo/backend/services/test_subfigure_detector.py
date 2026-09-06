@@ -71,7 +71,7 @@ class SubFigureDetectorCallInteractionTests(unittest.IsolatedAsyncioTestCase):
 
             # 모델/thinking/store 계약
             self.assertEqual(kwargs["model"], MODEL_FLASH_HQ)
-            # FLASH_HQ(3.7 Flash)는 minimal을 400으로 거부한다 — low로 상향
+            # FLASH_HQ(3.7/3.8 Flash)는 minimal을 400으로 거부한다 — low로 상향
             # (model_registry.py의 subfigure role, 2026-08-22).
             self.assertEqual(kwargs["thinking_level"], "low")
             self.assertIs(kwargs["store"], False)

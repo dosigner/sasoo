@@ -9,15 +9,15 @@ export interface BadgeProps {
 const VARIANT_STYLES: Record<BadgeProps['variant'], string> = {
   neutral: 'bg-surface-hover text-fg-secondary',
   accent: 'bg-accent/10 text-accent',
-  danger: 'bg-danger/10 text-danger',
-  warning: 'bg-warning/10 text-warning',
-  success: 'bg-success/10 text-success',
+  danger: 'bg-danger/10 text-danger-fg',
+  warning: 'bg-warning/10 text-warning-fg',
+  success: 'bg-success/10 text-success-fg',
 };
 
 export default function Badge({ variant, children, className = '' }: BadgeProps) {
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-medium ${VARIANT_STYLES[variant]} ${className}`}
+      className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-2xs font-medium ${VARIANT_STYLES[variant]} ${className}`}
     >
       {children}
     </span>

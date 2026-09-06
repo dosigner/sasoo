@@ -76,7 +76,7 @@ export default function UpdateBanner() {
           <>
             <Download className="w-3.5 h-3.5 text-success shrink-0" />
             <span className="text-fg">
-              <strong className="text-success">v{version}</strong> 다운로드 완료
+              <strong className="text-success-fg">v{version}</strong> 다운로드 완료
             </span>
           </>
         )}
@@ -87,7 +87,7 @@ export default function UpdateBanner() {
         {state === 'available' && (
           <button
             onClick={handleDownload}
-            className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-accent hover:bg-accent-hover text-accent-fg text-xs font-medium transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-accent hover:bg-accent-hover accent-solid-fg text-xs font-medium transition-colors"
           >
             {isMac ? (
               <>

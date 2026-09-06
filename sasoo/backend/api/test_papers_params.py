@@ -68,7 +68,7 @@ class UpdatePaperAnalysisParamsTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch("api.papers.fetch_one", new=AsyncMock(side_effect=[existing_row, updated_row])),
             patch("api.papers.execute_update", new=AsyncMock()) as execute_update_mock,
-            patch("api.papers._get_visual_row_counts", new=AsyncMock(return_value=(0, 0))),
+            patch("api.papers.get_visual_row_counts", new=AsyncMock(return_value=(0, 0))),
             patch("api.papers.resolve_artifact_status_contract", new=AsyncMock(return_value=_FAKE_ARTIFACT_STATUS)),
             patch("api.papers.get_paper_dir", return_value=Path("/tmp/sasoo-test-nonexistent-paper-dir")),
         ):
@@ -104,7 +104,7 @@ class UpdatePaperAnalysisParamsTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch("api.papers.fetch_one", new=AsyncMock(side_effect=[existing_row, updated_row])),
             patch("api.papers.execute_update", new=AsyncMock()) as execute_update_mock,
-            patch("api.papers._get_visual_row_counts", new=AsyncMock(return_value=(0, 0))),
+            patch("api.papers.get_visual_row_counts", new=AsyncMock(return_value=(0, 0))),
             patch("api.papers.resolve_artifact_status_contract", new=AsyncMock(return_value=_FAKE_ARTIFACT_STATUS)),
             patch("api.papers.get_paper_dir", return_value=Path("/tmp/sasoo-test-nonexistent-paper-dir")),
         ):
@@ -133,7 +133,7 @@ class UpdatePaperDomainSyncsAgentUsedTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch("api.papers.fetch_one", new=AsyncMock(side_effect=[existing_row, updated_row])),
             patch("api.papers.execute_update", new=AsyncMock()) as execute_update_mock,
-            patch("api.papers._get_visual_row_counts", new=AsyncMock(return_value=(0, 0))),
+            patch("api.papers.get_visual_row_counts", new=AsyncMock(return_value=(0, 0))),
             patch("api.papers.resolve_artifact_status_contract", new=AsyncMock(return_value=_FAKE_ARTIFACT_STATUS)),
             patch("api.papers.get_paper_dir", return_value=Path("/tmp/sasoo-test-nonexistent-paper-dir")),
             patch("services.agents.get_agent_for_domain", return_value=fake_agent) as get_agent_mock,
@@ -163,7 +163,7 @@ class UpdatePaperDomainSyncsAgentUsedTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch("api.papers.fetch_one", new=AsyncMock(side_effect=[existing_row, updated_row])),
             patch("api.papers.execute_update", new=AsyncMock()) as execute_update_mock,
-            patch("api.papers._get_visual_row_counts", new=AsyncMock(return_value=(0, 0))),
+            patch("api.papers.get_visual_row_counts", new=AsyncMock(return_value=(0, 0))),
             patch("api.papers.resolve_artifact_status_contract", new=AsyncMock(return_value=_FAKE_ARTIFACT_STATUS)),
             patch("api.papers.get_paper_dir", return_value=Path("/tmp/sasoo-test-nonexistent-paper-dir")),
             patch("services.agents.get_agent_for_domain") as get_agent_mock,

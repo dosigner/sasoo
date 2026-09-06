@@ -1,0 +1,53 @@
+{
+  "paper": {
+    "paper_id": 43,
+    "title": "Saliency Optimization from Robust Background Detection",
+    "authors": "Wangjiang Zhu, Shuang Liang, Yichen Wei, Jian Sun",
+    "folder": "/Users/dongj/dev/논문_사수_개발중/sasoo/backend/library/2014_Saliency_Optimization_from_Robust_Backgr_706a9f8d"
+  },
+  "effort_compare": null,
+  "runs": [
+    {
+      "stage": "citation",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "effort": "low",
+      "tokens_in": 2664,
+      "tokens_out": 1296,
+      "reasoning_tokens": 0,
+      "cached_tokens": 0,
+      "defect_retries": 0,
+      "defect_final": false,
+      "latency_s": 5.8,
+      "cost_usd": 0.006858
+    },
+    {
+      "stage": "visual",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "effort": "low",
+      "tokens_in": 5788,
+      "tokens_out": 966,
+      "reasoning_tokens": 0,
+      "cached_tokens": 0,
+      "defect_retries": 0,
+      "defect_final": false,
+      "latency_s": 7.2,
+      "cost_usd": 0.007964
+    },
+    {
+      "stage": "recipe",
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "effort": "medium",
+      "tokens_in": 4759,
+      "tokens_out": 2547,
+      "reasoning_tokens": 703,
+      "cached_tokens": 0,
+      "defect_retries": 0,
+      "defect_final": false,
+      "latency_s": 8.8,
+      "cost_usd": 0.013121
+    }
+  ]
+}

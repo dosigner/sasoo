@@ -800,7 +800,7 @@ export default function FigureGallery({
       </div>
 
       {hasArtifactError ? (
-        <div className="mb-3 flex items-center gap-2 rounded-lg border border-danger/20 bg-danger/8 px-3 py-2 text-xs text-danger">
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-danger/20 bg-danger/8 px-3 py-2 text-xs text-danger-fg">
           <AppIcon name="error" className="w-3.5 h-3.5 text-danger" />
           <span>{effectiveError}</span>
         </div>
@@ -812,7 +812,7 @@ export default function FigureGallery({
       )}
 
       {!hasArtifactError && !isPreparingArtifacts && isPartialArtifacts && (
-        <div className="mb-3 flex items-center gap-2 rounded-lg border border-warning/20 bg-warning/10 px-3 py-2 text-xs text-warning">
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-warning/20 bg-warning/10 px-3 py-2 text-xs text-warning-fg">
           <AppIcon name="warning" className="w-3.5 h-3.5 text-warning" />
           <span>{S.figures.partialWarning}</span>
         </div>

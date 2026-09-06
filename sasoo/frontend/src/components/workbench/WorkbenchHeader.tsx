@@ -331,7 +331,7 @@ export default function WorkbenchHeader({
                     aria-pressed={isActive}
                     className={`rounded-full px-3 py-1.5 text-2xs font-medium transition-colors ${
                       isActive
-                        ? 'bg-accent text-accent-fg'
+                        ? 'bg-accent accent-solid-fg'
                         : 'text-fg-muted hover:bg-surface-hover/80 hover:text-fg'
                     } disabled:cursor-not-allowed disabled:opacity-40`}
                   >
@@ -343,7 +343,7 @@ export default function WorkbenchHeader({
 
             {canStartAnalysis && staleModel && (
               <span
-                className="status-pill border-warning/20 bg-warning/10 text-warning"
+                className="status-pill border-warning/20 bg-warning/10 text-warning-fg"
                 title={S.workbench.staleModelHint}
               >
                 <AppIcon name="warning" className="w-3 h-3" />
@@ -364,7 +364,7 @@ export default function WorkbenchHeader({
             {isRunning && (
               <button
                 onClick={onCancelAnalysis}
-                className="btn-secondary border-danger/20 px-3 py-2 text-xs text-danger hover:bg-danger/10"
+                className="btn-secondary border-danger/20 px-3 py-2 text-xs text-danger-fg hover:bg-danger/10"
                 title="분석 취소"
               >
                 <AppIcon name="stop" className="w-3 h-3" />

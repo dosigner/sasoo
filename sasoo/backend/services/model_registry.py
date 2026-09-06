@@ -14,6 +14,7 @@ thinking_level 실값)의 이식이므로 바꾸면 동작 변경이다. 실값 
     "medium" — None이 아니다.
   - mermaid, chat: 실호출부(analysis_routes.py의 get_mermaid/repair_mermaid/
     chat 엔드포인트)가 thinking_level 인자를 아예 넘기지 않으므로 None이 맞다.
+    (mermaid는 2026-09-06에 high로 올렸다. 아래 레지스트리 주석 참조.)
 
 OpenAI 열 원칙(스펙 개정 1 R3/R4): 모델은 Luna 하나, effort만 변주.
 deep_dive는 high까지(xhigh 금지). screening·리졸버·naming은 최저 사고량 —
@@ -47,7 +48,7 @@ _REGISTRY: dict[str, dict[str, ModelChoice]] = {
         "screening": ModelChoice(MODEL_FLASH_LITE, "minimal"),
         "visual": ModelChoice(MODEL_FLASH_HQ, "low"),
         # 페이지 전체 비전 파싱(gemini_parser). 그림 판독 단계인 "visual"과 별개 role이다.
-        # FLASH_HQ(3.7 Flash)는 minimal을 400으로 거부한다 — low가 이 모델의
+        # FLASH_HQ(3.7/3.8 Flash)는 minimal을 400으로 거부한다 — low가 이 모델의
         # 최저치다(ai.google.dev, 2026-08-16 확인). main #51이 같은 이유로
         # figure/table/subfigure 리졸버와 페이지 파서를 low로 올렸다.
         # minimal이 남아 있는 곳은 flash-lite를 쓰는 screening과 naming뿐이다.
@@ -57,7 +58,10 @@ _REGISTRY: dict[str, dict[str, ModelChoice]] = {
         "recipe": ModelChoice(MODEL_FLASH_HQ, "medium"),
         "deep_dive": ModelChoice(MODEL_FLASH_HQ, "high"),
         "viz_planning": ModelChoice(MODEL_FLASH_HQ, "medium"),
-        "mermaid": ModelChoice(MODEL_FLASH_HQ, None),
+        # mermaid: 2026-09-06 사용자 결정으로 None(기본 medium)에서 high로. 다이어그램
+        # 코드는 문법이 틀리면 렌더링이 통째로 실패해 repair 호출이 따라붙는다. 실측 없음,
+        # 되돌리기 쉬움. chat은 None 그대로(DEC-021 후속).
+        "mermaid": ModelChoice(MODEL_FLASH_HQ, "high"),
         "chat": ModelChoice(MODEL_FLASH_HQ, None),
         "figure_explain": ModelChoice(MODEL_FLASH_HQ, "high"),
         "figure_resolver": ModelChoice(MODEL_FLASH_HQ, "low"),
@@ -65,6 +69,8 @@ _REGISTRY: dict[str, dict[str, ModelChoice]] = {
         "subfigure": ModelChoice(MODEL_FLASH_HQ, "low"),
         "naming": ModelChoice(MODEL_FLASH_LITE, "minimal"),
         "viz_image_plan": ModelChoice(MODEL_PRO, "medium"),
+        # Phase 5 종합 스테이지, effort는 3편 게이트에서 high와 비교 후 확정(스펙 §5.2)
+        "synthesis": ModelChoice(MODEL_FLASH_HQ, "medium"),
         "image": ModelChoice(MODEL_IMAGE, None),
     },
     "openai": {
@@ -77,7 +83,7 @@ _REGISTRY: dict[str, dict[str, ModelChoice]] = {
         "recipe": ModelChoice(MODEL_LUNA, "medium"),
         "deep_dive": ModelChoice(MODEL_LUNA, "high"),
         "viz_planning": ModelChoice(MODEL_LUNA, "medium"),
-        "mermaid": ModelChoice(MODEL_LUNA, "medium"),
+        "mermaid": ModelChoice(MODEL_LUNA, "high"),  # gemini 열과 같은 의도(2026-09-06)
         "chat": ModelChoice(MODEL_LUNA, "low"),
         "figure_explain": ModelChoice(MODEL_LUNA, "medium"),
         "figure_resolver": ModelChoice(MODEL_LUNA, "low"),
@@ -85,6 +91,8 @@ _REGISTRY: dict[str, dict[str, ModelChoice]] = {
         "subfigure": ModelChoice(MODEL_LUNA, "low"),
         "naming": ModelChoice(MODEL_LUNA, "low"),
         "viz_image_plan": ModelChoice(MODEL_LUNA, "medium"),
+        # Phase 5 종합 스테이지, effort는 3편 게이트에서 high와 비교 후 확정(스펙 §5.2)
+        "synthesis": ModelChoice(MODEL_LUNA, "medium"),
         "image": ModelChoice(MODEL_IMAGE_OPENAI, None),
     },
 }
@@ -108,14 +116,17 @@ def resolve(role: str, provider: str) -> ModelChoice:
         raise KeyError(f"unknown role: {role!r}") from None
 
 
-# deep_dive만 provider를 따로 고른다(DEC-019). Gemini 3.7 Flash는 이 role에서만
-# 확률적으로 폭주해 출력 상한에 걸리고, 그때 required가 아닌 부가 필드 6개
-# (to_be, novelty_assessment, comparison_to_prior_work, suggested_improvements,
-# follow_up_questions, practical_applications)가 오류 없이 사라진다 — 상한은 비용만
-# 막고 이 손실은 못 막는다. 프롬프트 정형 문구 제거로는 4/4를 2/4로 낮추는 데
-# 그쳤고, Luna는 같은 조건에서 누적 42/42 무폭주였다.
-# 근거: RESEARCH/2026-08-29-provider-chain-token-convergence.md 6장.
-_ROLE_PROVIDER_OVERRIDE: dict[str, Provider] = {"deep_dive": "openai"}
+# role별 provider 오버라이드. 지금은 비어 있다(DEC-022, 2026-09-06).
+# 이력: DEC-019(2026-08-29)가 deep_dive를 OpenAI Luna로 보냈다. Gemini 3.7 Flash가 이 role에서만
+# 확률적으로 폭주해 출력 상한에 걸리고, 그때 required가 아닌 부가 필드가 오류 없이 사라졌기
+# 때문이다(프롬프트 정형 문구 제거로는 4/4→2/4, Luna는 42/42 무폭주.
+# RESEARCH/2026-08-29-provider-chain-token-convergence.md 6장). 대가는 deep_dive 지연 약 90초였다.
+# 해제 근거: FLASH_HQ가 3.8 Flash로 올라간 뒤 같은 VLA 6편을 같은 체인·상한으로 재실행해 폭주 0/6,
+# 14/14 필드, 출력 2,805~3,444(상한 16k의 18~22%), 16~23초(RESEARCH/2026-09-06-vla6-gemini-3-8.md).
+# 기제(provider_for_role, analysis_routes의 체인 갈림 배선)는 남긴다 — 폭주가 재발하면 항목 하나로
+# 되돌릴 수 있다. 상한 16k와 salvage_truncated_json은 그대로라 재발 시 손해는 유한하다.
+# 잠금: services/test_model_registry.py::TestProviderForRole
+_ROLE_PROVIDER_OVERRIDE: dict[str, Provider] = {}
 
 
 async def provider_for_role(role: str) -> str:

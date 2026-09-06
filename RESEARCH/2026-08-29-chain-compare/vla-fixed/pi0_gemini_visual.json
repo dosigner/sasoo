@@ -1,0 +1,23 @@
+{
+  "quality_summary": "논문의 도표와 실험 그래프는 시스템 구성(Flow Matching VLA 구조)과 실제 로봇 환경의 셋업을 직관적으로 잘 보여주고 있어. 다만 Fig. 7, Fig. 9, Fig. 11, Fig. 13 등 모든 성능 평가 막대그래프와 라인플롯에서 에러 바(오차 막대)나 표준편차/신뢰구간 표시가 완전히 빠져 있어서, 로봇 실험(10 trials) 특유의 분산이나 통계적 유의성을 검증하기 어려운 치명적인 한계가 있어. 또한 Fig. 3 등의 아키텍처 다이어그램 일부 텍스트 폰트 렌더링이 다소 깨져 있어 가독성이 떨어져.",
+  "key_findings_from_visuals": [
+    "Fig. 1: 사전학습된 VLM 백본과 300M 크기의 액션 전문가(action expert)를 결합하여 Flow Matching 기반으로 50Hz 연속 액션 청크(chunk)를 생성하는 전체 프레임워크를 보여줌.",
+    "Fig. 3: VLM 백본(PaliGemma 기반)과 Flow Matching 액션 전문가 간의 블록별 인과 어텐션 마스크(blockwise causal attention mask) 연결 구조를 도식화함. (단, 일부 레이블 텍스트 폰트 렌더링 결함 확인)",
+    "Fig. 4: 사전학습 데이터셋 구성을 나타내는 파이 차트로, 오픈소스 데이터(OXE 등)가 9.1%이며 자체 수집 데이터(단일 암 106M 스텝, 듀얼 암 797M 스텝)가 대다수(90.9%)를 차지함을 명시함.",
+    "Fig. 5: UR5e, Bimanual UR5e, Franka, Bimanual Trossen, Bimanual ARX, Mobile Trossen, Mobile Fibocom 등 총 7가지 로봇 구성 사진을 제시함.",
+    "Fig. 7: 제로샷/사전학습 기반 Out-of-box 평가에서 π0(700k 스텝) 및 연산량을 맞춘 π0(parity, 160k 스텝)가 OpenVLA, Octo, π0-small 대비 모든 태스크(Shirt Folding, Bussing Easy/Hard, Grocery Bagging, Toast)에서 우수한 성공률을 보이나 오차 막대가 누락됨.",
+    "Fig. 9: 언어 지시 수행 실험에서 대규모 VLM 백본을 사용한 π0가 VLM 초기화가 없는 π0-small 대비 인간/고수준(HL) VLM의 지시를 따르는 데 훨씬 높은 성공률을 기록함을 보임.",
+    "Fig. 11: 파인튜닝 데이터 크기(1, 5, 10시간)에 따른 성능 곡선으로, 사전학습된 π0가 스크래치 학습 모델(π0 scratch) 및 기존 베이스라인(ACT, Diffusion Policy 등)보다 적은 데이터(1시간)에서도 훨씬 빠른 적응력을 보임을 나타냄.",
+    "Fig. 13: 박스 조립, 세탁물 개기 등 복잡한 멀티 스테이지 태스크에서 사전학습 후 파인튜닝한 π0(fine-tuned)가 스크래치 학습이나 파인튜닝 없는 제로샷(out-of-box)보다 월등히 높은 점수를 얻음을 보여줌.",
+    "Fig. 14: Flow Matching 타임스텝 샘플링 시 균일 분포가 아닌 노이즈가 높은 구간(낮은 tau)에 가중치를 두는 시프티드 베타 분포(Beta((s-tau)/s; 1.5, 1), s=0.999)의 확률 밀도 곡선을 제시함.",
+    "Table I: RTX 4090 GPU 상에서 온보드 총 추론 시간 73ms(이미지 인코딩 14ms, 관측 순전파 32ms, 10단계 액션 플로우 27ms), 오프보드 시 86ms로 측정되어 실시간 제어가 가능함을 보임."
+  ],
+  "diagram_types": [
+    "schematic",
+    "photograph",
+    "graph",
+    "table"
+  ],
+  "figure_count": 14,
+  "tables_found": 1
+}

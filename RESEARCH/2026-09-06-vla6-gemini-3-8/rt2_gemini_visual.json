@@ -1,0 +1,20 @@
+{
+  "quality_summary": "전반적으로 시스템 아키텍처 다이어그램(Figure 1), 정성적 로봇 실험 사진(Figure 2, 3, 5, 7, 8, 9, 10), 성능 비교 막대그래프(Figure 4, 6), 그리고 상세 평가 표(Table 1~6)가 고해상도로 잘 구성되어 있어. 다만 실제 로봇 실험 평가 그래프(Figure 4, 6a, 6b)에서 오차 막대(error bars)나 표준편차/신뢰구간이 전혀 표시되어 있지 않아. Table 1(시뮬레이션)에서만 유일하게 ± 오차가 제공되고 있어서, 실로봇 트라이얼(총 6k회)의 통계적 유의성을 막대그래프만으로는 확인하기 어려워. 또한 본문에 독립된 수식 블록(equations)이 전혀 없고 액션 토큰화 형식을 단순 인라인 문자열로만 서술한 점은 구현 재현성 측면에서 아쉬운 부분이야.",
+  "key_findings_from_visuals": [
+    "Figure 1: 웹 VQA 데이터와 로봇 궤적 데이터를 함께 사전학습된 VLM(ViT + LLM)에 입력하고, 로봇 액션을 이산화된 텍스트 토큰으로 변환(De-Tokenize)하여 닫힌 루프(closed-loop) 제어를 수행하는 RT-2의 전체 파이프라인 구조를 도식화함.",
+    "Figure 4 & Table 4: Seen Tasks(학습된 태스크)에서는 RT-1(92%)과 RT-2-PaLI-X-55B(91%), RT-2-PaLM-E-12B(93%)가 거의 동등한 수준을 보이지만, Unseen Average(미학습 일반화)에서는 RT-1(32%) 대비 RT-2 계열이 62%로 약 2배 높은 성공률을 기록함.",
+    "Figure 6a & Table 5: Emergent Skills(발현 역량) 평가에서 Symbol Understanding, Reasoning, Person Recognition 전 분야에 걸쳐 베이스라인(RT-1 17%, VC-1 11%) 대비 RT-2-PaLI-X-55B(60%)와 RT-2-PaLM-E-12B(40%)가 유의미하게 높은 성능을 달성함. 특히 Math 세부항목에서는 PaLM-E(35%)가 PaLI-X(25%)보다 우세함.",
+    "Figure 6b & Table 6: 5B 모델을 scratch부터 학습하면 일반화 성능이 9%에 불과해 VLM 사전학습 가중치가 필수적임을 보여줌. 또한 55B 모델 기준 Co-fine-tuning(63%)이 단순 Robot Data Fine-tuning(52%)보다 명확히 우수하여 웹 데이터 동시 유지가 파국적 망각(catastrophic forgetting) 방지에 기여함을 입증함. 단, 55B scratch 실험은 생략되어 결측된 ablation이 존재함.",
+    "Table 1: Language-Table 시뮬레이션 벤치마크에서 RT-2-PaLI-3B가 90 ± 10을 기록하여 이전 SOTA인 LAVA(77 ± 4) 및 RT-1(74 ± 13) 대비 확연한 개선을 보임 (여기서만 유일하게 오차 범위가 표기됨).",
+    "Figure 7 & Figure 10: PaLM-E에 CoT(Chain-of-Thought)를 도입하여 'I need to hammer a nail' 명령에 대해 'Rocks'를 계획하고 쥐는 등 단순 액션 생성 전 자연어 계획(Plan)을 생성하는 다단계 추론 정성 결과를 확인 가능함.",
+    "Figure 9: Language-Table 환경에서 펜이 굴러떨어지거나 바나나의 질량 중심을 고려하지 못하는 등 비정형 물체의 물리적 동역학(unseen object dynamics) 제어에 실패하는 한계점을 보여줌."
+  ],
+  "diagram_types": [
+    "schematic",
+    "graph",
+    "photograph"
+  ],
+  "equations_found": 0,
+  "figure_count": 10,
+  "tables_found": 6
+}

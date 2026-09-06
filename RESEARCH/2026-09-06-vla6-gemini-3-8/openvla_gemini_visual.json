@@ -1,0 +1,21 @@
+{
+  "quality_summary": "전반적으로 다이어그램(Fig. 1, Fig. 2)과 실험 결과 막대그래프(Fig. 3, 4, 5, 6), 그리고 상세 표(Table 1~12)가 매우 체계적이고 깔끔하게 구성되어 있어. 막대그래프에 오차 막대(StdErr)가 명시되어 신뢰성이 높으나, Fig. 6의 GPU 인퍼런스 속도 그래프는 막대 위의 세부 수치가 생략되어 있어 대략적인 추세만 파악 가능해. 독립된 번호의 수식(Equation) 블록은 본문에 존재하지 않고 텍스트 내 인라인 표기로만 처리되어 있어.",
+  "key_findings_from_visuals": [
+    "Fig. 2: OpenVLA 구조는 SigLIP과 DinoV2의 패치 특징을 채널 축으로 결합한 600M 파라미터 비전 인코더, 2-layer MLP 프로젝터, Llama 2 7B LLM 백본으로 구성되어 있으며, 로봇의 7차원 연속 행동을 256개 빈으로 이산화하여 토큰화함.",
+    "Fig. 3 & Table 4: BridgeData V2 WidowX 평가에서 OpenVLA는 평균 성공률 70.6%를 기록해 폐쇄형 모델인 RT-2-X(50.6%)를 20.0%p 앞서며, 특히 Visual, Motion, Physical Generalization 전반에서 우세함. 반면 Semantic Generalization에서는 RT-2-X(38.8%)가 OpenVLA(36.3%)보다 소폭 높음.",
+    "Fig. 4 & Table 6: Google Robot 평가에서 OpenVLA는 평균 성공률 85.0%로 RT-2-X(78.3%)와 통계적으로 겹치는 오차 범위 내의 성능을 보이며, RT-1-X(33.3%) 및 Octo(26.7%) 대비 압도적인 격차를 보임.",
+    "Fig. 5 & Table 7: 로봇 다운스트림 적응(Fine-tuning) 실험에서 Diffusion Policy는 좁은 단일 지시 작업(Put Carrot in Bowl 90%, Pour Corn into Pot 100%)에서 강력했으나, 다중 물체 지시 작업(Move/Knock/Cover)에서는 OpenVLA(평균 67.2%)가 가장 일관되고 높은 성능을 기록함.",
+    "Table 1 & Table 8: PEFT 기법 비교에서 LoRA (r=32)는 1.4%의 파라미터만 학습하면서도 성공률 68.2%를 기록해 전체 파라미터 미세조정(Full FT, 69.7%)과 대등한 성능을 보임. 반면 비전 인코더를 동결(Frozen vision)하면 성공률이 47.0%로 급락함.",
+    "Table 2 & Table 5 & Table 11: 4비트 양자화(int4)는 bfloat16과 동등한 성능(71.9% vs 71.3%)을 내면서 VRAM을 16.8GB에서 7.0GB로 대폭 줄임. 8비트 양자화는 인퍼런스 속도 저하로 인해 비블로킹 제어 시 성능이 58.1%로 하락했으나, 블로킹 제어(Table 11) 적용 시 74.4%로 정상 회복됨.",
+    "Table 9: OpenX 사전학습을 제거한 OpenVLA-Bridge는 성공률이 76.3%에서 45.6%로 급감하여 대규모 멀티-로봇 데이터셋의 사전학습 의존도가 절대적임을 증명함.",
+    "Table 12: LIBERO 시뮬레이션 벤치마크 4개 태스크 스위트 평가에서 OpenVLA는 평균 성공률 76.5%, 평균 순위 1.5로 Octo(75.1%, 2.0위)와 Diffusion Policy(72.4%, 2.5위)를 상회함."
+  ],
+  "diagram_types": [
+    "schematic",
+    "graph",
+    "photograph"
+  ],
+  "equations_found": 0,
+  "figure_count": 11,
+  "tables_found": 12
+}

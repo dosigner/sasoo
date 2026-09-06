@@ -1,0 +1,183 @@
+{
+  "title": "Octo 범용 로봇 조작 정책 사전학습 및 다운스트림 도메인 파인튜닝 레시피",
+  "objective": "Open X-Embodiment 대규모 로봇 조작 데이터셋(800k 궤적)을 기반으로 다중 모달(언어 명령, 목표 이미지) 조건부 디퓨전 액션 디코딩 트랜스포머 정책(Octo)을 사전학습하고, 다양한 단일/양팔 로봇 환경에 파인튜닝하는 레시피 추출",
+  "parameters": [
+    {
+      "name": "architecture",
+      "value": "Transformer backbone (ViT-S mirroring Octo-Small, ViT-B mirroring Octo-Base) with shallow CNN patch encoder, frozen t5-base language encoder, and 3-layer MLP diffusion action head",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We trained two variants of our model: Octo-Small with a transformer backbone that mirrors the size of a ViT-S, and Octo-Base with a transformer backbone that mirrors the size of a ViT-B [22].",
+      "notes": "Section III-D 및 Table V. 패치 토크나이저와 어텐션 마스킹 트랜스포머, 확산 디코딩 헤드로 구성됨.",
+      "unit": ""
+    },
+    {
+      "name": "num_layers",
+      "value": "12",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "Octo-Small 12 384 1536 6 27M\nOcto-Base 12 768 3072 12 93M",
+      "notes": "Appendix D Table V: Octo-Small 및 Octo-Base 모두 트랜스포머 레이어 수 12개.",
+      "unit": "layers"
+    },
+    {
+      "name": "hidden_units",
+      "value": "384 (Octo-Small), 768 (Octo-Base)",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "Octo-Small 12 384 1536 6 27M\nOcto-Base 12 768 3072 12 93M",
+      "notes": "Appendix D Table V: 트랜스포머 은닉 차원(Hidden size D).",
+      "unit": "dimensions"
+    },
+    {
+      "name": "optimizer",
+      "value": "AdamW",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We use the AdamW optimizer [51] with an inverse square root decay learning rate schedule [97], with weight decay of 0.1 and gradient clipping of 1.0.",
+      "notes": "Section III-D 및 Appendix D Table IV.",
+      "unit": ""
+    },
+    {
+      "name": "learning_rate",
+      "value": "3e-4",
+      "source_tag": "explicit",
+      "evidence_page": 14,
+      "evidence_quote": "Learning Rate 3e-4\nWarmup Steps 2000\nLR Scheduler reciprocal square-root\nWeight Decay 0.1\nGradient Clip Threshold 1\nBatch Size 2048",
+      "notes": "Appendix D Table IV. 스케줄러는 역제곱근(reciprocal square-root) 감쇠 방식.",
+      "unit": ""
+    },
+    {
+      "name": "batch_size",
+      "value": "2048",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The ViT-B was trained for 300k steps with a batch size of 2048 using a TPU v4-128 pod, which took 14 hours.",
+      "notes": "Section III-D 및 Table IV.",
+      "unit": "samples"
+    },
+    {
+      "name": "epochs",
+      "value": "300000 steps (pretraining), 50000 steps (finetuning)",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The ViT-B was trained for 300k steps with a batch size of 2048 using a TPU v4-128 pod, which took 14 hours.",
+      "notes": "에포크 수가 아닌 스텝 단위로 명시됨. 파인튜닝은 50k steps (Section III-C).",
+      "unit": "steps"
+    },
+    {
+      "name": "training_time",
+      "value": "14 hours (pretraining), approximately 5 hours (finetuning)",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The ViT-B was trained for 300k steps with a batch size of 2048 using a TPU v4-128 pod, which took 14 hours. A finetuning run of the same model on a single NVIDIA A5000 GPU with 24GB of VRAM takes approximately 5 hours and can be sped up with multi-GPU training.",
+      "notes": "Section III-D.",
+      "unit": "hours"
+    },
+    {
+      "name": "regularization",
+      "value": "weight decay 0.1, gradient clip threshold 1.0",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We use the AdamW optimizer [51] with an inverse square root decay learning rate schedule [97], with weight decay of 0.1 and gradient clipping of 1.0.",
+      "notes": "Section III-D.",
+      "unit": ""
+    },
+    {
+      "name": "training_data_size",
+      "value": "800000 trajectories",
+      "source_tag": "explicit",
+      "evidence_page": 1,
+      "evidence_quote": "As a first step, we introduce Octo, a large transformer-based policy trained on 800k trajectories from the Open X-Embodiment dataset, the largest robot manipulation dataset to date.",
+      "notes": "Abstract 및 Section III-B. Open X-Embodiment 중 선별된 25개 데이터셋 혼합.",
+      "unit": "trajectories"
+    },
+    {
+      "name": "test_data_split",
+      "value": "10 to 20 trials per task across 9 robotic setups",
+      "source_tag": "inferred",
+      "evidence_page": 7,
+      "evidence_quote": "In each domain, success rates are averaged over 20 trials. *: New observation input (force-torque proprioception). †: New action space (joint position control).",
+      "notes": "오프라인 고정 테스트 스플릿이 아니라 실제 물리 로봇 환경에서 태스크당 10~20회 시행하여 평가함 (Section IV & Appendix F).",
+      "unit": "trials"
+    },
+    {
+      "name": "loss_function",
+      "value": "DDPM objective with cosine noise schedule and 20 diffusion steps",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "We use the standard DDPM objective as introduced by [34] with a cosine noise schedule [66] and 20 diffusion steps.",
+      "notes": "Appendix D 및 Section III-C 식 (1).",
+      "unit": ""
+    },
+    {
+      "name": "evaluation_metric",
+      "value": "Task success rate (%)",
+      "source_tag": "explicit",
+      "evidence_page": 7,
+      "evidence_quote": "In each domain, success rates are averaged over 20 trials.",
+      "notes": "Table I, Table II, Table VI, Table VII 등에서 성공률(%)로 측정.",
+      "unit": "%"
+    },
+    {
+      "name": "GPU_type",
+      "value": "TPU v4-128 pod (pretraining), NVIDIA RTX A5000 24GB (finetuning)",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The ViT-B was trained for 300k steps with a batch size of 2048 using a TPU v4-128 pod, which took 14 hours. A finetuning run of the same model on a single NVIDIA A5000 GPU with 24GB of VRAM takes approximately 5 hours and can be sped up with multi-GPU training.",
+      "notes": "Section III-D.",
+      "unit": ""
+    },
+    {
+      "name": "augmentation_method",
+      "value": "Stochastic crops, resize (256x256 for 3rd person, 128x128 for wrist), color jitter, normalization to [-1.0, 1.0]",
+      "source_tag": "explicit",
+      "evidence_page": 14,
+      "evidence_quote": "Concretely, for the 3rd person camera we apply stochastic crops followed be a resize to 256×256, followed by color jitter. Finally, we normalize the input image to have pixels with float values between -1.0 and 1.0. For the wrist camera, we apply the same procedure except without the random crop and resizing to 128 × 128 instead.",
+      "notes": "Appendix D.",
+      "unit": ""
+    },
+    {
+      "name": "pretrained_model",
+      "value": "t5-base (111M)",
+      "source_tag": "explicit",
+      "evidence_page": 4,
+      "evidence_quote": "Language inputs are tokenized, then passed through a pretrained transformer that produces a sequence of language embedding tokens. We use the t5-base (111M) model [74].",
+      "notes": "Section III-A. 언어 인코더로 동결(frozen)하여 사용됨.",
+      "unit": ""
+    },
+    {
+      "name": "fine_tuning_strategy",
+      "value": "Full model update for 50k steps using cosine decay learning rate schedule with linear warmup on ~100 demonstrations",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We use the same diffusion training objective during finetuning and update the full model, a recipe which outperformed those that freeze subsets of the pretrained parameters. In all finetuning experiments, we employ the same recipe: given a small target domain dataset with around 100 trajectories, we finetune for 50k steps using a cosine decay learning rate decay with linear warmup.",
+      "notes": "Section III-C 및 Section IV.",
+      "unit": ""
+    }
+  ],
+  "steps": [
+    "1. 데이터 큐레이션 및 전처리: Open X-Embodiment의 약 1.5M 에피소드 중 이미지 스트림이 없고 delta end-effector 제어를 사용하지 않거나 해상도가 낮고 지나치게 반복적인 궤적을 제외하여 25개 데이터셋(총 800k 궤적)을 선별함. 그리퍼 액션 공간을 0(닫힘), 1(열림)로 통일하고 결측 카메라 채널을 zero-padding 처리함.",
+    "2. 데이터 로딩 및 셔플링 파이프라인 구성: 최대 500k 크기의 셔플 버퍼를 사용하여 이미지 디코딩 전 프레임들을 셔플 및 인터리빙하고, 궤적당 최대 100스텝을 무작위 서브샘플링하여 버퍼 쏠림을 방지함.",
+    "3. 목표 이미지 및 언어 조건화 설정: Hindsight Goal Relabeling을 사용하여 궤적 내 미래 임의 시점 상태를 목표 이미지로 지정함. 언어 주석이 있는 경우 언어 지시문 또는 목표 이미지를 무작위로 zero-out하여 이중 조건화가 가능하도록 학습함.",
+    "4. 입력 토큰화 및 시퀀스 구성: 3인칭 카메라 이미지(256x256)와 손목 카메라 이미지(128x128)를 얕은 CNN에 통과시킨 뒤 16x16 패치로 분할하여 각각 256개, 64개 토큰을 생성함. 언어 지시문은 사전에 학습된 동결된 t5-base 인코더를 통해 16개 토큰으로 변환함. 학습 가능한 위치 임베딩과 읽기(readout) 토큰 TR,t를 시퀀스에 배치함.",
+    "5. 어텐션 블록 마스킹 설정: 관측 토큰이 인과적으로 동일하거나 이전 시점 토큰(To,0:t) 및 태스크 토큰(TT)만 참조하도록 하고, 읽기 토큰(TR,t)은 이전 관측 및 태스크 토큰을 참조하되 관측/태스크 토큰이 읽기 토큰을 참조하지 못하게 마스킹함.",
+    "6. 트랜스포머 백본 및 액션 헤드 구축: 12개 레이어와 ViT-S(Small, 384 차원) 또는 ViT-B(Base, 768 차원) 구조로 백본을 구성하고, 3레이어 MLP(은닉 차원 256, residual connection, LayerNorm 적용) 확산 액션 헤드를 읽기 토큰에 연결함.",
+    "7. 사전학습 수행: TPU v4-128 pod에서 AdamW 옵티마이저(학습률 3e-4, 웜업 2000 스텝, 역제곱근 감쇠 스케줄, 가중치 감쇠 0.1, 그래디언트 클리핑 1.0, 배치 크기 2048)로 300k 스텝 동안 학습을 진행함(약 14시간 소요).",
+    "8. 다운스트림 파인튜닝: 약 100개의 타깃 도메인 데모 데이터를 준비하고 신규 관측 또는 신규 액션 공간이 필요한 경우 해당 어댑터/헤드만 추가함. 사전학습된 가중치를 동결하지 않고 전체 모델을 대상으로 코사인 감쇠 스케줄과 선형 웜업을 적용하여 50k 스텝 동안 파인튜닝함(단일 NVIDIA RTX A5000 기준 약 5시간 소요)."
+  ],
+  "materials": [
+    "Open X-Embodiment 데이터셋 (선별된 25개 서브셋, 약 800k 궤적)",
+    "사전학습 언어 모델 가중치: t5-base (111M 파라미터)",
+    "다운스트림 도메인별 100~120개 expert demonstration 데이터 (CMU Baking, Stanford Coffee, Berkeley Peg Insertion, Berkeley Pick Up, Berkeley Coke, Berkeley Bimanual 등)"
+  ],
+  "missing_info": [
+    "학습 전반의 무작위 시드(Random Seed) 미명시",
+    "파인튜닝 시 사용된 초기 학습률(Initial Learning Rate), 웜업 스텝 수, 배치 크기(Batch Size) 등 구체적 하이퍼파라미터 수치 누락",
+    "액션 청킹(Action Chunking) 길이의 구체적인 기본 사전학습 수치 (ALOHA 양팔 평가에서는 청크 크기 64로 명시되었으나 사전학습 기본 청크 크기 명시 불충분)",
+    "데이터 증강 시 Color Jitter의 세부 강도(jitter parameters, e.g., brightness, contrast, saturation, hue 비율)",
+    "사용된 딥러닝 프레임워크의 정확한 버전 번호 (JAX/Flax 버전 등)"
+  ],
+  "reproducibility_score": 0.73,
+  "safety_notes": "실제 로봇(UR5, WidowX, Franka Emika Panda, ALOHA 등)에 정책을 배포할 때, 확산 정책의 예측 오차나 급작스러운 관절 각도 변화로 인한 충돌 사고를 방지하기 위해 소프트웨어 비상 정지(E-stop) 및 작업 영역 가상 경계(Workspace bounding box/Safety virtual walls)를 필수적으로 설정해야 함. 임피던스 제어기의 강성 파라미터를 안전 범위 내로 유지할 것."
+}

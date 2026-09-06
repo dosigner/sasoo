@@ -1,0 +1,135 @@
+{
+  "title": "OpenVLA(Vision-Language-Action 모델) 대규모 사전학습 및 미세조정 실험 레시피",
+  "objective": "사전학습된 비전-언어 모델(Prismatic-7B) 백본에 멀티 로봇 조작 데이터셋(Open X-Embodiment)을 활용하여 연속 행동을 이산 토큰으로 변환·학습시키고, 이를 통해 범용 로봇 제어 정책 구축 및 새로운 태스크로의 파라미터 효율적 미세조정(PEFT)을 달성한다.",
+  "parameters": [
+    {
+      "name": "architecture",
+      "value": "Prismatic-7B VLM (SigLIP + DinoV2 visual encoder, 2-layer MLP projector, Llama 2 7B LLM backbone)",
+      "source_tag": "explicit",
+      "evidence_page": 4,
+      "evidence_quote": "Prismatic follows the same standard architecture described above, with a 600M-parameter visual encoder, a small 2-layer MLP projector, and a 7B-parameter Llama 2 language model backbone [10]. Notably, Prismatic uses a two-part visual encoder, consisting of pretrained SigLIP [79] and DinoV2 [25] models.",
+      "notes": "Section 3.1",
+      "unit": ""
+    },
+    {
+      "name": "pretrained_model",
+      "value": "Prismatic-7B (fused SigLIP + DinoV2, LLaVA 1.5 data mixture pretrained)",
+      "source_tag": "explicit",
+      "evidence_page": 4,
+      "evidence_quote": "The Prismatic VLM is fine-tuned on top of these components using the LLaVA 1.5 data mixture [43], which contains a total of approximately 1M image-text and text-only data samples from open-source datasets [29, 42, 81–83].",
+      "notes": "Section 3.1",
+      "unit": ""
+    },
+    {
+      "name": "training_data_size",
+      "value": "970k robot manipulation trajectories",
+      "source_tag": "explicit",
+      "evidence_page": 4,
+      "evidence_quote": "We introduce the OpenVLA model, a 7B-parameter vision-language-action model (VLA) trained on 970k robot demonstrations from the Open X-Embodiment dataset [1].",
+      "notes": "Section 3 Training Data / Dataset size",
+      "unit": "trajectories"
+    },
+    {
+      "name": "batch_size",
+      "value": "2048",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "The final OpenVLA model is trained on a cluster of 64 A100 GPUs for 14 days, or a total of 21,500 A100-hours, using a batch size of 2048.",
+      "notes": "Section 3.5 Infrastructure for Training and Inference",
+      "unit": ""
+    },
+    {
+      "name": "learning_rate",
+      "value": "2e-5",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "We swept the learning rate across multiple orders of magnitude for VLA training, and achieved the best results using a fixed learning rate of 2e-5 (the same learning rate used during VLM pretraining [44]).",
+      "notes": "Section 3.4 OpenVLA Design Decisions (Warmup 없이 고정 학습률 적용)",
+      "unit": ""
+    },
+    {
+      "name": "epochs",
+      "value": "27",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "Our final training run completes 27 epochs through its training dataset.",
+      "notes": "Section 3.4 OpenVLA Design Decisions",
+      "unit": "epochs"
+    },
+    {
+      "name": "GPU_type",
+      "value": "NVIDIA A100 GPU (64 GPUs cluster)",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "The final OpenVLA model is trained on a cluster of 64 A100 GPUs for 14 days, or a total of 21,500 A100-hours, using a batch size of 2048.",
+      "notes": "Section 3.5",
+      "unit": ""
+    },
+    {
+      "name": "training_time",
+      "value": "14 days (total 21,500 A100-hours)",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "The final OpenVLA model is trained on a cluster of 64 A100 GPUs for 14 days, or a total of 21,500 A100-hours, using a batch size of 2048.",
+      "notes": "Section 3.5",
+      "unit": "hours"
+    },
+    {
+      "name": "loss_function",
+      "value": "Cross-entropy loss on predicted action tokens only",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "Once the actions are processed into a sequence of tokens, OpenVLA is trained with a standard next-token prediction objective, evaluating the cross-entropy loss on the predicted action tokens only.",
+      "notes": "Section 3.2 OpenVLA Training Procedure",
+      "unit": ""
+    },
+    {
+      "name": "fine_tuning_strategy",
+      "value": "LoRA (rank r=32, applied to all linear layers) or Full Fine-Tuning including vision encoder",
+      "source_tag": "explicit",
+      "evidence_page": 10,
+      "evidence_quote": "We find that the LoRA rank has negligible effect on policy performance and thus recommend using a default rank of r = 32. With LoRA, we can fine-tune OpenVLA on a new task within 10-15 hours on a single A100 GPU – an 8x reduction in compute compared to full fine-tuning.",
+      "notes": "Section 5.3 Parameter-Efficient Fine-Tuning",
+      "unit": ""
+    },
+    {
+      "name": "evaluation_metric",
+      "value": "Task success rate (0.0 to 1.0, with partial credit 0.5 for intermediate success)",
+      "source_tag": "explicit",
+      "evidence_page": 23,
+      "evidence_quote": "Each rollout is marked as a failure (0) or success (1). In some more difficult tasks, we record partial successes (0.5); we describe the conditions for partial credit in the task descriptions below.",
+      "notes": "Appendix B.1.1 BridgeData V2 Evaluation Tasks",
+      "unit": "%"
+    },
+    {
+      "name": "precision",
+      "value": "bfloat16 (training with PyTorch AMP & FSDP, inference in bfloat16 or int4)",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "During inference, OpenVLA requires 15GB of GPU memory when loaded in bfloat16 precision (i.e., without quantization) and runs at approximately 6Hz on one NVIDIA RTX 4090 GPU",
+      "notes": "Section 3.5 및 Section 4 (PyTorch AMP, FlashAttention-2, FSDP 적용)",
+      "unit": ""
+    }
+  ],
+  "steps": [
+    "1. 데이터 수집 및 큐레이션: Open X-Embodiment 데이터셋에서 최소 1개의 3인칭 카메라와 단일 암 말단 장치 제어(single-arm end-effector) 방식을 사용하는 조작 데이터셋만 필터링하고 Octo 가중치 비율을 적용함. BridgeData V2의 첫 번째 타임스텝에 기록된 0벡터(no-op) 동작 전이를 반드시 제거함.",
+    "2. 행동 이산화 및 토큰 매핑: 7차원 연속형 로봇 제어 행동의 각 차원을 학습 데이터의 1~99 분위수(quantile) 구간 내에서 균일하게 256개 빈(bin)으로 양자화함. Llama 2 토크나이저의 사용 빈도가 가장 낮은 마지막 256개 특수 토큰을 해당 행동 토큰으로 덮어씀.",
+    "3. 입력 전처리: 입력 이미지를 224x224 픽셀로 리사이징하고, 자연어 태스크 지시문('What should the robot do to {task}? A:') 템플릿과 함께 모델에 공급함.",
+    "4. 대규모 사전학습 실행: Prismatic-7B VLM 백본의 전체 가중치(SigLIP+DinoV2 비전 인코더, MLP 프로젝터, Llama 2 언어 모델 백본 전체 7B)를 동결하지 않고 미세조정함. PyTorch FSDP와 AMP(bfloat16), FlashAttention-2를 활용하여 64장의 A100 GPU에서 배치 사이즈 2048, 고정 학습률 2e-5(웜업 없음)로 약 27 에포크 동안 학습을 수행함. 손실 함수는 예측된 행동 토큰에만 교차 엔트로피 손실(cross-entropy)을 계산함.",
+    "5. 다운스트림 미세조정(옵션): 새로운 타깃 로봇 환경(10~150개 시연 데이터)에 적응할 경우, 모든 선형 계층(linear layers)에 LoRA(rank r=32)를 적용하거나 전체 파라미터 미세조정을 단일 또는 8장의 A100 GPU에서 5~15시간 동안 수행함.",
+    "6. 추론 및 서빙: 단일 RTX 4090 또는 A5000 GPU에서 bfloat16 또는 4비트 양자화(int4)로 가중치를 로드한 후, 비블로킹 제어(5Hz~15Hz) 또는 블로킹 제어 방식을 통해 로봇 컨트롤러로 예측된 7DoF 액션을 전송함."
+  ],
+  "materials": [
+    "Open X-Embodiment 조작 데이터셋 (약 970k 궤적 분량, Fractal, Kuka, BridgeData V2, DROID 등 혼합)",
+    "LLaVA 1.5 데이터 믹스 (약 100만 개 이미지-텍스트 데이터 샘플)",
+    "사전학습 가중치: SigLIP (ViT-SO 224px), DinoV2, Llama 2 (7B)"
+  ],
+  "missing_info": [
+    "optimizer의 구체적 종류(AdamW 추정) 및 하이퍼파라미터(beta1, beta2, weight_decay, epsilon 등) 명시적 기술 누락",
+    "학습 전체를 제어하는 random_seed 명시 누락 (LIBERO 평가에서 3개의 시드를 사용했다고만 언급됨)",
+    "사전학습 단계에서의 데이터 증강 기법(Color jitter, Random crop, Rotation 등) 적용 여부 및 파라미터 누락",
+    "LoRA 미세조정 시의 세부 학습률(learning rate), 옵티마이저, 드롭아웃(lora_dropout), 알파(lora_alpha) 수치 누락"
+  ],
+  "reproducibility_score": 0.72,
+  "safety_notes": "실제 로봇 팔(WidowX, Franka Emika Panda) 구동 시 모델의 급작스러운 비정상 궤적 추종이나 말단 장치 충돌을 방지하기 위해 비상 정지(E-stop) 스위치를 항상 확보하고, 작업 반경 내 물리적 간섭을 제한해야 함. 특히 8비트 양자화 등 지연 시간이 발생하는 설정에서는 비블로킹 제어 시 제어 불안정성이 발생할 수 있으므로 주의가 필요함. (본문 일반 안전 주의사항 반영). 전공 기초 개념 안내: FSDP(Fully Sharded Data Parallel)는 단일 GPU 메모리에 들어가지 않는 초거대 모델의 파라미터, 옵티마이저 상태, 그래디언트를 여러 GPU에 나누어 분산 저장하는 병렬 분산 학습 기술임. LoRA(Low-Rank Adaptation)는 거대 모델의 전체 가중치를 직접 수정하지 않고, 작은 랭크(저차원 행렬 분해)를 가진 추가 어댑터 파라미터만 학습시켜 GPU 메모리를 대폭 절약하는 파라미터 효율적 미세조정 기법임. Quantization(양자화)은 부동소수점(예: FP16/BF16)으로 표현된 가중치를 더 적은 비트의 정수(예: INT8, INT4)로 근사하여 VRAM 소모량을 크게 낮추는 기법임."
+}

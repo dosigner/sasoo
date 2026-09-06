@@ -1,0 +1,148 @@
+{
+  "title": "Octo: 대규모 로봇 조작 데이터셋 기반 범용 로봇 정책 모델 사전학습 및 미세조정 실험 레시피",
+  "objective": "Open X-Embodiment 데이터셋(800k 에피소드)을 활용하여 다양한 로봇 기종, 센서 구성, 언어/목표 이미지 지시를 유연하게 지원하고 새로운 도메인으로 신속하게 미세조정(finetuning) 가능한 트랜스포머 기반 범용 로봇 정책(Octo)을 사전학습하고 평가한다.",
+  "parameters": [
+    {
+      "name": "architecture",
+      "value": "Transformer backbone (ViT-S / ViT-B structure) with shallow CNN patch encoder and Diffusion Action Head (DDPM MLP)",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We trained two variants of our model: Octo-Small with a transformer backbone that mirrors the size of a ViT-S, and Octo-Base with a transformer backbone that mirrors the size of a ViT-B [22].",
+      "notes": "Section III-D 및 Section III-A. 언어 인코더로는 t5-base(111M)를 결합함."
+    },
+    {
+      "name": "num_layers",
+      "value": "12",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "Octo-Small 12 384 1536 6 27M\nOcto-Base 12 768 3072 12 93M",
+      "notes": "Table V. Octo-Small과 Octo-Base 모두 백본 트랜스포머 레이어 수는 12층임."
+    },
+    {
+      "name": "hidden_units",
+      "value": "384 (Octo-Small), 768 (Octo-Base)",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "Octo-Small 12 384 1536 6 27M\nOcto-Base 12 768 3072 12 93M",
+      "notes": "Table V. 트랜스포머 백본의 Hidden size D."
+    },
+    {
+      "name": "optimizer",
+      "value": "AdamW",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We use the AdamW optimizer [51] with an inverse square root decay learning rate schedule [97], with weight decay of 0.1 and gradient clipping of 1.0.",
+      "notes": "Section III-D 및 Appendix D Table IV."
+    },
+    {
+      "name": "learning_rate",
+      "value": "3e-4",
+      "source_tag": "explicit",
+      "evidence_page": 14,
+      "evidence_quote": "Learning Rate 3e-4\nWarmup Steps 2000\nLR Scheduler reciprocal square-root\nWeight Decay 0.1\nGradient Clip Threshold 1\nBatch Size 2048",
+      "notes": "Appendix D Table IV. 사전학습 시 3e-4 적용 후 reciprocal square-root decay 및 2000 스텝 선형 웜업."
+    },
+    {
+      "name": "batch_size",
+      "value": "2048",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The ViT-B was trained for 300k steps with a batch size of 2048 using a TPU v4-128 pod, which took 14 hours.",
+      "notes": "Section III-D."
+    },
+    {
+      "name": "regularization",
+      "value": "weight decay 0.1, gradient clipping threshold 1.0",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "with weight decay of 0.1 and gradient clipping of 1.0.",
+      "notes": "Section III-D 및 Appendix D Table IV."
+    },
+    {
+      "name": "training_data_size",
+      "value": "800000",
+      "source_tag": "explicit",
+      "evidence_page": 1,
+      "evidence_quote": "Octo, a large transformer-based policy trained on 800k trajectories from the Open X-Embodiment dataset, the largest robot manipulation dataset to date.",
+      "notes": "Open X-Embodiment 데이터셋 25종에서 정제된 약 800k 궤적."
+    },
+    {
+      "name": "training_time",
+      "value": "14 hours (pretraining Octo-Base) / ~5 hours (single-GPU finetuning)",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "The ViT-B was trained for 300k steps with a batch size of 2048 using a TPU v4-128 pod, which took 14 hours. A finetuning run of the same model on a single NVIDIA A5000 GPU with 24GB of VRAM takes approximately 5 hours and can be sped up with multi-GPU training.",
+      "notes": "Section III-D."
+    },
+    {
+      "name": "GPU_type",
+      "value": "TPU v4-128 pod (pretraining), NVIDIA RTX A5000 24GB (finetuning)",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "using a TPU v4-128 pod, which took 14 hours. A finetuning run of the same model on a single NVIDIA A5000 GPU with 24GB of VRAM takes approximately 5 hours",
+      "notes": "Section III-D."
+    },
+    {
+      "name": "pretrained_model",
+      "value": "t5-base (111M params) for language tokenization",
+      "source_tag": "explicit",
+      "evidence_page": 4,
+      "evidence_quote": "Language inputs are tokenized, then passed through a pretrained transformer that produces a sequence of language embedding tokens. We use the t5-base (111M) model [74].",
+      "notes": "Section III-A 및 Appendix D."
+    },
+    {
+      "name": "loss_function",
+      "value": "DDPM objective with cosine noise schedule and 20 diffusion steps",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "We use the standard DDPM objective as introduced by [34] with a cosine noise schedule [66] and 20 diffusion steps.",
+      "notes": "Appendix D."
+    },
+    {
+      "name": "augmentation_method",
+      "value": "Stochastic cropping to 256x256, color jitter, [-1.0, 1.0] float normalization for 3rd person camera; 128x128 resizing, color jitter, [-1.0, 1.0] normalization for wrist camera",
+      "source_tag": "explicit",
+      "evidence_page": 14,
+      "evidence_quote": "Concretely, for the 3rd person camera we apply stochastic crops followed be a resize to 256×256, followed by color jitter. Finally, we normalize the input image to have pixels with float values between -1.0 and 1.0. For the wrist camera, we apply the same procedure except without the random crop and resizing to 128 × 128 instead.",
+      "notes": "Appendix D."
+    },
+    {
+      "name": "fine_tuning_strategy",
+      "value": "Full model update (updating all parameters including backbone), 50k steps, cosine decay learning rate schedule with linear warmup, target domain ~100 demonstrations",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We use the same diffusion training objective during finetuning and update the full model, a recipe which outperformed those that freeze subsets of the pretrained parameters. In all finetuning experiments, we employ the same recipe: given a small target domain dataset with around 100 trajectories, we finetune for 50k steps using a cosine decay learning rate decay with linear warmup.",
+      "notes": "Section III-C."
+    },
+    {
+      "name": "evaluation_metric",
+      "value": "Task Success Rate (%) across multiple real robot trials",
+      "source_tag": "explicit",
+      "evidence_page": 7,
+      "evidence_quote": "In each domain, success rates are averaged over 20 trials. *: New observation input (force-torque proprioception). †: New action space (joint position control).",
+      "notes": "Table I 캡션 및 Section IV."
+    }
+  ],
+  "steps": [
+    "1. 데이터 수집 및 전처리: Open X-Embodiment 데이터셋 25종을 필터링(이미지 포함, delta end-effector 제어 기준)하여 800k 에피소드를 확보하고 다양성에 따라 샘플링 가중치를 차등 부여한다. 그리퍼 액션은 [0: closed, 1: open] 절대값으로 정규화하고 결측 카메라 채널은 zero-padding 처리한다.",
+    "2. 데이터 로딩 파이프라인 구성: 프레임 간 충분한 무작위 셔플링을 위해 이미지 디코딩 전 최대 500k 크기의 셔플 버퍼를 적용하고, 각 궤적당 최대 100개 스텝을 무작위 추출하여 긴 에피소드로 인한 쏠림을 방지한다.",
+    "3. 입력 토큰화 및 시퀀스 구성: 3인칭 카메라(256x256) 및 손목 카메라(128x128) 이미지를 16x16 패치로 분할해 각각 256개, 64개 토큰을 생성하고, 자연어 지시는 사전학습된 frozen t5-base(111M)를 거쳐 16개 토큰으로 변환한다. 목표 이미지는 사후 목표 재라벨링(Hindsight Goal Relabeling)으로 샘플링한다.",
+    "4. 트랜스포머 백본 사전학습: Octo-Base(12층, hidden dim 768, 12 heads) 또는 Octo-Small(12층, hidden dim 384, 6 heads) 구조에서 Block-wise masked attention을 적용하여 과거 및 현재 관측/태스크 토큰만을 참조하도록 하고, [CLS] 유사 Readout 토큰을 추출한다.",
+    "5. Diffusion Action Head 학습: 3층 MLP(hidden dim 256, LayerNorm, Residual) 구조의 디퓨전 헤드에 DDPM 손실 함수, 코사인 노이즈 스케줄, 20 디퓨전 스텝을 적용하여 미래 액션 청크(Action Chunks)를 연속 분포로 복원하도록 학습한다.",
+    "6. 최적화 실행: TPU v4-128 파드에서 AdamW 옵티마이저, 배치 사이즈 2048, 기본 학습률 3e-4, 선형 웜업(2000 스텝), 역제곱근(reciprocal square-root) 감쇄 스케줄, 가중치 감쇄 0.1, 그래디언트 클리핑 1.0으로 총 300,000 스텝 동안 학습을 진행한다 (약 14시간 소요).",
+    "7. 다운스트림 미세조정(Finetuning): 신규 도메인의 약 100개 시연 데이터셋을 활용하여 전체 파라미터(Full-model update)를 50,000 스텝 동안 코사인 감쇄 및 선형 웜업 스케줄로 학습한다. 신규 센서/액션 공간 추가 시 신규 헤드 및 위치 임베딩만 초기화하여 결합한다."
+  ],
+  "materials": [
+    "Open X-Embodiment (OXE) Dataset (25개 서브셋, 약 800k 에피소드)",
+    "사전학습 언어 모델 가중치: t5-base (111M 파라미터)",
+    "도메인별 다운스트림 미세조정 데이터셋: FMB, Berkeley UR5, BridgeData v2, R2D2 Franka 데모 등 약 100~120개 시연 데이터"
+  ],
+  "missing_info": [
+    "사전학습 및 미세조정 시 명시적인 Random Seed 정보 누락",
+    "미세조정(Finetuning) 단계에서의 구체적인 시작 Learning Rate 수치 (본문에는 스케줄러 형태만 기재됨)",
+    "프레임워크의 정확한 버전 정보 (JAX 기반 코드베이스임은 명시되었으나 구체적 버전 번호 미기재)",
+    "평가 시 로봇 하드웨어의 안전 경계(Safety Workspace Bounds) 설정 파라미터"
+  ],
+  "reproducibility_score": 0.85,
+  "safety_notes": "실제 로봇(WidowX, UR5, Franka, ALOHA 등)에서 미세조정 정책 배포 및 평가 시 예기치 못한 급격한 액션 청크 출력으로 인한 충돌을 방지하기 위해 로우레벨 제어기 수준의 속도/토크 제한 및 하드웨어 비상정지(E-stop) 인터락을 사전 확보해야 함. 디퓨전 모델 샘플링 특성상 액션 분산이 클 수 있으므로 안전 범위를 벗어난 위치 명령을 소프트웨어 레벨에서 클리핑할 것."
+}

@@ -15,10 +15,12 @@ from services.odl_parser import (
     explain_odl_failure,
     get_artifact_refresh_error,
     is_artifact_refresh_running,
-    paper_text_is_current,
-    paper_visuals_are_current,
+    paper_artifact_readiness,
     schedule_paper_artifacts_refresh,
 )
+
+from models.database import fetch_one
+from services.concurrency import run_pipeline_blocking
 
 logger = logging.getLogger(__name__)
 
@@ -50,15 +52,13 @@ async def resolve_artifact_status_contract(
     """
     Resolve explicit text/visual readiness for paper and figure/table responses.
     """
-    text_ready = _safe_text_ready(paper_id=paper_id, paper_dir=paper_dir)
-
     visual_error: Optional[str] = None
     try:
-        visual_ready = paper_visuals_are_current(paper_dir)
+        text_ready, visual_ready = await run_pipeline_blocking(paper_artifact_readiness, paper_dir)
     except (OdlParserError, OdlRuntimeError) as exc:
-        visual_ready = False
+        text_ready = visual_ready = False
         _, visual_error = explain_odl_failure(exc)
-        logger.warning("Visual readiness check failed for paper %s: %s", paper_id, visual_error)
+        logger.warning("Artifact readiness check failed for paper %s: %s", paper_id, visual_error)
 
     refresh_error = get_artifact_refresh_error(paper_id)
     if visual_error is None and refresh_error is not None:
@@ -99,10 +99,23 @@ async def resolve_artifact_status_contract(
     )
 
 
-def _safe_text_ready(*, paper_id: int, paper_dir: Path) -> bool:
-    try:
-        return paper_text_is_current(paper_dir)
-    except (OdlParserError, OdlRuntimeError) as exc:
-        _, detail = explain_odl_failure(exc)
-        logger.warning("Text readiness check failed for paper %s: %s", paper_id, detail)
-        return False
+async def get_visual_row_counts(paper_id: int) -> tuple[int, int]:
+    row = await fetch_one(
+        """
+        SELECT
+            (
+                SELECT COUNT(*)
+                FROM figures
+                WHERE paper_id = ?
+                  AND COALESCE(extraction_status, 'resolved') != 'rejected'
+            ) AS figure_count,
+            (
+                SELECT COUNT(*)
+                FROM tables
+                WHERE paper_id = ?
+                  AND COALESCE(extraction_status, 'resolved') != 'rejected'
+            ) AS table_count
+        """,
+        (paper_id, paper_id),
+    )
+    return int(row["figure_count"] or 0), int(row["table_count"] or 0)

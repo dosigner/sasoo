@@ -41,8 +41,7 @@ odl_parser_module.get_pdf_signature = lambda pdf_path: {
 odl_parser_module.explain_odl_failure = _stub_explain_odl_failure
 odl_parser_module.get_artifact_refresh_error = lambda paper_id: None
 odl_parser_module.is_artifact_refresh_running = lambda paper_id: False
-odl_parser_module.paper_text_is_current = lambda paper_dir: True
-odl_parser_module.paper_visuals_are_current = lambda paper_dir: True
+odl_parser_module.paper_artifact_readiness = lambda paper_dir: (True, True)
 odl_parser_module.schedule_paper_artifacts_refresh = _stub_schedule_refresh
 sys.modules.setdefault("services.odl_parser", odl_parser_module)
 
@@ -186,8 +185,7 @@ class ArtifactStatusTests(unittest.IsolatedAsyncioTestCase):
     async def test_stale_visuals_with_rows_schedule_refresh(self):
         schedule_refresh = AsyncMock()
         with (
-            patch("services.artifact_status.paper_text_is_current", return_value=True),
-            patch("services.artifact_status.paper_visuals_are_current", return_value=False),
+            patch("services.artifact_status.paper_artifact_readiness", return_value=(True, False)),
             patch("services.artifact_status.get_artifact_refresh_error", return_value=None),
             patch("services.artifact_status.is_artifact_refresh_running", side_effect=[False, True]),
             patch("services.artifact_status.schedule_paper_artifacts_refresh", new=schedule_refresh),
@@ -206,8 +204,7 @@ class ArtifactStatusTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_running_when_visual_refresh_in_progress(self):
         with (
-            patch("services.artifact_status.paper_text_is_current", return_value=True),
-            patch("services.artifact_status.paper_visuals_are_current", return_value=False),
+            patch("services.artifact_status.paper_artifact_readiness", return_value=(True, False)),
             patch("services.artifact_status.get_artifact_refresh_error", return_value=None),
             patch("services.artifact_status.is_artifact_refresh_running", return_value=True),
         ):
@@ -222,8 +219,7 @@ class ArtifactStatusTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_error_when_visual_refresh_failed(self):
         with (
-            patch("services.artifact_status.paper_text_is_current", return_value=True),
-            patch("services.artifact_status.paper_visuals_are_current", return_value=False),
+            patch("services.artifact_status.paper_artifact_readiness", return_value=(True, False)),
             patch("services.artifact_status.get_artifact_refresh_error", return_value=(500, "refresh failed")),
             patch("services.artifact_status.is_artifact_refresh_running", return_value=False),
         ):
@@ -239,8 +235,7 @@ class ArtifactStatusTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_ready_when_text_and_visual_are_current(self):
         with (
-            patch("services.artifact_status.paper_text_is_current", return_value=True),
-            patch("services.artifact_status.paper_visuals_are_current", return_value=True),
+            patch("services.artifact_status.paper_artifact_readiness", return_value=(True, True)),
             patch("services.artifact_status.get_artifact_refresh_error", return_value=None),
             patch("services.artifact_status.is_artifact_refresh_running", return_value=False),
         ):

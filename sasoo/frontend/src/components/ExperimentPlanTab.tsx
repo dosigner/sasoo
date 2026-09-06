@@ -14,6 +14,8 @@ import {
   type ExperimentPlan,
   ApiError,
 } from '@/lib/api';
+import { S } from '@/lib/strings';
+import { Modal } from '@/components/ui';
 
 // ---------------------------------------------------------------------------
 // Types (matching backend JSON schema)
@@ -101,6 +103,7 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
 
   // Try to load existing plan
   const loadPlan = useCallback(async () => {
@@ -207,6 +210,7 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
             </>
           )}
         </button>
+        <p className="mt-2 text-xs text-fg-muted">{S.experimentPlan.generateCostHint}</p>
       </div>
     );
   }
@@ -216,6 +220,32 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
 
   return (
     <div className="space-y-4 py-2">
+      <Modal open={showRegenerateConfirm} onClose={() => setShowRegenerateConfirm(false)}>
+        <h3 className="mb-2 text-lg font-semibold text-fg">{S.experimentPlan.regenerateTitle}</h3>
+        <div className="mb-4 space-y-1 text-sm text-fg-muted">
+          <p>{S.experimentPlan.regenerateBody}</p>
+          <p className="font-medium text-accent">{S.experimentPlan.regenerateCostLine}</p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => {
+              setShowRegenerateConfirm(false);
+              void handleGenerate();
+            }}
+            className="btn-primary flex-1 py-2 text-sm"
+          >
+            <FlaskConical className="w-3.5 h-3.5 mr-1.5" />
+            {S.experimentPlan.regenerateConfirm}
+          </button>
+          <button
+            onClick={() => setShowRegenerateConfirm(false)}
+            className="btn-ghost flex-1 py-2 text-sm"
+          >
+            {S.experimentPlan.cancel}
+          </button>
+        </div>
+      </Modal>
+
       {/* Header */}
       {content.title && (
         <div>
@@ -239,10 +269,10 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
         {content.estimated_difficulty && (
           <span className={`badge text-2xs ${
             content.estimated_difficulty === 'hard'
-              ? 'bg-danger/10 text-danger'
+              ? 'bg-danger/10 text-danger-fg'
               : content.estimated_difficulty === 'moderate'
-                ? 'bg-warning/10 text-warning'
-                : 'bg-success/10 text-success'
+                ? 'bg-warning/10 text-warning-fg'
+                : 'bg-success/10 text-success-fg'
           }`}>
             난이도: {difficultyLabel[content.estimated_difficulty] || content.estimated_difficulty}
           </span>
@@ -257,7 +287,7 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
       {/* Warnings (shown prominently at top) */}
       {content.warnings && content.warnings.length > 0 && (
         <div className="space-y-1.5">
-          <h4 className="text-xs font-semibold text-warning flex items-center gap-1.5">
+          <h4 className="text-xs font-semibold text-warning-fg flex items-center gap-1.5">
             <AlertTriangle className="w-3.5 h-3.5" />
             주의사항 ({content.warnings.length})
           </h4>
@@ -266,9 +296,9 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
               key={i}
               className={`flex items-start gap-2 px-3 py-2 rounded-lg text-xs ${
                 w.severity === 'high'
-                  ? 'bg-danger/10 border border-danger/20 text-danger'
+                  ? 'bg-danger/10 border border-danger/20 text-danger-fg'
                   : w.severity === 'medium'
-                    ? 'bg-warning/10 border border-warning/20 text-warning'
+                    ? 'bg-warning/10 border border-warning/20 text-warning-fg'
                     : 'bg-surface/50 border border-border text-fg-secondary'
               }`}
             >
@@ -367,7 +397,7 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
                   {step.critical_params && step.critical_params.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1">
                       {step.critical_params.map((p, j) => (
-                        <span key={j} className="badge text-2xs bg-warning/10 text-warning">
+                        <span key={j} className="badge text-2xs bg-warning/10 text-warning-fg">
                           {p}
                         </span>
                       ))}
@@ -400,7 +430,7 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
       {/* Regenerate button */}
       <div className="pt-2 border-t border-border/50">
         <button
-          onClick={handleGenerate}
+          onClick={() => setShowRegenerateConfirm(true)}
           disabled={generating}
           className="btn-ghost text-xs py-1.5 px-3 text-fg-muted hover:text-accent"
         >

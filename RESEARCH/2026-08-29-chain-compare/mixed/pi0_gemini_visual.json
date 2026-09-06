@@ -1,0 +1,22 @@
+{
+  "quality_summary": "논문 전반의 시각 자료는 실제 로봇 실험 사진, 파이프라인 개요도, 성능 비교 막대그래프 및 라인 플롯으로 체계적으로 구성되어 있어 전반적인 품질이 우수함. 다만 오프라인 모델 비교 시 compute parity(학습 스텝 차이)나 파라미터 수 차이 같은 confounder가 다수 존재하며, 일부 실험 그래프(Fig. 7, Fig. 9, Fig. 11, Fig. 13)에서 10회 시행 평균값만 제시되고 표준편차나 신뢰구간(error bar) 표기가 누락되어 통계적 유의성을 정밀하게 검증하기 어려움.",
+  "key_findings_from_visuals": [
+    "Fig. 1 & Fig. 3: 사전학습된 VLM(PaliGemma) 백본과 Flow Matching 기반 Action Expert(300M 파라미터)를 분리/통합하여 고주파 연속 행동 제어 및 멀티 임바디먼트(Bimanual, Mobile 등) 지원 구조를 도식화함. State와 Action 토큰은 별도 Expert 가중치로 처리됨.",
+    "Fig. 4: 사전학습 데이터셋 혼합 비율을 도식화함. 9.1%만 Open X-Embodiment(OXE) 등 공개 데이터셋이며, 자체 수집 데이터(특히 Bimanual UR5e 51% 등 양팔 로봇 데이터)가 압도적인 비중을 차지함을 확인 가능함.",
+    "Fig. 5 & Fig. 6: 단일 암(UR5e, Franka), 듀얼 암(Bimanual UR5e, Bimanual Trossen, Bimanual ARX), 모바일 매니퓰레이터(Mobile Trossen, Mobile Fibocom) 총 7종류의 로봇 플랫폼과 Out-of-box 평가 태스크(셔츠 접기, 버싱, 장보기 포장, 토스트 꺼내기) 환경을 제시함.",
+    "Fig. 7: 사전학습 모델의 Out-of-box 성능 비교에서 π0(700k 스텝)가 모든 태스크에서 OpenVLA, Octo 대비 압도적으로 높은 평균 진행률을 기록함. 동일 연산량 조건(160k 스텝)의 π0 (parity) 역시 베이스라인보다 우수하나, OpenVLA는 액션 청킹 미지원으로 인해 매우 낮은 성능을 보임.",
+    "Fig. 9: 언어 명령 추종 평가에서 고수준 VLM 명령(π0-HL)이나 사람의 중간 명령(π0-human)이 들어갈 때 평면적 명령(π0-flat) 대비 성능이 향상됨을 보여주며, VLM 백본이 없는 π0-small은 세부 명령에 반응하지 못함을 나타냄.",
+    "Fig. 11: 파인튜닝 데이터 양(1, 5, 10시간)에 따른 성능 변화를 나타냄. 사전학습된 π0가 스크래치 학습(π0 scratch) 및 기존 방법들(ACT, DP) 대비 데이터 효율성이 높으나, 10시간 학습 시 일부 태스크(Tupperware in Microwave 등)에서는 격차가 좁혀지는 양상을 보임.",
+    "Fig. 13: 복잡한 다단계 태스크(빨래 접기, 박스 조립, 계란 담기 등)에서 Fine-tuned π0가 Out-of-box 및 Scratch 대비 확연히 높은 성공률(0.5 이상)을 달성함을 보여줌. 사전학습 없이는 해결이 거의 불가능함을 입증함.",
+    "Fig. 14: Flow matching의 타임스텝 τ를 단순 균등분포가 아닌 저타임스텝(노이즈가 큰 구간)에 가중치를 둔 shifted beta 분포(s=0.999)로 샘플링하는 전략을 시각화함.",
+    "Table I: RTX 4090 GPU 기준 온보드 추론 시간 73ms, Wi-Fi 오프보드 추론 시간 86ms로 50Hz 고주파 제어 환경에서 0.5초 주기(25스텝 오픈루프) 추론이 실시간 가능함을 검증함."
+  ],
+  "diagram_types": [
+    "schematic",
+    "photograph",
+    "graph"
+  ],
+  "equations_found": 3,
+  "figure_count": 14,
+  "tables_found": 1
+}

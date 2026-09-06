@@ -1,0 +1,282 @@
+[
+  {
+    "claim_id": "clm_001",
+    "text": "2025-2026 대시보드 키트(shadcn dashboard-01, Tremor, Tailwind Stats)는 스탯 카드 행 → 시계열 차트 → 데이터 테이블의 세로 스택 골격으로 수렴했다",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_021",
+      "src_022",
+      "src_023",
+      "src_024"
+    ],
+    "counter_search": "",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_002",
+    "text": "Stripe 대시보드 홈은 상단에 3~4개 KPI 카드(짧은 라벨+큰 숫자+증감+스파크라인)를 가로 행으로 배치한다",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_004",
+      "src_005"
+    ],
+    "counter_search": "",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_003",
+    "text": "SciSpace와 Elicit의 로그인 후 홈은 프롬프트/워크플로 선택이 최우선이고 문서 라이브러리는 별도 탭으로 분리된다",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_010",
+      "src_015"
+    ],
+    "counter_search": "",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_004",
+    "text": "SciSpace와 Adobe Acrobat AI Assistant는 문서 업로드 직후 자동 요약과 추천 질문을 제시한다",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_010",
+      "src_020"
+    ],
+    "counter_search": "",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_005",
+    "text": "Elicit, Dropbox Dash, Gamma는 신규 시작 진입점을 상단에 고정하고 최근 항목을 같은 화면에 상시 병존시킨다",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_015",
+      "src_018",
+      "src_013"
+    ],
+    "counter_search": "",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_006",
+    "text": "드래그앤드롭 업로드의 표준 패턴은 점선 보더 드롭존, 드래그오버 시각 변화, 파일별 독립 진행 표시다",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_044",
+      "src_045",
+      "src_046"
+    ],
+    "counter_search": "",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_007",
+    "text": "2026년 대시보드 비주얼 기조는 틴트된 뉴트럴 베이스에 단일 액센트, 보더·디바이더 축소와 배경 레이어·여백 기반 위계다",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_037",
+      "src_047",
+      "src_040"
+    ],
+    "counter_search": "",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": false,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_008",
+    "text": "벤토 그리드는 마케팅 페이지와 개요 화면에 적합하고, 작업 흐름 영역에 강제하는 것은 부적합하다는 실무 가이드가 있다",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_038",
+      "src_052",
+      "src_053"
+    ],
+    "counter_search": "",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": false,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_010",
+    "text": "Anthropic Console과 OpenAI Platform의 비용 화면은 일별 비용 차트, 기간·필터 선택, 내보내기 중심으로 구성된다",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_025",
+      "src_026",
+      "src_027"
+    ],
+    "counter_search": "",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_011",
+    "text": "텍스트·메타데이터 중심 콘텐츠에는 행 리스트(Linear), 시각 콘텐츠에는 썸네일 카드 그리드(Gamma, Figma)가 관례다",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_001",
+      "src_014",
+      "src_030"
+    ],
+    "counter_search": "",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_012",
+    "text": "2026년 empty state 기준선은 일러스트보다 명확한 헤드라인과 단일 CTA이며, 샘플 데이터 프리로드로 빈 상태를 회피하기도 한다",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_043",
+      "src_029"
+    ],
+    "counter_search": "",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": false,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_013",
+    "text": "ChatGPT의 중앙 프롬프트창이 AI 홈 화면 컨벤션의 원형이며, 2026년 프런티어는 AI가 먼저 주목할 것을 제시하는 발견형 대시보드(Attio, Hex, Cursor)로 이동 중이다",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_039",
+      "src_037"
+    ],
+    "counter_search": "",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": false,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_014",
+    "text": "홈 화면 모션 가이드는 스태거 진입 40~80ms 간격에 전체 700ms 이내, 개별 인터랙션 150~250ms, transform과 opacity만 애니메이션하는 것이다",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_050",
+      "src_051"
+    ],
+    "counter_search": "",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": false,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_015",
+    "text": "Notion Home은 개인화 인사말, 섹션형 최근 항목, 빠른 생성 버튼으로 구성되며 사이드바 중심으로 재편됐다",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_003",
+      "src_049"
+    ],
+    "counter_search": "",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_016",
+    "text": "Consensus는 검색 결과를 Consensus Meter 게이지로 압축하며 근거 논문이 5편 미만이면 미터를 표시하지 않는다",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_016",
+      "src_017"
+    ],
+    "counter_search": "",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_017",
+    "text": "Vercel 대시보드는 프로젝트 카드에 실제 배포 스크린샷 썸네일과 배포 상태 배지를 표시한다",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_002",
+      "src_040"
+    ],
+    "counter_search": "",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_018",
+    "text": "Humata는 업로드 처리 상태를 펄싱 인디케이터와 카운트다운으로 시각화하고, 신규 업로드와 기존 문서 리스트를 한 화면에 공존시킨다",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_011",
+      "src_012"
+    ],
+    "counter_search": "",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  }
+]

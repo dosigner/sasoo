@@ -3,18 +3,13 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
-  Atom,
   Bot,
   BookOpen,
-  Brain,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  CircuitBoard,
   Clock3,
-  Code,
-  Dna,
   Download,
   Eye,
   EyeOff,
@@ -43,7 +38,6 @@ import {
   Save,
   Search,
   Settings,
-  Shapes,
   Sparkles,
   Square,
   Sun,
@@ -51,7 +45,7 @@ import {
   Trash2,
   AlertTriangle,
   Upload,
-  Waves,
+  UserRound,
   X,
   DollarSign,
 } from 'lucide-react';
@@ -60,6 +54,7 @@ export type AppIconName =
   | 'upload'
   | 'library'
   | 'agents'
+  | 'profile'
   | 'settings'
   | 'workbench'
   | 'back'
@@ -105,15 +100,7 @@ export type AppIconName =
   | 'restore'
   | 'play'
   | 'stop'
-  | 'spinner'
-  | 'area-optics'
-  | 'area-ai'
-  | 'area-robotics'
-  | 'area-electrical'
-  | 'area-cs'
-  | 'area-physics'
-  | 'area-bio'
-  | 'area-other';
+  | 'spinner';
 
 export interface AppIconProps extends Omit<LucideProps, 'ref'> {
   name: AppIconName;
@@ -122,7 +109,9 @@ export interface AppIconProps extends Omit<LucideProps, 'ref'> {
 const ICON_MAP = {
   upload: Upload,
   library: BookOpen,
+  // agents는 분석 에이전트(AI), profile은 사용자 자신이다. 같은 아이콘을 쓰지 않는다.
   agents: Bot,
+  profile: UserRound,
   settings: Settings,
   workbench: Microscope,
   back: ArrowLeft,
@@ -169,15 +158,6 @@ const ICON_MAP = {
   play: Play,
   stop: Square,
   spinner: Loader2,
-  // 연구 분야 아이콘. AreaPicker.tsx의 AREAS와 1:1 대응한다.
-  'area-optics': Waves,
-  'area-ai': Brain,
-  'area-robotics': Bot,
-  'area-electrical': CircuitBoard,
-  'area-cs': Code,
-  'area-physics': Atom,
-  'area-bio': Dna,
-  'area-other': Shapes,
 } satisfies Record<AppIconName, React.ComponentType<LucideProps>>;
 
 export default function AppIcon({ name, className, ...props }: AppIconProps) {

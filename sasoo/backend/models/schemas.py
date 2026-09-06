@@ -105,6 +105,7 @@ class PaperResponse(BaseModel):
 class PaperListResponse(BaseModel):
     """Paginated list of papers."""
     papers: list[PaperResponse]
+    completed_count: Optional[int] = None
     total: int
     page: int
     page_size: int
@@ -444,9 +445,12 @@ class VisualizationItem(BaseModel):
     id: int = 0                             # ordinal index (1-5)
     title: str                              # short descriptive title
     tool: str = "mermaid"                   # "mermaid" or "paperbanana"
-    diagram_type: str = "flowchart"         # flowchart, sequence, mindmap, methodology, etc.
+    diagram_type: str = "flowchart"         # flowchart, sequence, methodology, etc.
     description: str = ""                   # why this viz helps understand the method
     category: str = ""                      # from DiagramCategory taxonomy
+    # 종합 뷰의 구획: concept | method | result. 종합 뷰 이전에 분석된 논문의
+    # 저장 행에는 없으므로 None이고, 그때는 프론트가 category로 배정한다(스펙 §7).
+    block: Optional[str] = None
     # Mermaid-specific
     mermaid_code: Optional[str] = None
     # PaperBanana-specific
@@ -464,3 +468,55 @@ class VisualizationPlanResponse(BaseModel):
     total_count: int = 0
     model_used: str = ""
     planned_at: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Synthesis (Phase 5 종합 스테이지, 스펙 §5.3)
+# ---------------------------------------------------------------------------
+
+class SynthesisMetric(BaseModel):
+    """요약 구획의 핵심 수치 타일 하나."""
+    label: str = ""
+    value: str = ""
+    unit: str = ""                          # 무차원은 "-"
+    evidence: str = ""                      # 논문 원문 인용 한 문장
+
+
+class SynthesisSymbol(BaseModel):
+    symbol: str = ""
+    meaning: str = ""
+
+
+class SynthesisEquation(BaseModel):
+    """수식 체인의 항목 하나. 순서는 논문 번호가 아니라 유도 순서다."""
+    latex: str = ""
+    meaning: str = ""
+    symbols: list[SynthesisSymbol] = Field(default_factory=list)
+    paper_number: str = ""                  # 논문 표기 번호("3") 또는 빈 문자열
+
+
+class SynthesisFigureRef(BaseModel):
+    figure_num: str = ""
+    interpretation: str = ""
+
+
+class SynthesisParameter(BaseModel):
+    name: str = ""
+
+
+class SynthesisResponse(BaseModel):
+    """종합 스테이지 결과. 필드 이름은 프론트 종합 뷰가 그대로 쓴다."""
+    paper_id: int
+    problem_sentence: str = ""
+    method_sentence: str = ""
+    key_metrics: list[SynthesisMetric] = Field(default_factory=list)
+    equations: list[SynthesisEquation] = Field(default_factory=list)
+    result_figures: list[SynthesisFigureRef] = Field(default_factory=list)
+    key_parameters: list[SynthesisParameter] = Field(default_factory=list)
+    equation_count: int = 0
+    # 검증에서 버린 개수(스펙 §8 게이트 지표)
+    dropped: dict[str, int] = Field(default_factory=dict)
+    model_used: Optional[str] = None
+    # 지난 실행의 실측 비용(analysis_results.cost_usd). 다시 만들기 모달이 보인다.
+    cost_usd: Optional[float] = None
+    created_at: Optional[str] = None

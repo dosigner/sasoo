@@ -1,0 +1,66 @@
+<meta charset="utf-8">
+<title>AI Hero 팩 치트시트</title>
+<link rel="stylesheet" href="../assets/course.css">
+<main>
+<p class="kicker">Reference · teach-aihero</p>
+<h1>AI Hero 팩 치트시트</h1>
+<p class="lede">한 장 요약. 출처는 ask-matt SKILL.md(로컬 1차 소스)입니다. 설치 현황은 2026-08-06 실측 기준이에요.</p>
+
+<h2 id="flow">메인 플로우: 아이디어에서 배포까지</h2>
+<div class="flow">
+  <span class="step">grill-with-docs</span><span class="arrow">→</span>
+  <span class="step">to-spec</span><span class="arrow">→</span>
+  <span class="step">to-tickets</span><span class="arrow">→</span>
+  <span class="step">implement (tdd 내장)</span><span class="arrow">→</span>
+  <span class="step">code-review</span>
+</div>
+<p>grill부터 to-tickets까지는 한 컨텍스트 윈도우에서 끊지 않고, implement는 티켓마다 새로 시작합니다. 한 세션에 안 담기는 큰 안개 작업은 wayfinder로 지도를 그린 뒤 to-spec으로 합류해요.</p>
+
+<h2 id="inventory">스킬 목록과 설치 현황</h2>
+<table>
+<tr><th>스킬</th><th>역할 한 줄</th><th>상태</th></tr>
+<tr><td><span class="sk">ask-matt</span></td><td>어떤 스킬을 쓸지 물어보는 라우터</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">setup-matt-pocock-skills</span></td><td>저장소별 초기 설정(이슈 트래커, 라벨, CONTEXT.md와 ADR 위치). 첫 사용 전 1회</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">grill-with-docs</span></td><td>아이디어를 인터뷰로 벼리고 CONTEXT.md와 ADR에 기록(상태 유지형)</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">grill-me</span></td><td>같은 인터뷰의 무상태 버전. 저장소 밖 작업용</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">to-spec</span></td><td>대화 스레드를 빌드 가능한 스펙으로 압축</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">to-tickets</span></td><td>스펙을 blocking edge가 명시된 티켓들로 분할</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">implement</span></td><td>티켓 하나를 tdd로 구현하고 code-review로 마감</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">code-review</span></td><td>Standards와 Spec 2축으로 diff 리뷰</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">wayfinder</span></td><td>큰 안개 작업의 결정 지도를 이슈 트래커에 그림(산출물이 아니라 결정)</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">diagnosing-bugs</span></td><td>어려운 버그. 빨간 불이 켜지는 피드백 루프부터 만들고 회귀 테스트로 고정</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">improve-codebase-architecture</span></td><td>에이전트가 일하기 좋은 코드베이스로 다듬을 기회 발굴</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">domain-modeling</span></td><td>도메인 용어를 벼리고 ADR로 기록하는 어휘 계층</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">research</span></td><td>백그라운드 에이전트가 1차 소스를 읽고 인용 파일을 저장소에 남김</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">handoff</span></td><td>새 하네스, 새 디렉토리, 동료에게 넘길 이동식 markdown 작성</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">to-questionnaire</span></td><td>남의 머릿속에 있는 답을 받아올 설문 작성</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">resolving-merge-conflicts</span></td><td>충돌을 줄 고르기가 아니라 양쪽 의도 추적으로 해소</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">wait-what</span></td><td>방금 설명이 안 와닿을 때 쉬운 말로 재피칭</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">writing-for-agents</span></td><td>에이전트가 소비할 문서(스킬, AGENTS.md) 작성 레퍼런스</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">teach</span></td><td>지금 이 학습 워크스페이스를 만드는 스킬</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">grilling</span></td><td>인터뷰 프리미티브. grill 계열이 내부에서 구동</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">tdd</span></td><td>red-green 슬라이스 구현. implement가 내부에서 구동</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">prototype</span></td><td>설계 질문 하나에 답하는 버리는 코드</td><td><span class="tag on">설치</span></td></tr>
+<tr><td><span class="sk">triage</span></td><td>외부에서 온 이슈를 에이전트 준비 상태로 다듬는 온램프</td><td><span class="tag off">누락</span></td></tr>
+<tr><td><span class="sk">wizard</span></td><td>사람만 할 수 있는 절차(자격증명 등)를 대화형 스크립트로</td><td><span class="tag off">누락</span></td></tr>
+<tr><td><span class="sk">codebase-design</span></td><td>깊은 모듈 어휘(seam, depth, leverage) 계층</td><td><span class="tag off">누락</span></td></tr>
+</table>
+
+<h2 id="mapping">superpowers 대응표</h2>
+<table>
+<tr><th>단계</th><th>superpowers (현행 기본)</th><th>AI Hero</th><th>핵심 차이</th></tr>
+<tr><td>요구 탐색</td><td>brainstorming</td><td><span class="sk">grill-with-docs</span></td><td>AI Hero는 결과를 CONTEXT.md와 ADR로 저장소에 남김</td></tr>
+<tr><td>계획화</td><td>writing-plans</td><td><span class="sk">to-spec</span> + <span class="sk">to-tickets</span></td><td>superpowers는 한 파일 계획, AI Hero는 스펙과 티켓 분리, 티켓은 이슈 트래커로</td></tr>
+<tr><td>구현</td><td>subagent-driven-development</td><td><span class="sk">implement</span></td><td>superpowers는 태스크마다 서브에이전트와 리뷰 루프, AI Hero는 티켓마다 새 세션과 내장 tdd</td></tr>
+<tr><td>리뷰</td><td>requesting-code-review</td><td><span class="sk">code-review</span></td><td>AI Hero는 Standards와 Spec 2축을 병렬 서브에이전트로</td></tr>
+<tr><td>디버깅</td><td>systematic-debugging</td><td><span class="sk">diagnosing-bugs</span></td><td>AI Hero는 "빨간 불 명령 하나"를 만들기 전까지 이론화 금지</td></tr>
+<tr><td>TDD</td><td>test-driven-development</td><td><span class="sk">tdd</span></td><td>동일 철학. 어느 쪽을 표준으로 삼을지 선택 필요</td></tr>
+<tr><td>큰 안개 작업</td><td>(해당 없음)</td><td><span class="sk">wayfinder</span></td><td>superpowers에 없는 새 능력</td></tr>
+<tr><td>용어 관리</td><td>(해당 없음)</td><td><span class="sk">domain-modeling</span></td><td>superpowers에 없는 새 능력</td></tr>
+</table>
+
+<h2 id="boundaries">Phase boundary 5선택지</h2>
+<p>한 세션 안에서 작업 단계가 바뀌는 경계마다 다음 다섯 가지 중 하나를 고릅니다. Continue, /clear, /handoff, 서브에이전트, /compact. 기본값은 /compact이고, 자세한 결정 트리는 ask-matt 폴더의 PHASE-BOUNDARIES.md에 있어요. "smart zone"(약 150k 토큰)을 넘기 전에 경계에서 끊는 것이 원칙입니다.</p>
+
+<footer>출처: ~/.claude/skills/ask-matt/SKILL.md · <a href="https://www.aihero.dev">aihero.dev</a> · 레슨: <a href="../lessons/0001-aihero-pack-map.html">0001 전체 지도</a></footer>
+</main>

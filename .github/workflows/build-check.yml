@@ -81,6 +81,10 @@ jobs:
         shell: pwsh
         run: pnpm test:unit
 
+      - name: Clean Windows build directories
+        shell: pwsh
+        run: pnpm clean:win
+
       - name: Compile Electron
         shell: pwsh
         run: pnpm build:electron
@@ -141,7 +145,15 @@ jobs:
         shell: pwsh
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: pnpm build:win
+          # verify:win-artifact의 Authenticode 검사를 건너뛴다(미서명이므로 반드시 실패).
+          # release.yml도 같은 이유로 같은 플래그를 쓴다. 나머지 검증은 그대로 돈다.
+          SASOO_ALLOW_UNSIGNED_WIN: "1"
+        run: |
+          pnpm build:backend
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm exec electron-builder --win --publish never
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm verify:win-artifact
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

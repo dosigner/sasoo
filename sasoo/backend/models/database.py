@@ -307,6 +307,7 @@ CREATE INDEX IF NOT EXISTS idx_papers_status ON papers(status);
 CREATE INDEX IF NOT EXISTS idx_papers_domain ON papers(domain);
 CREATE INDEX IF NOT EXISTS idx_papers_year ON papers(year);
 CREATE INDEX IF NOT EXISTS idx_analysis_paper_id ON analysis_results(paper_id);
+CREATE INDEX IF NOT EXISTS idx_analysis_latest_phase ON analysis_results(paper_id, phase, created_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_analysis_phase ON analysis_results(phase);
 CREATE INDEX IF NOT EXISTS idx_analysis_created_at ON analysis_results(created_at);
 CREATE INDEX IF NOT EXISTS idx_analysis_cost ON analysis_results(cost_usd);

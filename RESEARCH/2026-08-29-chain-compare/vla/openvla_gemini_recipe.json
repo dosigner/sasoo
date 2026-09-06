@@ -1,0 +1,177 @@
+{
+  "title": "OpenVLA(7B) 비전-언어-행동 파운데이션 모델 사전학습 및 로봇 제어 파인튜닝 레시피",
+  "objective": "Open X-Embodiment 대규모 로봇 조작 데이터셋(970k 궤적)을 기반으로 멀티모달 VLM(Prismatic-7B)을 파인튜닝하여, 다양한 로봇 플랫폼에서 즉시 동작 가능하고 소량의 데이터로도 효율적으로 하류 태스크에 적응 가능한 오픈소스 7B VLA(Vision-Language-Action) 모델을 구축·학습함.",
+  "parameters": [
+    {
+      "name": "model_architecture",
+      "value": "Prismatic-7B VLM (SigLIP + DINOv2 visual encoder, 2-layer MLP projector, Llama 2 7B LLM backbone)",
+      "source_tag": "explicit",
+      "evidence_page": 4,
+      "evidence_quote": "In this work, we build on the Prismatic-7B VLM [44]. Prismatic follows the same standard architecture described above, with a 600M-parameter visual encoder, a small 2-layer MLP projector, and a 7B-parameter Llama 2 language model backbone [10].",
+      "notes": "Section 3.1: DINOv2(공간적 특징)와 SigLIP(고수준 시맨틱) 인코더 출력을 채널 방향으로 결합한 구조임."
+    },
+    {
+      "name": "image_resolution",
+      "value": "224 x 224",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "We compared VLAs with 224 × 224px and 384 × 384px inputs, but found no performance difference in our evaluations, while the latter takes 3x longer to train. We thus opt for a resolution of 224 × 224px for the final OpenVLA model.",
+      "unit": "px"
+    },
+    {
+      "name": "action_discretization_bins",
+      "value": "256",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "we discretize each dimension of the robot actions separately into one of 256 bins. For each action dimension, we set the bin width to uniformly divide the interval between the 1st and 99th quantile of the actions in the training data.",
+      "unit": "bins"
+    },
+    {
+      "name": "action_tokenization_strategy",
+      "value": "Overwrite 256 least used tokens in Llama tokenizer vocabulary",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "we again opt for simplicity and follow Brohan et al. [7]’s approach by simply overwriting the 256 least used tokens in the Llama tokenizer’s vocabulary (which corresponds to the last 256 tokens) with our action tokens.",
+      "notes": "Llama 기본 special token(100개) 부족 문제를 해결하기 위해 가장 빈도가 낮은 마지막 256개 토큰을 액션 토큰으로 교체함."
+    },
+    {
+      "name": "loss_function",
+      "value": "Cross-entropy loss evaluated on predicted action tokens only",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "Once the actions are processed into a sequence of tokens, OpenVLA is trained with a standard next-token prediction objective, evaluating the cross-entropy loss on the predicted action tokens only.",
+      "notes": "Section 3.2: 프롬프트나 텍스트 토큰은 제외하고 액션 토큰 위치에서만 cross-entropy 손실을 계산함."
+    },
+    {
+      "name": "vision_encoder_training_mode",
+      "value": "Fully fine-tuned (not frozen)",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "However, we found fine-tuning the vision encoder during VLA training to be crucial for good VLA performance.",
+      "notes": "Section 3.4 & Appendix D.3: 비전 인코더를 동결하면 정밀한 로봇 제어에 필요한 공간 정보 적응이 부족해 성능이 크게 떨어짐."
+    },
+    {
+      "name": "learning_rate",
+      "value": "2e-5",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "We swept the learning rate across multiple orders of magnitude for VLA training, and achieved the best results using a fixed learning rate of 2e-5 (the same learning rate used during VLM pretraining [44]). We did not find learning rate warmup to provide benefits.",
+      "notes": "Section 3.4: 고정 학습률 사용, warmup 미적용."
+    },
+    {
+      "name": "batch_size",
+      "value": "2048",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "The final OpenVLA model is trained on a cluster of 64 A100 GPUs for 14 days, or a total of 21,500 A100-hours, using a batch size of 2048.",
+      "notes": "전역 유효 배치 사이즈(global effective batch size)."
+    },
+    {
+      "name": "num_epochs",
+      "value": "27",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "Our final training run completes 27 epochs through its training dataset.",
+      "notes": "Section 3.4: 액션 토큰 정확도가 95%를 초과할 때까지 장기 학습함.",
+      "unit": "epochs"
+    },
+    {
+      "name": "training_dataset_name",
+      "value": "Open X-Embodiment (OpenX) curated mixture",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We leverage the Open X-Embodiment dataset [1] (OpenX) as a base to curate our training dataset.",
+      "notes": "단일 암 엔드이펙터 제어 및 3인칭 카메라 보유 데이터셋만 선별하고 Octo 가중치를 기반으로 혼합."
+    },
+    {
+      "name": "training_dataset_size",
+      "value": "970k",
+      "source_tag": "explicit",
+      "evidence_page": 4,
+      "evidence_quote": "We introduce the OpenVLA model, a 7B-parameter vision-language-action model (VLA) trained on 970k robot demonstrations from the Open X-Embodiment dataset [1].",
+      "unit": "episodes"
+    },
+    {
+      "name": "dataset_filtering_rule",
+      "value": "Remove first transition with all-zero actions & exclude DROID in final third of training",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "To not jeopardize the quality of the final model, we removed DROID from the data mixture for the final third of training.",
+      "notes": "Appendix C: BridgeData V2의 첫 타임스텝 no-op(0 액션) 전이 제거 필수."
+    },
+    {
+      "name": "gpu_hardware",
+      "value": "64 x NVIDIA A100 GPUs",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "The final OpenVLA model is trained on a cluster of 64 A100 GPUs for 14 days, or a total of 21,500 A100-hours, using a batch size of 2048."
+    },
+    {
+      "name": "training_time",
+      "value": "14",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "The final OpenVLA model is trained on a cluster of 64 A100 GPUs for 14 days, or a total of 21,500 A100-hours, using a batch size of 2048.",
+      "unit": "days"
+    },
+    {
+      "name": "parallelism_and_optimization",
+      "value": "PyTorch FSDP, FlashAttention-2, Automatic Mixed Precision (AMP)",
+      "source_tag": "explicit",
+      "evidence_page": 7,
+      "evidence_quote": "techniques for large transformer model training such as automatic mixed precision (AMP, PyTorch [75]), FlashAttention [76], and fully sharded data parallelism (FSDP, Zhao et al. [77])."
+    },
+    {
+      "name": "precision",
+      "value": "bfloat16 (inference footprint: 15GB VRAM)",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "During inference, OpenVLA requires 15GB of GPU memory when loaded in bfloat16 precision (i.e., without quantization) and runs at approximately 6Hz on one NVIDIA RTX 4090 GPU",
+      "notes": "Section 3.5"
+    },
+    {
+      "name": "peft_lora_rank",
+      "value": "32",
+      "source_tag": "explicit",
+      "evidence_page": 10,
+      "evidence_quote": "We find that the LoRA rank has negligible effect on policy performance and thus recommend using a default rank of r = 32.",
+      "notes": "Section 5.3: 모델의 모든 선형 레이어(linear layers)에 적용하며, 단일 A100 GPU로 10~15시간 내 튜닝 가능."
+    },
+    {
+      "name": "peft_lora_trainable_params_ratio",
+      "value": "1.4",
+      "source_tag": "explicit",
+      "evidence_page": 10,
+      "evidence_quote": "matching full fine-tuning performance while training only 1.4% of the model parameters.",
+      "unit": "%"
+    }
+  ],
+  "steps": [
+    "1. [데이터 정제 및 전처리] Open X-Embodiment 데이터셋 중 단일 암(single-arm) 엔드이펙터 제어와 3인칭 카메라 시점을 포함하는 조작(manipulation) 데이터만 필터링한다. BridgeData V2 등에서 로봇이 멈추는 현상을 유발하는 첫 타임스텝의 0 액션(no-op) 데이터를 제거하고, 1%~99% 분위수(quantile) 구간을 균등하게 256개 빈(bin)으로 나누어 7차원 연속 액션을 이산화한다.",
+    "2. [토크나이저 수정] Llama 2 토크나이저 어휘집에서 사용 빈도가 가장 낮은 마지막 256개 토큰을 방금 정의한 256개의 액션 토큰으로 덮어쓴다.",
+    "3. [사전학습 백본 준비] SigLIP 및 DINOv2 비전 인코더(600M)와 2계층 MLP 프로젝터, Llama 2 (7B) 언어 모델로 구성된 Prismatic-7B VLM 가중치를 로드한다. 입력 이미지 해상도는 224x224px로 설정한다.",
+    "4. [대규모 VLA 사전학습 실행] PyTorch FSDP, FlashAttention-2, AMP(bfloat16) 환경에서 64대의 A100 GPU 클러스터로 모델을 학습한다. 비전 인코더를 포함한 전체 7B 파라미터를 동결 없이 학습하며, 고정 학습률 2e-5(warmup 없음), 배치 크기 2048로 설정하고 액션 토큰 정확도가 95%를 넘을 때까지 27 에폭(약 14일, 21,500 A100-hours) 동안 사전학습을 진행한다. 단, DROID 데이터셋은 학습 초반에만 포함하고 마지막 1/3 구간에서는 제외하여 재가중치화한다.",
+    "5. [신규 로봇 환경 파인튜닝 (선택)] 다운스트림 태스크(10~150개 시연 데이터)에 적응할 경우, 모든 선형 레이어에 LoRA(rank r=32)를 적용하여 단일 A100 GPU에서 10~15시간 동안 경량 파인튜닝을 수행하거나, 8대의 A100 GPU로 Full Fine-Tuning을 수행한다.",
+    "6. [서빙 및 제어 배포] bfloat16 기본 정밀도(15GB VRAM 소요, RTX 4090 기준 약 6Hz) 또는 int4 양자화(7.0GB VRAM 소요)를 적용하여 비차단(non-blocking) 제어로 실시간 스트리밍 제어를 수행한다."
+  ],
+  "equipment": [
+    "NVIDIA A100 GPUs (사전학습: 64대 클러스터, Full FT: 8대, LoRA FT: 1대)",
+    "NVIDIA RTX 4090 / RTX A5000 (추론 및 로봇 제어 서버)",
+    "WidowX 로봇 암 (BridgeData V2 평가용)",
+    "Google Mobile Manipulator (RT-1/RT-2 평가용)",
+    "Franka Emika Panda 7-DoF 로봇 암 (다운스트림 파인튜닝 평가용, 5Hz / 15Hz 비차단 컨트롤러)"
+  ],
+  "materials": [
+    "Prismatic-7B VLM 사전학습 가중치 (LLaVA 1.5 mixture 1M 샘플로 학습된 SigLIP + DINOv2 + Llama 2 7B)",
+    "Open X-Embodiment 데이터셋 (21개 하위 데이터셋 혼합 mixture, 약 970k 궤적)",
+    "BridgeData V2, DROID, LIBERO 벤치마크 데이터셋"
+  ],
+  "missing_info": [
+    "사전학습 시 사용된 구체적인 Optimizer 명칭 및 세부 하이퍼파라미터(AdamW의 beta1, beta2, weight decay, epsilon 등)가 본문에 명시되지 않음 (Prismatic VLM 기본값 준용으로 추정).",
+    "대규모 사전학습 시의 재현용 Random Seed 값이 명시되지 않음 (LIBERO 시뮬레이션 평가에서만 3개의 시드를 사용했다고 명시).",
+    "학습에 사용된 프레임워크의 정확한 버전 정보 (PyTorch, HuggingFace Transformers, FlashAttention-2 구체적 릴리스 버전).",
+    "사전학습 단계의 데이터 증강(Data Augmentation) 기법 적용 유무 및 세부 파라미터 미기재."
+  ],
+  "reproducibility_score": 0.85,
+  "safety_notes": "실제 물리 로봇(Franka Emika, WidowX, Google Robot)에 VLA 정책을 배포할 때, 이산화된 액션 예측 오류나 통신 지연으로 인해 로봇의 급격한 모션 발산 또는 충돌이 발생할 수 있으므로 비상 정지(E-stop) 장치를 반드시 구비해야 함. 비차단(non-blocking) 제어 시 추론 속도가 제어 루프 주기보다 느리면 시스템 동역학 불일치로 오작동 위험이 증가함에 주의할 것."
+}

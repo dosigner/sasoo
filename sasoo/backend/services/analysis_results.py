@@ -66,7 +66,15 @@ async def get_latest_completed_phase_rows(
         f"""
         SELECT *
         FROM analysis_results
-        WHERE {" AND ".join(where)}
+        WHERE id IN (
+            SELECT id FROM (
+                SELECT id, ROW_NUMBER() OVER (
+                    PARTITION BY phase ORDER BY created_at DESC, id DESC
+                ) AS phase_rank
+                FROM analysis_results
+                WHERE {" AND ".join(where)}
+            ) WHERE phase_rank = 1
+        )
         ORDER BY created_at DESC, id DESC
         """,
         tuple(params),

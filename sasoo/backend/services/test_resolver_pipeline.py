@@ -15,6 +15,7 @@ from services.document_audit import find_suspect_pages
 from services.document_manifest import build_document_manifest
 from services.figure_candidates import build_figure_candidates
 from services.table_candidates import build_table_candidates
+from services import table_resolver as table_resolver_module
 from services.table_resolver import _repair_reasons, _repair_with_vlm, resolve_table_candidates
 from services.models import MODEL_FLASH_HQ
 
@@ -347,7 +348,7 @@ class RepairWithVlmCallInteractionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(base64.b64decode(contents[0]["data"]), image_bytes)
             self.assertEqual(contents[1]["type"], "text")
             self.assertEqual(kwargs["model"], MODEL_FLASH_HQ)
-            # FLASH_HQ(3.7 Flash)는 minimal을 400으로 거부한다 — low로 상향
+            # FLASH_HQ(3.7/3.8 Flash)는 minimal을 400으로 거부한다 — low로 상향
             # (model_registry.py의 table_resolver role, 2026-08-22).
             self.assertEqual(kwargs["thinking_level"], "low")
             self.assertIs(kwargs["store"], False)
@@ -1272,3 +1273,69 @@ class TableCaptionGateTests(unittest.IsolatedAsyncioTestCase):
             with self.assertLogs("services.table_resolver", level="WARNING") as captured:
                 await resolve_table_candidates(manifest, paper_dir=Path(tmp), resolver_version="resolver-v1")
         self.assertTrue(any("표 0개" in message for message in captured.output))
+
+
+class TableRepairCallScopeTests(unittest.IsolatedAsyncioTestCase):
+    """폐기가 확정된 후보에 VLM 격자 복원을 호출하던 낭비.
+
+    2단계가 `needs_vlm_repair` 후보 전부를 복원한 뒤, 3단계 캡션 게이트가 캡션 없는
+    후보를 전량 버렸다. 즉 결과를 쓰지 않을 호출을 먼저 하고 있었다. 실측(2026-09-01,
+    매니페스트 14편): VLM 호출 77건 중 55건(71%)이 이 경우였고, 그 정체는 캡션 게이트가
+    걸러내는 바로 그 대상, 곧 그래프의 범례 박스였다.
+
+    정확도 지표에는 드러나지 않는다 — 버려질 결과였으므로 산출물이 같다. 드러나는 곳은
+    호출 수와 비용이다(원장 기준 논문 12편에 90회, 그중 약 71%가 낭비).
+    """
+
+    EMPTY_GRID: list[list[str]] = []
+
+    def _candidate(self, index: int, caption_id: str | None) -> dict:
+        # 격자가 비어 있고 ruled bbox가 있는 후보 = `ruled_bbox_without_grid` 사유가 붙어
+        # 복원 대상이 된다. 캡션이 붙으면 `caption_linked_but_grid_weak`도 함께 붙는다.
+        return {
+            "id": f"tblcand:p1:n{index}",
+            "page_number": 1,
+            "bbox": [30.0 + index, 300.0, 580.0, 590.0],
+            "source_kind": "pdfplumber",
+            "text_grid": self.EMPTY_GRID,
+            "linked_caption_ids": [caption_id] if caption_id else [],
+            "best_caption_id": caption_id,
+            "has_meaningful_grid": False,
+            "plausible_ruled_bbox": True,
+            "had_irregular_rows": False,
+        }
+
+    def _manifest(self, candidates: list[dict], captions: list[dict]) -> dict:
+        return {
+            "pages": [{"page_number": 1, "page_size": {"width": 612.0, "height": 792.0}, "raster_path": None}],
+            "captions": captions,
+            "table_candidates": candidates,
+            "audit": {"suspect_pages": []},
+        }
+
+    async def _repair_calls(self, manifest: dict) -> int:
+        repaired = AsyncMock(return_value=([["a", "b"], ["1", "2"]], MODEL_FLASH_HQ, 0.9))
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(table_resolver_module, "_repair_with_vlm", repaired):
+                await resolve_table_candidates(
+                    manifest, paper_dir=Path(tmp), resolver_version="resolver-v1"
+                )
+        return repaired.await_count
+
+    async def test_uncaptioned_candidate_is_not_sent_to_the_vlm(self):
+        calls = await self._repair_calls(self._manifest([self._candidate(0, None)], []))
+        self.assertEqual(calls, 0, "캡션 게이트가 버릴 후보에 복원을 호출했다")
+
+    async def test_captioned_candidate_is_still_sent_to_the_vlm(self):
+        """낭비만 걷어내야 한다 — 결과를 실제로 쓰는 호출까지 잃으면 격자 품질이 떨어진다."""
+        manifest = self._manifest(
+            [self._candidate(0, "cap:p1:n0")],
+            [{"id": "cap:p1:n0", "page_number": 1, "kind": "table",
+              "bbox": [72.0, 600.0, 540.0, 620.0], "text": "Table 1. Throughput."}],
+        )
+        self.assertEqual(await self._repair_calls(manifest), 1)
+
+    async def test_caption_id_without_caption_text_is_not_sent(self):
+        """캡션 id는 있는데 캡션 객체가 없는 경우도 게이트가 버린다 — 기준을 게이트와 맞춘다."""
+        calls = await self._repair_calls(self._manifest([self._candidate(0, "cap:missing")], []))
+        self.assertEqual(calls, 0)

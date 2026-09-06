@@ -1,0 +1,20 @@
+{
+  "quality_summary": "전반적으로 아키텍처 다이어그램, 로봇 제어 프롬프트 예시, 성능 비교 바 차트 및 실험 표가 매우 체계적이고 명확하게 구성되어 있어. 수식과 아키텍처 토큰 인터리빙(interleaving) 구조의 일치성도 높고, 로봇 실험 프롬프트와 정성적 결과 사진도 단계별로 읽기 쉽게 잘 정리되어 있어. 다만, 일부 바 차트(Fig. 3, Fig. 4) 및 비교 테이블에서 에러 바(error bar)나 통계적 유의성(신뢰구간) 표기가 빠져 있는 점은 분석적으로 지적할 만해.",
+  "key_findings_from_visuals": [
+    "Figure 1: PaLM-E의 전체 개요도로, ViT를 통과한 이미지 임베딩이나 3D 뉴럴 표현, 로봇 상태 임베딩이 텍스트 토큰과 함께 LLM(PaLM)에 인터리빙 방식으로 입력되어 고수준 계획(low-level policy를 제어하는 텍스트)을 생성하는 파이프라인을 명시함.",
+    "Figure 3 & Figure 4: 단일 도메인(Single robot data only)으로 학습했을 때보다 전체 데이터 믹스(Full mixture: 웹 데이터 + 다양한 로봇 데이터)로 공동 학습(co-training)했을 때 성공률이 2배 이상(TAMP 1% 데이터 기준 단일 로봇 finetune 48.6% 대비 full mixture 94.9%) 크게 향상되는 'Positive Transfer' 현상을 바 차트로 명확히 보여줌.",
+    "Figure 6 & Table 8: 멀티모달 파인튜닝 시 발생하는 일반 언어 생성(NLG) 능력의 파국적 망각(Catastrophic Forgetting) 문제를 분석함. 12B 모델에서는 NLG 성능이 87.3%나 하락하지만, 562B 초대형 모델에서는 성능 저하가 3.9%에 불과하여 모델 스케일이 커질수록 기존 언어 능력을 잘 보존함을 정량적으로 입증함.",
+    "Table 1: TAMP 환경에서 1%의 극소량 데이터(320개 샘플)로 평가했을 때 일반 2D ViT-4B(30.6%)에 비해 3D 인식 기반 객체 중심 표현인 OSRT(82.5%)가 압도적으로 높은 계획 성공률(Planning p1)을 보여 기하학적 객체 슬롯 표현의 효율성을 입증함.",
+    "Table 5: VQA 및 캡셔닝 벤치마크에서 PaLM-E-562B가 OK-VQA val 66.1을 기록하여 작업 특화 파인튜닝 모델(Flamingo 57.8, PaLI 64.5)보다 높은 성능을 보여 범용 비전-언어 모델로서의 강력한 성능을 나타냄.",
+    "Figure 5 & Figure 7: 실제 로봇(모바일 매니퓰레이션 및 테이블탑 푸싱) 환경에서 사람이 물체를 치우거나 방해하는 외생적 교란(adversarial disturbances)이 발생해도 1Hz로 재계획(replan)을 수행하여 장기 작업(long-horizon task)을 완수하고, 한 번도 본 적 없는 객체(장난감 거북이 등)에 대해 zero-shot 일반화를 달성하는 모습을 정성적 사진 시퀀스로 제시함."
+  ],
+  "diagram_types": [
+    "schematic",
+    "graph",
+    "photograph",
+    "flowchart"
+  ],
+  "equations_found": 3,
+  "figure_count": 8,
+  "tables_found": 10
+}

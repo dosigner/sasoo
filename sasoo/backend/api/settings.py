@@ -27,7 +27,6 @@ from services.crypto import (
     CryptoKeyStoreError,
     decrypt_value,
     encrypt_value,
-    is_encrypted,
     is_unreadable,
 )
 from services.provider_state import (
@@ -144,6 +143,12 @@ async def _ensure_defaults() -> None:
     for obsolete_key in sorted(OBSOLETE_SETTINGS):
         await db.execute("DELETE FROM settings WHERE key = ?", (obsolete_key,))
 
+    await db.execute(
+        "UPDATE settings SET value = 'java', updated_at = ? "
+        "WHERE key = 'pdf_parser_mode' AND value != 'java'",
+        (datetime.now(timezone.utc).isoformat(),),
+    )
+
     await _ensure_library_path(db)
     await db.commit()
 
@@ -178,25 +183,17 @@ async def _unreadable_api_keys() -> set[str]:
 
 async def _get_all_settings() -> dict[str, str]:
     """Fetch all settings as a flat dict. API keys are decrypted transparently."""
-    await _ensure_defaults()
     rows = await fetch_all("SELECT key, value FROM settings")
     result = {}
     for row in rows:
         key, value = row["key"], row["value"]
         if key in _API_KEY_FIELDS and value:
-            decrypted = decrypt_value(value)
-            # Auto-migrate plaintext keys to encrypted
-            if not is_encrypted(value) and decrypted:
-                encrypted = encrypt_value(decrypted)
-                await _set_setting(key, encrypted)
-            result[key] = decrypted
+            result[key] = decrypt_value(value)
         else:
             result[key] = value
     if result.get("pdf_parser_mode") != "java":
-        await _set_setting("pdf_parser_mode", "java")
         result["pdf_parser_mode"] = "java"
     if result.get("extraction_pipeline_version") == "legacy":
-        await _set_setting("extraction_pipeline_version", "resolver_v1")
         result["extraction_pipeline_version"] = "resolver_v1"
     # The API always speaks of "library_path" -- the path for THIS machine --
     # while storage keeps one per platform.

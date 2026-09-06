@@ -29,14 +29,29 @@ function paperStatusLabel(status: Paper['status']): string {
 function paperStatusClass(status: Paper['status']): string {
   switch (status) {
     case 'completed':
-      return 'border-success/40 text-success';
+      return 'border-success/40 text-success-fg';
     case 'analyzing':
       return 'border-accent/40 text-accent';
     case 'error':
       return 'border-danger/40 text-danger';
     case 'pending':
     default:
-      return 'border-warning/40 text-warning';
+      return 'border-warning/40 text-warning-fg';
+  }
+}
+
+// 점은 텍스트와 별도로 원래 채도의 색을 유지한다(대비 기준은 텍스트에만 적용).
+function paperStatusDotClass(status: Paper['status']): string {
+  switch (status) {
+    case 'completed':
+      return 'bg-success';
+    case 'analyzing':
+      return 'bg-accent';
+    case 'error':
+      return 'bg-danger';
+    case 'pending':
+    default:
+      return 'bg-warning';
   }
 }
 
@@ -63,7 +78,7 @@ export default function RecentPaperRow({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-2xs ${paperStatusClass(paper.status)}`}>
-            <span className="h-1.5 w-1.5 rounded-full bg-current" />
+            <span className={`h-1.5 w-1.5 rounded-full ${paperStatusDotClass(paper.status)}`} />
             {paperStatusLabel(paper.status)}
           </div>
           <h3 className="mt-3 line-clamp-2 text-base font-semibold leading-6 text-fg transition-colors group-hover:text-fg">

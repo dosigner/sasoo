@@ -1,0 +1,168 @@
+{
+  "title": "π0(pi-zero): 사전 훈련된 VLM 기반 Flow Matching 비전-언어-행동(VLA) 로봇 제어 모델 훈련 및 미세 조정 레시피",
+  "objective": "사전 훈련된 3B급 비전-언어 모델(PaliGemma)에 Flow Matching 기반의 별도 Action Expert(300M)를 결합하여 고주파(최대 50Hz) 액션 청크를 예측하는 로봇 파운데이션 모델을 대규모 멀티 로봇 데이터셋으로 사전 훈련하고 다운스트림 작업으로 미세 조정하는 것.",
+  "parameters": [
+    {
+      "name": "architecture",
+      "value": "PaliGemma (Gemma 2B + SigLIP 400M) VLM backbone with 300M action expert transformer using conditional flow matching",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "PaliGemma is an open-source 3 billion parameter VLM that offers a convenient trade-off between size and performance. We add 300M parameters for the action expert (which is initialized from scratch) for a total of 3.3 billion parameters.",
+      "notes": "Section IV 및 Appendix B. 전체 3.3B 파라미터 구조.",
+      "unit": ""
+    },
+    {
+      "name": "pretrained_model",
+      "value": "PaliGemma",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "While in principle our model can be initialized from scratch or fine-tuned from any VLM backbone, in practice we use PaliGemma [5] as our base model.",
+      "notes": "Section IV.",
+      "unit": ""
+    },
+    {
+      "name": "weight_initialization",
+      "value": "PaliGemma initialized from pre-trained weights; action expert initialized from scratch",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We add 300M parameters for the action expert (which is initialized from scratch) for a total of 3.3 billion parameters.",
+      "notes": "Section IV.",
+      "unit": ""
+    },
+    {
+      "name": "hidden_units",
+      "value": "width=2048, mlp_dim=16384 for VLM backbone; width=1024, mlp_dim=4096 for action expert",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "PaliGemma is based on the Gemma 2B [49] language model, which uses multi-query attention [44] and a configuration of {width=2048, depth=18, mlp dim=16,384, num heads=18, num kv heads=1, head dim=256}. Since the experts interact only in the self-attention layers, width and mlp dim do not necessarily need to match between experts. To speed up inference (which requires multiple forward passes of the action expert), we downsize the action expert to {width=1024, mlp dim=4096}, resulting in a parameter count of ∼300M.",
+      "notes": "Appendix B.",
+      "unit": ""
+    },
+    {
+      "name": "num_layers",
+      "value": "18",
+      "source_tag": "explicit",
+      "evidence_page": 15,
+      "evidence_quote": "PaliGemma is based on the Gemma 2B [49] language model, which uses multi-query attention [44] and a configuration of {width=2048, depth=18, mlp dim=16,384, num heads=18, num kv heads=1, head dim=256}.",
+      "notes": "Appendix B.",
+      "unit": ""
+    },
+    {
+      "name": "action_chunk_horizon",
+      "value": "50",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "where At = [at, at+1, ..., at+H−1] corresponds to an action chunk of future actions (we use H = 50 for our tasks), and ot is an observation.",
+      "notes": "Section IV.",
+      "unit": "steps"
+    },
+    {
+      "name": "loss_function",
+      "value": "Conditional flow matching loss: E[||v_theta(A^tau_t, o_t) - u(A^tau_t | A_t)||^2] where u(A^tau_t | A_t) = A_t - epsilon",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "During training, we supervise these action tokens using a conditional flow matching loss [28, 32], L tau (theta) = Ep(At|ot),q(Atau t |At) ||vtheta(Atau t , ot) − u(Atau t |At)||^2",
+      "notes": "Section IV. Optimal transport / linear Gaussian probability path 사용.",
+      "unit": ""
+    },
+    {
+      "name": "flow_matching_sampling_distribution",
+      "value": "Beta((s - tau) / s; 1.5, 1) with s = 0.999",
+      "source_tag": "explicit",
+      "evidence_page": 16,
+      "evidence_quote": "The distribution is given by p(τ ) = Beta( s−τ s ; 1.5, 1) and is visualized in Figure 14. We use s = 0.999 in our experiments, which allows for δ > 1 1000 , or up to 1,000 integration steps.",
+      "notes": "Appendix B.",
+      "unit": ""
+    },
+    {
+      "name": "flow_matching_inference_steps",
+      "value": "10",
+      "source_tag": "explicit",
+      "evidence_page": 5,
+      "evidence_quote": "We use 10 integration steps (corresponding to δ = 0.1) in our experiments.",
+      "notes": "Section IV. Forward Euler integration 방식.",
+      "unit": "steps"
+    },
+    {
+      "name": "training_data_size",
+      "value": "over 10,000 hours (approx. 903M timesteps of internal data + Open X-Embodiment dataset)",
+      "source_tag": "explicit",
+      "evidence_page": 3,
+      "evidence_quote": "Since one of our aims is to study complex and dexterous behaviors, we utilize a much larger dataset, with about 10,000 hours of demonstrations, complemented by the open-source OXE dataset [10].",
+      "notes": "Section II 및 Section V. 903M 타임스텝의 자체 데이터와 OXE 오픈소스 데이터(전체의 9.1%)로 구성.",
+      "unit": "hours"
+    },
+    {
+      "name": "dataset_weighting",
+      "value": "n^0.43 where n is the number of samples for each task-robot combination",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "Since the datasets are somewhat imbalanced in size (e.g., the more difficult laundry folding tasks are overrepresented), we weight each task-robot combination by n 0.43, where n is the number of samples for that combination, such that over-represented combinations are down-weighted.",
+      "notes": "Section V-A.",
+      "unit": ""
+    },
+    {
+      "name": "pretraining_steps",
+      "value": "700000",
+      "source_tag": "explicit",
+      "evidence_page": 7,
+      "evidence_quote": "We therefore also compare to a “compute parity” version of our model, which is trained for only 160k steps (as opposed to 700k steps for our main model)",
+      "notes": "Section VI-A.",
+      "unit": "steps"
+    },
+    {
+      "name": "GPU_type",
+      "value": "NVIDIA GeForce RTX 4090",
+      "source_tag": "explicit",
+      "evidence_page": 16,
+      "evidence_quote": "The operations were timed on an NVIDIA GeForce RTX 4090 consumer-grade GPU.",
+      "notes": "Appendix D. 추론 벤치마크 환경 (훈련 클러스터 사양은 명시되지 않음).",
+      "unit": ""
+    },
+    {
+      "name": "evaluation_metric",
+      "value": "Normalized score averaged over 10 episodes per task and method (1.0 for full success, fractional for partial success)",
+      "source_tag": "explicit",
+      "evidence_page": 7,
+      "evidence_quote": "The evaluation metric uses a normalized score averaged over 10 episodes per task and method, where an episode receives a score of 1.0 for a full success, and a fractional score for partial success.",
+      "notes": "Section VI-A 및 Appendix E.",
+      "unit": ""
+    },
+    {
+      "name": "fine_tuning_data_size",
+      "value": "1 to 10 hours for downstream evaluation tasks (up to 100+ hours for complex tasks like laundry folding)",
+      "source_tag": "explicit",
+      "evidence_page": 6,
+      "evidence_quote": "Different tasks require very different datasets, with the simplest of the tasks necessitating only 5 hours and the most complex tasks using 100 or more hours of data.",
+      "notes": "Section V-A 및 Section VI-C.",
+      "unit": "hours"
+    }
+  ],
+  "steps": [
+    "1. 데이터 수집 및 정제: 7가지 로봇 구성(단일암 UR5e, Franka, 바이매뉴얼 UR5e, Bimanual Trossen ALOHA, Bimanual ARX, Mobile Trossen ALOHA, Mobile Fibocom)에서 68개 작업에 걸쳐 수집된 약 10,000시간(903M 타임스텝)의 조작 데이터와 OXE Magic Soup 오픈소스 데이터를 취합한다.",
+    "2. 데이터 전처리 및 통일: 각 로봇의 관측치 ot를 멀티뷰 RGB 이미지 2~3장, 언어 지시어 텍스트, 관절 각도(proprioceptive state qt)로 구성한다. 다양한 로봇의 상태 및 행동 공간을 최대 크기(18차원)에 맞춰 제로 패딩(zero-padding)하고, 3개 미만의 이미지 슬롯은 마스킹한다.",
+    "3. 가중치 샘플링 적용: 과대표집된 작업-로봇 조합의 편향을 줄이기 위해 조합별 샘플 수 n에 대해 n^0.43 비율로 데이터 가중치를 부여하여 배치에 샘플링한다.",
+    "4. 모델 구축: 사전 훈련된 PaliGemma 3B VLM 백본(Gemma 2B + SigLIP 400M)을 로드하고, 스크래치로부터 초기화된 300M 파라미터 크기의 Action Expert(width=1024, mlp_dim=4096) 트랜스포머를 연결한다. 행동 청크의 노이즈 타임스텝 입력을 위한 정현파 임베딩 MLP를 구성한다.",
+    "5. 어텐션 마스크 설정: [I_t, l_t], [q_t], [A^tau_t] 3개 블록으로 나뉜 블록 인과적(blockwise causal) 어텐션 마스크를 적용한다. VLM 사전 훈련 입력 블록은 미래 블록을 참조할 수 없도록 차단하고, 액션 토큰 블록은 양방향 전체 시퀀스를 참조하도록 한다.",
+    "6. Flow Matching 사전 훈련: 미래 50 스텝의 액션 청크(H=50)에 대해 잡음 ϵ ~ N(0, I)을 혼합한 A^tau_t를 생성하고, p(τ) = Beta((s-τ)/s; 1.5, 1) (s=0.999)로부터 타임스텝 τ를 샘플링하여 속도 벡터 필드 v_theta를 매칭하는 회귀 손실로 700,000 스텝 동안 학습한다.",
+    "7. 다운스트림 파인튜닝 (사후 훈련): 셔츠 접기, 테이블 정리, 전자레인지 용기 넣기 등 특정 작업에 대해 고품질로 선별된 데이터셋(작업 난이도에 따라 1~100+ 시간 분량)을 사용하여 모델을 파인튜닝한다.",
+    "8. 실시간 추론 및 로봇 배포: 관측값 ot를 인코딩하고 키/값을 캐싱한 뒤, 표준 정규분포 노이즈 A^0_t에서 출발하여 Forward Euler 적분(delta=0.1, 총 10 스텝)을 거쳐 액션 청크를 도출한다. 20Hz 로봇의 경우 16 스텝(0.8초), 50Hz 로봇의 경우 25 스텝(0.5초) 주기로 open-loop 재추론을 반복하며 로봇을 제어한다."
+  ],
+  "materials": [
+    "PaliGemma 3B 사전 훈련 가중치 (Gemma 2B + SigLIP 400M)",
+    "Open X-Embodiment (OXE) 데이터셋 (Magic Soup 서브셋, Bridge v2, DROID 포함)",
+    "Physical Intelligence 자체 수집 로봇 데이터셋 (10,000시간 이상, 68개 작업, 903M 타임스텝 분량)",
+    "평가용 실물 오브젝트 (다양한 크기의 티셔츠 및 반바지, 식기류, 쓰레기, 달걀 및 달걀판, 전자레인지, 밀폐용기, 페이퍼타월 롤 및 디스펜서, 골판지 박스 등)"
+  ],
+  "missing_info": [
+    "optimizer: 사용한 옵티마이저 종류(AdamW 등)와 세부 하이퍼파라미터(beta1, beta2, eps, weight decay)가 논문 본문 및 부록에 전혀 언급되지 않음.",
+    "learning_rate: 사전 훈련 및 파인튜닝 시 사용된 기본 학습률(learning rate), 웜업 스텝 수, 스케줄링(코사인 감쇄 등) 정보 누락.",
+    "batch_size: 700k 스텝 동안 사전 훈련할 때 사용된 글로벌 배치 크기(effective batch size) 미명시.",
+    "training_hardware: 모델 훈련에 사용된 GPU 클러스터 종류(A100, H100, TPU 등) 및 훈련에 소요된 총 연산 시간/장비 수 미기재 (추론용 RTX 4090 1대 지연시간만 보고됨).",
+    "precision: 훈련 및 추론 시 사용된 데이터 타입 정밀도(bfloat16, fp16, fp32 등) 미기재.",
+    "fine-tuning details: 다운스트림 태스크 미세 조정 시 백본 VLM을 동결(freeze)했는지 전체 파라미터를 튜닝했는지 여부 및 미세 조정 하이퍼파라미터 누락.",
+    "random_seed: 통계적 재현을 위한 실험 난수 시드 값 부재."
+  ],
+  "reproducibility_score": 0.35,
+  "safety_notes": "실물 로봇(UR5e, Franka, ALOHA, 모바일 매니퓰레이터 등)을 최대 50Hz 고주파로 구동하며 의류 및 식기, 달걀 등의 실물 객체를 조작하므로, 제어 예측 오류 시 로봇 관절 충돌 및 파손에 대비하여 하드웨어 비상 정지(E-stop) 장치를 상시 확보해야 함. 모바일 로봇 주행 시 Wi-Fi 네트워크 지연으로 인한 명령 전달 지연을 감시해야 함. (논문 내 자체 명시된 안전 수칙은 없음).본 프로토콜의 일부 단계는 위해를 수반할 수 있습니다. 유해 화학물질, 고전압, 고온, 병원체, 방사선 등을 다룰 때는 반드시 공인된 안전 지침과 해당 기관의 환경안전(EHS) 규정을 준수하십시오. 저작자와 배포자는 본 내용을 적용하여 발생하는 일체의 사고나 손해에 책임을 지지 않습니다."
+}

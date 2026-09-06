@@ -1,0 +1,22 @@
+{
+  "quality_summary": "논문 전반의 시각 자료와 표는 전형적인 대형 멀티모달 모델 논문 스타일로 깔끔하게 구성되어 있어. 시스템 개요(Fig. 1)와 실제 로봇 동작 시퀀스(Fig. 5, Fig. 7), 정량적 비교 및 절삭 실험 표(Table 1~10), 바 차트(Fig. 3, 4, 6) 등이 체계적으로 배치되어 있어 가독성이 높아. 다만 바 차트(Fig. 3, 4)의 경우 오차 막대(error bars)나 통계적 유의성 검정이 누락되어 있고, Figure 2와 Figure 5, 7의 로봇 시연 사진 내 일부 텍스트는 해상도가 낮아 세부 판독이 다소 까다로워.",
+  "key_findings_from_visuals": [
+    "Fig. 1: PaLM-E 아키텍처 다이어그램으로, 텍스트 토큰과 연속 센서 관측치(이미지, 3D 표현, 상태 벡터)를 LLM 임베딩 공간에 인터리빙하여 엔드투엔드로 주입하고 고수준 제어 명령 및 텍스트 출력을 생성하는 구조를 보여줌.",
+    "Fig. 3: 3개 로봇 도메인(TAMP, Language-Table, SayCan)에서 도메인 데이터만 단독 학습한 경우 대비, ViT+PaLM 사전학습 및 Full Mixture(웹 데이터+모든 로봇 데이터)로 공동 학습했을 때 성공률/정확도가 대폭 상승함을 바 차트로 요약함.",
+    "Fig. 4: TAMP 1% 저데이터 환경에서 PaLM-E-12B의 성공률을 비교함. 단일 로봇 대비 Full mixture 공동 학습 시 성공률이 크게 증가하며(LLM finetune: 48.6% -> 94.9%, LLM frozen: 31.8% -> 74.3%), LLM 미세조정이 동결 대비 전반적으로 높은 성능을 보임.",
+    "Fig. 6: 언어 모델 스케일링에 따른 망각 현상(Catastrophic Forgetting) 분석 바 차트로, 멀티모달 학습 후 NLG 성능 하락 폭이 8B/12B 모델에서는 87.3%에 달하지만, 540B/562B 모델에서는 단 3.9%로 감소하여 모델 스케일이 망각을 방지함을 실증함.",
+    "Table 1: TAMP 1% 데이터셋 기반 입력 표현 비교표. ViT-4B single robot(p1: 30.6%, p2: 32.9%) 대비 Full mixture(p1: 74.1%, p2: 74.6%)에서 전이 학습 효과가 두드러지며, 비지도 3D 객체 표현인 OSRT가 82.5%, 76.2%로 가장 우수한 성능을 기록함.",
+    "Table 2: Language-Table 환경의 계획 수립 결과표. SayCan과 PaLI zero-shot은 0.0%로 실패한 반면, PaLM-E-12B 및 84B는 Full mixture 사전학습 시 적은 데모(10~80개)에서도 높은 성공률을 달성함.",
+    "Table 5: 범용 비전-언어 벤치마크 결과표. PaLM-E-562B가 OK-VQA val에서 66.1점을 기록하여 파인튜닝된 전용 모델(PaLI 64.5, Flamingo 57.8)을 능가하는 SOTA를 달성함.",
+    "Table 8: 21개 일반 언어 벤치마크(NLU/NLG) 상세 표. 562B 모델의 경우 NLU가 +0.4% 상대적 향상을 보이고 NLG 저하는 -3.8%에 불과하여 대형 스케일에서의 언어 능력 보존이 확인됨."
+  ],
+  "diagram_types": [
+    "schematic",
+    "photograph",
+    "graph",
+    "bar chart"
+  ],
+  "equations_found": 3,
+  "figure_count": 8,
+  "tables_found": 10
+}
