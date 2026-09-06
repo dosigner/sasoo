@@ -13,6 +13,7 @@ import { type Components } from 'react-markdown';
 import { Markdown } from '@/components/Markdown';
 import { chatWithAgent, type ChatDoneMeta, type ChatMessage } from '@/lib/api';
 import { createTokenBuffer } from '@/lib/tokenBuffer';
+import { withRoJosa } from '@/lib/josa';
 import { getAgentMeta } from '@/lib/agents';
 import { detectCitations, type CitationType } from '@/lib/citations';
 import { S } from '@/lib/strings';
@@ -49,7 +50,7 @@ function tokenizeCitations(text: string, onCitation: CitationHandler): ReactNode
         type="button"
         className="citation-chip"
         onClick={() => onCitation({ type: match.type, n: match.n })}
-        title={`${match.raw}로 이동`}
+        title={`${withRoJosa(match.raw)} 이동`}
       >
         {match.raw}
       </button>,
