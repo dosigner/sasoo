@@ -15,7 +15,7 @@
   2. max_output_tokens로 폭주 비용에 상한을 건다 — 1이 뚫려도 손해가 유한하다.
 """
 
-import api.analysis_routes as analysis_routes
+import services.analysis_execution as analysis_routes
 
 
 def _free_text_string(prop: dict) -> bool:
@@ -74,7 +74,7 @@ def test_chain_stage_sends_the_cap_for_recipe():
         captured.update(kwargs)
         return {"text": "{}", "model": "m", "tokens_in": 1, "tokens_out": 2, "interaction_id": None}
 
-    with patch("api.analysis_routes.call_interaction", new=_fake_call):
+    with patch("services.analysis_execution.call_interaction", new=_fake_call):
         asyncio.run(analysis_routes._run_chain_stage(
             phase="recipe",
             prompt_chain="지시",
@@ -98,7 +98,7 @@ def test_chain_stage_sends_no_cap_for_stages_without_one():
         captured.update(kwargs)
         return {"text": "{}", "model": "m", "tokens_in": 1, "tokens_out": 2, "interaction_id": None}
 
-    with patch("api.analysis_routes.call_interaction", new=_fake_call):
+    with patch("services.analysis_execution.call_interaction", new=_fake_call):
         asyncio.run(analysis_routes._run_chain_stage(
             # deep_dive는 2026-08-29 실측(VLA 4/6 폭주) 이후 상한이 생겨
             # 상한 없는 단계의 대표가 visual로 바뀌었다.

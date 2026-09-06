@@ -239,7 +239,7 @@ class WorkerShutdownTests(unittest.IsolatedAsyncioTestCase):
             with (
                 patch("models.database.open_side_connection", new=AsyncMock(return_value=side_conn)),
                 patch("models.database.get_db", new=AsyncMock(return_value=self.conn)),
-                patch("api.analysis_routes._run_full_analysis", new=main_impl),
+                patch("services.analysis_execution.run_full_analysis", new=main_impl),
                 patch("services.analysis_worker.close_db", new=_fake_close_db),
             ):
                 return await analysis_worker.run_analysis_worker(1, generation)
