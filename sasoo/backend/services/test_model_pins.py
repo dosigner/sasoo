@@ -33,7 +33,7 @@ VERIFIED는 인용이 PDF 텍스트층과 일치하고 값이 인용에 있고 �
 전문: .superpowers/sdd/2026-08-17-recipe-runaway/measurement-report.md
 """
 
-import api.analysis_routes as analysis_routes
+import services.analysis_execution as analysis_routes
 import services.models as models
 from services.pricing import PRICING
 

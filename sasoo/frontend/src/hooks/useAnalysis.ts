@@ -56,7 +56,13 @@ interface UseAnalysisReturn {
 // Polling intervals
 const POLL_INTERVAL_ACTIVE = 2000; // 2s while actively running
 const VISUAL_REFRESH_RETRY_MS = 1500;
-// POLL_INTERVAL_IDLE removed: completed papers no longer poll
+function resultsKey(status: AnalysisStatus): string {
+  return JSON.stringify([
+    status.overall_status === 'completed',
+    status.phases.filter((phase) => phase.status === 'completed')
+      .map((phase) => [phase.phase, phase.completed_at]),
+  ]);
+}
 
 // ---------------------------------------------------------------------------
 // Hook
@@ -79,7 +85,9 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const visualRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
-  const fetchingRef = useRef(false);
+  const resourceLoadRef = useRef<Promise<void> | null>(null);
+  const fetchedResultsKey = useRef<string | null>(null);
+  const statusRequestRef = useRef(0);
   const analysisSessionRef = useRef(0);
 
   const clearPolling = useCallback(() => {
@@ -112,7 +120,9 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
     setIsPolling(false);
     setError(null);
     fetchedPhases.current.clear();
-    fetchingRef.current = false;
+    fetchedResultsKey.current = null;
+    statusRequestRef.current += 1;
+    resourceLoadRef.current = null;
     clearPolling();
     clearVisualRetry();
   }, [clearPolling, clearVisualRetry]);
@@ -176,20 +186,22 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
 
   const fetchPhaseResources = useCallback(
     async (phaseStatus: AnalysisStatus, targetPaperId: string, sessionId: number) => {
-      if (!isSessionActive(sessionId) || fetchingRef.current) return;
-      fetchingRef.current = true;
-      try {
+      while (resourceLoadRef.current) await resourceLoadRef.current;
+      if (!isSessionActive(sessionId)) return;
+      const load = (async () => {
         const completedPhases = phaseStatus.phases
           .filter((p) => p.status === 'completed')
           .map((p) => p.phase);
         const isCompleted = phaseStatus.overall_status === 'completed';
 
-        // Fetch results whenever any phase completes
-        if (completedPhases.length > 0) {
+        // Record only successful loads so the next poll retries failures.
+        const key = resultsKey(phaseStatus);
+        if (fetchedResultsKey.current !== key) {
           try {
             const res = await getAnalysisResults(targetPaperId);
             if (!isSessionActive(sessionId)) return;
             setResults(res);
+            fetchedResultsKey.current = key;
           } catch (err) {
             console.warn('[useAnalysis] Failed to fetch results:', err);
           }
@@ -215,11 +227,11 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
           !fetchedPhases.current.has('recipe')
         ) {
           if (!isSessionActive(sessionId)) return;
-          fetchedPhases.current.add('recipe');
           try {
             const rec = await getRecipe(targetPaperId);
             if (!isSessionActive(sessionId)) return;
             setRecipe(rec);
+            fetchedPhases.current.add('recipe');
           } catch (err) {
             console.warn('[useAnalysis] Failed to fetch recipe:', err);
           }
@@ -260,10 +272,13 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
             }
           }
         }
+
+      })();
+      resourceLoadRef.current = load;
+      try {
+        await load;
       } finally {
-        if (isSessionActive(sessionId)) {
-          fetchingRef.current = false;
-        }
+        if (resourceLoadRef.current === load) resourceLoadRef.current = null;
       }
     },
     [fetchExistingVisualAssets, isSessionActive]
@@ -294,10 +309,11 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
     const activePaperId = targetPaperId ?? paperId;
     const activeSessionId = sessionId ?? analysisSessionRef.current;
     if (!activePaperId) return;
+    const requestId = ++statusRequestRef.current;
 
     try {
       const s = await getAnalysisStatus(activePaperId);
-      if (!isSessionActive(activeSessionId)) return;
+      if (!isSessionActive(activeSessionId) || requestId !== statusRequestRef.current) return;
 
       setStatus(s);
       const running = s.overall_status === 'running' || s.overall_status === 'analyzing';
@@ -305,30 +321,26 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
 
       // Fetch sub-resources for completed phases
       await fetchPhaseResources(s, activePaperId, activeSessionId);
-      if (!isSessionActive(activeSessionId)) return;
+      if (!isSessionActive(activeSessionId) || requestId !== statusRequestRef.current) return;
 
       // Stop polling when done or errored
-      if (s.overall_status === 'completed' || s.overall_status === 'error') {
+      if ((s.overall_status === 'completed' || s.overall_status === 'error')
+          && fetchedResultsKey.current === resultsKey(s)) {
         clearPolling();
         setIsPolling(false);
+      }
 
-        // Final fetch: ensure visualizations are loaded now that pipeline is done
-        if (s.overall_status === 'completed') {
-          await fetchPhaseResources(s, activePaperId, activeSessionId);
-          if (!isSessionActive(activeSessionId)) return;
-        }
-
-        if (s.overall_status === 'error') {
+      if (s.overall_status === 'error') {
           const errorPhase = s.phases.find(
             (p: PhaseInfo) => p.status === 'error'
           );
           setError(
             errorPhase?.error_message || S.error.occurred
           );
-        }
       }
+      return s;
     } catch (err) {
-      if (!isSessionActive(activeSessionId)) return;
+      if (!isSessionActive(activeSessionId) || requestId !== statusRequestRef.current) return;
       if (err instanceof ApiError && err.status === 404) {
         // No analysis exists yet, that's fine
         return;
@@ -366,9 +378,8 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
       if (!isSessionActive(sessionId)) return true;
       // Don't set the /run response as status (it's not an AnalysisStatus).
       // Instead, poll immediately to get the real status.
-      await pollStatus(paperId, sessionId);
-      if (!isSessionActive(sessionId)) return true;
       startPolling(paperId, sessionId, POLL_INTERVAL_ACTIVE);
+      await pollStatus(paperId, sessionId);
       return true;
     } catch (err) {
       if (!isSessionActive(sessionId)) return false;
@@ -380,8 +391,17 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
   }, [paperId, beginNewSession, isSessionActive, pollStatus, startPolling]);
 
   const refresh = useCallback(async () => {
-    await pollStatus();
-  }, [pollStatus]);
+    const sessionId = analysisSessionRef.current;
+    await resourceLoadRef.current;
+    if (!isSessionActive(sessionId)) return;
+    fetchedResultsKey.current = null;
+    fetchedPhases.current.clear();
+    const refreshed = await pollStatus();
+    if (paperId && refreshed && isSessionActive(sessionId)
+        && fetchedResultsKey.current !== resultsKey(refreshed)) {
+      startPolling(paperId, sessionId);
+    }
+  }, [isSessionActive, paperId, pollStatus, startPolling]);
 
   const reset = useCallback(() => {
     beginNewSession();
@@ -405,7 +425,10 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
         const s = await getAnalysisStatus(targetPaperId);
         if (cancelled || !isSessionActive(sessionId)) return;
         setStatus(s);
+        setIsRunning(s.overall_status === 'running' || s.overall_status === 'analyzing');
         await fetchExistingVisualAssets(targetPaperId, sessionId);
+        if (cancelled || !isSessionActive(sessionId)) return;
+        await fetchPhaseResources(s, targetPaperId, sessionId);
         if (cancelled || !isSessionActive(sessionId)) return;
 
         if (s.overall_status === 'running' || s.overall_status === 'analyzing') {
@@ -413,8 +436,10 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
           startPolling(targetPaperId, sessionId, POLL_INTERVAL_ACTIVE);
         } else if (s.overall_status === 'completed') {
           setIsRunning(false);
-          await fetchPhaseResources(s, targetPaperId, sessionId);
-          // No polling needed for completed papers
+          if (fetchedResultsKey.current !== resultsKey(s)) {
+            startPolling(targetPaperId, sessionId, POLL_INTERVAL_ACTIVE);
+          }
+          // Completed papers stop polling after a successful result load.
         }
       } catch (err) {
         if (cancelled || !isSessionActive(sessionId)) return;
@@ -434,7 +459,7 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
       if (analysisSessionRef.current === sessionId) {
         clearPolling();
         clearVisualRetry();
-        fetchingRef.current = false;
+        resourceLoadRef.current = null;
       }
     };
   }, [paperId, beginNewSession, clearPolling, clearVisualRetry, fetchExistingVisualAssets, fetchPhaseResources, isSessionActive, startPolling]);

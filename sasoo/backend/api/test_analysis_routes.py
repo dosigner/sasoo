@@ -29,6 +29,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from api import analysis_routes, figure_service
+from services import analysis_execution
 from models.schemas import AnalysisStatus
 from services.model_registry import resolve as resolve_model
 from services.models import MODEL_FLASH_HQ, MODEL_FLASH_LITE
@@ -113,9 +114,12 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         )
         self._active_provider_patch.start()
         self.addCleanup(self._active_provider_patch.stop)
+        stage_provider = patch("services.analysis_execution.active_provider", new=AsyncMock(return_value="gemini"))
+        stage_provider.start()
+        self.addCleanup(stage_provider.stop)
 
     def test_screening_gate_decision_flags_low_relevance(self):
-        should_skip, reason = analysis_routes._screening_gate_decision(
+        should_skip, reason = analysis_execution._screening_gate_decision(
             '{"relevance_score":0.2,"domain":"general","key_topics":[],"is_experimental":false}'
         )
 
@@ -123,7 +127,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(reason, "low_relevance_screening")
 
     def test_screening_gate_decision_flags_low_confidence(self):
-        should_skip, reason = analysis_routes._screening_gate_decision(
+        should_skip, reason = analysis_execution._screening_gate_decision(
             '{"relevance_score":0.45,"domain":"general","key_topics":["주제1"],"is_experimental":false}'
         )
 
@@ -135,8 +139,8 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             '{"relevance_score":0.8,"domain":"optics","key_topics":["광학"],'
             '"is_experimental":false,"recipe_applicable":false,"deep_dive_applicable":true}'
         )
-        skip_recipe, reason_recipe = analysis_routes._screening_gate_decision(payload, phase="recipe")
-        skip_deep, _ = analysis_routes._screening_gate_decision(payload, phase="deep_dive")
+        skip_recipe, reason_recipe = analysis_execution._screening_gate_decision(payload, phase="recipe")
+        skip_deep, _ = analysis_execution._screening_gate_decision(payload, phase="deep_dive")
 
         self.assertTrue(skip_recipe)
         self.assertEqual(reason_recipe, "not_applicable_recipe")
@@ -148,7 +152,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             '{"relevance_score":0.45,"domain":"general","key_topics":["주제1"],'
             '"is_experimental":false,"recipe_applicable":false,"deep_dive_applicable":true}'
         )
-        skip_deep, _ = analysis_routes._screening_gate_decision(payload, phase="deep_dive")
+        skip_deep, _ = analysis_execution._screening_gate_decision(payload, phase="deep_dive")
         self.assertFalse(skip_deep)
 
     def test_gate_low_confidence_overrides_applicable_false(self):
@@ -156,18 +160,18 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         payload = ('{"relevance_score":0.8,"domain":"optics","key_topics":["광학"],'
                    '"is_experimental":true,"recipe_applicable":true,"deep_dive_applicable":false,'
                    '"confidence":0.4}')
-        skip_deep, reason = analysis_routes._screening_gate_decision(payload, phase="deep_dive")
+        skip_deep, reason = analysis_execution._screening_gate_decision(payload, phase="deep_dive")
         self.assertFalse(skip_deep)
 
     def test_gate_confidence_exactly_at_floor_trusts_applicable_flag(self):
         # T3 경계: confidence == _GATE_CONFIDENCE_FLOOR(0.6)는 '<' 비교라 low-confidence
         # 예외 대상이 아니다 — floor "미만"만 스킵을 막으므로 정확히 floor인 값은 그대로
         # applicable=False를 신뢰해 스킵해야 한다(부동소수 경계 회귀 고정).
-        self.assertEqual(analysis_routes._GATE_CONFIDENCE_FLOOR, 0.6)
+        self.assertEqual(analysis_execution._GATE_CONFIDENCE_FLOOR, 0.6)
         payload = ('{"relevance_score":0.8,"domain":"optics","key_topics":["광학"],'
                    '"is_experimental":true,"recipe_applicable":true,"deep_dive_applicable":false,'
                    '"confidence":0.6}')
-        skip_deep, reason = analysis_routes._screening_gate_decision(payload, phase="deep_dive")
+        skip_deep, reason = analysis_execution._screening_gate_decision(payload, phase="deep_dive")
         self.assertTrue(skip_deep)
         self.assertEqual(reason, "not_applicable_deep_dive")
 
@@ -175,7 +179,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         payload = ('{"relevance_score":0.8,"domain":"optics","key_topics":["광학"],'
                    '"is_experimental":true,"recipe_applicable":false,"deep_dive_applicable":true,'
                    '"confidence":0.9}')
-        skip_recipe, reason = analysis_routes._screening_gate_decision(payload, phase="recipe")
+        skip_recipe, reason = analysis_execution._screening_gate_decision(payload, phase="recipe")
         self.assertTrue(skip_recipe)
         self.assertEqual(reason, "not_applicable_recipe")
 
@@ -184,13 +188,13 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                         "self_citation_count": 1, "self_citation_ratio": 0.08,
                         "top_cited": [{"ref_id": "[1]", "cite_count": 3,
                                        "cite_contexts": [{"sentence": "s", "section": "Methods"}]}]}
-        key = analysis_routes._citation_cache_key(local_result, "본문 발췌")
-        self.assertIn(analysis_routes._CITATION_PROMPT_VERSION, key)
+        key = analysis_execution._citation_cache_key(local_result, "본문 발췌")
+        self.assertIn(analysis_execution._CITATION_PROMPT_VERSION, key)
         # 본문/통계가 같으면 동일 키(프롬프트 문구는 키에 안 들어감)
-        self.assertEqual(key, analysis_routes._citation_cache_key(local_result, "본문 발췌"))
+        self.assertEqual(key, analysis_execution._citation_cache_key(local_result, "본문 발췌"))
 
     def test_screening_schema_gate_contract(self):
-        schema = analysis_routes._SCREENING_SCHEMA
+        schema = analysis_execution._SCREENING_SCHEMA
         self.assertEqual(
             schema["properties"]["agent_recommended"]["enum"],
             ["photon", "cell", "neural", "circuit"],
@@ -441,11 +445,11 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             }
 
         with (
-            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.call_interaction", new=_fake_call),
-            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution.call_interaction", new=_fake_call),
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
         ):
-            await analysis_routes._run_screening(7, "본문 내용", status)
+            await analysis_execution._run_screening(7, "본문 내용", status)
 
         prompt = calls["prompt"]
         # 문서 먼저, 지시 나중 (Gemini long-context 권장)
@@ -453,6 +457,18 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         # system instruction이 정체성을 담당하므로 user 프롬프트의 중복 제거
         self.assertNotIn("너는 Sasoo", prompt)
         self.assertIn("recipe_applicable", prompt)
+
+    async def test_results_reuse_loaded_rows_for_status(self):
+        paper = {"id": 7, "status": "completed"}
+        latest_rows = {"visualization": _row("visualization", '{}')}
+        with (
+            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)) as read_paper,
+            patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value=latest_rows)) as read_results,
+        ):
+            result = await analysis_routes.get_analysis_results(7)
+        self.assertEqual(result.status.progress_pct, 20.0)
+        read_paper.assert_awaited_once()
+        read_results.assert_awaited_once()
 
     async def test_status_results_and_report_use_latest_phase_rows(self):
         paper = {"id": 7, "title": "Latest Paper", "status": "completed", "authors": "Kim", "year": 2026, "journal": "Nature", "doi": None, "domain": "ai_ml", "agent_used": "neural", "analyzed_at": "2026-03-26T12:00:00"}
@@ -489,16 +505,16 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         아님(None) — I1 핵심 수정. 이게 없으면 아무 것도 안 바꾼 사용자의 기존
         분석 전부에 "다른 모델로 분석됨" 배지가 뜬다."""
         old_row = {"result": '{"ok": true}', "model_used": "gemini-3.6-flash", "config_hash": None}
-        with patch("api.analysis_routes.fetch_one", new=AsyncMock(side_effect=[None, old_row])):
-            payload = await analysis_routes._lookup_phase_result_with_staleness(
+        with patch("services.analysis_execution.fetch_one", new=AsyncMock(side_effect=[None, old_row])):
+            payload = await analysis_execution._lookup_phase_result_with_staleness(
                 paper_id=7, phase="recipe", current_hash="새키", current_model="gemini-3.6-flash")
         self.assertIsNone(payload["stale_model"])
 
     async def test_lookup_phase_result_with_staleness_legacy_different_model_is_stale(self):
         """레거시 행 + model_used가 현재 모델과 다르면 진짜 모델 교체 -> stale."""
         old_row = {"result": '{"ok": true}', "model_used": "gemini-3.6-flash", "config_hash": None}
-        with patch("api.analysis_routes.fetch_one", new=AsyncMock(side_effect=[None, old_row])):
-            payload = await analysis_routes._lookup_phase_result_with_staleness(
+        with patch("services.analysis_execution.fetch_one", new=AsyncMock(side_effect=[None, old_row])):
+            payload = await analysis_execution._lookup_phase_result_with_staleness(
                 paper_id=7, phase="recipe", current_hash="새키", current_model="gpt-5.6-luna")
         self.assertEqual(payload["stale_model"], "gemini-3.6-flash")
 
@@ -506,8 +522,8 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         """config_hash가 있는(신규 스키마 이후) 행인데 현재 해시와 다르면 stale —
         model_used가 같아도(effort만 바뀐 경우) 잡아야 한다(스펙 §D, 회귀 방어)."""
         old_row = {"result": '{"ok": true}', "model_used": "gpt-5.6-luna", "config_hash": "옛키"}
-        with patch("api.analysis_routes.fetch_one", new=AsyncMock(side_effect=[None, old_row])):
-            payload = await analysis_routes._lookup_phase_result_with_staleness(
+        with patch("services.analysis_execution.fetch_one", new=AsyncMock(side_effect=[None, old_row])):
+            payload = await analysis_execution._lookup_phase_result_with_staleness(
                 paper_id=7, phase="recipe", current_hash="새키", current_model="gpt-5.6-luna")
         self.assertEqual(payload["stale_model"], "gpt-5.6-luna")
 
@@ -515,16 +531,16 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         # 현재 (provider, model, effort) 지문으로 히트하면 이미 이 설정으로
         # 분석해본 적이 있다는 뜻이라 stale_model=None이고, 2차 조회는 타지 않는다.
         current_row = {"result": '{"ok": true}', "model_used": "gpt-5.6-luna", "config_hash": "새키"}
-        with patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=current_row)) as fetch_mock:
-            payload = await analysis_routes._lookup_phase_result_with_staleness(
+        with patch("services.analysis_execution.fetch_one", new=AsyncMock(return_value=current_row)) as fetch_mock:
+            payload = await analysis_execution._lookup_phase_result_with_staleness(
                 paper_id=7, phase="recipe", current_hash="새키", current_model="gpt-5.6-luna")
         self.assertIsNone(payload["stale_model"])
         fetch_mock.assert_awaited_once()
 
     async def test_lookup_phase_result_with_staleness_no_rows_returns_none(self):
         # 이 phase가 아예 실행된 적이 없으면(신규 논문) None -- 배지도 없다.
-        with patch("api.analysis_routes.fetch_one", new=AsyncMock(side_effect=[None, None])):
-            payload = await analysis_routes._lookup_phase_result_with_staleness(
+        with patch("services.analysis_execution.fetch_one", new=AsyncMock(side_effect=[None, None])):
+            payload = await analysis_execution._lookup_phase_result_with_staleness(
                 paper_id=7, phase="recipe", current_hash="새키", current_model="gpt-5.6-luna")
         self.assertIsNone(payload)
 
@@ -533,8 +549,8 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         판정한다 — /status가 2초 간격 폴링하며 phase마다 추가 fetch_one을
         태우던 부하를 없앤다."""
         row = {"result": '{"ok": true}', "model_used": "gemini-3.6-flash", "config_hash": None}
-        with patch("api.analysis_routes.fetch_one", new=AsyncMock()) as fetch_mock:
-            payload = await analysis_routes._lookup_phase_result_with_staleness(
+        with patch("services.analysis_execution.fetch_one", new=AsyncMock()) as fetch_mock:
+            payload = await analysis_execution._lookup_phase_result_with_staleness(
                 paper_id=7, phase="recipe", current_hash="새키", current_model="gpt-5.6-luna",
                 latest_row=row,
             )
@@ -544,10 +560,10 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
     def test_config_hash_differs_by_effort_only(self):
         # 스펙 §D: 모델이 같아도 effort가 다르면 다른 캐시 키 -> stale 판정 근거.
         # 옛 행의 model_used만 비교하면 이 케이스를 놓친다(직전 리뷰 지적).
-        low = analysis_routes._config_hash("openai", "gpt-5.6-luna", "low")
-        medium = analysis_routes._config_hash("openai", "gpt-5.6-luna", "medium")
+        low = analysis_execution._config_hash("openai", "gpt-5.6-luna", "low")
+        medium = analysis_execution._config_hash("openai", "gpt-5.6-luna", "medium")
         self.assertNotEqual(low, medium)
-        self.assertEqual(analysis_routes._config_hash("openai", "gpt-5.6-luna", "low"), low)
+        self.assertEqual(analysis_execution._config_hash("openai", "gpt-5.6-luna", "low"), low)
 
     async def test_get_analysis_status_surfaces_stale_model_badge(self):
         # get_analysis_status가 완료된 phase마다 latest_results 딕셔너리(이미 SELECT *로
@@ -614,7 +630,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                   new=AsyncMock(return_value=latest_rows)),
             # 가드가 뚫리면 이 mock이 오탐 배지를 그대로 돌려준다 -- assert_not_awaited로
             # "애초에 호출되지 않아야 한다"를 강하게 고정한다.
-            patch("api.analysis_routes._lookup_phase_result_with_staleness",
+            patch("services.analysis_execution._lookup_phase_result_with_staleness",
                   new=AsyncMock(return_value={"stale_model": "system"})) as lookup_mock,
         ):
             status = await analysis_routes.get_analysis_status(7)
@@ -645,8 +661,8 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_insert_analysis_result_stores_config_hash(self):
         # config_hash가 실제로 INSERT에 실려야 나중에 stage-1 조회가 성립한다.
-        with patch("api.analysis_routes.execute_insert", new=AsyncMock()) as insert_mock:
-            await analysis_routes._insert_analysis_result(
+        with patch("services.analysis_execution.execute_insert", new=AsyncMock()) as insert_mock:
+            await analysis_execution._insert_analysis_result(
                 7, "recipe", '{"ok":true}', "gpt-5.6-luna", 10, 20, 0.1, "doc text",
                 provider="openai", model="gpt-5.6-luna", effort="medium",
             )
@@ -655,7 +671,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("config_hash", sql)
         self.assertEqual(
             params[-1],
-            analysis_routes._config_hash("openai", "gpt-5.6-luna", "medium"),
+            analysis_execution._config_hash("openai", "gpt-5.6-luna", "medium"),
         )
 
     async def test_run_recipe_uses_current_screening_data_without_db_read(self):
@@ -679,12 +695,12 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             }
 
         with (
-            patch("api.analysis_routes.fetch_one", new=AsyncMock(side_effect=AssertionError("DB reread should not happen"))),
-            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.call_interaction", new=_fake_call),
-            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+            patch("services.analysis_execution.fetch_one", new=AsyncMock(side_effect=AssertionError("DB reread should not happen"))),
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution.call_interaction", new=_fake_call),
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
         ):
-            await analysis_routes._run_recipe(
+            await analysis_execution._run_recipe(
                 7,
                 "Recipe context body",
                 status,
@@ -708,11 +724,11 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             }
 
         with (
-            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.call_interaction", new=_fake_call),
-            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution.call_interaction", new=_fake_call),
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
         ):
-            await analysis_routes._run_recipe(
+            await analysis_execution._run_recipe(
                 7,
                 "Recipe context body",
                 status,
@@ -760,11 +776,11 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             }
 
         with (
-            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.call_interaction", new=_fake_call),
-            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution.call_interaction", new=_fake_call),
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
         ):
-            await analysis_routes._run_recipe(
+            await analysis_execution._run_recipe(
                 7, "Recipe context body", status, screening_result_text='{"domain":"optics"}',
             )
 
@@ -779,10 +795,10 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
 
     def test_chain_cache_version_is_bumped_for_evidence_rollout(self):
         # 스펙 §결정 4: 롤아웃 시 체인 캐시 1회 무효화
-        self.assertEqual(analysis_routes._CHAIN_CACHE_VERSION, "2026-08-06-ev1")
+        self.assertEqual(analysis_execution._CHAIN_CACHE_VERSION, "2026-08-06-ev1")
         self.assertIn(
-            analysis_routes._CHAIN_CACHE_VERSION,
-            analysis_routes._phase_cache_key(model="m", thinking="t", system_instruction="s", prompt="p"),
+            analysis_execution._CHAIN_CACHE_VERSION,
+            analysis_execution._phase_cache_key(model="m", thinking="t", system_instruction="s", prompt="p"),
         )
 
     async def test_run_recipe_skips_when_screening_signal_is_weak(self):
@@ -794,10 +810,10 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with (
-            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()) as insert_mock,
-            patch("api.analysis_routes.call_interaction", new=AsyncMock(side_effect=AssertionError("LLM call should be skipped"))),
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()) as insert_mock,
+            patch("services.analysis_execution.call_interaction", new=AsyncMock(side_effect=AssertionError("LLM call should be skipped"))),
         ):
-            result = await analysis_routes._run_recipe(
+            result = await analysis_execution._run_recipe(
                 7,
                 "Recipe context body",
                 status,
@@ -819,14 +835,14 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
 
         ensure_mock = AsyncMock(return_value={"status": "verified", "anchors": 1})
         with (
-            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.call_interaction", new=_fake_call),
-            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock(return_value=41)),
-            patch("api.analysis_routes.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
-            patch("api.analysis_routes._find_paper_pdf", return_value=None),
-            patch("api.analysis_routes.ensure_recipe_anchors", new=ensure_mock),
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution.call_interaction", new=_fake_call),
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock(return_value=41)),
+            patch("services.analysis_execution.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
+            patch("services.analysis_execution._find_paper_pdf", return_value=None),
+            patch("services.analysis_execution.ensure_recipe_anchors", new=ensure_mock),
         ):
-            await analysis_routes._run_recipe(
+            await analysis_execution._run_recipe(
                 7, "body", status, screening_result_text='{"domain":"optics"}',
                 folder_name="2026_Paper_optics",
             )
@@ -847,13 +863,13 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
 
         ensure_mock = AsyncMock(return_value={"status": "verified", "anchors": 1})
         with (
-            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=cached)),
-            patch("api.analysis_routes.call_interaction", new=AsyncMock(side_effect=AssertionError("no LLM on cache hit"))),
-            patch("api.analysis_routes.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
-            patch("api.analysis_routes._find_paper_pdf", return_value=None),
-            patch("api.analysis_routes.ensure_recipe_anchors", new=ensure_mock),
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=cached)),
+            patch("services.analysis_execution.call_interaction", new=AsyncMock(side_effect=AssertionError("no LLM on cache hit"))),
+            patch("services.analysis_execution.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
+            patch("services.analysis_execution._find_paper_pdf", return_value=None),
+            patch("services.analysis_execution.ensure_recipe_anchors", new=ensure_mock),
         ):
-            await analysis_routes._run_recipe(
+            await analysis_execution._run_recipe(
                 7, "body", status, screening_result_text='{"domain":"optics"}',
                 folder_name="2026_Paper_optics",
             )
@@ -877,13 +893,13 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             return {"status": "verified", "anchors": 1}
 
         with (
-            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=cached)),
-            patch("api.analysis_routes.call_interaction", new=AsyncMock(side_effect=AssertionError("no LLM on cache hit"))),
-            patch("api.analysis_routes.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
-            patch("api.analysis_routes._find_paper_pdf", return_value=None),
-            patch("api.analysis_routes.ensure_recipe_anchors", new=AsyncMock(side_effect=_ensure_side_effect)),
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=cached)),
+            patch("services.analysis_execution.call_interaction", new=AsyncMock(side_effect=AssertionError("no LLM on cache hit"))),
+            patch("services.analysis_execution.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
+            patch("services.analysis_execution._find_paper_pdf", return_value=None),
+            patch("services.analysis_execution.ensure_recipe_anchors", new=AsyncMock(side_effect=_ensure_side_effect)),
         ):
-            await analysis_routes._run_recipe(
+            await analysis_execution._run_recipe(
                 7, "body", status, screening_result_text='{"domain":"optics"}',
                 folder_name="2026_Paper_optics",
             )
@@ -903,15 +919,15 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             }
 
         with (
-            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.call_interaction", new=_fake_call),
-            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock(return_value=41)),
-            patch("api.analysis_routes.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
-            patch("api.analysis_routes._find_paper_pdf", return_value=None),
-            patch("api.analysis_routes.ensure_recipe_anchors",
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution.call_interaction", new=_fake_call),
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock(return_value=41)),
+            patch("services.analysis_execution.get_paper_dir", return_value=Path("/tmp/sasoo-test-paper")),
+            patch("services.analysis_execution._find_paper_pdf", return_value=None),
+            patch("services.analysis_execution.ensure_recipe_anchors",
                   new=AsyncMock(side_effect=RuntimeError("verifier exploded"))),
         ):
-            result = await analysis_routes._run_recipe(
+            result = await analysis_execution._run_recipe(
                 7, "body", status, screening_result_text='{"domain":"optics"}',
                 folder_name="2026_Paper_optics",
             )
@@ -931,10 +947,10 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with (
-            patch("api.analysis_routes.find_cached_phase_result", new=AsyncMock(return_value=cached)),
-            patch("api.analysis_routes.execute_insert", new=AsyncMock()) as insert_mock,
+            patch("services.analysis_execution.find_cached_phase_result", new=AsyncMock(return_value=cached)),
+            patch("services.analysis_execution.execute_insert", new=AsyncMock()) as insert_mock,
         ):
-            result = await analysis_routes._get_cached_phase_result(7, "screening", "input text")
+            result = await analysis_execution._get_cached_phase_result(7, "screening", "input text")
 
         self.assertEqual(result["model"], "gemini-cache")
         insert_mock.assert_awaited_once()
@@ -965,11 +981,11 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch("services.citation_analyzer.analyze_citations", return_value=fake_analysis),
-            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.call_interaction", new=_boom),
-            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution.call_interaction", new=_boom),
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
         ):
-            result = await analysis_routes._run_citation(
+            result = await analysis_execution._run_citation(
                 7, sections={}, citation_body="본문", citation_references="[1] Kim 2024",
                 paper_authors="Kim", status=status,
             )
@@ -1014,11 +1030,11 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch("services.citation_analyzer.analyze_citations", return_value=fake_analysis),
-            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.call_interaction", new=_fake_call),
-            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution.call_interaction", new=_fake_call),
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
         ):
-            result = await analysis_routes._run_citation(
+            result = await analysis_execution._run_citation(
                 7,
                 sections={},
                 citation_body="본문 텍스트",
@@ -1064,11 +1080,11 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             }
 
         with (
-            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.call_interaction", new=_fake_call),
-            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution.call_interaction", new=_fake_call),
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
         ):
-            result = await analysis_routes._run_screening(7, "논문 텍스트", status)
+            result = await analysis_execution._run_screening(7, "논문 텍스트", status)
 
         self.assertEqual(len(calls), 2)
         self.assertEqual(json.loads(result["text"])["domain"], "optics")
@@ -1096,11 +1112,11 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             }
 
         with (
-            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.call_interaction", new=_fake_call),
-            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution.call_interaction", new=_fake_call),
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
         ):
-            await analysis_routes._run_screening(7, "논문 텍스트", status)
+            await analysis_execution._run_screening(7, "논문 텍스트", status)
 
         expected = calc_cost("m", 10, 100) + calc_cost("m", 10, 20)
         self.assertEqual(status.total_cost_usd, expected)
@@ -1114,11 +1130,11 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             return {"text": "not json", "model": "m", "tokens_in": 3, "tokens_out": 5, "interaction_id": None}
 
         with (
-            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.call_interaction", new=_fake_call),
-            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution.call_interaction", new=_fake_call),
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
         ):
-            result = await analysis_routes._run_screening(7, "본문", status)
+            result = await analysis_execution._run_screening(7, "본문", status)
 
         self.assertEqual(len(calls), 2)  # 1회 재시도 후 중단
         payload = json.loads(result["text"])
@@ -1134,8 +1150,8 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                 return {"text": '{"broken": ', "model": "m", "tokens_in": 10, "tokens_out": 100, "interaction_id": "i1"}
             return {"text": '{"ok": true}', "model": "m", "tokens_in": 10, "tokens_out": 20, "interaction_id": "i2"}
 
-        with patch("api.analysis_routes.call_interaction", new=_fake_call):
-            result = await analysis_routes._run_chain_stage(
+        with patch("services.analysis_execution.call_interaction", new=_fake_call):
+            result = await analysis_execution._run_chain_stage(
                 phase="recipe",
                 prompt_chain="지시",
                 prompt_fallback="폴백",
@@ -1169,8 +1185,8 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                 "model": "m", "tokens_in": 10, "tokens_out": 20, "interaction_id": "i2",
             }
 
-        with patch("api.analysis_routes.call_interaction", new=_fake_call):
-            result = await analysis_routes._run_chain_stage(
+        with patch("services.analysis_execution.call_interaction", new=_fake_call):
+            result = await analysis_execution._run_chain_stage(
                 phase="recipe",
                 prompt_chain="지시",
                 prompt_fallback="폴백",
@@ -1189,8 +1205,8 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         async def _fake_call(prompt, **kwargs):
             return {"text": "not json", "model": "m", "tokens_in": 1, "tokens_out": 2, "interaction_id": None}
 
-        with patch("api.analysis_routes.call_interaction", new=_fake_call):
-            result = await analysis_routes._run_chain_stage(
+        with patch("services.analysis_execution.call_interaction", new=_fake_call):
+            result = await analysis_execution._run_chain_stage(
                 phase="recipe",
                 prompt_chain="지시",
                 prompt_fallback="폴백",
@@ -1242,8 +1258,8 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                 "tokens_out": 900, "interaction_id": f"i{len(calls)}",
             }
 
-        with patch("api.analysis_routes.call_interaction", new=_fake_call):
-            result = await analysis_routes._run_chain_stage(
+        with patch("services.analysis_execution.call_interaction", new=_fake_call):
+            result = await analysis_execution._run_chain_stage(
                 phase="recipe",
                 prompt_chain="지시",
                 prompt_fallback="폴백",
@@ -1275,8 +1291,8 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                 "tokens_out": 2, "interaction_id": None,
             }
 
-        with patch("api.analysis_routes.call_interaction", new=_fake_call):
-            result = await analysis_routes._run_chain_stage(
+        with patch("services.analysis_execution.call_interaction", new=_fake_call):
+            result = await analysis_execution._run_chain_stage(
                 phase="recipe",
                 prompt_chain="지시",
                 prompt_fallback="폴백",
@@ -1294,11 +1310,11 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         ]
 
         with (
-            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value={"id": 42})),
-            patch("api.analysis_routes.execute_update", new=AsyncMock(return_value=1)) as update_mock,
-            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()) as insert_mock,
+            patch("services.analysis_execution.fetch_one", new=AsyncMock(return_value={"id": 42})),
+            patch("services.analysis_execution.execute_update", new=AsyncMock(return_value=1)) as update_mock,
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()) as insert_mock,
         ):
-            await analysis_routes._store_visualization_progress(7, items, "cache-input", done=False)
+            await analysis_execution._store_visualization_progress(7, items, "cache-input", done=False)
 
         update_mock.assert_awaited_once()
         args = update_mock.call_args.args
@@ -1315,11 +1331,11 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         ]
 
         with (
-            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.execute_update", new=AsyncMock()) as update_mock,
-            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()) as insert_mock,
+            patch("services.analysis_execution.fetch_one", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution.execute_update", new=AsyncMock()) as update_mock,
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()) as insert_mock,
         ):
-            await analysis_routes._store_visualization_progress(7, items, "cache-input", done=True)
+            await analysis_execution._store_visualization_progress(7, items, "cache-input", done=True)
 
         insert_mock.assert_awaited_once()
         self.assertEqual(insert_mock.call_args.args[0], 7)
@@ -1334,11 +1350,11 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         items = [{"id": 1, "title": "A", "status": "completed"}]
 
         with (
-            patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=None)) as fetch_one_mock,
-            patch("api.analysis_routes.execute_update", new=AsyncMock()) as update_mock,
-            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()) as insert_mock,
+            patch("services.analysis_execution.fetch_one", new=AsyncMock(return_value=None)) as fetch_one_mock,
+            patch("services.analysis_execution.execute_update", new=AsyncMock()) as update_mock,
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()) as insert_mock,
         ):
-            await analysis_routes._store_visualization_progress(7, items, "new-run-cache-input", done=False)
+            await analysis_execution._store_visualization_progress(7, items, "new-run-cache-input", done=False)
 
         fetch_one_mock.assert_awaited_once()
         query, params = fetch_one_mock.call_args.args
@@ -1364,18 +1380,18 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "api.analysis_routes._get_cached_phase_result",
+                "services.analysis_execution._get_cached_phase_result",
                 new=AsyncMock(return_value={"text": stale_partial_payload}),
             ),
-            patch("api.analysis_routes._plan_visualizations", new=AsyncMock(return_value=[])) as plan_mock,
-            patch("api.analysis_routes._store_visualization_progress", new=AsyncMock()) as store_mock,
+            patch("services.analysis_execution._plan_visualizations", new=AsyncMock(return_value=[])) as plan_mock,
+            patch("services.analysis_execution._store_visualization_progress", new=AsyncMock()) as store_mock,
             # 캐시 키가 이미지 설정을 읽으므로 DB 접근을 막는다.
             patch(
-                "api.analysis_routes._get_all_settings",
+                "services.analysis_execution._get_all_settings",
                 new=AsyncMock(return_value={"image_provider": "openai", "image_quality": "high"}),
             ),
         ):
-            result = await analysis_routes._run_visualizations(
+            result = await analysis_execution._run_visualizations(
                 7, "viz input", "folder", [], "recipe result", "deep dive result", status,
             )
 
@@ -1411,11 +1427,11 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             }
 
         with (
-            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.call_interaction", new=_fake_call),
-            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()) as insert_mock,
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution.call_interaction", new=_fake_call),
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()) as insert_mock,
         ):
-            result = await analysis_routes._run_screening(7, "논문 텍스트", status)
+            result = await analysis_execution._run_screening(7, "논문 텍스트", status)
 
         self.assertEqual(calls["model"], MODEL_FLASH_LITE)
         self.assertEqual(calls["thinking_level"], "minimal")
@@ -1613,7 +1629,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             '{"total_references":30,"citation_balance":"balanced",'
             '"key_influences":["[1]"],"summary":"인용 요약."}'
         )
-        digest = analysis_routes._stateless_digest(screening, citation)
+        digest = analysis_execution._stateless_digest(screening, citation)
         self.assertIn("도메인=optics", digest)
         self.assertIn("균형=balanced", digest)
         self.assertIn("스크리닝 요약.", digest)
@@ -1621,18 +1637,18 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('"relevance_score"', digest)
 
     def test_stateless_digest_falls_back_on_parse_error(self):
-        digest = analysis_routes._stateless_digest("json 아님", "")
+        digest = analysis_execution._stateless_digest("json 아님", "")
         self.assertIn("[스크리닝 결과]", digest)
         self.assertIn("json 아님", digest)
 
     def test_stateless_digest_falls_back_on_non_dict_json(self):
         # json.loads는 성공하지만 dict가 아닌 경우 — 예외 없이 절단 폴백으로 처리
-        digest = analysis_routes._stateless_digest('[1, 2]', '"그냥 문자열"')
+        digest = analysis_execution._stateless_digest('[1, 2]', '"그냥 문자열"')
         self.assertIn("[스크리닝 결과]", digest)
         self.assertIn("[인용 분석 결과]", digest)
 
     def test_deep_dive_instruction_enforces_evidence_priority(self):
-        instruction = analysis_routes._DEEP_DIVE_INSTRUCTION
+        instruction = analysis_execution._DEEP_DIVE_INSTRUCTION
         self.assertIn("탐색용 힌트", instruction)      # 이전 단계 = 힌트
         self.assertIn("만들어내지 마", instruction)     # 날조 금지
         self.assertIn("비교 범위", instruction)         # novelty 검증 범위 명시
@@ -1652,28 +1668,28 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                 return "DEEPDIVE CHECKLIST"
 
         agent = _OverlayAgent()
-        visual = analysis_routes._build_persona_prompt(agent, "visual")
+        visual = analysis_execution._build_persona_prompt(agent, "visual")
         self.assertIn("VISUAL CHECKLIST", visual)
         self.assertIn("반말 말투", visual)
         self.assertNotIn("DEEPDIVE CHECKLIST", visual)
 
-        recipe = analysis_routes._build_persona_prompt(agent, "recipe")
+        recipe = analysis_execution._build_persona_prompt(agent, "recipe")
         self.assertIn("RECIPE CHECKLIST", recipe)
 
-        deep = analysis_routes._build_persona_prompt(agent, "deep_dive")
+        deep = analysis_execution._build_persona_prompt(agent, "deep_dive")
         self.assertIn("DEEPDIVE CHECKLIST", deep)
 
         # 오버레이 없는 스테이지(visualization 등): 말투만
-        self.assertEqual(analysis_routes._build_persona_prompt(agent, None), "반말 말투")
+        self.assertEqual(analysis_execution._build_persona_prompt(agent, None), "반말 말투")
 
     def test_build_persona_prompt_tolerates_agent_without_getters(self):
         class _BareAgent:
             profile = types.SimpleNamespace(personality="말투")
 
-        self.assertEqual(analysis_routes._build_persona_prompt(_BareAgent(), "visual"), "말투")
+        self.assertEqual(analysis_execution._build_persona_prompt(_BareAgent(), "visual"), "말투")
 
     def test_visual_instruction_requires_figure_grounding(self):
-        instruction = analysis_routes._VISUAL_INSTRUCTION
+        instruction = analysis_execution._VISUAL_INSTRUCTION
         self.assertIn("Fig.", instruction)                # 출처 표기 예시
         self.assertIn("판독 불가", instruction)            # 추측 금지
         self.assertIn("본문", instruction)                 # 그림-본문 일치 확인
@@ -1691,15 +1707,16 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(m.MODEL_VIZ_PLANNING, MODEL_FLASH_HQ)
         self.assertEqual(m.MODEL_MERMAID, MODEL_FLASH_HQ)
         # 체인 스테이지 → 모델 매핑이 레지스트리 조회(_stage_choice)를 사용
-        self.assertEqual(analysis_routes._stage_choice("visual", "gemini").model, m.MODEL_VISUAL)
-        self.assertEqual(analysis_routes._stage_choice("recipe", "gemini").model, m.MODEL_RECIPE)
-        self.assertEqual(analysis_routes._stage_choice("deep_dive", "gemini").model, m.MODEL_DEEP_DIVE)
-        self.assertEqual(analysis_routes._stage_choice("visualization", "gemini").model, m.MODEL_VIZ_PLANNING)
+        self.assertEqual(analysis_execution._stage_choice("visual", "gemini").model, m.MODEL_VISUAL)
+        self.assertEqual(analysis_execution._stage_choice("recipe", "gemini").model, m.MODEL_RECIPE)
+        self.assertEqual(analysis_execution._stage_choice("deep_dive", "gemini").model, m.MODEL_DEEP_DIVE)
+        self.assertEqual(analysis_execution._stage_choice("visualization", "gemini").model, m.MODEL_VIZ_PLANNING)
 
     def test_norm_ref_id_normalizes_bracket_and_space(self):
-        self.assertEqual(analysis_routes._norm_ref_id("[1]"), analysis_routes._norm_ref_id(" 1 "))
-        self.assertEqual(analysis_routes._norm_ref_id("[12]"), analysis_routes._norm_ref_id("12"))
-        self.assertNotEqual(analysis_routes._norm_ref_id("1"), analysis_routes._norm_ref_id("2"))
+        self.assertEqual(analysis_execution._norm_ref_id("[1]"), analysis_execution._norm_ref_id(" 1 "))
+        self.assertEqual(analysis_execution._norm_ref_id("[12]"), analysis_execution._norm_ref_id("12"))
+        self.assertNotEqual(analysis_execution._norm_ref_id("1"), analysis_execution._norm_ref_id("2"))
+
 
     def test_norm_ref_merge_prefers_first_duplicate_key(self):
         # 정규화 후 동일 키가 되는 항목이 2개면 원본 의미(첫 매치 우선)를 보존해야 한다
@@ -1707,12 +1724,12 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             {"ref_id": "[1]", "title": "first"},
             {"ref_id": "(1)", "title": "second"},  # 정규화 후 같은 키 "1"
         ]
-        mapping = analysis_routes._build_top_by_norm(top_cited)
+        mapping = analysis_execution._build_top_by_norm(top_cited)
         self.assertEqual(mapping["1"]["title"], "first")
 
     def test_citation_merge_warns_on_unmatched_ref_id(self):
         top_cited = [{"ref_id": "[1]", "title": "t"}]
-        mapping = analysis_routes._build_top_by_norm(top_cited)
+        mapping = analysis_execution._build_top_by_norm(top_cited)
         self.assertNotIn("99", mapping)  # 매치 실패 케이스가 존재함을 고정
 
     async def test_citation_merge_tolerates_ref_id_format_drift(self):
@@ -1739,11 +1756,11 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch("services.citation_analyzer.analyze_citations", return_value=fake_analysis),
-            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.call_interaction", new=_fake_call),
-            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution.call_interaction", new=_fake_call),
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
         ):
-            result = await analysis_routes._run_citation(
+            result = await analysis_execution._run_citation(
                 7, sections={}, citation_body="본문", citation_references="[1] Kim 2024",
                 paper_authors="Kim", status=status,
             )
@@ -1761,11 +1778,11 @@ class ParseFailurePhaseStatusTest(unittest.IsolatedAsyncioTestCase):
         broken = {"text": "이건 JSON이 아니다 {{{", "model": MODEL_FLASH_LITE,
                   "tokens_in": 10, "tokens_out": 10, "interaction_id": None}
         with (
-            patch("api.analysis_routes.call_interaction", new=AsyncMock(return_value=broken)),
-            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+            patch("services.analysis_execution.call_interaction", new=AsyncMock(return_value=broken)),
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
         ):
-            await analysis_routes._run_screening(7, "본문 내용", status)
+            await analysis_execution._run_screening(7, "본문 내용", status)
         phase = next(p for p in status.phases if p.phase.value == "screening")
         self.assertEqual(phase.status, "error")
         self.assertTrue(phase.error_message)
@@ -1787,6 +1804,9 @@ class BudgetParityTests(unittest.IsolatedAsyncioTestCase):
         )
         self._active_provider_patch.start()
         self.addCleanup(self._active_provider_patch.stop)
+        stage_provider = patch("services.analysis_execution.active_provider", new=AsyncMock(return_value="gemini"))
+        stage_provider.start()
+        self.addCleanup(stage_provider.stop)
 
     async def test_read_budget_state_matches_run_route_calculation(self):
         import re
@@ -1936,6 +1956,9 @@ class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):
         )
         self._active_provider_patch.start()
         self.addCleanup(self._active_provider_patch.stop)
+        stage_provider = patch("services.analysis_execution.active_provider", new=AsyncMock(return_value="gemini"))
+        stage_provider.start()
+        self.addCleanup(stage_provider.stop)
 
     async def test_figure_prompt_uses_figure_detail_context_and_latest_phase_snippets(self):
         paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "ai_ml", "agent_used": "neural"}
@@ -1981,6 +2004,9 @@ class MermaidRepairAndRegenerateTests(unittest.IsolatedAsyncioTestCase):
         )
         self._active_provider_patch.start()
         self.addCleanup(self._active_provider_patch.stop)
+        stage_provider = patch("services.analysis_execution.active_provider", new=AsyncMock(return_value="gemini"))
+        stage_provider.start()
+        self.addCleanup(stage_provider.stop)
 
     def _viz_row(self, items):
         payload = {"items": items, "total_count": len(items), "complete": True}
@@ -2070,7 +2096,7 @@ class MermaidRepairAndRegenerateTests(unittest.IsolatedAsyncioTestCase):
             patch("api.analysis_routes.get_latest_completed_phase_row", new=AsyncMock(return_value=self._viz_row(items))),
             patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value={"recipe": _row("recipe", '{"title":"r"}')})),
             patch("api.analysis_routes.execute_update", new=update_mock),
-            patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("services.analysis_execution.call_interaction", new=_fake_call),
         ):
             response = await analysis_routes.regenerate_visualization(7, 3)
 
@@ -2111,7 +2137,7 @@ class VisualizationCacheKeyTests(unittest.TestCase):
             image_quality="high",
         )
         args.update(overrides)
-        return analysis_routes._visualization_cache_input(**args)
+        return analysis_execution._visualization_cache_input(**args)
 
     def test_same_inputs_give_same_key(self):
         self.assertEqual(self._key(), self._key())
@@ -2131,15 +2157,15 @@ class VisualizationCacheKeyTests(unittest.TestCase):
         # 바깥 캐시는 그 키를 거치지 않는다. 모델을 담지 않으면 모델 교체 후에도 옛 모델이
         # 만든 계획과 이미지가 그대로 나온다.
         base = self._key()
-        with patch.object(analysis_routes, "MODEL_VIZ_PLANNING", "other-plan-model"):
+        with patch.object(analysis_execution, "MODEL_VIZ_PLANNING", "other-plan-model"):
             self.assertNotEqual(base, self._key())
-        with patch.object(analysis_routes, "MODEL_MERMAID", "other-mermaid-model"):
+        with patch.object(analysis_execution, "MODEL_MERMAID", "other-mermaid-model"):
             self.assertNotEqual(base, self._key())
 
     def test_chain_version_is_part_of_the_key(self):
         # 다른 phase는 전부 _CHAIN_CACHE_VERSION을 키에 담는데 이 phase만 빠져 있었다.
         # 버전을 올려도 시각화만 옛 결과를 재사용하면 체인이 서로 어긋난다.
-        self.assertIn(analysis_routes._CHAIN_CACHE_VERSION, self._key())
+        self.assertIn(analysis_execution._CHAIN_CACHE_VERSION, self._key())
 
 
 class ChainStageSalvageTests(unittest.TestCase):
@@ -2173,8 +2199,8 @@ class ChainStageSalvageTests(unittest.TestCase):
 
         import asyncio
 
-        with patch.object(analysis_routes, "call_interaction", fake_call):
-            result = asyncio.run(analysis_routes._run_chain_stage(
+        with patch.object(analysis_execution, "call_interaction", fake_call):
+            result = asyncio.run(analysis_execution._run_chain_stage(
                 phase="recipe",
                 prompt_chain="c",
                 prompt_fallback="f",
@@ -2227,7 +2253,7 @@ class StageThinkingLevelTests(unittest.TestCase):
     def test_chain_stages_use_levels_the_stage_model_accepts(self):
         bad = {
             (provider, stage): choice.effort
-            for stage, role in analysis_routes._PHASE_TO_ROLE.items()
+            for stage, role in analysis_execution._PHASE_TO_ROLE.items()
             for provider in ("gemini", "openai")
             for choice in (resolve_model(role, provider),)
             if choice.effort not in self.SUPPORTED
@@ -2256,21 +2282,23 @@ class CitationCacheKeyTests(unittest.TestCase):
                 }
             ],
         }
-        return analysis_routes._citation_cache_key(local_result, "인용 본문")
+        return analysis_execution._citation_cache_key(local_result, "인용 본문")
 
     def test_same_inputs_give_same_key(self):
         self.assertEqual(self._key(), self._key())
 
     def test_model_change_invalidates_the_key(self):
         base = self._key()
-        with patch.object(analysis_routes, "MODEL_CITATION", "other-citation-model"):
+        with patch.object(analysis_execution, "MODEL_CITATION", "other-citation-model"):
             self.assertNotEqual(base, self._key())
 
     def test_content_still_changes_the_key(self):
         local_result = {"total_references": 9, "citation_style": "author-year", "top_cited": []}
         self.assertNotEqual(
-            self._key(), analysis_routes._citation_cache_key(local_result, "인용 본문")
+            self._key(), analysis_execution._citation_cache_key(local_result, "인용 본문")
         )
+
+
 
 
 class SanitizeMermaidCodeTests(unittest.TestCase):
@@ -2284,7 +2312,7 @@ class SanitizeMermaidCodeTests(unittest.TestCase):
             '    A["시작"] --> B\n'
             "```"
         )
-        cleaned = analysis_routes._sanitize_mermaid_code(raw)
+        cleaned = analysis_execution._sanitize_mermaid_code(raw)
         self.assertTrue(cleaned.startswith("flowchart TD"))
         self.assertNotIn("accTitle", cleaned)
         self.assertNotIn("accDescr", cleaned)
@@ -2293,13 +2321,13 @@ class SanitizeMermaidCodeTests(unittest.TestCase):
 
     def test_strips_init_directive(self):
         raw = '%%{init: {"theme": "forest"}}%%\nflowchart LR\n    A --> B'
-        cleaned = analysis_routes._sanitize_mermaid_code(raw)
+        cleaned = analysis_execution._sanitize_mermaid_code(raw)
         self.assertTrue(cleaned.startswith("flowchart LR"))
         self.assertNotIn("%%{init", cleaned)
 
     def test_drops_prose_before_diagram_keyword(self):
         raw = "다음은 다이어그램입니다:\n\nflowchart TD\n    A --> B"
-        cleaned = analysis_routes._sanitize_mermaid_code(raw)
+        cleaned = analysis_execution._sanitize_mermaid_code(raw)
         self.assertTrue(cleaned.startswith("flowchart TD"))
 
     def test_preserves_styling_statements(self):
@@ -2309,11 +2337,11 @@ class SanitizeMermaidCodeTests(unittest.TestCase):
             "    classDef data fill:#1e3a5f,stroke:#4a9eff,stroke-width:2px,color:#e8f4ff\n"
             "    classDef process fill:#3b2a5f,stroke:#a78bfa,stroke-width:2px,color:#f3e8ff"
         )
-        self.assertEqual(analysis_routes._sanitize_mermaid_code(raw), raw)
+        self.assertEqual(analysis_execution._sanitize_mermaid_code(raw), raw)
 
     def test_plain_code_passes_through(self):
         raw = "flowchart TD\nA-->B"
-        self.assertEqual(analysis_routes._sanitize_mermaid_code(raw), raw)
+        self.assertEqual(analysis_execution._sanitize_mermaid_code(raw), raw)
 
     def test_keeps_linkstyle_with_valid_indices(self):
         raw = (
@@ -2324,7 +2352,7 @@ class SanitizeMermaidCodeTests(unittest.TestCase):
             "    linkStyle 0,2 stroke:#4a9eff,stroke-width:2.5px\n"
             "    linkStyle default stroke:#888"
         )
-        self.assertEqual(analysis_routes._sanitize_mermaid_code(raw), raw)
+        self.assertEqual(analysis_execution._sanitize_mermaid_code(raw), raw)
 
     def test_drops_out_of_range_linkstyle_lines(self):
         raw = (
@@ -2335,7 +2363,7 @@ class SanitizeMermaidCodeTests(unittest.TestCase):
             "    linkStyle 5 stroke:#fb7185\n"
             "    linkStyle default stroke:#888"
         )
-        cleaned = analysis_routes._sanitize_mermaid_code(raw)
+        cleaned = analysis_execution._sanitize_mermaid_code(raw)
         self.assertIn("linkStyle 1 stroke:#4a9eff", cleaned)
         self.assertNotIn("linkStyle 5", cleaned)
         self.assertIn("linkStyle default", cleaned)
@@ -2348,7 +2376,7 @@ class SanitizeMermaidCodeTests(unittest.TestCase):
             "    linkStyle 2 stroke:#34d399\n"
             "    linkStyle 3 stroke:#fb7185"
         )
-        cleaned = analysis_routes._sanitize_mermaid_code(raw)
+        cleaned = analysis_execution._sanitize_mermaid_code(raw)
         self.assertIn("linkStyle 2", cleaned)  # 3 edges → index 2 valid
         self.assertNotIn("linkStyle 3", cleaned)
 
@@ -2359,13 +2387,13 @@ class SanitizeMermaidCodeTests(unittest.TestCase):
             "    linkStyle 0 stroke:#4a9eff\n"
             "    linkStyle default stroke:#888"
         )
-        cleaned = analysis_routes._sanitize_mermaid_code(raw)
+        cleaned = analysis_execution._sanitize_mermaid_code(raw)
         self.assertNotIn("linkStyle 0", cleaned)
         self.assertIn("linkStyle default", cleaned)
 
     def test_linkstyle_untouched_for_non_flowchart(self):
         raw = "sequenceDiagram\n    A->>B: 요청\n    B-->>A: 응답"
-        self.assertEqual(analysis_routes._sanitize_mermaid_code(raw), raw)
+        self.assertEqual(analysis_execution._sanitize_mermaid_code(raw), raw)
 
     def test_edge_count_ignores_arrows_inside_quoted_labels(self):
         raw = (
@@ -2373,7 +2401,7 @@ class SanitizeMermaidCodeTests(unittest.TestCase):
             '    A["증가 --> 감소"] --> B\n'
             "    linkStyle 0 stroke:#4a9eff"
         )
-        self.assertEqual(analysis_routes._sanitize_mermaid_code(raw), raw)
+        self.assertEqual(analysis_execution._sanitize_mermaid_code(raw), raw)
 
 
 class ChainStageTests(unittest.IsolatedAsyncioTestCase):
@@ -2390,8 +2418,8 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_chain_first_call_includes_pdf_document(self):
         captured = {}
-        with patch("api.analysis_routes.call_interaction", new=self._capturing_fake(captured)):
-            result = await analysis_routes._run_chain_stage(
+        with patch("services.analysis_execution.call_interaction", new=self._capturing_fake(captured)):
+            result = await analysis_execution._run_chain_stage(
                 phase="visual",
                 prompt_chain="CHAIN-PROMPT",
                 prompt_fallback="FALLBACK-PROMPT",
@@ -2412,8 +2440,8 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_chain_continuation_uses_previous_id_and_no_pdf(self):
         captured = {}
-        with patch("api.analysis_routes.call_interaction", new=self._capturing_fake(captured)):
-            await analysis_routes._run_chain_stage(
+        with patch("services.analysis_execution.call_interaction", new=self._capturing_fake(captured)):
+            await analysis_execution._run_chain_stage(
                 phase="deep_dive",
                 prompt_chain="CHAIN-PROMPT",
                 prompt_fallback="FALLBACK-PROMPT",
@@ -2430,8 +2458,8 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_fallback_is_stateless_text_path(self):
         captured = {}
-        with patch("api.analysis_routes.call_interaction", new=self._capturing_fake(captured)):
-            await analysis_routes._run_chain_stage(
+        with patch("services.analysis_execution.call_interaction", new=self._capturing_fake(captured)):
+            await analysis_execution._run_chain_stage(
                 phase="recipe",
                 prompt_chain="CHAIN-PROMPT",
                 prompt_fallback="FALLBACK-PROMPT",
@@ -2455,16 +2483,16 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
             return {"text": '{"ok": true}', "model": "gpt-5.6-luna",
                     "tokens_in": 10, "tokens_out": 5, "interaction_id": f"resp_{len(calls)}"}
 
-        with patch("api.analysis_routes.call_interaction", new=_fake_call):
+        with patch("services.analysis_execution.call_interaction", new=_fake_call):
             # 첫 스테이지: previous_interaction_id 없음 -> doc_text 포함
-            r1 = await analysis_routes._run_chain_stage(
+            r1 = await analysis_execution._run_chain_stage(
                 phase="visual", prompt_chain="지시1", prompt_fallback="폴백",
                 system_instruction="si", previous_interaction_id=None,
                 pdf_uri=None, doc_text="논문 전문 텍스트",
                 response_schema={"type": "object"},
             )
             # 후속 스테이지: 체인 id 있음 -> 지시문만
-            await analysis_routes._run_chain_stage(
+            await analysis_execution._run_chain_stage(
                 phase="recipe", prompt_chain="지시2", prompt_fallback="폴백",
                 system_instruction="si",
                 previous_interaction_id=r1["interaction_id"],
@@ -2480,7 +2508,7 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_chain_stage_rejects_both_pdf_and_doc_text(self):
         with self.assertRaises(ValueError):
-            await analysis_routes._run_chain_stage(
+            await analysis_execution._run_chain_stage(
                 phase="visual", prompt_chain="지시", prompt_fallback="폴백",
                 system_instruction="si", previous_interaction_id=None,
                 pdf_uri="files/abc", doc_text="텍스트",
@@ -2492,7 +2520,7 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
 
         호출측이 이미 _OPENAI_DOC_TEXT_CHAR_LIMIT으로 잘라 넘기므로, doc_text 길이가
         그 상한 이상이면 절단 라벨, 미만이면 전문 라벨을 붙인다."""
-        limit = analysis_routes._OPENAI_DOC_TEXT_CHAR_LIMIT
+        limit = analysis_execution._OPENAI_DOC_TEXT_CHAR_LIMIT
 
         async def _capture(prompt, **kwargs):
             captured["prompt"] = prompt
@@ -2500,8 +2528,8 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
                     "interaction_id": "i1"}
 
         captured = {}
-        with patch("api.analysis_routes.call_interaction", new=_capture):
-            await analysis_routes._run_chain_stage(
+        with patch("services.analysis_execution.call_interaction", new=_capture):
+            await analysis_execution._run_chain_stage(
                 phase="visual", prompt_chain="지시", prompt_fallback="폴백",
                 system_instruction="si", previous_interaction_id=None,
                 pdf_uri=None, doc_text="짧은 텍스트",
@@ -2511,8 +2539,8 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("절단", captured["prompt"])
 
         captured = {}
-        with patch("api.analysis_routes.call_interaction", new=_capture):
-            await analysis_routes._run_chain_stage(
+        with patch("services.analysis_execution.call_interaction", new=_capture):
+            await analysis_execution._run_chain_stage(
                 phase="visual", prompt_chain="지시", prompt_fallback="폴백",
                 system_instruction="si", previous_interaction_id=None,
                 pdf_uri=None, doc_text="X" * limit,
@@ -2533,11 +2561,11 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
 
         insert_mock = AsyncMock()
         with (
-            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.call_interaction", new=_fake_call),
-            patch("api.analysis_routes._insert_analysis_result", new=insert_mock),
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution.call_interaction", new=_fake_call),
+            patch("services.analysis_execution._insert_analysis_result", new=insert_mock),
         ):
-            await analysis_routes._run_recipe(
+            await analysis_execution._run_recipe(
                 7,
                 "Recipe body",
                 status,
@@ -2569,8 +2597,8 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
                     "tokens_in": 1, "tokens_out": 1, "interaction_id": "resp_1"}
 
         figure_parts = [{"type": "image", "data": "QUJD", "mime_type": "image/png"}]
-        with patch("api.analysis_routes.call_interaction", new=_fake_call):
-            await analysis_routes._run_chain_stage(
+        with patch("services.analysis_execution.call_interaction", new=_fake_call):
+            await analysis_execution._run_chain_stage(
                 phase="visual", prompt_chain="지시1", prompt_fallback="폴백",
                 system_instruction="si", previous_interaction_id=None,
                 pdf_uri=None, doc_text="논문 전문 텍스트",
@@ -2597,8 +2625,8 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
                     "tokens_in": 1, "tokens_out": 1, "interaction_id": "resp_2"}
 
         figure_parts = [{"type": "image", "data": "QUJD", "mime_type": "image/png"}]
-        with patch("api.analysis_routes.call_interaction", new=_fake_call):
-            await analysis_routes._run_chain_stage(
+        with patch("services.analysis_execution.call_interaction", new=_fake_call):
+            await analysis_execution._run_chain_stage(
                 phase="recipe", prompt_chain="지시2", prompt_fallback="폴백",
                 system_instruction="si", previous_interaction_id="resp_1",
                 pdf_uri=None, doc_text="논문 전문 텍스트",
@@ -2617,8 +2645,8 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
             return {"text": '{"ok": true}', "model": "gpt-5.6-luna",
                     "tokens_in": 1, "tokens_out": 1, "interaction_id": "resp_1"}
 
-        with patch("api.analysis_routes.call_interaction", new=_fake_call):
-            await analysis_routes._run_chain_stage(
+        with patch("services.analysis_execution.call_interaction", new=_fake_call):
+            await analysis_execution._run_chain_stage(
                 phase="visual", prompt_chain="지시1", prompt_fallback="폴백",
                 system_instruction="si", previous_interaction_id=None,
                 pdf_uri=None, doc_text="논문 전문 텍스트",
@@ -2637,8 +2665,8 @@ class ChainStageTests(unittest.IsolatedAsyncioTestCase):
                     "tokens_in": 1, "tokens_out": 1, "interaction_id": "resp_1"}
 
         figure_parts = [{"type": "image", "data": "QUJD", "mime_type": "image/png"}]
-        with patch("api.analysis_routes.call_interaction", new=_fake_call):
-            await analysis_routes._run_chain_stage(
+        with patch("services.analysis_execution.call_interaction", new=_fake_call):
+            await analysis_execution._run_chain_stage(
                 phase="visual", prompt_chain="지시1", prompt_fallback="폴백",
                 system_instruction="si", previous_interaction_id=None,
                 pdf_uri="files/uri-123", figure_parts=figure_parts,
@@ -2660,8 +2688,8 @@ class OpenAIFigurePartsTests(unittest.IsolatedAsyncioTestCase):
             (figures_dir / "fig1.png").write_bytes(png_bytes)
 
             rows = [{"file_path": "figures/fig1.png"}]
-            with patch("api.analysis_routes.fetch_all", new=AsyncMock(return_value=rows)):
-                parts = await analysis_routes._load_openai_figure_parts(7, paper_dir)
+            with patch("services.analysis_execution.fetch_all", new=AsyncMock(return_value=rows)):
+                parts = await analysis_execution._load_openai_figure_parts(7, paper_dir)
 
         self.assertEqual(len(parts), 1)
         self.assertEqual(parts[0]["type"], "image")
@@ -2681,23 +2709,23 @@ class OpenAIFigurePartsTests(unittest.IsolatedAsyncioTestCase):
                 {"file_path": "figures/missing.png"},  # 파일 없음 -> 개별 스킵
                 {"file_path": "figures/fig2.png"},      # 정상
             ]
-            with patch("api.analysis_routes.fetch_all", new=AsyncMock(return_value=rows)):
-                parts = await analysis_routes._load_openai_figure_parts(7, paper_dir)
+            with patch("services.analysis_execution.fetch_all", new=AsyncMock(return_value=rows)):
+                parts = await analysis_execution._load_openai_figure_parts(7, paper_dir)
 
         self.assertEqual(len(parts), 1)
         self.assertEqual(base64.b64decode(parts[0]["data"]), png_bytes)
 
     async def test_load_openai_figure_parts_no_rows_returns_empty(self):
-        with patch("api.analysis_routes.fetch_all", new=AsyncMock(return_value=[])):
-            parts = await analysis_routes._load_openai_figure_parts(7, Path("/tmp"))
+        with patch("services.analysis_execution.fetch_all", new=AsyncMock(return_value=[])):
+            parts = await analysis_execution._load_openai_figure_parts(7, Path("/tmp"))
         self.assertEqual(parts, [])
 
     async def test_load_openai_figure_parts_queries_with_limit(self):
         fetch_mock = AsyncMock(return_value=[])
-        with patch("api.analysis_routes.fetch_all", new=fetch_mock):
-            await analysis_routes._load_openai_figure_parts(7, Path("/tmp"))
+        with patch("services.analysis_execution.fetch_all", new=fetch_mock):
+            await analysis_execution._load_openai_figure_parts(7, Path("/tmp"))
         _query, params = fetch_mock.await_args.args
-        self.assertIn(analysis_routes._OPENAI_VISUAL_IMAGE_LIMIT, params)
+        self.assertIn(analysis_execution._OPENAI_VISUAL_IMAGE_LIMIT, params)
 
 
 class ChainPromptWordingByProviderTests(unittest.IsolatedAsyncioTestCase):
@@ -2709,8 +2737,8 @@ class ChainPromptWordingByProviderTests(unittest.IsolatedAsyncioTestCase):
     각 phase 함수를 이 모드로 호출해 문구 조립 로직만 분리 검증한다."""
 
     def test_doc_reference_phrase_by_provider(self):
-        self.assertEqual(analysis_routes._doc_reference_phrase("gemini"), "위 논문 PDF")
-        phrase = analysis_routes._doc_reference_phrase("openai")
+        self.assertEqual(analysis_execution._doc_reference_phrase("gemini"), "위 논문 PDF")
+        phrase = analysis_execution._doc_reference_phrase("openai")
         self.assertNotIn("PDF", phrase)
         self.assertIn("본문 텍스트", phrase)
         self.assertIn("그림", phrase)
@@ -2727,11 +2755,11 @@ class ChainPromptWordingByProviderTests(unittest.IsolatedAsyncioTestCase):
                         "model": "m", "tokens_in": 1, "tokens_out": 1, "interaction_id": "i"}
 
             with (
-                patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-                patch("api.analysis_routes.call_interaction", new=_fake_call),
-                patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+                patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+                patch("services.analysis_execution.call_interaction", new=_fake_call),
+                patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
             ):
-                await analysis_routes._run_recipe(
+                await analysis_execution._run_recipe(
                     7, "Recipe body", status,
                     previous_interaction_id="int_visual",
                     pdf_uri=None, doc_text="논문 전문", provider=provider,
@@ -2760,11 +2788,11 @@ class ChainPromptWordingByProviderTests(unittest.IsolatedAsyncioTestCase):
                         "model": "m", "tokens_in": 1, "tokens_out": 1, "interaction_id": "i"}
 
             with (
-                patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-                patch("api.analysis_routes.call_interaction", new=_fake_call),
-                patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+                patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+                patch("services.analysis_execution.call_interaction", new=_fake_call),
+                patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
             ):
-                await analysis_routes._run_deep_dive(
+                await analysis_execution._run_deep_dive(
                     7, "Deep dive body", [], status,
                     previous_interaction_id="int_recipe",
                     pdf_uri=None, doc_text="논문 전문", provider=provider,
@@ -2793,11 +2821,11 @@ class ChainPromptWordingByProviderTests(unittest.IsolatedAsyncioTestCase):
                         "model": "m", "tokens_in": 1, "tokens_out": 1, "interaction_id": "i"}
 
             with (
-                patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-                patch("api.analysis_routes.call_interaction", new=_fake_call),
-                patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+                patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+                patch("services.analysis_execution.call_interaction", new=_fake_call),
+                patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
             ):
-                await analysis_routes._plan_visualizations(
+                await analysis_execution._plan_visualizations(
                     7, "Viz input", [], status,
                     previous_interaction_id="int_deepdive",
                     pdf_uri=None, doc_text="논문 전문", provider=provider,
@@ -2832,14 +2860,14 @@ class ChainPromptWordingByProviderTests(unittest.IsolatedAsyncioTestCase):
                         "model": "m", "tokens_in": 1, "tokens_out": 1, "interaction_id": "i"}
 
             with (
-                patch("api.analysis_routes._get_visual_contract", new=AsyncMock(return_value=visual_contract)),
-                patch("api.analysis_routes.get_paper_dir", return_value="/tmp/paper"),
-                patch("api.analysis_routes.fetch_all", new=AsyncMock(side_effect=[figures, []])),
-                patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-                patch("api.analysis_routes.call_interaction", new=_fake_call),
-                patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+                patch("services.analysis_execution._get_visual_contract", new=AsyncMock(return_value=visual_contract)),
+                patch("services.analysis_execution.get_paper_dir", return_value="/tmp/paper"),
+                patch("services.analysis_execution.fetch_all", new=AsyncMock(side_effect=[figures, []])),
+                patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+                patch("services.analysis_execution.call_interaction", new=_fake_call),
+                patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
             ):
-                await analysis_routes._run_visual(
+                await analysis_execution._run_visual(
                     7, "Visual input", "folder", status,
                     previous_interaction_id="int_prev",
                     pdf_uri=None, doc_text="논문 전문", provider=provider,
@@ -2987,36 +3015,36 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
             "services.agents": agents_stub,
             "api.settings": settings_stub,
         }))
-        stack.enter_context(patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)))
-        stack.enter_context(patch("api.analysis_routes.fetch_all", new=AsyncMock(side_effect=[figures, tables])))
-        stack.enter_context(patch("api.analysis_routes.get_paper_dir", return_value="/tmp/paper"))
-        stack.enter_context(patch("api.analysis_routes.load_or_build_document_context",
+        stack.enter_context(patch("services.analysis_execution.fetch_one", new=AsyncMock(return_value=paper)))
+        stack.enter_context(patch("services.analysis_execution.fetch_all", new=AsyncMock(side_effect=[figures, tables])))
+        stack.enter_context(patch("services.analysis_execution.get_paper_dir", return_value="/tmp/paper"))
+        stack.enter_context(patch("services.analysis_execution.load_or_build_document_context",
                                   return_value={
                                       "phase_inputs": phase_inputs, "sections": {},
                                       "full_text": self._FULL_TEXT,
                                   }))
-        stack.enter_context(patch("api.analysis_routes.schedule_paper_artifacts_refresh", new=AsyncMock()))
-        stack.enter_context(patch("api.analysis_routes.execute_update", new=AsyncMock()))
-        stack.enter_context(patch("api.analysis_routes.execute_insert", new=AsyncMock(return_value=1)))
-        stack.enter_context(patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()))
-        stack.enter_context(patch("api.analysis_routes._find_paper_pdf", return_value="/tmp/paper/x.pdf"))
-        stack.enter_context(patch("api.analysis_routes._run_screening", new=screening_mock))
-        stack.enter_context(patch("api.analysis_routes._run_citation", new=citation_mock))
-        stack.enter_context(patch("api.analysis_routes._get_visual_contract",
+        stack.enter_context(patch("services.analysis_execution.schedule_paper_artifacts_refresh", new=AsyncMock()))
+        stack.enter_context(patch("services.analysis_execution.execute_update", new=AsyncMock()))
+        stack.enter_context(patch("services.analysis_execution.execute_insert", new=AsyncMock(return_value=1)))
+        stack.enter_context(patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()))
+        stack.enter_context(patch("services.analysis_execution._find_paper_pdf", return_value="/tmp/paper/x.pdf"))
+        stack.enter_context(patch("services.analysis_execution._run_screening", new=screening_mock))
+        stack.enter_context(patch("services.analysis_execution._run_citation", new=citation_mock))
+        stack.enter_context(patch("services.analysis_execution._get_visual_contract",
                                   new=AsyncMock(return_value=visual_ready_contract)))
         # 시각화 캐시 키가 이미지 설정을 읽는다(_visualization_cache_input) — DB에 닿지 않게 막는다.
-        stack.enter_context(patch("api.analysis_routes._get_all_settings",
+        stack.enter_context(patch("services.analysis_execution._get_all_settings",
                                   new=AsyncMock(return_value={"image_provider": "openai",
                                                              "image_quality": "high"})))
-        stack.enter_context(patch("api.analysis_routes._get_cached_phase_result", new=cache_fake))
-        stack.enter_context(patch("api.analysis_routes.call_interaction", new=call_fake))
+        stack.enter_context(patch("services.analysis_execution._get_cached_phase_result", new=cache_fake))
+        stack.enter_context(patch("services.analysis_execution.call_interaction", new=call_fake))
         stack.enter_context(patch(
-            "api.analysis_routes.active_provider", new=AsyncMock(return_value=provider),
+            "services.analysis_execution.active_provider", new=AsyncMock(return_value=provider),
         ))
         # deep_dive만 provider가 갈릴 수 있다(DEC-019). 기본은 파이프라인 provider와
         # 같게 둬 체인이 그대로 이어지고, 갈림을 검증하는 테스트만 값을 다르게 준다.
         stack.enter_context(patch(
-            "api.analysis_routes.provider_for_role",
+            "services.analysis_execution.provider_for_role",
             new=AsyncMock(return_value=deep_dive_provider or provider),
         ))
         # I3: provider=openai일 때만 실제로 쓰이는 그림 이미지 로더. 직접 패치해
@@ -3024,14 +3052,31 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         # fetch_all을 태우지 않아 위 figures/tables용 side_effect 순서를 건드리지
         # 않는다. 그림 파트 자체를 검증하는 테스트는 openai_figure_parts로 값을 준다.
         stack.enter_context(patch(
-            "api.analysis_routes._load_openai_figure_parts",
+            "services.analysis_execution._load_openai_figure_parts",
             new=AsyncMock(return_value=openai_figure_parts or []),
         ))
         if visual_result is not None:
-            stack.enter_context(patch("api.analysis_routes._run_visual",
+            stack.enter_context(patch("services.analysis_execution._run_visual",
                                       new=AsyncMock(return_value=visual_result)))
         with stack:
             yield sys_instruction_calls
+
+    async def test_cancel_after_screening_stops_later_stages(self):
+        async def cancel_screening(paper_id, *args, **kwargs):
+            analysis_execution._cancel_events[paper_id].set()
+            return {"text": self._SCREENING_TEXT}
+
+        with self._orchestration_patches(cache_fake=AsyncMock(return_value=None), call_fake=AsyncMock()):
+            with (
+                patch("services.analysis_execution._run_screening", new=cancel_screening),
+                patch("services.analysis_execution._run_citation", new=AsyncMock()) as citation,
+                patch("services.analysis_execution.execute_update", new=AsyncMock()) as update,
+            ):
+                await analysis_execution.run_full_analysis(7)
+            citation.assert_not_awaited()
+            update.assert_any_await("UPDATE papers SET status = ? WHERE id = ?", ("cancelled", 7))
+            self.assertEqual(analysis_execution._running_analyses[7].overall_status, "cancelled")
+            self.assertNotIn(7, analysis_execution._cancel_events)
 
     async def test_chain_forwards_previous_interaction_id_linearly(self):
         calls = []
@@ -3041,7 +3086,7 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
             return None
 
         with self._orchestration_patches(cache_fake=_cache_none, call_fake=call_fake) as sys_instruction_calls:
-            await analysis_routes._run_full_analysis(7)
+            await analysis_execution.run_full_analysis(7)
 
         # 체인 스테이지(store=True) 호출만 추출: visual→recipe→deep_dive→viz
         chain_calls = [c for c in calls if c["store"] is True]
@@ -3077,7 +3122,7 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         with self._orchestration_patches(
             cache_fake=_cache_none, call_fake=call_fake, deep_dive_provider="openai",
         ):
-            await analysis_routes._run_full_analysis(7)
+            await analysis_execution.run_full_analysis(7)
 
         chain_calls = [c for c in calls if c["store"] is True]
         self.assertEqual(len(chain_calls), 4)  # visual, recipe, deep_dive, viz
@@ -3108,7 +3153,7 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
             return None
 
         with self._orchestration_patches(cache_fake=_cache_visual_hit, call_fake=call_fake):
-            await analysis_routes._run_full_analysis(7)
+            await analysis_execution.run_full_analysis(7)
 
         # visual 캐시 히트 → interaction_id 유실 → recipe가 체인 재시작 케이스로 첫 call_interaction
         self.assertTrue(calls)
@@ -3145,7 +3190,7 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         with self._orchestration_patches(
             cache_fake=_cache_none, call_fake=call_fake, provider="openai",
         ):
-            await analysis_routes._run_full_analysis(7)
+            await analysis_execution.run_full_analysis(7)
 
         # PDF는 여전히 업로드되지 않는다 — gemini 전용 경로.
         self.assertEqual(self._last_upload_calls, [])
@@ -3191,7 +3236,7 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         with self._orchestration_patches(
             cache_fake=_cache_visual_hit, call_fake=call_fake, provider="openai",
         ):
-            await analysis_routes._run_full_analysis(7)
+            await analysis_execution.run_full_analysis(7)
 
         # visual 캐시 히트 → interaction_id 유실 → recipe가 체인 재시작 케이스로 첫 call_interaction
         self.assertTrue(calls)
@@ -3218,7 +3263,7 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
             cache_fake=_cache_none, call_fake=call_fake, provider="openai",
             openai_figure_parts=figure_parts,
         ):
-            await analysis_routes._run_full_analysis(7)
+            await analysis_execution.run_full_analysis(7)
 
         chain_calls = [c for c in calls if c["store"] is True]
         first_contents = chain_calls[0]["contents"]
@@ -3264,11 +3309,11 @@ class CitationPromptTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch("services.citation_analyzer.analyze_citations", return_value=fake_analysis),
-            patch("api.analysis_routes._get_cached_phase_result", new=AsyncMock(return_value=None)),
-            patch("api.analysis_routes.call_interaction", new=_fake_call),
-            patch("api.analysis_routes._insert_analysis_result", new=AsyncMock()),
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution.call_interaction", new=_fake_call),
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
         ):
-            await analysis_routes._run_citation(
+            await analysis_execution._run_citation(
                 7, sections={}, citation_body="본문", citation_references="[1] Kim 2024",
                 paper_authors="Kim", status=status,
             )
@@ -3284,18 +3329,18 @@ class PhaseCacheKeyTest(unittest.TestCase):
 
     def test_system_instruction_changes_key(self):
         base = dict(model="m1", thinking="low", prompt="P")
-        k1 = analysis_routes._phase_cache_key(system_instruction="박사생 대상", **base)
-        k2 = analysis_routes._phase_cache_key(system_instruction="초등학생 대상", **base)
+        k1 = analysis_execution._phase_cache_key(system_instruction="박사생 대상", **base)
+        k2 = analysis_execution._phase_cache_key(system_instruction="초등학생 대상", **base)
         self.assertNotEqual(k1, k2)
 
     def test_model_changes_key(self):
-        k1 = analysis_routes._phase_cache_key(model="m1", thinking="low", system_instruction="s", prompt="P")
-        k2 = analysis_routes._phase_cache_key(model="m2", thinking="low", system_instruction="s", prompt="P")
+        k1 = analysis_execution._phase_cache_key(model="m1", thinking="low", system_instruction="s", prompt="P")
+        k2 = analysis_execution._phase_cache_key(model="m2", thinking="low", system_instruction="s", prompt="P")
         self.assertNotEqual(k1, k2)
 
     def test_deterministic(self):
         args = dict(model="m1", thinking="low", system_instruction="s", prompt="P")
-        self.assertEqual(analysis_routes._phase_cache_key(**args), analysis_routes._phase_cache_key(**args))
+        self.assertEqual(analysis_execution._phase_cache_key(**args), analysis_execution._phase_cache_key(**args))
 
 
 class SystemInstructionContractTests(unittest.TestCase):
@@ -3485,6 +3530,8 @@ class GetRecipeEvidenceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNone(response["evidence"])
         self.assertEqual(response["recipe"], row["parsed_result"])
+
+
 
 
 if __name__ == "__main__":

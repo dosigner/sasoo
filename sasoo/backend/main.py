@@ -102,6 +102,8 @@ async def bootstrap_runtime(worker: bool = False) -> None:
         logging.basicConfig(level=logging.INFO)
     else:
         await init_db()
+        from api.settings import _ensure_defaults
+        await _ensure_defaults()
 
         # Set up centralized logging (file + console)
         from services.log_setup import setup_logging

@@ -116,28 +116,28 @@ class TestBuildVisualFigureDesc(unittest.TestCase):
 
 class TestStagePromptBuilders(unittest.TestCase):
     def test_screening_prompt_embeds_input_and_uses_real_schema(self):
-        from api import analysis_routes as ar
+        from services import analysis_execution as ar
 
         prompt, schema = screening_prompt("이 논문은 ...")
         self.assertIn("이 논문은 ...", prompt)
         self.assertIs(schema, ar._SCREENING_SCHEMA)
 
     def test_visual_prompt_uses_real_instruction_and_schema(self):
-        from api import analysis_routes as ar
+        from services import analysis_execution as ar
 
         prompt, schema = visual_prompt({"figures": [], "tables": []})
         self.assertIn(ar._VISUAL_INSTRUCTION, prompt)
         self.assertIs(schema, ar._VISUAL_SCHEMA)
 
     def test_recipe_prompt_uses_real_schema(self):
-        from api import analysis_routes as ar
+        from services import analysis_execution as ar
 
         prompt, schema = recipe_prompt()
         self.assertIn("재현 가능한 실험 레시피", prompt)
         self.assertIs(schema, ar._RECIPE_SCHEMA)
 
     def test_deep_dive_prompt_uses_real_instruction_and_schema(self):
-        from api import analysis_routes as ar
+        from services import analysis_execution as ar
 
         prompt, schema = deep_dive_prompt()
         self.assertIn(ar._DEEP_DIVE_INSTRUCTION, prompt)
@@ -154,7 +154,7 @@ class TestStagePromptBuilders(unittest.TestCase):
         self.assertEqual(local_result.get("total_references", 0), 0)
 
     def test_citation_prompt_builds_when_references_parseable(self):
-        from api import analysis_routes as ar
+        from services import analysis_execution as ar
 
         references = (
             "[1] Kim, J. (2020). A Great Method. Journal of Things.\n"

@@ -158,24 +158,26 @@ def _iso_shift(now: "datetime", seconds: int) -> str:
     return (now - timedelta(seconds=seconds)).isoformat()
 
 
-async def read_max_concurrent() -> int:
+async def read_max_concurrent(settings: dict[str, str] | None = None) -> int:
     try:
         from api.settings import _get_all_settings
-        settings = await _get_all_settings()
+        if settings is None:
+            settings = await _get_all_settings()
         return max(1, int(settings.get("max_concurrent_analyses", "3")))
     except Exception:
         return 3
 
 
-async def read_budget_state() -> tuple[float, float]:
+async def read_budget_state(settings: dict[str, str] | None = None) -> tuple[float, float]:
     """(현재 지출, 월 한도) — /run(api/analysis_routes.py)의 예산 계산식과 동일한 값을 내야
     한다(테스트로 고정). 월 시작~다음달 시작 범위, phase != 'error' 제외, 기본 한도 50.0,
     api.settings._get_all_settings 사용. 리컨실러의 자동 재개 경로에도 /run과 같은 한도를
     적용하기 위해 분리했다 — 계산식이 갈라지면 한도의 의미가 무너진다."""
     from api.settings import _get_all_settings
-    from models.database import fetch_all
+    from models.database import fetch_one
 
-    settings = await _get_all_settings()
+    if settings is None:
+        settings = await _get_all_settings()
     monthly_limit = float(settings.get("monthly_budget_limit", "50.0"))
 
     now = datetime.now(timezone.utc)
@@ -188,15 +190,16 @@ async def read_budget_state() -> tuple[float, float]:
     else:
         month_end = f"{year}-{month_num + 1:02d}-01"
 
-    cost_rows = await fetch_all(
-        "SELECT cost_usd FROM analysis_results WHERE created_at >= ? AND created_at < ? AND phase != 'error'",
+    cost_row = await fetch_one(
+        "SELECT COALESCE(SUM(cost_usd), 0) AS spending FROM analysis_results "
+        "WHERE created_at >= ? AND created_at < ? AND phase != 'error'",
         (month_start, month_end),
     )
-    current_spending = sum(r.get("cost_usd") or 0.0 for r in cost_rows)
+    current_spending = float(cost_row["spending"])
     return current_spending, monthly_limit
 
 
-async def reconcile_once(conn, cap: int, spawn=spawn_worker) -> None:
+async def reconcile_once(conn, cap: int | None = None, spawn=spawn_worker) -> None:
     """stale 조정 → attempts 정리 → cap까지 claim+spawn."""
     now_dt = datetime.now(timezone.utc)
     now = now_dt.isoformat()
@@ -224,8 +227,16 @@ async def reconcile_once(conn, cap: int, spawn=spawn_worker) -> None:
     # 고아 분석이 그대로 재개돼 계속 과금됐다 — 한도의 의미가 무너지는 결함이었다.
     # 예산 조회 실패(예외)는 가용성 우선 원칙상 드레인을 막지 않는다(경고 로그만).
     try:
-        current_spending, monthly_limit = await read_budget_state()
+        if cap is None:
+            from api.settings import _get_all_settings
+            settings = await _get_all_settings()
+            cap = await read_max_concurrent(settings)
+            current_spending, monthly_limit = await read_budget_state(settings)
+        else:
+            current_spending, monthly_limit = await read_budget_state()
     except Exception as exc:  # noqa: BLE001
+        if cap is None:
+            cap = 3
         logger.warning("예산 조회 실패 — 드레인 계속: %s", exc)
     else:
         if current_spending >= monthly_limit:
@@ -271,8 +282,7 @@ async def _reconciler_loop(app) -> None:
     while True:
         try:
             conn = await get_db()
-            cap = await read_max_concurrent()
-            await reconcile_once(conn, cap=cap)
+            await reconcile_once(conn)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001

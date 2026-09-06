@@ -81,6 +81,10 @@ jobs:
         shell: pwsh
         run: pnpm test:unit
 
+      - name: Clean Windows build directories
+        shell: pwsh
+        run: pnpm clean:win
+
       - name: Compile Electron
         shell: pwsh
         run: pnpm build:electron
@@ -141,7 +145,12 @@ jobs:
         shell: pwsh
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: pnpm build:win
+        run: |
+          pnpm build:backend
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm exec electron-builder --win --publish never
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm verify:win-artifact
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

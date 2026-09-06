@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MODEL = os.environ.get("SPIKE_MODEL", "gpt-5.6-luna")
 
 # 프로덕션 스키마를 그대로 가져와 strict:false 준수율을 본다 (R8-3)
-from api.analysis_routes import _SCREENING_SCHEMA  # noqa: E402
+from services.analysis_execution import _SCREENING_SCHEMA  # noqa: E402
 
 RESULTS: dict = {"model": MODEL}
 

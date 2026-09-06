@@ -82,11 +82,11 @@ async def _reporter_and_cancel_bridge(
 async def run_analysis_worker(paper_id: int, generation: int) -> int:
     from main import bootstrap_runtime
     from models.database import get_db, open_side_connection
-    from api.analysis_routes import _run_full_analysis
+    from services.analysis_execution import run_full_analysis
 
     await bootstrap_runtime(worker=True)
     side_conn = await open_side_connection()
-    main_task = asyncio.create_task(_run_full_analysis(paper_id))
+    main_task = asyncio.create_task(run_full_analysis(paper_id))
     side = asyncio.create_task(_reporter_and_cancel_bridge(paper_id, generation, main_task, side_conn))
 
     # 안전망: 루프 내 except가 놓친 경로(루프 밖 예외 등)로 사이드카가 죽어도 본 분석을 중단시킨다.

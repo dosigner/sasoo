@@ -91,64 +91,52 @@ export function usePapers(initialFilters?: PaperFilters): UsePapersReturn {
   );
 
   const mountedRef = useRef(true);
+  const requestRef = useRef(0);
   const debouncedSearch = useDebounce(searchInput, 300);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      requestRef.current += 1;
     };
   }, []);
 
   // Update filters when debounced search changes
   useEffect(() => {
-    setFiltersState((prev) => ({
-      ...prev,
-      search: debouncedSearch || undefined,
-      page: 1, // Reset to first page on search
-    }));
+    setFiltersState((prev) =>
+      (prev.search || undefined) === (debouncedSearch || undefined)
+        ? prev
+        : { ...prev, search: debouncedSearch || undefined, page: 1 }
+    );
   }, [debouncedSearch]);
 
   // -----------------------------------------------------------------------
   // Fetch papers
   // -----------------------------------------------------------------------
   const fetchPapers = useCallback(async () => {
+    const requestId = ++requestRef.current;
+    const isCurrent = () => mountedRef.current && requestRef.current === requestId;
+    const hasActiveFilters = Boolean(
+      filters.domain || filters.year || filters.status || filters.search || filters.tags?.length
+    );
     setLoading(true);
     setError(null);
+    setCompletedTotal(null);
 
     try {
       const response = await getPapers(filters);
-      if (!mountedRef.current) return;
-
+      if (!isCurrent()) return;
       setPapers(response.papers);
       setTotal(response.total);
       setTotalPages(Math.ceil(response.total / (filters.page_size || 20)));
+      setCompletedTotal(hasActiveFilters ? null : response.completed_count ?? null);
     } catch (err) {
-      if (!mountedRef.current) return;
+      if (!isCurrent()) return;
       if (err instanceof Error) console.warn('[papers] load error:', err.message);
       setError(S.error.loadPapersFailed);
     } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-
-    // 분석 완료 수는 서버 total 기준. 검색·필터가 걸린 상태에선 위 total과 분모가
-    // 달라지므로(각각 다른 조건의 결과 수) 조회하지 않고 칩을 숨긴다.
-    const hasActiveFilters = Boolean(
-      filters.domain ||
-        filters.year ||
-        filters.status ||
-        filters.search ||
-        (filters.tags && filters.tags.length > 0)
-    );
-    if (hasActiveFilters) {
-      if (mountedRef.current) setCompletedTotal(null);
-      return;
-    }
-    try {
-      const completedResponse = await getPapers({ status: 'completed', page: 1, page_size: 1 });
-      if (mountedRef.current) setCompletedTotal(completedResponse.total);
-    } catch {
-      if (mountedRef.current) setCompletedTotal(null);
+      if (isCurrent()) setLoading(false);
     }
   }, [filters]);
 
