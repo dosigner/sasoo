@@ -222,7 +222,7 @@ def citation_prompt(phase_inputs: dict, sections: dict, paper_authors: str):
         paper_authors=paper_authors,
     )
     local_result = analysis.to_dict()
-    top_refs = local_result.get("top_cited", [])[:10]
+    top_refs = ar._select_citation_top_refs(local_result)
     if not top_refs:
         return None, None, local_result
 
@@ -249,7 +249,7 @@ def citation_prompt(phase_inputs: dict, sections: dict, paper_authors: str):
 인용 스타일: {local_result.get('citation_style', 'numbered')}
 셀프 인용: {local_result.get('self_citation_count', 0)}건 (비율: {local_result.get('self_citation_ratio', 0):.1%})
 
-가장 많이 인용된 상위 10개 참고문헌과 인용 맥락:
+가장 많이 인용된 상위 {ar._CITATION_TOP_N}개 참고문헌과 인용 맥락:
 {top_refs_text}
 [논문 본문 발췌 (맥락용)]
 {citation_body[:3000]}
@@ -263,7 +263,7 @@ def citation_prompt(phase_inputs: dict, sections: dict, paper_authors: str):
 - why_cited는 왜 자주 인용됐는지 2-3문장(한국어)으로 써.
 - 참고문헌의 실제 내용·존재 여부·학계 전체 영향력은 검증된 것처럼 말하지 마.
 - key_influences는 위에 제시된 참고문헌 안에서만 골라 — 목록에 없는 연구를 추가하지 마.
-- summary는 전체 인용 패턴 평가 2-3문장(한국어). limitations에는 상위 10개와 본문 발췌만 본 평가라는 한계를 한 문장으로 남겨.
+- summary는 전체 인용 패턴 평가 2-3문장(한국어). limitations에는 상위 {ar._CITATION_TOP_N}개와 본문 발췌만 본 평가라는 한계를 한 문장으로 남겨.
 """
     return prompt, ar._CITATION_SCHEMA, local_result
 

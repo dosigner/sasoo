@@ -1717,6 +1717,16 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(analysis_execution._norm_ref_id("[12]"), analysis_execution._norm_ref_id("12"))
         self.assertNotEqual(analysis_execution._norm_ref_id("1"), analysis_execution._norm_ref_id("2"))
 
+    def test_norm_ref_id_keeps_only_the_leading_number(self):
+        # LLM이 저자·연도까지 붙여 돌려줘도 로컬 "[52]"와 매칭돼야 한다 (GR00TN1 role 7건 유실 결함)
+        self.assertEqual(
+            analysis_execution._norm_ref_id("[52] Zhiqi Li et al. (2025)"),
+            analysis_execution._norm_ref_id("[52]"),
+        )
+        self.assertEqual(analysis_execution._norm_ref_id("ref 7"), "7")
+        self.assertEqual(analysis_execution._norm_ref_id("[007]"), analysis_execution._norm_ref_id("7"))
+        # 숫자가 없으면 기존 정규화 그대로
+        self.assertEqual(analysis_execution._norm_ref_id("[Smith2024]"), "smith2024")
 
     def test_norm_ref_merge_prefers_first_duplicate_key(self):
         # 정규화 후 동일 키가 되는 항목이 2개면 원본 의미(첫 매치 우선)를 보존해야 한다
@@ -2358,6 +2368,58 @@ class CitationCacheKeyTests(unittest.TestCase):
         )
 
 
+class CitationTopRefFilterTests(unittest.TestCase):
+    """LLM 역할 분류 후보는 배경 섹션(introduction, acknowledgments) 밖에서 1회 이상
+    인용된 참고문헌만. 순위는 cite_count 순 그대로, 모자라도 채우지 않고, 라벨이 전무한
+    논문(섹션 분할 실패)은 필터를 건너뛴다. 프롬프트와 캐시 키가 같은 목록을 봐야 한다."""
+
+    @staticmethod
+    def _ref(n, **section_counts):
+        return {"ref_id": f"[{n}]", "cite_count": 100 - n, "section_counts": section_counts}
+
+    def test_drops_background_only_refs_and_keeps_cite_count_order(self):
+        top = [
+            self._ref(1, introduction=9),
+            self._ref(2, introduction=3, methods=1),
+            self._ref(3, acknowledgments=1),
+            self._ref(4, results=2),
+            self._ref(5, introduction=1, discussion=1),
+        ]
+        kept = analysis_execution._select_citation_top_refs({"top_cited": top})
+        self.assertEqual([r["ref_id"] for r in kept], ["[2]", "[4]", "[5]"])
+
+    def test_does_not_fill_up_to_top_n(self):
+        top = [self._ref(n, introduction=1) for n in range(1, 10)] + [self._ref(10, methods=1)]
+        kept = analysis_execution._select_citation_top_refs({"top_cited": top})
+        self.assertEqual([r["ref_id"] for r in kept], ["[10]"])
+
+    def test_truncates_to_top_n_after_filtering(self):
+        top = [self._ref(n, methods=1) for n in range(1, 12)]
+        kept = analysis_execution._select_citation_top_refs({"top_cited": top})
+        self.assertEqual(len(kept), analysis_execution._CITATION_TOP_N)
+        self.assertEqual(kept[0]["ref_id"], "[1]")
+
+    def test_skips_filter_when_the_paper_has_no_section_labels(self):
+        # 2019_FourierSpaceDNN처럼 섹션 분할이 실패한 논문: 라벨이 전무하면 현행 동작 유지
+        top = [self._ref(n) for n in range(1, 10)]
+        for r in top:
+            r["section_counts"] = {"": 2}
+        kept = analysis_execution._select_citation_top_refs({"top_cited": top})
+        self.assertEqual(len(kept), analysis_execution._CITATION_TOP_N)
+
+    def test_unknown_position_keeps_the_candidate_when_labels_exist(self):
+        top = [self._ref(1, introduction=2), {"ref_id": "[2]", "cite_count": 5, "section_counts": {"introduction": 1, "": 1}}]
+        kept = analysis_execution._select_citation_top_refs({"top_cited": top})
+        self.assertEqual([r["ref_id"] for r in kept], ["[2]"])
+
+    def test_cache_key_follows_the_filtered_list(self):
+        base = {"total_references": 2, "citation_style": "numbered", "self_citation_count": 0}
+        intro_only = {**base, "top_cited": [self._ref(1, introduction=2), self._ref(2, methods=1)]}
+        both = {**base, "top_cited": [self._ref(1, introduction=1, methods=1), self._ref(2, methods=1)]}
+        self.assertNotEqual(
+            analysis_execution._citation_cache_key(intro_only, "본문"),
+            analysis_execution._citation_cache_key(both, "본문"),
+        )
 
 
 class SanitizeMermaidCodeTests(unittest.TestCase):

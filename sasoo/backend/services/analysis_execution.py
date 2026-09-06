@@ -209,8 +209,12 @@ _GATE_CONFIDENCE_FLOOR = 0.6
 # _run_citation의 non-top_refs 폴백 input_hash — 둘 다 citation phase). 프롬프트
 # 문구가 아닌 "안정 콘텐츠 + 이 버전"으로 캐시 키를 구성한다. 문구를 바꿔도 재과금이
 # 없고, citation phase의 계약이 실제로 바뀔 때만 이 값을 올려 1회 무효화한다.
-_CITATION_PROMPT_VERSION = "2026-07-14"
+_CITATION_PROMPT_VERSION = "2026-09-01"
 
+# LLM 역할 분류에 보낼 상위 인용 참고문헌 수. 계보 시각화에서 한 화면에 읽히는
+# 노드 수가 상한을 정한다. 슬라이스와 프롬프트 문구가 어긋나면 "상위 N개"라고
+# 써놓고 다른 개수를 보내게 되므로, 두 자리 모두 이 상수를 쓴다.
+_CITATION_TOP_N = 7
 
 # Phase 0(2026-08-06): 캐시 키에 프로필·에이전트 지침(system_instruction)·모델·thinking을
 # 포함한다. 값을 올리면 모든 체인 phase 캐시가 무효화된다.
@@ -700,17 +704,42 @@ async def _run_screening(
 
 
 def _norm_ref_id(raw: object) -> str:
-    """ref_id를 병합 비교용으로 정규화한다(대괄호·공백·'ref'/'#' 선행 표기 제거, 소문자)."""
+    """ref_id를 병합 비교용으로 정규화한다(대괄호·공백·'ref'/'#' 선행 표기 제거, 소문자).
+
+    선행 숫자가 있으면 그 숫자만 쓴다. LLM이 "[52] Zhiqi Li et al. (2025)"처럼 저자까지
+    붙여 돌려줘도 로컬 ref_id "[52]"와 매칭된다(2025_GR00TN1에서 role 7건 전부 유실됐던 결함).
+    로컬 ref_id는 parse_references가 항상 "[n]"으로 만들므로 숫자 비교가 안전하다."""
     s = str(raw or "").strip().lower()
     for ch in ("[", "]", "(", ")", "#"):
         s = s.replace(ch, "")
     if s.startswith("ref"):
         s = s[3:]
-    return s.strip()
+    s = s.strip()
+    leading = re.match(r"\d+", s)
+    return str(int(leading.group(0))) if leading else s
 
 
+# LLM 역할 분류 후보에서 "배경 인용"으로 보는 섹션. 여기서만 인용된 참고문헌은 계보도에
+# 올릴 만한 기반·차용·대비 관계가 없을 가능성이 높아 상위 N 선정 전에 뺀다.
+_CITATION_BACKGROUND_SECTIONS = frozenset({"introduction", "acknowledgments"})
 
 
+def _select_citation_top_refs(local_result: dict) -> list:
+    """LLM에 보낼 상위 _CITATION_TOP_N 후보.
+
+    섹션 라벨이 하나라도 있는 논문은 배경 섹션 밖에서 1회 이상 인용된 참고문헌만 남긴다.
+    순위는 cite_count 순 그대로(재정렬 금지). 모자라도 채우지 않는다 — 실질 인용이 적다는
+    것 자체가 정보다. 라벨이 전무하면(섹션 분할 실패) 필터를 건너뛴다.
+    프롬프트와 캐시 키가 같은 목록을 봐야 하므로 둘 다 이 함수를 거친다."""
+    top = local_result.get("top_cited", [])
+    counts = [r.get("section_counts") or {} for r in top]
+    if not any(sec for c in counts for sec in c):
+        return top[:_CITATION_TOP_N]
+    kept = [
+        r for r, c in zip(top, counts)
+        if any(sec not in _CITATION_BACKGROUND_SECTIONS for sec in c)
+    ]
+    return kept[:_CITATION_TOP_N]
 
 
 def _build_top_by_norm(top_cited: list) -> dict:
@@ -738,7 +767,7 @@ def _citation_cache_key(local_result: dict, citation_body: str) -> str:
                 for c in (r.get("cite_contexts") or [])[:5]
             ],
         }
-        for r in local_result.get("top_cited", [])[:10]
+        for r in _select_citation_top_refs(local_result)
     ]
     payload = {
         "v": _CITATION_PROMPT_VERSION,
@@ -785,8 +814,8 @@ async def _run_citation(
     )
     local_result = analysis.to_dict()
 
-    # --- Step 2: LLM analysis of top 10 cited references ---
-    top_refs = local_result.get("top_cited", [])[:10]
+    # --- Step 2: LLM analysis of top cited references (배경 섹션 전용 인용은 제외) ---
+    top_refs = _select_citation_top_refs(local_result)
     llm_prompt = ""
     if top_refs:
         top_refs_text = ""
@@ -812,7 +841,7 @@ async def _run_citation(
 인용 스타일: {local_result.get('citation_style', 'numbered')}
 셀프 인용: {local_result.get('self_citation_count', 0)}건 (비율: {local_result.get('self_citation_ratio', 0):.1%})
 
-가장 많이 인용된 상위 10개 참고문헌과 인용 맥락:
+가장 많이 인용된 상위 {_CITATION_TOP_N}개 참고문헌과 인용 맥락:
 {top_refs_text}
 
 [논문 본문 발췌 (맥락용)]
@@ -827,7 +856,7 @@ async def _run_citation(
 - why_cited는 왜 자주 인용됐는지 2-3문장(한국어)으로 써.
 - 참고문헌의 실제 내용·존재 여부·학계 전체 영향력은 검증된 것처럼 말하지 마.
 - key_influences는 위에 제시된 참고문헌 안에서만 골라 — 목록에 없는 연구를 추가하지 마.
-- summary는 전체 인용 패턴 평가 2-3문장(한국어). limitations에는 상위 10개와 본문 발췌만 본 평가라는 한계를 한 문장으로 남겨.
+- summary는 전체 인용 패턴 평가 2-3문장(한국어). limitations에는 상위 {_CITATION_TOP_N}개와 본문 발췌만 본 평가라는 한계를 한 문장으로 남겨.
 """
 
         cache_key = _citation_cache_key(local_result, citation_body)
