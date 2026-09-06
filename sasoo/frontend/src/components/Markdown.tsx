@@ -8,6 +8,7 @@ import 'katex/dist/katex.min.css';
 import { normalizeMathDelimiters } from '@/lib/mathDelimiters';
 import { rehypeHeadingIds } from '@/lib/rehypeHeadingIds';
 import { detectCitations, type CitationTarget } from '@/lib/citations';
+import { withRoJosa } from '@/lib/josa';
 
 // 앱 전체의 유일한 마크다운/수식 렌더 경로. figure 해석·보고서 분석·표·
 // 질문도우미가 모두 이 컴포넌트를 쓰므로 수식 렌더 설정이 한 곳에 모인다.
@@ -48,7 +49,7 @@ function tokenizeCitationText(text: string, opts: MarkdownCitationOptions): Reac
         type="button"
         className="citation-chip"
         onClick={() => opts.onClick({ type: match.type, n: match.n })}
-        title={`${match.raw}로 이동`}
+        title={`${withRoJosa(match.raw)} 이동`}
       >
         {match.raw}
       </button>,

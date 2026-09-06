@@ -247,7 +247,7 @@ export const S = {
       providerOpenAI: 'OpenAI',
       providerGemini: 'Google Gemini',
       providerLine: (provider: string) => `논문 분석에 ${provider}를 사용해요.`,
-      reanalyzeNotice: '기존 분석 결과(요약, 인용, 그림과 표, 레시피, 시각화)가 새 결과로 대체돼요.',
+      reanalyzeNotice: '기존 분석 결과(요약, 인용, 그림과 표, 레시피, 시각화, 종합)가 새 결과로 대체돼요.',
       // per_paper_costs에는 날짜 필드가 없고 total_usd 내림차순으로만 정렬돼(backend
       // api/settings.py) "최근 N편"을 가릴 수 없다. 정직하게 전체 이력 평균/최대로 표기한다.
       costMeasured: (avg: string, max: string) => `전체 평균 $${avg} / 논문 (최대 $${max})`,
@@ -395,10 +395,10 @@ export const S = {
     aiProviderOpenAI: 'OpenAI',
     aiProviderOpenAIModel: 'GPT-5.6 Luna',
     aiProviderGemini: 'Google',
-    aiProviderGeminiModel: 'Gemini 3.6 Flash',
+    aiProviderGeminiModel: 'Gemini 3.8 Flash',
     aiProviderKeyReady: '키 등록됨',
     aiProviderKeyMissing: '키 없음',
-    aiProviderSwitched: (to: string) => `${to}로 전환했습니다`,
+    aiProviderSwitched: (to: string) => `${to}로 전환했어요`,
     aiProviderLocked: 'API 키를 등록하면 분석을 시작할 수 있어요',
     // Save bar
     saveBarLabel: '변경사항',
@@ -470,7 +470,7 @@ export const S = {
     imageQuality: '도해 품질',
     // Cost
     usageCosts: '사용량과 비용',
-    usageCostsDesc: '최근 분석이 얼마나 호출과 비용을 만들었는지 확인해요.',
+    usageCostsDesc: '최근 분석에서 호출과 비용이 얼마나 발생했는지 확인해요.',
     costLoadFailed: '비용 데이터를 불러오지 못했어요',
     heroKicker: 'Settings',
     heroBody: '지금 상태를 확인하고 필요한 설정부터 바로 조정해요.',
@@ -697,12 +697,13 @@ export const S = {
       foundQuote: (page: number | null) => (page != null ? `발견된 원문 (p.${page})` : '발견된 원문'),
       claimedQuote: 'LLM이 주장한 인용 (원문에서 확인되지 않음)',
       confirmedPage: (page: number) => `p.${page}에서 확인`,
-      foundPage: (page: number) => `발견 위치 p.${page}`,
-      candidatePage: (page: number) => `후보 위치 p.${page}`,
+      foundPage: (page: number) => `에서 발견한 위치 p.${page}`,
+      candidatePage: (page: number) => `의 후보 위치 p.${page}`,
       claimedPageNote: (page: number) => `LLM 주장 p.${page}`,
       jump: '이 페이지로 이동',
       // 좁은 패널에서도 눈에 띄는 점프 버튼 라벨. confirmedPage/foundPage/candidatePage
-      // 뒤에 붙여 "원문 p.4에서 확인"처럼 읽히게 한다(DEC-012 어휘는 그대로 둔다).
+      // 뒤에 붙여 읽는다("원문 p.4에서 확인", "원문에서 발견한 위치 p.4", "원문의 후보
+      // 위치 p.4"). 조사는 각 문구가 자체적으로 들고 있다(DEC-012 어휘는 그대로 둔다).
       jumpLabel: '원문',
       method: {
         exact: '축자 일치',
@@ -784,7 +785,7 @@ export const S = {
     // 헤더의 재생성 버튼과 확인 모달 제목이 같은 문구를 공유한다.
     regenerateButton: '종합 다시 만들기',
     createTitle: '종합 뷰 만들기',
-    createGuide: '이 논문에는 아직 종합 뷰가 없습니다. 종합 스테이지를 한 번 실행해 다섯 구획을 만듭니다.',
+    createGuide: '이 논문에는 아직 종합 뷰가 없어요. 종합 스테이지를 한 번 실행하면 다섯 구획이 만들어져요.',
     asIs: '기존 접근 (As-Is)',
     toBe: '목표 상태 (To-Be)',
     solution: '해결',
@@ -801,11 +802,11 @@ export const S = {
     parameter: '파라미터',
     value: '값',
     notes: '비고',
-    loading: '종합 뷰를 만들고 있습니다',
+    loading: '종합 뷰를 만들고 있어요',
     diagramGenerating: '다이어그램 생성 중',
-    generationFailed: '생성에 실패했습니다',
-    equationRenderFailed: '수식 렌더 실패, 원문을 표시합니다',
-    regenerateConfirmBody: '종합 스테이지만 다시 실행하고 다이어그램은 그대로 둡니다.',
+    generationFailed: '만들지 못했어요',
+    equationRenderFailed: '수식 렌더에 실패해서 원문을 표시해요',
+    regenerateConfirmBody: '종합 스테이지만 다시 실행하고 다이어그램은 그대로 둬요.',
     // 지난 실행의 실측 비용(analysis_results.cost_usd). 기록이 없으면 2026-09-06
     // medium 실측 범위(본문 길이 비례)로 말한다.
     // 숫자 뒤 조사는 끝소리에 따라 갈리므로 조사 없이 잇는다("3천 원 들었어요" 꼴).
