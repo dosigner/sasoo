@@ -543,7 +543,7 @@ describe('buildAnalysisConfirmCopy — 4가지 최초/재분석 x 이력유무 �
     expect(copy.title).toBe('다시 분석할까요?');
     expect(copy.confirmLabel).toBe('다시 분석');
     expect(copy.reanalyzeNotice).toBe(
-      '기존 분석 결과(요약, 인용, 그림과 표, 레시피, 시각화)가 새 결과로 대체돼요.',
+      '기존 분석 결과(요약, 인용, 그림과 표, 레시피, 시각화, 종합)가 새 결과로 대체돼요.',
     );
     expect(copy.costLine).toContain('추정값');
   });
@@ -557,7 +557,7 @@ describe('buildAnalysisConfirmCopy — 4가지 최초/재분석 x 이력유무 �
     expect(copy.title).toBe('다시 분석할까요?');
     expect(copy.confirmLabel).toBe('다시 분석');
     expect(copy.reanalyzeNotice).toBe(
-      '기존 분석 결과(요약, 인용, 그림과 표, 레시피, 시각화)가 새 결과로 대체돼요.',
+      '기존 분석 결과(요약, 인용, 그림과 표, 레시피, 시각화, 종합)가 새 결과로 대체돼요.',
     );
     expect(copy.costLine).toBe('전체 평균 $0.025 / 논문 (최대 $0.030)');
   });

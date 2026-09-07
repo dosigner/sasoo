@@ -257,9 +257,9 @@ export default function RecipeCard({
                               title={S.recipe.evidence.jump}
                             >
                               <AppIcon name="arrow-right" className="w-3.5 h-3.5 shrink-0" />
-                              {S.recipe.evidence.jumpLabel}{' '}
+                              {S.recipe.evidence.jumpLabel}
                               {target.kind === 'confirmed'
-                                ? S.recipe.evidence.confirmedPage(target.page)
+                                ? ` ${S.recipe.evidence.confirmedPage(target.page)}`
                                 : target.kind === 'found'
                                   ? S.recipe.evidence.foundPage(target.page)
                                   : S.recipe.evidence.candidatePage(target.page)}
