@@ -1,5 +1,6 @@
 import type { PhaseInfo, AnalysisPhase } from '@/lib/api';
 import { STAGE_NAMES } from '@/lib/workbenchSummaries';
+import { S } from '@/lib/strings';
 import AppIcon from '@/components/icons/AppIcon';
 
 // ---------------------------------------------------------------------------
@@ -65,7 +66,7 @@ export default function ProgressTracker({
                     : 'font-normal text-fg-muted'
                 }`}
               >
-                {meta.label}
+                {meta.label}{phase.status === 'skipped' ? ` (${S.status.skipped})` : ''}
               </span>
             </div>
           );

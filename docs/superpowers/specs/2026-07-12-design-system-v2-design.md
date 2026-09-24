@@ -6,6 +6,10 @@
 - 검토 방식: deep-reasoner(Opus) + Codex 독립 병렬 비평 후 종합. 컴포넌트/영역별 5-whys 근거 수록
 - 관계: `2026-07-11-openai-platform-home-redesign-design.md`(홈+사이드바 구조 스펙)의 비주얼 레이어를 정의. 구조 스펙의 "토큰 불변" 원칙은 본 문서로 대체됨
 
+> **2026-09-23 현행값 기록:** 이 문서의 다크 `--accent` #7C5AE8과 `--accent-hover` #9179F0은
+> 7월 설계 결정으로 보존한다. 현재 구현은 각각 #9E82FA와 #B09CFC이며,
+> 상태 전경색 3개를 포함한 현행 토큰 표는 `sasoo/docs/04-design/design-tokens.md`에 있다.
+
 ## 0. 결론
 
 DESIGN.md는 **방향만 채택하고 구체값은 기각**한다. frontmatter(M3 제너레이터 덤프)와 본문(수기)이

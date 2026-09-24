@@ -3,12 +3,14 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import rehypeHighlight from 'rehype-highlight';
 import 'katex/dist/katex.min.css';
 
 import { normalizeMathDelimiters } from '@/lib/mathDelimiters';
 import { rehypeHeadingIds } from '@/lib/rehypeHeadingIds';
 import { detectCitations, type CitationTarget } from '@/lib/citations';
 import { withRoJosa } from '@/lib/josa';
+import { ReadingCodeBlock } from './ReadingCodeBlock';
 
 // 앱 전체의 유일한 마크다운/수식 렌더 경로. figure 해석·보고서 분석·표·
 // 질문도우미가 모두 이 컴포넌트를 쓰므로 수식 렌더 설정이 한 곳에 모인다.
@@ -19,6 +21,12 @@ const REHYPE_PLUGINS = [rehypeKatex];
 // rehypeHeadingIds가 katex 렌더 결과(mathml 텍스트 등)를 읽어 extractOutline의 slug와
 // 어긋난다(ToC 클릭이 조용히 무반응이 됨).
 const REHYPE_PLUGINS_WITH_IDS = [rehypeHeadingIds, rehypeKatex];
+const READING_HIGHLIGHT = [rehypeHighlight, { detect: false }] satisfies [typeof rehypeHighlight, { detect: boolean }];
+const READING_REHYPE_PLUGINS = [...REHYPE_PLUGINS, READING_HIGHLIGHT];
+const READING_REHYPE_PLUGINS_WITH_IDS = [...REHYPE_PLUGINS_WITH_IDS, READING_HIGHLIGHT];
+const READING_COMPONENTS: Components = {
+  pre: ({ node: _node, ...props }) => <ReadingCodeBlock {...props} />,
+};
 
 export interface MarkdownCitationOptions {
   onClick: (target: CitationTarget) => void;
@@ -60,10 +68,26 @@ function tokenizeCitationText(text: string, opts: MarkdownCitationOptions): Reac
   return nodes;
 }
 
-function withCitationChips(children: ReactNode, opts: MarkdownCitationOptions): ReactNode {
-  return Children.map(children, (child) =>
-    typeof child === 'string' ? tokenizeCitationText(child, opts) : child,
-  );
+function withInlineText(children: ReactNode, opts: MarkdownCitationOptions | undefined, reading: boolean): ReactNode {
+  return Children.map(children, (child) => {
+    if (typeof child !== 'string') return child;
+    const parts = reading
+      ? child.split(/(\([^()\r\n]+\)|[가-힣]+[ \t]+수[ \t]+(?:있|없)[가-힣]*[\p{Pe}\p{Pf},.!?;:…"'、，。！？；：]*)/gu)
+      : [child];
+    return parts.map((part, index) => {
+      if (index % 2 === 0) return opts ? tokenizeCitationText(part, opts) : part;
+      return part.split(/([,;]\s+)/u).map((group, groupIndex) => {
+        if (groupIndex % 2 === 1) return group;
+        return <span key={groupIndex} className={part.startsWith('(') ? 'reading-parenthetical' : 'reading-auxiliary'}>
+          {opts ? tokenizeCitationText(group, opts) : group}
+        </span>;
+      });
+    });
+  });
+}
+
+export function ReadingInlineText({ children }: { readonly children: string }) {
+  return <span className="reading-inline">{withInlineText(children, undefined, true)}</span>;
 }
 
 interface MarkdownProps {
@@ -74,6 +98,7 @@ interface MarkdownProps {
   headingAnchors?: boolean;
   /** 있으면 텍스트 노드에서 "Fig. 3" / "표 2" / "p.12" 같은 참조를 채팅과 같은 인용 칩으로 치환한다. */
   citations?: MarkdownCitationOptions;
+  codeTools?: boolean;
 }
 
 export function Markdown({
@@ -82,17 +107,17 @@ export function Markdown({
   components,
   headingAnchors,
   citations,
+  codeTools = false,
 }: MarkdownProps) {
   const source = normalizeMathDelimiters(children);
 
-  // components override는 citations가 있을 때만 만든다 — 없으면 호출부가 넘긴
-  // components를 그대로 쓰는 기존 동작을 그대로 유지한다.
   const resolvedComponents = useMemo<Components | undefined>(() => {
-    if (!citations) return components;
+    const readingComponents = codeTools ? READING_COMPONENTS : undefined;
+    if (!citations && !codeTools) return components;
     const wrap =
       (Tag: CitationTag) =>
       ({ node: _node, children: tagChildren, ...props }: { node?: unknown; children?: ReactNode }) => (
-        <Tag {...props}>{withCitationChips(tagChildren, citations)}</Tag>
+        <Tag {...props}>{withInlineText(tagChildren, citations, codeTools)}</Tag>
       );
     return {
       p: wrap('p'),
@@ -106,14 +131,19 @@ export function Markdown({
       h2: wrap('h2'),
       h3: wrap('h3'),
       h4: wrap('h4'),
+      ...readingComponents,
       ...components,
     };
-  }, [citations, components]);
+  }, [citations, components, codeTools]);
+
+  const rehypePlugins = codeTools
+    ? headingAnchors ? READING_REHYPE_PLUGINS_WITH_IDS : READING_REHYPE_PLUGINS
+    : headingAnchors ? REHYPE_PLUGINS_WITH_IDS : REHYPE_PLUGINS;
 
   const markdown = (
     <ReactMarkdown
       remarkPlugins={REMARK_PLUGINS}
-      rehypePlugins={headingAnchors ? REHYPE_PLUGINS_WITH_IDS : REHYPE_PLUGINS}
+      rehypePlugins={rehypePlugins}
       components={resolvedComponents}
     >
       {source}

@@ -1,6 +1,7 @@
 import type { RefObject } from 'react';
 
 import type { OutlineItem } from '@/lib/mdOutline';
+import { focusReadingTarget } from '@/lib/readingNavigation';
 
 // 분석 단계 본문 위에 뜨는 섹션 목차. 항목을 누르면 Markdown이 headingAnchors로
 // 붙인 slug id로 스크롤한다. 표시 여부(헤딩 개수)는 호출부가 정한다.
@@ -22,18 +23,14 @@ interface SectionOutlineProps {
 }
 
 export default function SectionOutline({ outline, scopeRef }: SectionOutlineProps) {
-  const jump = (slug: string) => {
+  const jump = (slug: string, keyboard: boolean) => {
     const root: ParentNode = scopeRef?.current ?? document;
     // id에 한글·하이픈·숫자가 섞이므로 #선택자 대신 속성 선택자를 쓴다.
     const el = root.querySelector<HTMLElement>(`[id="${CSS.escape(slug)}"]`);
     if (!el) return;
 
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
-
-    // 스크린리더에도 점프 맥락을 전달하기 위해 포커스를 옮긴다.
-    el.setAttribute('tabindex', '-1');
-    el.focus({ preventScroll: true });
+    focusReadingTarget(el, reduce || keyboard ? 'auto' : 'smooth');
   };
 
   return (
@@ -48,9 +45,9 @@ export default function SectionOutline({ outline, scopeRef }: SectionOutlineProp
                 덮어써 라우팅을 깬다. 앵커로 "개선"하지 말 것 — button + 수동 스크롤을 쓴다. */}
             <button
               type="button"
-              onClick={() => jump(item.slug)}
+              onClick={(event) => jump(item.slug, event.detail === 0)}
               title={item.text}
-              className="w-full truncate text-left text-xs text-fg-muted transition-colors hover:text-accent"
+              className="min-h-8 w-full truncate text-left text-sm text-fg-muted transition-colors hover:text-accent focus-visible:outline-2 focus-visible:outline-accent"
             >
               {item.text}
             </button>

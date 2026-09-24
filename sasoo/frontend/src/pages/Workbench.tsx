@@ -367,7 +367,7 @@ export default function Workbench() {
         statusTone={statusSummary.statusTone}
         analysisError={analysisError}
         canStartAnalysis={canStartAnalysis}
-        isRunning={isRunning}
+        isRunning={isRunning && terminalState !== 'cancelled'}
         primaryActionLabel={primaryActionLabel}
         staleModel={statusSummary.staleModel}
         onBack={() => navigate('/library')}

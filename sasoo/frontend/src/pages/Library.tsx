@@ -364,10 +364,10 @@ export default function Library() {
         <div className="page-header-dense">
           <div>
             <div className="archive-kicker">{S.library.heroKicker}</div>
-            <h1 className="mt-2 text-[1.8rem] font-semibold tracking-tighter text-fg">
+            <h1 className="mt-1 text-[1.8rem] font-semibold tracking-tighter text-fg">
               {S.library.title}
             </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-fg-muted">
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-fg-muted">
               {S.library.heroBody}
             </p>
             <div className="page-status-strip mt-3">

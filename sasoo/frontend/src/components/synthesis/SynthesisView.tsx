@@ -115,16 +115,20 @@ export function SynthesisView({
   if (!synthesis) {
     return (
       <div className="space-y-4">
-        {!analysisRunning && (
-          <div className="card flex items-center gap-3">
-            <Sparkles className="h-4 w-4 shrink-0 text-accent" />
-            <p className="flex-1 text-xs leading-relaxed text-fg-muted">{T.createGuide}</p>
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/45 pb-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-fg">
+              <Sparkles className="h-4 w-4 text-accent" />{T.viewTitle}
+            </h2>
+            <p className="mt-1 break-keep text-xs leading-relaxed text-fg-muted">{T.createGuide}</p>
+          </div>
+          {!analysisRunning && (
             <button className="btn-primary px-3 py-1.5 text-xs" disabled={building || !pid} onClick={() => void build()}>
               {building ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
               {building ? T.loading : T.createTitle}
             </button>
-          </div>
-        )}
+          )}
+        </div>
         {buildError && <p className="text-2xs text-danger">{buildError}</p>}
         <VisualizationGallery visualizations={visualizations} legacyMermaid={legacyMermaid} loading={analysisRunning} />
       </div>
@@ -141,9 +145,11 @@ export function SynthesisView({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-sm font-semibold text-fg">{T.viewTitle}</h2>
-        <span className="text-2xs text-fg-muted tabular-nums">{T.diagramCount(items.length)}</span>
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/45 pb-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-fg">{T.viewTitle}</h2>
+          <p className="mt-1 text-xs text-fg-muted">{T.diagramCount(items.length)}</p>
+        </div>
         <div className="ml-auto flex items-center gap-1">
           <button
             className="btn-ghost text-2xs px-2 py-1"

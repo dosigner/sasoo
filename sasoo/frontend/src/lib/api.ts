@@ -75,7 +75,7 @@ export type UploadResponse = Paper;
 
 // Analysis types
 export type AnalysisPhase = 'screening' | 'citation' | 'visual' | 'recipe' | 'deep_dive';
-export type PhaseStatusValue = 'pending' | 'running' | 'completed' | 'error';
+export type PhaseStatusValue = 'pending' | 'running' | 'completed' | 'error' | 'skipped';
 export type VisualState = 'ready' | 'running' | 'error' | 'partial';
 export interface PhaseInfo {
   phase: AnalysisPhase;
@@ -640,6 +640,10 @@ export async function updatePaper(
 // 본문을 실어 보내면 FastAPI가 조용히 버리므로, 보내는 쪽에서 아예 만들지 않는다.
 export async function runAnalysis(paperId: string): Promise<AnalysisStatus> {
   return request<AnalysisStatus>(`/analysis/${paperId}/run`, { method: 'POST' });
+}
+
+export async function getAnalysisReport(paperId: string): Promise<{ title: string; markdown: string }> {
+  return request(`/analysis/${paperId}/report`);
 }
 
 export async function getAnalysisStatus(

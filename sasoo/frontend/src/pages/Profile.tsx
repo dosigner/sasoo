@@ -176,10 +176,10 @@ export default function Profile() {
         <div className="page-header-dense gap-4 lg:flex lg:items-start lg:justify-between">
           <div>
             <div className="archive-kicker">{S.profile.heroKicker}</div>
-            <h1 className="settings-hero-title mt-2 text-[1.8rem] font-semibold tracking-tighter">
+            <h1 className="settings-hero-title mt-1 text-[1.8rem] font-semibold tracking-tighter">
               {S.settings.researcherProfile}
             </h1>
-            <p className="settings-hero-body mt-2 text-sm leading-6">
+            <p className="settings-hero-body mt-1 text-sm leading-6">
               {S.settings.researcherProfileDesc} {S.profile.defaultsNote}
             </p>
           </div>

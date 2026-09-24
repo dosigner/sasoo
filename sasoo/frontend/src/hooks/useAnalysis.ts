@@ -16,11 +16,11 @@ import {
   getFigures,
   getTables,
   getRecipe,
-  getMermaid,
   getVisualizations,
   getSynthesis,
   ApiError,
 } from '@/lib/api';
+import { getSummaryDisplayStatus } from '@/lib/summaryContent';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -80,7 +80,6 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
   const [figures, setFigures] = useState<FigureListResponse | null>(null);
   const [tables, setTables] = useState<TableListResponse | null>(null);
   const [recipe, setRecipe] = useState<Recipe | null>(null);
-  const [mermaid, setMermaid] = useState<MermaidDiagram | null>(null);
   const [visualizations, setVisualizations] = useState<VisualizationPlan | null>(null);
   const [synthesis, setSynthesis] = useState<SynthesisResult | null>(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -121,7 +120,6 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
     setFigures(null);
     setTables(null);
     setRecipe(null);
-    setMermaid(null);
     setVisualizations(null);
     setSynthesis(null);
     setIsRunning(false);
@@ -200,7 +198,6 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
         const completedPhases = phaseStatus.phases
           .filter((p) => p.status === 'completed')
           .map((p) => p.phase);
-        const isCompleted = phaseStatus.overall_status === 'completed';
 
         // Record only successful loads so the next poll retries failures.
         const key = resultsKey(phaseStatus);
@@ -274,7 +271,6 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
 
         // Fetch visualizations after deep_dive completes (they generate in parallel)
         if (completedPhases.includes('deep_dive')) {
-          const alreadyHasViz = fetchedPhases.current.has('visualizations');
           try {
             const viz = await getVisualizations(targetPaperId);
             if (!isSessionActive(sessionId)) return;
@@ -285,17 +281,6 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
             }
           } catch (err) {
             console.warn('[useAnalysis] Failed to fetch visualizations:', err);
-          }
-          if (isCompleted && !alreadyHasViz) {
-            if (!isSessionActive(sessionId)) return;
-            fetchedPhases.current.add('visualizations');
-            try {
-              const dia = await getMermaid(targetPaperId);
-              if (!isSessionActive(sessionId)) return;
-              setMermaid(dia);
-            } catch (err) {
-              console.warn('[useAnalysis] Failed to fetch mermaid:', err);
-            }
           }
         }
 
@@ -503,12 +488,12 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
   }, [paperId, beginNewSession, clearPolling, clearVisualRetry, fetchExistingVisualAssets, fetchPhaseResources, isSessionActive, startPolling]);
 
   return {
-    status,
+    status: getSummaryDisplayStatus(status, results?.deep_dive ?? null),
     results,
     figures,
     tables,
     recipe,
-    mermaid,
+    mermaid: null,
     visualizations,
     synthesis,
     isRunning,

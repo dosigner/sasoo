@@ -368,7 +368,10 @@ export default function PdfViewer({
     eventBus.on('updatefindcontrolstate', handleFindControlState);
     eventBus.on('updatefindmatchescount', handleFindMatchesCount);
 
-    loadingTask = getDocument({ url: pdfUrl });
+    loadingTask = getDocument({
+      url: pdfUrl,
+      wasmUrl: new URL(`${import.meta.env.BASE_URL}pdfjs-wasm/`, document.baseURI).href,
+    });
 
     loadingTask.promise
       .then((pdfDocument) => {

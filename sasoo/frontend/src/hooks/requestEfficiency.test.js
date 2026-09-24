@@ -48,6 +48,7 @@ vi.mock('@/lib/api', () => ({
   getPapers: vi.fn(), getPaper: vi.fn(), deletePaper: vi.fn(), updatePaper: vi.fn(),
   runAnalysis: vi.fn(), getAnalysisStatus: vi.fn(), getAnalysisResults: vi.fn(),
   getFigures: vi.fn(), getTables: vi.fn(), getRecipe: vi.fn(), getMermaid: vi.fn(), getVisualizations: vi.fn(),
+  getSynthesis: vi.fn(),
 }));
 import * as api from '@/lib/api';
 import { useAnalysis } from './useAnalysis';
@@ -71,6 +72,7 @@ beforeEach(() => {
   api.getFigures.mockResolvedValue({ figures: [], visual_state: 'ready' });
   api.getTables.mockResolvedValue({ tables: [], visual_state: 'ready' });
   api.getVisualizations.mockResolvedValue({ items: [] });
+  api.getSynthesis.mockResolvedValue(null);
   api.getPapers.mockResolvedValue(list(10));
 });
 afterEach(() => { hooks.reset(); vi.useRealTimers(); });
@@ -111,6 +113,27 @@ it('continues refreshing visualization progress without refetching results', asy
   await vi.advanceTimersByTimeAsync(6000); await hooks.flush();
   expect(api.getAnalysisResults).toHaveBeenCalledTimes(1);
   expect(api.getVisualizations).toHaveBeenCalledTimes(4);
+});
+
+it.each(['empty', 'failed'])('does not generate a legacy diagram when saved visualizations are %s', async (state) => {
+  api.getAnalysisStatus.mockResolvedValue(status(['screening', 'deep_dive'], 'completed'));
+  api.getAnalysisResults.mockResolvedValue({ paper_id: 1, deep_dive: { detailed_analysis: 'saved summary' } });
+  api.getMermaid.mockResolvedValue({ mermaid_code: 'flowchart TD\nA-->B' });
+  if (state === 'failed') api.getVisualizations.mockRejectedValue(new Error('offline'));
+  hooks.mount(() => useAnalysis('1'));
+  const analysis = await hooks.flush();
+  expect(analysis.results.deep_dive.detailed_analysis).toBe('saved summary');
+  expect(api.getMermaid).not.toHaveBeenCalled();
+  expect(api.runAnalysis).not.toHaveBeenCalled();
+});
+
+it('exposes malformed stored summary data as an error to the whole workbench', async () => {
+  api.getAnalysisStatus.mockResolvedValue(status(['screening', 'deep_dive'], 'completed'));
+  api.getAnalysisResults.mockResolvedValue({ paper_id: 1, deep_dive: { section_answers: [] } });
+  hooks.mount(() => useAnalysis('1'));
+  const analysis = await hooks.flush();
+  expect(analysis.status.overall_status).toBe('error');
+  expect(analysis.status.phases.find((phase) => phase.phase === 'deep_dive').status).toBe('error');
 });
 it('fetches a list only once on mount including the aggregate', async () => {
   hooks.mount(() => usePapers());

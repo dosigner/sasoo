@@ -1,4 +1,4 @@
-import { Markdown } from '@/components/Markdown';
+import { Markdown, ReadingInlineText } from '@/components/Markdown';
 import { Loader2 } from 'lucide-react';
 import { getLibraryAssetUrl, type Table, type VisualState } from '@/lib/api';
 import { S } from '@/lib/strings';
@@ -192,7 +192,7 @@ export default function TableGallery({
                   </div>
                   {table.caption && (
                     <p className="mt-2 text-sm leading-6 text-fg-secondary">
-                      {table.caption}
+                      <ReadingInlineText>{table.caption}</ReadingInlineText>
                     </p>
                   )}
                   {(metaLine || (typeof table.page_number === 'number' && onJumpToTablePage)) && (

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Markdown, type MarkdownCitationOptions } from '@/components/Markdown';
 import { type CitationTarget } from '@/lib/citations';
 import {
@@ -26,6 +26,8 @@ import {
 } from '@/lib/api';
 import { buildPhaseSummary, buildWorkbenchStatusSummary } from '@/lib/workbenchSummaries';
 import { S } from '@/lib/strings';
+import { getSummaryDisplayStatus, readInputCoverage, readSummaryExtensions } from '@/lib/summaryContent';
+import { focusReadingTarget } from '@/lib/readingNavigation';
 import { extractOutline } from '@/lib/mdOutline';
 import SectionOutline from './SectionOutline';
 import FigureGallery from './FigureGallery';
@@ -33,6 +35,8 @@ import TableGallery from './TableGallery';
 import RecipeCard from './RecipeCard';
 import ExperimentPlanTab from './ExperimentPlanTab';
 import ReadingGuideTab from './ReadingGuideTab';
+import { DeepDiveSummary } from './DeepDiveSummary';
+import ReportExport from './ReportExport';
 import { ContentState } from '@/components/ui';
 import { AppIcon } from '@/components/icons';
 import { SynthesisView } from './synthesis/SynthesisView';
@@ -80,10 +84,10 @@ export interface CitationFocus {
 }
 
 /** 탭 전환 뒤 카드가 그려질 시간을 주고 스크롤한다. 정리 함수를 돌려준다. */
-function scrollToCitationAnchor(anchor: string): () => void {
+function scrollToCitationAnchor(panel: HTMLElement | null, anchor: string): () => void {
   const timer = window.setTimeout(() => {
-    const el = document.querySelector(`[data-citation-anchor="${anchor}"]`);
-    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const el = panel?.querySelector<HTMLElement>(`[data-citation-anchor="${anchor}"]`);
+    if (el) focusReadingTarget(el);
   }, 80);
   return () => window.clearTimeout(timer);
 }
@@ -100,8 +104,8 @@ const PHASE_META: Record<string, {
 }> = {
   screening: {
     icon: (props) => <AppIcon name="summary" {...props} />,
-    label: S.analysis.phase1,
-    description: S.analysis.phase1Desc,
+    label: S.deepDive.screening,
+    description: S.deepDive.screeningDescription,
     number: 1,
   },
   citation: {
@@ -124,8 +128,8 @@ const PHASE_META: Record<string, {
   },
   deep_dive: {
     icon: GitBranch,
-    label: S.analysis.phase5,
-    description: S.analysis.phase5Desc,
+    label: S.deepDive.title,
+    description: S.deepDive.description,
     number: 5,
   },
 };
@@ -143,6 +147,8 @@ function getPhaseStatusInfo(phaseStatus: PhaseStatusValue): {
   label: string;
 } {
   switch (phaseStatus) {
+    case 'skipped':
+      return { icon: <Circle className="w-3.5 h-3.5 text-fg-muted" />, label: S.status.skipped };
     case 'completed':
       return {
         icon: <AppIcon name="success" className="w-3.5 h-3.5 text-success" />,
@@ -177,6 +183,8 @@ interface PhaseSectionProps {
   errorMessage?: string | null;
   content: string | null;
   defaultExpanded: boolean;
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
   summaryLine?: string | null;
   collapsedMeta?: Array<string | { text: string; accent?: boolean }>;
   expandedMeta?: string[];
@@ -193,6 +201,8 @@ function PhaseSection({
   errorMessage,
   content,
   defaultExpanded,
+  expanded: controlledExpanded,
+  onExpandedChange,
   summaryLine,
   collapsedMeta = [],
   expandedMeta = [],
@@ -201,10 +211,9 @@ function PhaseSection({
   children,
   citations,
 }: PhaseSectionProps) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [internalExpanded, setInternalExpanded] = useState(defaultExpanded);
+  const expanded = controlledExpanded ?? internalExpanded;
   const outline = useMemo(() => (content ? extractOutline(content) : []), [content]);
-  // .analysis-content 본문 컨테이너 ref. 목차 점프 조회를 이 단계 안으로 좁혀서
-  // 다른 PhaseSection과 헤딩 id가 겹쳐도(예: "요약") 엉뚱한 단계로 튀지 않게 한다.
   const contentRef = useRef<HTMLDivElement>(null);
   const meta = PHASE_META[phaseName];
   const statusInfo = getPhaseStatusInfo(phaseStatus);
@@ -214,8 +223,10 @@ function PhaseSection({
   const hasContent = !!(content) || !!children || phaseStatus === 'running' || phaseStatus === 'completed';
 
   const toggleExpanded = useCallback(() => {
-    if (hasContent) setExpanded((e) => !e);
-  }, [hasContent]);
+    if (!hasContent) return;
+    if (controlledExpanded === undefined) setInternalExpanded(!expanded);
+    onExpandedChange?.(!expanded);
+  }, [hasContent, controlledExpanded, expanded, onExpandedChange]);
 
   if (!meta) return null;
 
@@ -229,6 +240,7 @@ function PhaseSection({
 
   return (
     <div
+      data-phase={phaseName}
       className={`phase-section border-b last:border-b-0 ${
         phaseStatus === 'running'
           ? 'border-accent/16'
@@ -241,7 +253,7 @@ function PhaseSection({
     >
       <button
         onClick={toggleExpanded}
-        className={`w-full flex items-center gap-3 px-0 py-3 text-left transition-colors ${
+        className={`w-full flex items-center gap-3 px-0 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-accent ${
           hasContent
             ? 'hover:text-fg cursor-pointer'
             : 'cursor-default opacity-60'
@@ -264,13 +276,11 @@ function PhaseSection({
           <div className={`text-sm font-medium ${toneClasses}`}>
             {meta.label}
           </div>
-          <div className="mt-1 text-2xs text-fg-muted">
+          <div className="mt-1 break-keep text-2xs text-fg-muted">
             {expanded ? meta.description : statusInfo.label}
           </div>
-          {phaseStatus === 'error' && errorMessage && (
-            <div className="mt-1 text-2xs text-danger">
-              {errorMessage}
-            </div>
+          {phaseStatus === 'error' && errorMessage && hasContent && (
+            <div className="mt-1 break-keep text-sm leading-5 text-danger-fg">{errorMessage}</div>
           )}
           {!expanded && collapsedMeta.length > 0 && (
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -286,7 +296,7 @@ function PhaseSection({
             </div>
           )}
           {expanded && metaItems.length > 0 && (
-            <div className="mt-2 grid grid-cols-4 gap-3">
+            <div className="mt-2 grid grid-cols-[repeat(auto-fit,minmax(5rem,1fr))] gap-3">
               {metaItems.map((m) => (
                 <div key={m.label}>
                   <div className="text-[10px] font-medium text-fg-muted">{m.label}</div>
@@ -299,7 +309,7 @@ function PhaseSection({
           )}
           {expanded && metaItems.length === 0 && expandedMeta.length > 0 && (
             <div className="mt-2 text-xs font-normal text-fg-muted">
-              {expandedMeta.join(' · ')}
+              {expandedMeta.join(', ')}
             </div>
           )}
           {!expanded && summaryLine && (
@@ -323,8 +333,12 @@ function PhaseSection({
         </span>
       </button>
 
-      {expanded && hasContent && (
-        <div className="pb-5">
+      {phaseStatus === 'error' && errorMessage && !hasContent && (
+        <p role="alert" className="mb-3 break-keep text-sm leading-5 text-danger-fg">{errorMessage}</p>
+      )}
+
+      {hasContent && (
+        <div className="pb-5" hidden={!expanded}>
           {phaseStatus === 'running' && !content && (
             <div className="flex items-center gap-2 py-4" role="status" aria-busy="true">
               <Loader2 className="w-4 h-4 text-accent animate-spin" />
@@ -344,20 +358,18 @@ function PhaseSection({
           )}
 
           {content && (
-            <div className="mt-2 fade-in-up">
-              {/* .analysis-content 밖: 안에 있으면 .analysis-content ul 규칙(list-disc
-                  list-inside, mb-4, space-y-1.5)을 상속해 목차 항목이 두 줄로 깨진다. */}
+            <div className="mt-2">
               {outline.length >= 2 && (
                 <SectionOutline outline={outline} scopeRef={contentRef} />
               )}
-              <div className="analysis-content" ref={contentRef}>
-                <Markdown headingAnchors citations={citations}>{content}</Markdown>
+              <div className="reading-prose" ref={contentRef}>
+                <Markdown headingAnchors codeTools citations={citations}>{content}</Markdown>
               </div>
             </div>
           )}
 
           {children && (
-            <div className="mt-4 space-y-5 fade-in-up">
+            <div className="mt-4 space-y-5">
               {children}
             </div>
           )}
@@ -659,39 +671,6 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
 
     if (data.expected_results) lines.push(`**${md.expectedResults}:** ${data.expected_results}\n`);
     if (data.safety_notes) lines.push(`**${md.safetyNotes}:** ${data.safety_notes}\n`);
-  } else if (phase === 'deep_dive') {
-    // 신 스키마: 구조화 필드를 라벨과 함께 렌더. 빈 문자열은 건너뛴다.
-    const structured: [string, string][] = [
-      ['problem_definition', md.problemDefinition],
-      ['as_is', md.asIs],
-      ['to_be', md.toBe],
-      ['solution', md.solution],
-      ['method_summary', md.methodSummary],
-      ['key_results', md.keyResults],
-    ];
-    for (const [key, label] of structured) {
-      const value = data[key];
-      if (typeof value === 'string' && value.trim()) lines.push(`**${label}:** ${value}\n`);
-    }
-    // 구 캐시(detailed_analysis 단일 서술) 폴백.
-    if (data.detailed_analysis) lines.push(`${data.detailed_analysis}\n`);
-    if (data.novelty_assessment) lines.push(`**${md.novelty}:** ${data.novelty_assessment}\n`);
-    if (data.comparison_to_prior_work) lines.push(`**${md.comparisonToPrior}:** ${data.comparison_to_prior_work}\n`);
-    if (data.comparison_scope === 'in_paper_only') lines.push(`_${md.comparisonScopeNote}_\n`);
-    const sections: [string, string][] = [
-      ['strengths', `✅ ${md.strengths}`],
-      ['weaknesses', `⚠️ ${md.weaknesses}`],
-      ['suggested_improvements', `💡 ${md.suggestedImprovements}`],
-      ['practical_applications', `🔧 ${md.practicalApplications}`],
-      ['follow_up_questions', `❓ ${md.followUpQuestions}`],
-    ];
-    for (const [key, label] of sections) {
-      const items = data[key] as string[] | undefined;
-      if (items?.length) {
-        lines.push(`\n**${label}:**`);
-        items.forEach(item => lines.push(`- ${item}`));
-      }
-    }
   }
 
   // If phase-specific formatting produced results, return them
@@ -708,7 +687,7 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
 // ---------------------------------------------------------------------------
 
 export default function AnalysisPanel({
-  status,
+  status: backendStatus,
   artifactStatus,
   results,
   figures,
@@ -731,24 +710,114 @@ export default function AnalysisPanel({
   terminalState,
 }: AnalysisPanelProps) {
   const [activeTab, setActiveTab] = useState<'summary' | 'synthesis' | 'guide' | 'figures' | 'tables' | 'recipe'>('summary');
+  const [deepDiveExpanded, setDeepDiveExpanded] = useState(true);
+  const [summaryFocus, setSummaryFocus] = useState<{ index: number | null; token: number } | null>(null);
+  const [returnFromSummary, setReturnFromSummary] = useState<'figures' | 'tables' | null>(null);
+  const pendingSummaryCitation = useRef<string | null>(null);
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const summaryRef = useRef<HTMLDivElement>(null);
+  const summaryScrollTop = useRef(0);
+  const summaryRequestToken = useRef(0);
+  const handledSummaryToken = useRef(0);
+  const deepDiveData = useMemo(() => {
+    const data = results?.deep_dive;
+    if (!data) return null;
+    const raw = data.raw_text ?? data.raw;
+    return typeof raw === 'string' && Object.keys(data).length <= 2
+      ? tryParseJson(raw) ?? { detailed_analysis: raw }
+      : data;
+  }, [results?.deep_dive]);
+  const extensions = deepDiveData ? readSummaryExtensions(deepDiveData) : null;
+  const status = getSummaryDisplayStatus(backendStatus, deepDiveData);
+  const summaryCitations = useMemo<MarkdownCitationOptions | undefined>(() => {
+    if (!onCitationClick) return undefined;
+    const extractCitationNum = (label: string | null | undefined): number | null => {
+      const match = label?.match(/\d+/)?.[0];
+      return match ? parseInt(match, 10) : null;
+    };
+    const figureNumbers = new Set(
+      (figures?.figures ?? []).map((f) => extractCitationNum(f.figure_num)).filter((n): n is number => n !== null),
+    );
+    const tableNumbers = new Set(
+      (tables?.tables ?? []).map((t) => extractCitationNum(t.table_num)).filter((n): n is number => n !== null),
+    );
+    return {
+      onClick: (target: CitationTarget) => {
+        if (activeTabRef.current === 'summary' && target.type !== 'page') {
+          pendingSummaryCitation.current = `${target.type === 'figure' ? 'figures' : 'tables'}:${target.type}-${target.n}`;
+          if (scrollRef.current) summaryScrollTop.current = scrollRef.current.scrollTop;
+        }
+        onCitationClick(target);
+      },
+      isAllowed: (target: CitationTarget) =>
+        target.type === 'page' ||
+        (target.type === 'figure' && figureNumbers.has(target.n)) ||
+        (target.type === 'table' && tableNumbers.has(target.n)),
+    };
+  }, [onCitationClick, figures?.figures, tables?.tables]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setActiveTab('summary');
+    setDeepDiveExpanded(true);
+    setSummaryFocus(null);
+    setReturnFromSummary(null);
+    pendingSummaryCitation.current = null;
+    summaryScrollTop.current = 0;
+    handledSummaryToken.current = 0;
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [paperId]);
+
+  const selectTab = useCallback((tab: typeof activeTab) => {
+    if (activeTab === 'summary' && scrollRef.current) summaryScrollTop.current = scrollRef.current.scrollTop;
+    setReturnFromSummary(null);
+    setActiveTab(tab);
+  }, [activeTab]);
+
+  const openSummary = useCallback((index: number | null) => {
+    selectTab('summary');
+    setDeepDiveExpanded(true);
+    setSummaryFocus({ index, token: ++summaryRequestToken.current });
+  }, [selectTab]);
+
+  useLayoutEffect(() => {
+    if (activeTab !== 'summary') return;
+    if (!summaryFocus || handledSummaryToken.current === summaryFocus.token) {
+      if (scrollRef.current) scrollRef.current.scrollTop = summaryScrollTop.current;
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      const selector = summaryFocus.index === null
+        ? '[data-summary-anchor="main"]'
+        : `[data-summary-answer="${summaryFocus.index}"] h4`;
+      const target = summaryRef.current?.querySelector<HTMLElement>(selector)
+        ?? summaryRef.current?.querySelector<HTMLElement>('[data-phase="deep_dive"] > button');
+      if (target) focusReadingTarget(target);
+      handledSummaryToken.current = summaryFocus.token;
+      if (scrollRef.current) summaryScrollTop.current = scrollRef.current.scrollTop;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeTab, paperId, summaryFocus]);
 
   // Chat citation click-back: activate the target gallery tab, then scroll the
   // referenced figure/table card into view once it has rendered.
   useEffect(() => {
     if (!citationFocus) return;
-    setActiveTab(citationFocus.tab);
-    return scrollToCitationAnchor(citationFocus.anchor);
+    const key = `${citationFocus.tab}:${citationFocus.anchor}`;
+    const fromSummary = pendingSummaryCitation.current === key;
+    pendingSummaryCitation.current = null;
+    selectTab(citationFocus.tab);
+    setReturnFromSummary(fromSummary ? citationFocus.tab : null);
+    return scrollToCitationAnchor(scrollRef.current, citationFocus.anchor);
   }, [citationFocus]);
 
   // 종합 뷰의 그림 참조 클릭. 채팅 인용 칩과 같은 경로로 그림 탭의 카드로 간다.
   const openFigureFromSynthesis = useCallback((anchor: string) => {
-    setActiveTab('figures');
-    scrollToCitationAnchor(anchor);
-  }, []);
+    setReturnFromSummary(null);
+    selectTab('figures');
+    scrollToCitationAnchor(scrollRef.current, anchor);
+  }, [selectTab]);
 
   // Determine phase statuses
   const getPhaseStatus = (phaseName: AnalysisPhase): PhaseStatusValue => {
@@ -790,30 +859,6 @@ export default function AnalysisPanel({
   const figureList = figures?.figures ?? [];
   const tableList = tables?.tables ?? [];
 
-  // 요약 탭 인용 칩: 실제로 존재하는 그림/표 번호만 칩으로 바꾼다(논문에 없는 Fig. 9는
-  // 그대로 텍스트로 둔다). figure_num/table_num은 "3a" 같은 라벨일 수 있어 갤러리 카드의
-  // data-citation-anchor와 같은 방식(첫 숫자만 추출)으로 번호를 뽑는다.
-  const extractCitationNum = (label: string | null | undefined): number | null => {
-    const match = label?.match(/\d+/)?.[0];
-    return match ? parseInt(match, 10) : null;
-  };
-  const figureNumbers = new Set(
-    figureList.map((f) => extractCitationNum(f.figure_num)).filter((n): n is number => n !== null),
-  );
-  const tableNumbers = new Set(
-    tableList.map((t) => extractCitationNum(t.table_num)).filter((n): n is number => n !== null),
-  );
-  // 페이지 참조는 PDF 페이지 수를 모르므로 항상 칩으로 둔다(브리프 §7).
-  const summaryCitations: MarkdownCitationOptions | undefined = onCitationClick
-    ? {
-        onClick: onCitationClick,
-        isAllowed: (target: CitationTarget) =>
-          target.type === 'page' ||
-          (target.type === 'figure' && figureNumbers.has(target.n)) ||
-          (target.type === 'table' && tableNumbers.has(target.n)),
-      }
-    : undefined;
-
   const screeningSummary = buildPhaseSummary('screening', results, recipe, figureList, tableList, visualizations);
   const citationSummary = buildPhaseSummary('citation', results, recipe, figureList, tableList, visualizations);
   const visualSummary = buildPhaseSummary('visual', results, recipe, figureList, tableList, visualizations);
@@ -829,6 +874,18 @@ export default function AnalysisPanel({
     visualizations,
     terminalState,
   });
+  const skippedPhases = status?.phases.filter((phase) => phase.status === 'skipped') ?? [];
+  const coverageKind = deepDiveData ? readInputCoverage(deepDiveData).kind : null;
+  const compactCompleted = status?.overall_status === 'completed'
+    && Boolean(results?.screening && deepDiveData)
+    && terminalState !== 'cancelled'
+    && status.phases.length > 0
+    && status.phases.every((phase) => phase.status === 'completed' || phase.status === 'skipped')
+    && extensions?.kind !== 'invalid'
+    && coverageKind !== 'partial' && coverageKind !== 'unknown'
+    && !['본문 준비 중', '시각 자료 동기화 오류', '시각 자료 동기화 중', '시각 자료 일부만 준비됨'].includes(workbenchStatus.trustStateLabel)
+    && ![figures?.visual_state, tables?.visual_state].some((value) => value === 'partial' || value === 'running' || value === 'error')
+    && ![figures?.artifacts_ready, tables?.artifacts_ready].includes(false);
 
   const tabs: Array<{ key: typeof activeTab; label: string; disabled?: boolean }> = [
     { key: 'summary', label: S.workbench.summaryTab },
@@ -842,16 +899,32 @@ export default function AnalysisPanel({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="sticky top-0 z-20 border-b border-border/45 bg-surface/95 backdrop-blur-sm">
-        <div className="px-5 py-4">
-          <div className="border border-border/45 bg-surface/50 px-4 py-3" style={{ borderRadius: 'var(--radius-surface)' }}>
+        <div className={compactCompleted ? 'px-5 py-2.5' : 'px-5 py-4'}>
+          {compactCompleted ? (
+            <div data-status-compact className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-secondary">
+              <AppIcon name="success" className="h-3.5 w-3.5 text-success" />
+              <span className="font-semibold text-fg">{workbenchStatus.runStateLabel}</span>
+              <span className="tabular-nums">완료 {workbenchStatus.completedCount}{skippedPhases.length > 0 ? `, 건너뜀 ${skippedPhases.length}` : ''}</span>
+              {skippedPhases.length > 0 && (
+                <details className="text-fg-muted">
+                  <summary className="cursor-pointer focus-visible:outline-2 focus-visible:outline-accent">건너뛴 단계 보기</summary>
+                  <ul className="absolute z-20 mt-1 rounded-surface border border-border bg-surface p-3 shadow-lg">
+                    {skippedPhases.map((phase) => (
+                      <li key={phase.phase}>{PHASE_META[phase.phase].label}: {phase.error_message || S.status.skipped}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+          ) : <div className="border border-border/45 bg-surface/50 px-4 py-3" style={{ borderRadius: 'var(--radius-surface)' }}>
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
+              <div className="min-w-40 flex-1">
                 <div className="mb-1 flex items-center gap-2 text-2xs tracking-[0.08em] text-fg-muted">
                   <AppIcon name="summary" className="h-3.5 w-3.5 text-accent" />
                   <span>{S.workbench.statusRailTitle}</span>
                 </div>
                 <div className="flex items-baseline justify-between gap-3">
-                  <h3 className="text-sm font-[650] text-fg">
+                  <h3 className="whitespace-nowrap text-sm font-[650] text-fg">
                     {workbenchStatus.displayStatusLabel}
                   </h3>
                   <span className="text-2xs text-fg-muted tabular-nums">
@@ -870,17 +943,17 @@ export default function AnalysisPanel({
                 {workbenchStatus.nextActionLabel}
               </p>
             </div>
-          </div>
+          </div>}
 
-          <div className="mt-4">
-            <div className="segmented-control">
+          <div className={compactCompleted ? 'mt-2.5' : 'mt-4'}>
+            <div className="segmented-control flex-wrap">
             {tabs.map((tab) => (
               <button
                 key={tab.key}
                 type="button"
-                onClick={() => !tab.disabled && setActiveTab(tab.key)}
+                onClick={() => !tab.disabled && selectTab(tab.key)}
                 disabled={tab.disabled}
-                className={`segmented-control__item ${
+                className={`segmented-control__item shrink-0 whitespace-nowrap ${
                   activeTab === tab.key ? 'segmented-control__item-active' : ''
                 } ${tab.disabled ? 'segmented-control__item-disabled' : ''}`}
               >
@@ -892,15 +965,16 @@ export default function AnalysisPanel({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto scroll-stable px-5 py-4">
-        {activeTab === 'summary' && (
-          <div className="space-y-5">
-            {status &&
-              status.overall_status !== 'pending' &&
-              !(
-                workbenchStatus.totalCount > 0 &&
-                workbenchStatus.completedCount === workbenchStatus.totalCount
-              ) && (
+      <div
+        ref={scrollRef}
+        data-analysis-scroll
+        className="reading-panel min-h-0 flex-1 overflow-y-auto scroll-stable"
+        onScroll={(event) => {
+          if (activeTab === 'summary') summaryScrollTop.current = event.currentTarget.scrollTop;
+        }}
+      >
+          <div key={paperId} ref={summaryRef} data-summary-panel hidden={activeTab !== 'summary'} className="reading-panel-content space-y-5">
+            {status && status.overall_status !== 'pending' && !compactCompleted && (
                 <ProgressTracker
                   phases={status.phases}
                   overallProgress={status.progress_pct}
@@ -924,6 +998,23 @@ export default function AnalysisPanel({
               />
 
               <PhaseSection
+                phaseName="deep_dive"
+                phaseStatus={getPhaseStatus('deep_dive')}
+                errorMessage={getPhaseErrorMessage('deep_dive')}
+                content={null}
+                defaultExpanded={true}
+                expanded={deepDiveExpanded}
+                onExpandedChange={setDeepDiveExpanded}
+                summaryLine={deepDiveSummary.summaryLine}
+                collapsedMeta={deepDiveSummary.collapsedMeta}
+                expandedMeta={deepDiveSummary.expandedMeta}
+                tone={deepDiveSummary.tone}
+                citations={summaryCitations}
+              >
+                {deepDiveData && <DeepDiveSummary data={deepDiveData} citations={summaryCitations} />}
+              </PhaseSection>
+
+              <PhaseSection
                 phaseName="citation"
                 phaseStatus={getPhaseStatus('citation')}
                 errorMessage={getPhaseErrorMessage('citation')}
@@ -935,25 +1026,12 @@ export default function AnalysisPanel({
                 tone={citationSummary.tone}
                 citations={summaryCitations}
               />
-
-              <PhaseSection
-                phaseName="deep_dive"
-                phaseStatus={getPhaseStatus('deep_dive')}
-                errorMessage={getPhaseErrorMessage('deep_dive')}
-                content={getPhaseContent('deep_dive')}
-                defaultExpanded={false}
-                summaryLine={deepDiveSummary.summaryLine}
-                collapsedMeta={deepDiveSummary.collapsedMeta}
-                expandedMeta={deepDiveSummary.expandedMeta}
-                tone={deepDiveSummary.tone}
-                citations={summaryCitations}
-              />
             </div>
+            {paperId && results && <ReportExport paperId={paperId} />}
           </div>
-        )}
 
         {activeTab === 'synthesis' && (
-          <div className="space-y-5">
+          <div className="reading-panel-content space-y-5">
             <SynthesisView
               paperId={paperId ? Number(paperId) : null}
               synthesis={synthesis ?? null}
@@ -965,37 +1043,37 @@ export default function AnalysisPanel({
               analysisRunning={getPhaseStatus('deep_dive') === 'running'}
               onRefreshSynthesis={onRefreshSynthesis}
               onOpenFigure={openFigureFromSynthesis}
-              onOpenRecipe={() => setActiveTab('recipe')}
+              onOpenRecipe={() => selectTab('recipe')}
             />
           </div>
         )}
 
-        {/* 다른 탭과 달리 언마운트하지 않는다 — 생성 중(비용 발생) 탭을 옮기면 훅의
-            cleanup이 요청을 중단해 결과가 버려진다. hidden으로만 숨긴다. */}
-        <div hidden={activeTab !== 'guide'}>
+        <div hidden={activeTab !== 'guide'} className="reading-panel-content">
           <ReadingGuideTab
+            key={paperId}
             paperId={paperId ?? null}
             level={paperLevel}
             onJumpToPage={onGuideJumpToPage}
             onSearchInPdf={onGuideSearchInPdf}
+            sectionAnswers={extensions?.kind === 'current' ? extensions.sectionAnswers : undefined}
+            onOpenSummary={openSummary}
           />
         </div>
 
         {activeTab === 'figures' && (
-          <div className="space-y-5">
-            <div className="border border-border/45 bg-surface/40 px-4 py-4" style={{ borderRadius: 'var(--radius-surface)' }}>
-              <div className="flex items-center gap-2">
-                <AppIcon name="figures" className="w-4 h-4 text-accent" />
-                <h3 className="text-sm font-semibold text-fg">
-                  {S.workbench.figuresTab}
-                </h3>
+          <div className="reading-panel-content space-y-5">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/45 pb-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <AppIcon name="figures" className="w-4 h-4 text-accent" />
+                  <h3 className="text-sm font-semibold text-fg">{S.workbench.figuresTab}</h3>
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-fg-muted">
+                  {visualSummary.figureLine || '시각 검증 결과와 Figure를 한곳에서 확인할 수 있어요.'}
+                </p>
+                {visualSummary.detailLine && <p className="mt-1 text-2xs text-fg-muted">{visualSummary.detailLine}</p>}
               </div>
-              <p className="mt-2 text-xs leading-relaxed text-fg-muted">
-                {visualSummary.figureLine || '시각 검증 결과와 Figure를 한곳에서 확인할 수 있어요.'}
-              </p>
-              {visualSummary.detailLine && (
-                <p className="mt-1 text-2xs text-fg-muted">{visualSummary.detailLine}</p>
-              )}
+              {returnFromSummary === 'figures' && <button type="button" className="btn-ghost shrink-0 px-2.5 py-1 text-xs" onClick={() => selectTab('summary')}>요약으로 돌아가기</button>}
             </div>
 
             <FigureGallery
@@ -1012,20 +1090,19 @@ export default function AnalysisPanel({
         )}
 
         {activeTab === 'tables' && (
-          <div className="space-y-5">
-            <div className="border border-border/45 bg-surface/40 px-4 py-4" style={{ borderRadius: 'var(--radius-surface)' }}>
-              <div className="flex items-center gap-2">
-                <AppIcon name="tables" className="w-4 h-4 text-accent" />
-                <h3 className="text-sm font-semibold text-fg">
-                  {S.workbench.tablesTab}
-                </h3>
+          <div className="reading-panel-content space-y-5">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/45 pb-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <AppIcon name="tables" className="w-4 h-4 text-accent" />
+                  <h3 className="text-sm font-semibold text-fg">{S.workbench.tablesTab}</h3>
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-fg-muted">
+                  {visualSummary.tableLine || '복구한 Table 구조와 저장한 CSV/HTML 자산을 한곳에서 확인할 수 있어요.'}
+                </p>
+                {visualSummary.detailLine && <p className="mt-1 text-2xs text-fg-muted">{visualSummary.detailLine}</p>}
               </div>
-              <p className="mt-2 text-xs leading-relaxed text-fg-muted">
-                {visualSummary.tableLine || '복구한 Table 구조와 저장한 CSV/HTML 자산을 한곳에서 확인할 수 있어요.'}
-              </p>
-              {visualSummary.detailLine && (
-                <p className="mt-1 text-2xs text-fg-muted">{visualSummary.detailLine}</p>
-              )}
+              {returnFromSummary === 'tables' && <button type="button" className="btn-ghost shrink-0 px-2.5 py-1 text-xs" onClick={() => selectTab('summary')}>요약으로 돌아가기</button>}
             </div>
 
             <TableGallery
@@ -1041,15 +1118,15 @@ export default function AnalysisPanel({
         )}
 
         {activeTab === 'recipe' && (
-          <div className="space-y-5">
-            <div className="border border-border/45 bg-surface/40 px-4 py-4" style={{ borderRadius: 'var(--radius-surface)' }}>
+          <div className="reading-panel-content space-y-5">
+            <div className="border-b border-border/45 pb-3">
               <div className="flex items-center gap-2">
                 <AppIcon name="recipe" className="w-4 h-4 text-accent" />
                 <h3 className="text-sm font-semibold text-fg">
                   {S.workbench.recipeTab}
                 </h3>
               </div>
-              <p className="mt-2 text-xs leading-relaxed text-fg-muted">
+              <p className="mt-1 text-xs leading-relaxed text-fg-muted">
                 {recipeSummary.summaryLine || '재현 파라미터와 핵심 실험 정보를 먼저 검토하세요.'}
               </p>
             </div>

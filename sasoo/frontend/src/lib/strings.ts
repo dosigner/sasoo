@@ -262,7 +262,7 @@ export const S = {
   // ── Reading Guide ──
   readingGuide: {
     title: '읽기 안내',
-    intro: '논문에 나오는 기호와 전제된 개념, 섹션마다 무엇을 하려는지를 한 번에 정리해요.',
+    intro: '논문의 기호와 배경 개념, 각 섹션의 역할을 정리해요.',
     // 비용은 실측이 아니라 채팅 1회 기준의 정직한 비교로만 말한다.
     costNotice: '질문 도우미 답변 한 번과 비슷한 비용이 들어요. 한 번 만들면 이 기기에 저장돼요.',
     generate: '읽기 안내 만들기',
@@ -288,6 +288,8 @@ export const S = {
     prerequisitesTitle: '선행 지식',
     prerequisitesWhy: '이 논문에서:',
     sectionsTitle: '섹션별 직관',
+    openAnswer: '요약의 답변 보기',
+    openSummary: '요약 전체 보기',
     pageLabel: (page: number) => `p.${page}`,
     pageJump: (page: number) => `${page}쪽으로 이동`,
     errorTitle: '읽기 안내를 만들지 못했어요',
@@ -295,6 +297,71 @@ export const S = {
     explainSelection: '이 부분 설명',
     explainSelectionAria: '선택한 부분 설명 요청하기',
     explainTooLong: '2,000자까지만 설명할 수 있어요',
+  },
+
+  readingCode: {
+    code: '코드',
+    copy: '코드 복사',
+    copied: '복사했어요',
+    copyFailed: '복사하지 못했어요',
+  },
+
+  reportExport: {
+    format: '보고서 형식',
+    export: '보고서 내보내기',
+    exporting: '내보내고 있어요...',
+    started: '보고서 다운로드를 시작했어요',
+    failed: '보고서를 내보내지 못했어요. 다시 시도해 주세요.',
+  },
+
+  deepDive: {
+    screening: '스크리닝',
+    screeningDescription: '짧은 전체 요약과 논문의 기본 정보를 먼저 확인해요',
+    title: '심층 분석',
+    description: '문제, 작동 원리, 결과와 한계를 근거와 함께 읽어요',
+    main: '핵심 내용',
+    answers: '섹션별 핵심 답변',
+    transfer: '옮겨 쓸 때 확인할 조건',
+    answersLink: '섹션별 답변',
+    transferLink: '적용 조건',
+    navigation: '심층 분석 목차',
+    explanation: '근거와 설명 펼치기',
+    additional: '추가 평가 펼치기',
+    sourceRefs: '원문 참조',
+    transferSuggestion: '확인할 점 (적용 전 제안)',
+    empty: '이번 분석에서 작성된 항목이 없어요.',
+    legacy: '이전에 생성한 분석이에요. 재분석하면 핵심 답변과 적용 전 확인 조건을 함께 만들어요.',
+    invalid: '핵심 답변 또는 적용 전 확인 조건의 형식이 올바르지 않아요. 기존 재분석에서 다시 시도해 주세요.',
+    coverage: {
+      partial: { title: '부분 분석', description: '제공된 원문 범위에 한정한 요약이에요.' },
+      provided_pdf: {
+        title: '원본 PDF 제공',
+        description: '원본 PDF를 입력으로 제공했어요. 모든 내용을 정확히 판독했다는 뜻은 아니에요.',
+      },
+      legacy: {
+        title: '입력 범위 미확인',
+        description: '이전에 생성한 결과라 원문 입력 범위를 확인할 수 없어요.',
+      },
+      unknown: {
+        title: '입력 범위 미확인',
+        description: '입력 범위 정보가 올바르지 않아 분석 범위가 불명확해요.',
+      },
+    },
+    unknownMissing: '구체적인 누락 범위는 확인되지 않았어요.',
+    basis: {
+      reported: '원문에 명시',
+      inferred: '원문에서 추론',
+      not_reported: '제공 자료에서 확인 못함',
+    },
+    headings: {
+      problem_definition: '문제',
+      as_is: '기존 접근',
+      to_be: '목표',
+      solution: '해결 원리',
+      method_summary: '방법',
+      key_results: '결과',
+      weaknesses: '해석의 한계',
+    },
   },
 
   // ── PDF Viewer ──
@@ -508,6 +575,7 @@ export const S = {
 
   // ── Status badges ──
   status: {
+    skipped: '건너뜀',
     analyzed: '분석 완료',
     analyzing: '분석 중',
     pending: '대기',

@@ -303,10 +303,10 @@ export default function Settings() {
         <div className="page-header-dense gap-4 lg:flex lg:items-start lg:justify-between">
           <div>
             <div className="archive-kicker">{S.settings.heroKicker}</div>
-            <h1 className="settings-hero-title mt-2 text-[1.8rem] font-semibold tracking-tighter">
+            <h1 className="settings-hero-title mt-1 text-[1.8rem] font-semibold tracking-tighter">
               {S.settings.title}
             </h1>
-            <p className="settings-hero-body mt-2 text-sm leading-6">
+            <p className="settings-hero-body mt-1 text-sm leading-6">
               {S.settings.heroBody}
             </p>
             <div className="page-status-strip mt-3">

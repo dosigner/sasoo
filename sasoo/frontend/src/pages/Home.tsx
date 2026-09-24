@@ -98,14 +98,14 @@ export default function Home() {
   return (
     <div className="page-container-compact">
       <div className="home-stagger">
-        <section className="mb-5">
-          <div className="text-2xs font-semibold uppercase tracking-[0.08em] text-fg-muted">
-            {todayLabel()}
+        <section className="page-header-dense mb-4">
+          <div>
+            <div className="archive-kicker">{todayLabel()}</div>
+            <h1 className="mt-1 text-[1.8rem] font-semibold tracking-tighter text-fg">
+              {S.home.greeting}
+            </h1>
+            <p className="mt-1 text-sm text-fg-muted">{S.home.subGreeting}</p>
           </div>
-          <h1 className="mt-1.5 text-[1.45rem] font-semibold tracking-[-0.03em] text-fg">
-            {S.home.greeting}
-          </h1>
-          <p className="mt-1 text-sm text-fg-muted">{S.home.subGreeting}</p>
         </section>
 
         <UploadPanel paperCount={papersTotal ?? 0} />

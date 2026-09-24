@@ -6,6 +6,7 @@ import { AppIcon } from '@/components/icons';
 import { ContentState, Modal } from '@/components/ui';
 import { useReadingGuide } from '@/hooks/useReadingGuide';
 import { S } from '@/lib/strings';
+import { findSectionAnswerIndex, type SectionAnswer } from '@/lib/summaryContent';
 import {
   glossarySearchTerm,
   type GlossaryEntry,
@@ -21,6 +22,8 @@ interface ReadingGuideTabProps {
   level?: string | null;
   onJumpToPage?: (page: number) => void;
   onSearchInPdf?: (term: string, page: number | null) => void;
+  sectionAnswers?: readonly SectionAnswer[];
+  onOpenSummary?: (answerIndex: number | null) => void;
 }
 
 function formatCreatedAt(createdAt: number): string {
@@ -39,9 +42,9 @@ function levelLabelOf(level: string | null | undefined): string | null {
 
 function SectionTitle({ title, hint }: { title: string; hint?: string }) {
   return (
-    <div className="mb-2 flex items-baseline gap-2">
-      <h4 className="text-xs font-[650] text-fg">{title}</h4>
-      {hint && <span className="text-2xs font-normal text-fg-muted">{hint}</span>}
+    <div className="mb-2 flex flex-wrap items-baseline gap-2">
+      <h3 className="font-[650] text-fg">{title}</h3>
+      {hint && <span className="text-sm font-normal text-fg-muted">{hint}</span>}
     </div>
   );
 }
@@ -75,12 +78,12 @@ function GlossaryList({
         onChange={(event) => setFilter(event.target.value)}
         placeholder={S.readingGuide.glossaryFilter}
         aria-label={S.readingGuide.glossaryFilter}
-        className="input py-1.5 text-xs"
+        className="input min-h-8 py-1.5 text-sm"
       />
       {visible.length === 0 ? (
-        <p className="mt-3 text-xs text-fg-muted">{S.readingGuide.glossaryEmpty}</p>
+        <p className="mt-3 text-fg-muted">{S.readingGuide.glossaryEmpty}</p>
       ) : (
-        <ul className="mt-2">
+        <ul className="mt-2 list-none pl-0">
           {visible.map((entry, index) => {
             const term = glossarySearchTerm(entry.symbol);
             const canJump = term !== null || entry.page !== null;
@@ -93,17 +96,17 @@ function GlossaryList({
                     if (term) onSearchInPdf?.(term, entry.page);
                     else if (entry.page !== null) onJumpToPage?.(entry.page);
                   }}
-                  className="flex w-full items-baseline gap-3 px-2 py-1.5 text-left transition-colors duration-150 hover:bg-surface-hover focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-default disabled:hover:bg-transparent"
+                  className="flex min-h-8 w-full flex-wrap items-baseline gap-x-3 gap-y-1 px-2 py-1.5 text-left transition-colors duration-150 hover:bg-surface-hover focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-default disabled:hover:bg-transparent"
                   style={{ borderRadius: 'var(--radius-control)' }}
                 >
-                  <span className="shrink-0 font-mono text-xs font-[650] text-fg">
+                  <span className="max-w-full font-mono text-sm font-[650] text-fg">
                     <Markdown components={INLINE_MARKDOWN}>{entry.symbol}</Markdown>
                   </span>
-                  <span className="min-w-0 flex-1 text-xs font-normal text-fg-secondary">
+                  <span className="min-w-0 flex-1 font-normal text-fg">
                     <Markdown components={INLINE_MARKDOWN}>{entry.meaning}</Markdown>
                   </span>
                   {entry.page !== null && (
-                    <span className="shrink-0 text-2xs text-fg-muted tabular-nums">
+                    <span className="shrink-0 text-sm text-fg-muted tabular-nums">
                       {S.readingGuide.pageLabel(entry.page)}
                     </span>
                   )}
@@ -128,14 +131,14 @@ function PrerequisiteCards({ entries }: { entries: PrerequisiteEntry[] }) {
             className="border border-border/45 bg-surface/40 px-3.5 py-3"
             style={{ borderRadius: 'var(--radius-surface)' }}
           >
-            <h5 className="text-xs font-[650] text-fg">{entry.name}</h5>
+            <h4 className="font-[650] text-fg">{entry.name}</h4>
             {entry.primer && (
-              <p className="mt-1.5 text-xs font-normal leading-relaxed text-fg-secondary">
+              <p className="mt-1.5 font-normal text-fg">
                 {entry.primer}
               </p>
             )}
             {entry.why && (
-              <p className="mt-1.5 text-2xs leading-relaxed text-fg-muted">
+              <p className="mt-1.5 text-fg">
                 <span className="font-medium">{S.readingGuide.prerequisitesWhy}</span> {entry.why}
               </p>
             )}
@@ -149,9 +152,13 @@ function PrerequisiteCards({ entries }: { entries: PrerequisiteEntry[] }) {
 function SectionAccordion({
   sections,
   onJumpToPage,
+  sectionAnswers = [],
+  onOpenSummary,
 }: {
   sections: GuideSection[];
   onJumpToPage?: (page: number) => void;
+  sectionAnswers?: readonly SectionAnswer[];
+  onOpenSummary?: (answerIndex: number | null) => void;
 }) {
   return (
     <section>
@@ -162,13 +169,14 @@ function SectionAccordion({
       >
         {sections.map((section, index) => {
           const page = section.page;
+          const answerIndex = findSectionAnswerIndex(section.title, sectionAnswers);
           return (
             <details
               key={`${section.title}-${index}`}
               className="group/guide border-b border-border/45 last:border-b-0"
             >
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 py-2.5 [&::-webkit-details-marker]:hidden">
-                <span className="min-w-0 text-xs font-[650] text-fg">{section.title}</span>
+              <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 py-2.5 focus-visible:outline-2 focus-visible:outline-accent [&::-webkit-details-marker]:hidden">
+                <span className="min-w-0 font-[650] text-fg">{section.title}</span>
                 <span className="flex shrink-0 items-center gap-1.5">
                   {page !== null && (
                     <button
@@ -180,19 +188,28 @@ function SectionAccordion({
                         event.stopPropagation();
                         onJumpToPage?.(page);
                       }}
-                      className="px-1.5 py-0.5 text-2xs text-fg-muted tabular-nums transition-colors duration-150 hover:text-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
+                      className="min-h-8 px-1.5 py-0.5 text-sm text-fg-muted tabular-nums transition-colors duration-150 hover:text-accent focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
                       style={{ borderRadius: 'var(--radius-control)' }}
                     >
                       {S.readingGuide.pageLabel(page)}
                     </button>
                   )}
-                  <ChevronDown className="h-3.5 w-3.5 text-fg-muted transition-transform duration-150 group-open/guide:rotate-180" />
+                  <ChevronDown className="h-3.5 w-3.5 text-fg-muted group-open/guide:rotate-180" />
                 </span>
               </summary>
               {section.body && (
-                <div className="analysis-content pb-1 [&_p:last-child]:mb-0">
-                  <Markdown>{section.body}</Markdown>
+                <div className="pb-1 [&_p:last-child]:mb-0">
+                  <Markdown codeTools>{section.body}</Markdown>
                 </div>
+              )}
+              {onOpenSummary && (
+                <button
+                  type="button"
+                  onClick={() => onOpenSummary(answerIndex)}
+                  className="mb-2 inline-flex min-h-8 items-center text-sm text-accent hover:underline focus-visible:outline-2 focus-visible:outline-accent"
+                >
+                  {answerIndex === null ? S.readingGuide.openSummary : S.readingGuide.openAnswer}
+                </button>
               )}
             </details>
           );
@@ -207,6 +224,8 @@ export default function ReadingGuideTab({
   level,
   onJumpToPage,
   onSearchInPdf,
+  sectionAnswers,
+  onOpenSummary,
 }: ReadingGuideTabProps) {
   const { status, guide, meta, streamText, error, levelMismatch, generate, cancel } =
     useReadingGuide(paperId, level);
@@ -257,7 +276,7 @@ export default function ReadingGuideTab({
 
   if (status === 'generating') {
     return (
-      <div className="space-y-4">
+      <div className="reading-prose space-y-4">
         <div className="flex items-center justify-between gap-3">
           <span className="shimmer-label text-xs font-medium">{S.readingGuide.generating}</span>
           <button type="button" onClick={cancel} className="btn-ghost px-2.5 py-1 text-2xs">
@@ -265,8 +284,8 @@ export default function ReadingGuideTab({
           </button>
         </div>
         {streamText && (
-          <div className="analysis-content">
-            <Markdown>{streamText}</Markdown>
+          <div>
+            <Markdown codeTools>{streamText}</Markdown>
           </div>
         )}
       </div>
@@ -293,26 +312,17 @@ export default function ReadingGuideTab({
     return (
       <>
         {confirmModal}
-        <div
-          className="border border-border/45 bg-surface/40 px-4 py-4"
-          style={{ borderRadius: 'var(--radius-surface)' }}
-        >
-          <div className="flex items-center gap-2">
-            <AppIcon name="library" className="h-4 w-4 text-accent" />
-            <h3 className="text-sm font-[650] text-fg">{S.readingGuide.title}</h3>
+        <div className="reading-prose flex flex-wrap items-start justify-between gap-3 border-b border-border/45 pb-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <AppIcon name="library" className="h-4 w-4 text-accent" />
+              <h3 className="text-sm font-[650] text-fg">{S.readingGuide.title}</h3>
+            </div>
+            <p className="mt-1 font-normal text-fg">{S.readingGuide.intro}</p>
+            <p className="mt-1 text-sm text-fg-muted">{S.readingGuide.costNotice}</p>
           </div>
-          <p className="mt-2 text-xs font-normal leading-relaxed text-fg-muted">
-            {S.readingGuide.intro}
-          </p>
-          <p className="mt-1 text-2xs leading-relaxed text-fg-muted">{S.readingGuide.costNotice}</p>
-          <button
-            type="button"
-            onClick={() => setConfirmOpen(true)}
-            disabled={!paperId}
-            className="btn-primary mt-4 px-3 py-1.5 text-xs"
-          >
-            {S.readingGuide.generate}
-          </button>
+          <button type="button" onClick={() => setConfirmOpen(true)} disabled={!paperId}
+            className="btn-primary shrink-0 px-3 py-1.5 text-xs">{S.readingGuide.generate}</button>
         </div>
       </>
     );
@@ -327,11 +337,16 @@ export default function ReadingGuideTab({
     : null;
 
   return (
-    <div className="space-y-5">
+    <div className="reading-prose space-y-5">
       {confirmModal}
 
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <div className="min-w-0 space-y-0.5">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/45 pb-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <AppIcon name="library" className="h-4 w-4 text-accent" />
+            <h3 className="text-sm font-[650] text-fg">{S.readingGuide.title}</h3>
+          </div>
+          <p className="mt-1 text-xs text-fg-muted">{S.readingGuide.intro}</p>
           {metaLine && (
             <p className="text-xs text-fg-muted">
               {metaLine}
@@ -354,8 +369,8 @@ export default function ReadingGuideTab({
       </div>
 
       {!guide.parsed ? (
-        <div className="analysis-content">
-          <Markdown>{guide.raw}</Markdown>
+        <div>
+          <Markdown codeTools>{guide.raw}</Markdown>
         </div>
       ) : (
         <>
@@ -370,7 +385,12 @@ export default function ReadingGuideTab({
             <PrerequisiteCards entries={guide.prerequisites} />
           )}
           {guide.sections.length > 0 && (
-            <SectionAccordion sections={guide.sections} onJumpToPage={onJumpToPage} />
+            <SectionAccordion
+              sections={guide.sections}
+              onJumpToPage={onJumpToPage}
+              sectionAnswers={sectionAnswers}
+              onOpenSummary={onOpenSummary}
+            />
           )}
         </>
       )}

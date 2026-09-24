@@ -1,6 +1,7 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const BACKEND_PORT = 8000;
 const BACKEND_TARGET = `http://localhost:${BACKEND_PORT}`;
@@ -18,8 +19,40 @@ function patchPdfViewerCss() {
   };
 }
 
+function pdfWasmAssets(): Plugin {
+  const directory = path.resolve(import.meta.dirname, 'node_modules/pdfjs-dist/wasm');
+  const filenames = new Set(readdirSync(directory));
+  return {
+    name: 'pdf-wasm-assets',
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        const pathname = new URL(request.url ?? '', 'http://localhost').pathname;
+        if (!pathname.startsWith('/pdfjs-wasm/')) return next();
+        const filename = pathname.slice('/pdfjs-wasm/'.length);
+        if (!filenames.has(filename)) {
+          response.statusCode = 404;
+          response.end();
+          return;
+        }
+        response.setHeader('Content-Type', filename.endsWith('.wasm')
+          ? 'application/wasm' : filename.endsWith('.js') ? 'text/javascript' : 'text/plain');
+        response.end(readFileSync(path.join(directory, filename)));
+      });
+    },
+    generateBundle() {
+      for (const filename of filenames) {
+        this.emitFile({
+          type: 'asset',
+          fileName: `pdfjs-wasm/${filename}`,
+          source: readFileSync(path.join(directory, filename)),
+        });
+      }
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), patchPdfViewerCss()],
+  plugins: [react(), patchPdfViewerCss(), pdfWasmAssets()],
   resolve: {
     alias: {
       // Vite 8이 __dirname을 쓰는 설정에 경고를 낸다. configLoader가 'native'로
