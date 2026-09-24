@@ -21,7 +21,7 @@
 | 백엔드 `services api models tools/test_luna_compare.py` | 1,078 tests, 223 subtests 통과 |
 | 별도 `tools/test_provider_compare.py` | 22 tests 통과 |
 | 프런트엔드 Vitest | 314 tests 통과 |
-| Electron Vitest | 269 tests 통과 |
+| 일반 로직/Electron Vitest | 267 tests 통과 |
 | 프런트엔드 타입 검사, lint, build | 통과 |
 | Electron compile, backend entrypoint compile | 통과 |
 
@@ -42,6 +42,10 @@ pnpm build:electron
 ```
 
 독립 검토에서 발견한 PDF 종합 연결 누락, nullable 사용량의 보고서 오류/완료 상태 오인, HTML 이미지 사전 요청은 실패 회귀검사를 보존하고 수정했다. 독립 재검토와 실제 GUI 검사는 이 자동 검사와 구분하며 해당 PR의 검증 기록을 따른다. 자동 검사 통과는 논문 내용의 정확성이나 패키지 실행의 통과를 뜻하지 않는다.
+
+Windows CI에서 DOM용 HTML 테스트를 일반 테스트 단계가 수집해 `jsdom`을 찾지 못했다. 기존 규칙에 맞춰 `reportExport.dom.test.tsx`로 이름만 변경했고, 일반 테스트 267개와 프런트엔드 테스트 314개를 다시 통과했다. HTML 테스트 5개는 프런트엔드 단계에서 모두 실행됐다. 제품 코드와 테스트 내용은 바꾸지 않았다.
+
+최종 제품 소스의 개발 Electron/FastAPI에서 111장과 기능 검사 216개를 기록했다. 실제 보고서 다운로드, 오류/null 사용량 복원, 출처 왕복, Chrome의 외부 이미지 자동 요청 차단을 확인했다. 독립 시각 검토는 생성 요청이 없는 종합 화면의 기존 진행 문구 결함과 일부 숫자 뒤 한글 어미 줄바꿈을 지적했다. 기능 검사 통과를 GUI 무결함 승인으로 확장하지 않는다. 초기 inspector/native 창 조작에서 발생한 SIGTRAP 1회는 원인 미확정이고 후속 실행은 통과했다. 패키지 실행은 검증하지 않았다.
 
 ## 모델 비교의 결론 유지
 
