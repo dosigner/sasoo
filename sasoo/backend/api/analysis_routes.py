@@ -67,7 +67,7 @@ from services.pricing import calc_result_cost
 from services.llm.interactions_client import call_interaction, stream_interaction
 
 from api.analysis_state import _running_analyses, _cancel_events, _analyses_lock
-from api.analysis_helpers import _clean_llm_json, _SYSTEM_INSTRUCTION_KO
+from api.analysis_helpers import _clean_llm_json, _is_error_result, _SYSTEM_INSTRUCTION_KO
 from services.model_registry import active_provider, resolve as resolve_model
 from services.provider_state import key_env_for
 from api.report_service import (
@@ -303,7 +303,7 @@ async def _build_analysis_status(paper_id: int, paper: dict, latest_results: dic
     total_out = 0
 
     phase_order = ["screening", "citation", "visual", "recipe", "deep_dive"]
-    completed_phases = set(latest_results.keys())
+    completed_phases = {phase for phase, row in latest_results.items() if not _is_error_result(row.get("result") or "{}")}
 
     # Task 11(스펙 §D): stale_model 배지용 현재 provider. 조회 실패해도(설정
     # DB 미초기화 등) 상태 응답 자체는 죽으면 안 되므로 관대하게 폴백한다 —
@@ -321,9 +321,12 @@ async def _build_analysis_status(paper_id: int, paper: dict, latest_results: dic
     for phase_name in phase_order:
         r = latest_results.get(phase_name)
         if r:
-            cost = r.get("cost_usd") or 0.0
-            tin = r.get("tokens_in") or 0
-            tout = r.get("tokens_out") or 0
+            cost = r.get("cost_usd", 0.0)
+            tin = r.get("tokens_in", 0)
+            tout = r.get("tokens_out", 0)
+            phase_failed = phase_name not in completed_phases
+            payload = r.get("parsed_result") or {}
+            error_message = str(payload.get("_parse_error") or payload.get("error") or "분석 실패") if phase_failed else None
             stale_model: Optional[str] = None
             # 스크리닝 게이트로 스킵된 phase("system")는 provider/model/effort 없이
             # 저장돼(_store_skipped_phase_result) config_hash가 고정 상수 해시라
@@ -350,7 +353,8 @@ async def _build_analysis_status(paper_id: int, paper: dict, latest_results: dic
                     )
             phases.append(PhaseStatus(
                 phase=AnalysisPhase(phase_name),
-                status="completed",
+                status="error" if phase_failed else "completed",
+                error_message=error_message,
                 model_used=r.get("model_used"),
                 tokens_in=tin,
                 tokens_out=tout,
@@ -358,9 +362,12 @@ async def _build_analysis_status(paper_id: int, paper: dict, latest_results: dic
                 completed_at=r.get("created_at"),
                 stale_model=stale_model,
             ))
-            total_cost += cost
-            total_in += tin
-            total_out += tout
+            if cost is not None:
+                total_cost += cost
+            if tin is not None:
+                total_in += tin
+            if tout is not None:
+                total_out += tout
         else:
             phases.append(PhaseStatus(phase=AnalysisPhase(phase_name), status="pending"))
 
@@ -373,7 +380,7 @@ async def _build_analysis_status(paper_id: int, paper: dict, latest_results: dic
         progress = (completed_main / 5) * 80  # Max 80% without viz
     progress = min(progress, 100.0)
 
-    base = {"overall_status": paper["status"], "progress_pct": progress, "current_phase": None}
+    base = {"overall_status": "error" if any(phase.status == "error" for phase in phases) else paper["status"], "progress_pct": progress, "current_phase": None}
     if _subprocess_mode():
         try:
             from models.database import get_db
@@ -931,9 +938,15 @@ async def get_report(paper_id: int):
         phase = r["phase"]
         title = phase_titles.get(phase, phase.title())
         sections.append(f"## {title}\n")
+        tokens_in = r.get("tokens_in", 0)
+        tokens_out = r.get("tokens_out", 0)
+        cost = r.get("cost_usd", 0.0)
+        input_label = "미확인" if tokens_in is None else f"{tokens_in:,}"
+        output_label = "미확인" if tokens_out is None else f"{tokens_out:,}"
+        cost_label = "미확인" if cost is None else f"${cost:.4f}"
         sections.append(f"*Model: {r.get('model_used', 'N/A')} | "
-                        f"Tokens: {r.get('tokens_in', 0):,} in / {r.get('tokens_out', 0):,} out | "
-                        f"Cost: ${r.get('cost_usd', 0):.4f}*\n")
+                        f"Tokens: {input_label} in / {output_label} out | "
+                        f"Cost: {cost_label}*\n")
 
         parsed = r.get("parsed_result")
         sections.append(
@@ -945,14 +958,19 @@ async def get_report(paper_id: int):
 
         sections.append("")
 
-    # Cost summary
-    total_cost = sum(r.get("cost_usd", 0) or 0 for r in ordered_rows)
-    total_in = sum(r.get("tokens_in", 0) or 0 for r in ordered_rows)
-    total_out = sum(r.get("tokens_out", 0) or 0 for r in ordered_rows)
     sections.append("## Cost Summary\n")
-    sections.append(f"- **Total Cost:** ${total_cost:.4f}")
-    sections.append(f"- **Total Tokens In:** {total_in:,}")
-    sections.append(f"- **Total Tokens Out:** {total_out:,}")
+    for key, label, format_spec, prefix in (
+        ("cost_usd", "Total Cost", ".4f", "$"),
+        ("tokens_in", "Total Tokens In", ",", ""),
+        ("tokens_out", "Total Tokens Out", ",", ""),
+    ):
+        known = [r.get(key, 0) for r in ordered_rows if r.get(key, 0) is not None]
+        unknown_count = len(ordered_rows) - len(known)
+        total_label = f"{prefix}{sum(known):{format_spec}}"
+        if unknown_count:
+            subtotal = f"확인된 합계: {total_label}; " if known else ""
+            total_label = f"미확인 ({subtotal}미확인 {unknown_count}개 단계)"
+        sections.append(f"- **{label}:** {total_label}")
 
     markdown = "\n".join(sections)
 

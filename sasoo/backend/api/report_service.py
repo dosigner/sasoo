@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 def _format_phase_data(phase: str, data: dict) -> str:
     """Format phase result data as readable markdown."""
     parts: list[str] = []
+    if "_parse_error" in data or "error" in data:
+        parts.append(f"**분석 실패:** {data.get('_parse_error') or data.get('error') or '원응답을 확인하지 못했습니다'}")
     if phase in {"visual", "recipe", "deep_dive"}:
         coverage = data.get("_input_coverage")
         match coverage:

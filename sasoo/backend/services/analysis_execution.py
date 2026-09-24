@@ -2967,6 +2967,8 @@ async def _run_synthesis(
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
     doc_text: str = "",
+    openai_pdf_part: dict[str, str] | None = None,
+    pdf_sha256: str | None = None,
     provider: str = "gemini",
     use_cache: bool = True,
 ) -> Optional[dict]:
@@ -2979,6 +2981,9 @@ async def _run_synthesis(
 
     실패하면 None을 돌려준다. 다이어그램 생성을 막지 않는 것이 이 스테이지의 계약이다.
     """
+    source_hash = openai_pdf_part["sha256"] if openai_pdf_part else pdf_sha256 if pdf_uri else None
+    source_text = doc_text or visualization_input
+    restart_context = _build_chain_restart_context(previous_results)
     choice = _stage_choice("synthesis", provider)
 
     figure_rows = await fetch_all(
@@ -3001,7 +3006,7 @@ async def _run_synthesis(
     )
     prev_context = "\n---\n".join(previous_results[:4])
     prompt_chain = (
-        f"{instruction}\n\n{_doc_reference_phrase(provider)}와 이전 분석 단계 결과를 "
+        f"{instruction}\n\n{_doc_reference_phrase(provider, pdf_provided=bool(openai_pdf_part))}와 이전 분석 단계 결과를 "
         "바탕으로 종합해줘."
     )
     prompt_fallback = (
@@ -3012,7 +3017,12 @@ async def _run_synthesis(
         model=choice.model,
         thinking=choice.effort or "",
         system_instruction=system_instruction,
-        prompt=prompt_fallback,
+        prompt=f"{prompt_fallback}\n{restart_context}",
+        source_signature=source_signature(
+            source_text, pdf_sha256=source_hash,
+            detail=openai_pdf_part.get("detail", "high") if openai_pdf_part else "high",
+        ),
+        max_output_tokens=_STAGE_MAX_OUTPUT_TOKENS.get("synthesis"),
     )
 
     if use_cache:
@@ -3034,8 +3044,9 @@ async def _run_synthesis(
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
         doc_text=doc_text,
+        openai_pdf_part=openai_pdf_part,
         response_schema=_SYNTHESIS_SCHEMA,
-        restart_context=_build_chain_restart_context(previous_results),
+        restart_context=restart_context,
         provider=provider,
     )
     cost = _result_cost(result)
@@ -3120,6 +3131,8 @@ async def _run_visualizations(
             previous_interaction_id=previous_interaction_id,
             pdf_uri=pdf_uri,
             doc_text=doc_text,
+            openai_pdf_part=openai_pdf_part,
+            pdf_sha256=pdf_sha256,
             provider=provider,
         )
     except Exception as synthesis_err:

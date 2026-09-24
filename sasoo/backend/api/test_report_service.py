@@ -214,3 +214,17 @@ def test_report_rejects_malformed_coverage_consistently_with_ui(coverage):
     assert "입력 범위 미확인" in output
     assert "부분 분석" not in output
     assert "원본 PDF 제공" not in output
+
+
+@pytest.mark.parametrize("phase", ["screening", "citation", "visual", "recipe", "deep_dive"])
+def test_report_formatter_keeps_failed_analysis_explicit(phase):
+    for key in ("_parse_error", "error"):
+        output = _format_phase_data(phase, {key: "usage unavailable", "_raw": "partial output"})
+        assert "분석 실패" in output
+        assert "usage unavailable" in output
+
+
+def test_report_failure_label_preserves_available_local_citation_data():
+    output = _format_phase_data("citation", {"error": "enrichment failed", "total_references": 12})
+    assert "분석 실패" in output
+    assert '"total_references": 12' in output

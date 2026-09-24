@@ -4093,3 +4093,158 @@ class NativePdfValidationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(raised.exception.detail["_usage"]["cost_usd"], 0.000035)
             call.assert_awaited_once()
             update.assert_not_awaited()
+
+
+class IntegrationSynthesisHandoffTests(unittest.IsolatedAsyncioTestCase):
+    async def _capture_synthesis(self, previous_id, pdf_part, last_stage="DEEP-DIVE-MARKER"):
+        keys = []
+
+        async def cache(paper_id, phase, key, **kwargs):
+            if phase == "synthesis":
+                keys.append(key)
+                return None
+            return {"text": '{"items":[],"complete":true}'}
+
+        call = AsyncMock(return_value={"text": "{}", "model": "gpt-5.6-luna", "tokens_in": 100,
+                                      "tokens_out": 50, "tokens_cached": 0, "tokens_cache_write": 0})
+        previous = [json.dumps({"summary": value}) for value in ("screening", "citation", "visual", "recipe", last_stage)]
+        with patch("services.analysis_execution.fetch_all", new=AsyncMock(return_value=[])), patch(
+            "services.analysis_execution._get_cached_phase_result", new=cache
+        ), patch("services.analysis_execution.call_interaction", new=call), patch(
+            "services.analysis_execution._insert_analysis_result", new=AsyncMock()
+        ), patch("services.analysis_execution._get_all_settings", new=AsyncMock(return_value={})):
+            await analysis_execution._run_visualizations(
+                7, "source excerpt", "folder", previous, previous[3], previous[4],
+                AnalysisStatus(paper_id=7, overall_status="running", phases=[]), provider="openai",
+                previous_interaction_id=previous_id, openai_pdf_part=pdf_part, pdf_sha256=pdf_part["sha256"],
+            )
+        call.assert_awaited_once()
+        return call.await_args, keys[0]
+
+    async def test_synthesis_continues_native_pdf_live_response_chain(self):
+        call, _ = await self._capture_synthesis("resp-deep-dive", FullAnalysisChainOrchestrationTests._PDF)
+        self.assertTrue(call.kwargs["store"])
+        self.assertEqual(call.kwargs["previous_interaction_id"], "resp-deep-dive")
+        self.assertIsInstance(call.args[0], str)
+        self.assertIn("위 논문 PDF", call.args[0])
+
+    async def test_synthesis_cache_restart_reattaches_pdf_and_all_previous_stages(self):
+        from services.llm.openai_client import _translate_parts
+
+        pdf = FullAnalysisChainOrchestrationTests._PDF
+        call, _ = await self._capture_synthesis(None, pdf)
+        self.assertTrue(call.kwargs["store"])
+        self.assertIsNone(call.kwargs["previous_interaction_id"])
+        self.assertEqual(call.args[0][0], pdf)
+        self.assertIn("DEEP-DIVE-MARKER", call.args[0][1]["text"])
+        wire = _translate_parts(call.args[0])[0]["content"][0]
+        self.assertEqual(wire["type"], "input_file")
+        self.assertEqual(wire["detail"], "high")
+
+    async def test_synthesis_cache_identity_tracks_pdf_detail_and_deep_dive_digest(self):
+        pdf = FullAnalysisChainOrchestrationTests._PDF
+        _, base = await self._capture_synthesis(None, pdf)
+        _, changed_pdf = await self._capture_synthesis(None, {**pdf, "sha256": "b" * 64})
+        _, changed_detail = await self._capture_synthesis(None, {**pdf, "detail": "low"})
+        _, changed_digest = await self._capture_synthesis(None, pdf, last_stage="CHANGED-DEEP-DIVE")
+        self.assertEqual(len({base, changed_pdf, changed_detail, changed_digest}), 4)
+
+
+class IntegrationNullableReportTests(unittest.IsolatedAsyncioTestCase):
+    async def _request(self, endpoint, rows):
+        from fastapi import FastAPI
+        from httpx import ASGITransport, AsyncClient
+
+        app = FastAPI()
+        app.include_router(analysis_routes.router)
+        with patch.dict(analysis_routes._running_analyses, {}, clear=True), patch(
+            "api.analysis_routes.fetch_one", new=AsyncMock(return_value={"id": 7, "title": "Paper", "status": "error"})
+        ), patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value=rows)), patch(
+            "api.analysis_routes.active_provider", new=AsyncMock(return_value="openai")
+        ), patch("api.analysis_routes._lookup_phase_result_with_staleness", new=AsyncMock(return_value=None)), patch(
+            "api.analysis_routes._subprocess_mode", return_value=False
+        ):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                return await client.get(f"/api/analysis/7/{endpoint}")
+
+    async def test_report_renders_nullable_failure_and_distinguishes_known_subtotals(self):
+        failure = {"_raw": "partial output", "_parse_error": "usage unavailable", "_usage": {"usage_complete": False}}
+        rows = {
+            "screening": _row("screening", "{}", parsed_result={}, tokens_in=1200, tokens_out=0, cost_usd=0.3),
+            "deep_dive": _row("deep_dive", json.dumps(failure), parsed_result=failure, tokens_in=None, tokens_out=None, cost_usd=None),
+        }
+        response = await self._request("report", rows)
+        self.assertEqual(response.status_code, 200)
+        markdown = response.json()["markdown"]
+        self.assertIn("Tokens: 미확인 in / 미확인 out | Cost: 미확인", markdown)
+        self.assertIn("**Total Cost:** 미확인", markdown)
+        self.assertIn("확인된 합계: $0.3000", markdown)
+        self.assertIn("확인된 합계: 1,200", markdown)
+        self.assertIn("분석 실패", markdown)
+        self.assertIn("usage unavailable", markdown)
+
+    async def test_report_all_unknown_usage_has_no_zero_cost_claim(self):
+        failure = {"error": "failed"}
+        response = await self._request("report", {"recipe": _row(
+            "recipe", json.dumps(failure), parsed_result=failure, tokens_in=None, tokens_out=None, cost_usd=None,
+        )})
+        self.assertEqual(response.status_code, 200)
+        markdown = response.json()["markdown"]
+        self.assertIn("**Total Cost:** 미확인", markdown)
+        self.assertNotIn("$0.0000", markdown)
+        self.assertNotIn("확인된 합계", markdown)
+
+    async def test_stored_failures_restore_error_state_and_nullable_usage_for_all_phases(self):
+        rows = {}
+        for phase in ("screening", "citation", "visual", "recipe", "deep_dive"):
+            key = "error" if phase == "citation" else "_parse_error"
+            failure = {key: f"{phase} failed", "_raw": "partial output"}
+            rows[phase] = _row(phase, json.dumps(failure), parsed_result=failure, tokens_in=None, tokens_out=None, cost_usd=None)
+        response = await self._request("status", rows)
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        for phase in payload["phases"]:
+            self.assertEqual(phase["status"], "error")
+            self.assertEqual(phase["error_message"], f"{phase['phase']} failed")
+            self.assertIsNone(phase["tokens_in"])
+            self.assertIsNone(phase["tokens_out"])
+            self.assertIsNone(phase["cost_usd"])
+        self.assertEqual(payload["progress_pct"], 0)
+
+    async def test_known_zero_and_absent_legacy_usage_keep_existing_defaults(self):
+        zero = _row("screening", "{}", parsed_result={}, tokens_in=0, tokens_out=0, cost_usd=0.0)
+        legacy = _row("recipe", "{}", parsed_result={})
+        for field in ("tokens_in", "tokens_out", "cost_usd"):
+            legacy.pop(field)
+        rows = {"screening": zero, "recipe": legacy}
+        response = await self._request("status", rows)
+        phases = {phase["phase"]: phase for phase in response.json()["phases"]}
+        for name in ("screening", "recipe"):
+            self.assertEqual(phases[name]["cost_usd"], 0.0)
+            self.assertEqual(phases[name]["tokens_in"], 0)
+            self.assertEqual(phases[name]["status"], "completed")
+        report = await self._request("report", rows)
+        self.assertIn("**Total Cost:** $0.0000", report.json()["markdown"])
+
+    async def test_results_restores_same_failure_state_without_live_worker(self):
+        failure = {"_parse_error": "missing usage", "_raw": "partial", "_usage": {"usage_complete": False}}
+        row = _row("recipe", json.dumps(failure), parsed_result=failure, tokens_in=None, tokens_out=None, cost_usd=None)
+        response = await self._request("results", {"recipe": row})
+        payload = response.json()
+        phase = next(item for item in payload["status"]["phases"] if item["phase"] == "recipe")
+        self.assertEqual(phase["status"], "error")
+        self.assertIsNone(phase["cost_usd"])
+        self.assertEqual(payload["recipe"], failure)
+
+    async def test_report_each_unknown_usage_field_keeps_other_known_values(self):
+        for unknown in ("tokens_in", "tokens_out", "cost_usd"):
+            usage = {"tokens_in": 1200, "tokens_out": 10, "cost_usd": 0.3, unknown: None}
+            response = await self._request("report", {"screening": _row("screening", "{}", parsed_result={}, **usage)})
+            markdown = response.json()["markdown"]
+            if unknown != "cost_usd":
+                self.assertIn("**Total Cost:** $0.3000", markdown)
+            if unknown != "tokens_in":
+                self.assertIn("**Total Tokens In:** 1,200", markdown)
+            if unknown != "tokens_out":
+                self.assertIn("**Total Tokens Out:** 10", markdown)
+            self.assertIn("미확인 1개 단계", markdown)
