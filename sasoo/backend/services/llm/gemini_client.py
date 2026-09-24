@@ -205,6 +205,7 @@ async def call_interaction(
         tokens_out = (getattr(usage, "total_output_tokens", 0) or 0) + tokens_thought
         return {
             "text": interaction.output_text or "",
+            "incomplete": getattr(interaction, "status", None) in ("incomplete", "failed", "cancelled"),
             "model": model,
             "tokens_in": tokens_in,
             "tokens_out": tokens_out,

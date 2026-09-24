@@ -28,7 +28,7 @@ from typing import Any
 import fitz  # PyMuPDF
 
 from services.llm.interactions_client import call_interaction
-from services.pricing import calc_cost
+from services.pricing import PricingUsageError, calc_result_cost
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +172,13 @@ class GeminiParserError(RuntimeError):
     """Gemini 파서 엔진 실패. odl_parser 디스패처가 OdlParserError로 변환해 폴백을 유도한다."""
 
 
+class PageResponseError(GeminiParserError):
+    def __init__(self, raw_text: str, usage: dict[str, Any]) -> None:
+        message = "페이지 응답이 완료되지 않았거나 사용량을 확인하지 못했습니다"
+        super().__init__(message)
+        self.failure = {"_raw": raw_text, "_parse_error": message, "_usage": usage}
+
+
 # Gemini element type -> ODL 트리 type 매핑.
 # slim 모드에선 paragraph/formula를 방출하지 않으므로(본문은 markdown 전담) 매핑에서 뺀다.
 # full 모드는 baseline 재현용 — formula는 ODL TEXTUAL_TYPES에 없어 매니페스트에서
@@ -308,18 +315,17 @@ async def _call_page(png_b64: str, model: str, effort: str | None) -> dict[str, 
         response_schema=_PAGE_RESPONSE_SCHEMA,
         media_resolution=_MEDIA_RESOLUTION or None,
     )
+    usage = {key: value for key, value in result.items() if key != "text"}
+    usage["model"] = result.get("model", model)
+    try:
+        usage["cost_usd"] = calc_result_cost(result, model=model)
+    except PricingUsageError:
+        usage["cost_usd"] = None
+        usage["usage_complete"] = False
+    if result.get("incomplete") or result.get("response_status") in {"incomplete", "failed", "cancelled"} or usage["cost_usd"] is None:
+        raise PageResponseError(result.get("text", ""), usage)
     data = _parse_json(result.get("text", ""))
-    tokens_in = int(result.get("tokens_in", 0) or 0)
-    tokens_out = int(result.get("tokens_out", 0) or 0)
-    tokens_thought = int(result.get("tokens_thought", 0) or 0)
-    used_model = result.get("model", model)
-    data["_usage"] = {
-        "tokens_in": tokens_in,
-        "tokens_out": tokens_out,
-        "tokens_thought": tokens_thought,
-        "cost_usd": calc_cost(used_model, tokens_in, tokens_out),
-        "model": used_model,
-    }
+    data["_usage"] = usage
     return data
 
 
@@ -348,6 +354,8 @@ async def _process_page(
                 page_markdown = str(data.get("markdown", "") or "")
                 usage = data.get("_usage", {})
                 return nodes, page_markdown, usage
+            except PageResponseError:
+                raise
             except Exception as exc:  # noqa: BLE001 - 재시도 후 재던짐
                 last_err = exc
                 logger.warning(
@@ -478,14 +486,9 @@ async def run_convert_gemini(
             ],
             return_exceptions=True,
         )
-        if all(isinstance(item, BaseException) for item in probe):
-            first_error = probe[0]
-            raise GeminiParserError(
-                f"first {probe_size} page(s) all failed (systemic); "
-                f"aborting before fan-out: {first_error}"
-            ) from first_error
+        systemic_failure = all(isinstance(item, BaseException) for item in probe)
         results: list[Any] = list(probe)
-        if page_count > probe_size:
+        if page_count > probe_size and not systemic_failure:
             rest = await asyncio.gather(
                 *[
                     _process_page(doc_pool, page_index, page_sem, model, effort)
@@ -510,11 +513,18 @@ async def run_convert_gemini(
     success_pages = 0
     errors: list[BaseException] = []
     failed_pages: list[int] = []
-    for page_index in range(page_count):
-        item = results[page_index]
+    failures: list[dict[str, Any]] = []
+    usage_complete = True
+    for page_index, item in enumerate(results):
         if isinstance(item, BaseException):
             errors.append(item)
             failed_pages.append(page_index + 1)
+            if isinstance(item, PageResponseError):
+                failures.append({"page": page_index + 1, **item.failure})
+                failed_usage = item.failure["_usage"]
+                for key in totals:
+                    totals[key] += failed_usage.get(key) or 0
+                usage_complete = usage_complete and failed_usage.get("usage_complete", True)
             continue
         nodes, page_markdown, usage = item
         success_pages += 1
@@ -529,16 +539,19 @@ async def run_convert_gemini(
         totals["cost_usd"] += float(usage.get("cost_usd", 0.0) or 0.0)
 
     if usage_out is not None:
-        # 성공/부분실패 공통으로 실제 지출을 반영한다. pages는 실제 성공(=과금)한 페이지 수.
+        # Reported failed responses are billed too; pages counts successful parses.
         usage_out.update(
             {
                 "engine": GEMINI_ENGINE_NAME,
                 "model": model,
                 "pages": success_pages,
-                "tokens_in": totals["tokens_in"],
-                "tokens_out": totals["tokens_out"],
+                "tokens_in": totals["tokens_in"] if usage_complete else None,
+                "tokens_out": totals["tokens_out"] if usage_complete else None,
                 "tokens_thought": totals["tokens_thought"],
-                "cost_usd": round(totals["cost_usd"], 8),
+                "cost_usd": round(totals["cost_usd"], 8) if usage_complete else None,
+                "known_cost_usd": round(totals["cost_usd"], 8),
+                "usage_complete": usage_complete,
+                "failures": failures,
                 "partial": bool(errors),
                 "failed_pages": list(failed_pages),
             }

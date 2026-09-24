@@ -21,8 +21,11 @@ def _client_for(model: str):
     return openai_client if model.startswith("gpt-") else gemini_client
 
 
-async def call_interaction(prompt, *, model, **kwargs) -> dict:
-    return await _client_for(model).call_interaction(prompt, model=model, **kwargs)
+async def call_interaction(prompt, *, model, strict_schema: bool = False, **kwargs) -> dict:
+    client = _client_for(model)
+    if strict_schema and client is openai_client:
+        kwargs["strict_schema"] = True
+    return await client.call_interaction(prompt, model=model, **kwargs)
 
 
 async def stream_interaction(prompt, *, model, **kwargs):

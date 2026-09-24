@@ -632,3 +632,87 @@ class TestParserProviderRouting(unittest.TestCase):
                 self.assertEqual(kwargs["thinking_level"], "high")
         finally:
             importlib.reload(gemini_parser)
+
+
+class ParserCostPropagationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_openai_page_prices_cache_categories_once(self):
+        result = {"text": json.dumps(_CANNED_PAGE), "model": "gpt-6-luna",
+                  "tokens_in": 100_000, "tokens_out": 10_000, "tokens_thought": 8_000,
+                  "tokens_cached": 20_000, "tokens_cache_write": 30_000}
+        with patch("services.gemini_parser.call_interaction", new=AsyncMock(return_value=result)):
+            page = await gemini_parser._call_page("image", "gpt-6-luna", "low")
+        self.assertEqual(page["_usage"]["cost_usd"], 0.01395)
+        self.assertEqual(page["_usage"]["tokens_out"], 10_000)
+
+    async def test_missing_page_usage_does_not_become_zero_cost(self):
+        result = {"text": json.dumps(_CANNED_PAGE), "model": "gpt-6-luna",
+                  "tokens_in": None, "tokens_out": None, "usage_complete": False}
+        with patch("services.gemini_parser.call_interaction", new=AsyncMock(return_value=result)):
+            with self.assertRaises(gemini_parser.GeminiParserError):
+                await gemini_parser._call_page("image", "gpt-6-luna", "low")
+
+    async def test_parser_ledger_keeps_precalculated_per_page_cost(self):
+        from services.odl_parser import _record_visual_parse_usage
+
+        usage = {"engine": "gemini", "model": "gpt-6-luna", "tokens_in": 300_000,
+                 "tokens_out": 10_000, "cost_usd": 0.035, "pages": 3}
+        insert = AsyncMock()
+        with patch("services.odl_parser.execute_insert", new=insert):
+            await _record_visual_parse_usage(7, usage)
+        self.assertEqual(insert.await_args.args[1][6], 0.035)
+
+
+class ParserCompletionFailureTests(unittest.IsolatedAsyncioTestCase):
+    async def test_noncompleted_json_is_rejected_with_raw_usage_and_cost(self):
+        raw = json.dumps(_CANNED_PAGE)
+        for status in ("incomplete", "failed", "cancelled"):
+            response = {"text": raw, "model": "gpt-6-luna", "tokens_in": 100,
+                        "tokens_out": 50, "tokens_cached": 0, "tokens_cache_write": 0,
+                        "response_status": status, "incomplete_reason": "max_output_tokens"}
+            with patch("services.gemini_parser.call_interaction", new=AsyncMock(return_value=response)):
+                with self.assertRaises(gemini_parser.GeminiParserError) as raised:
+                    await gemini_parser._call_page("image", "gpt-6-luna", "low")
+            self.assertEqual(raised.exception.failure["_raw"], raw)
+            self.assertEqual(raised.exception.failure["_usage"]["response_status"], status)
+            self.assertEqual(raised.exception.failure["_usage"]["cost_usd"], 0.000035)
+
+    async def test_single_failed_probe_retains_billing_before_document_error(self):
+        raw = json.dumps(_CANNED_PAGE)
+        response = {"text": raw, "model": "gpt-6-luna", "tokens_in": 100,
+                    "tokens_out": 50, "tokens_cached": 0, "tokens_cache_write": 0,
+                    "incomplete": True, "response_status": "incomplete"}
+        with TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            pdf = directory / "source.pdf"
+            _make_pdf(pdf, pages=1)
+            usage = {}
+            call = AsyncMock(return_value=response)
+            with patch("services.gemini_parser.call_interaction", new=call):
+                with self.assertRaises(gemini_parser.GeminiParserError):
+                    await run_convert_gemini(pdf, directory, directory / "figures", usage_out=usage, provider="openai")
+        call.assert_awaited_once()
+        self.assertEqual(usage["pages"], 0)
+        self.assertEqual(usage["tokens_in"], 100)
+        self.assertEqual(usage["tokens_out"], 50)
+        self.assertEqual(usage["cost_usd"], 0.000035)
+        self.assertEqual(usage["failed_pages"], [1])
+        self.assertEqual(usage["failures"][0]["_raw"], raw)
+        self.assertTrue(usage["partial"])
+
+    async def test_unavailable_usage_stays_unknown_in_failed_probe(self):
+        response = {"text": json.dumps(_CANNED_PAGE), "model": "gpt-6-luna",
+                    "tokens_in": None, "tokens_out": None, "usage_complete": False}
+        with TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            pdf = directory / "source.pdf"
+            _make_pdf(pdf, pages=1)
+            usage = {}
+            call = AsyncMock(return_value=response)
+            with patch("services.gemini_parser.call_interaction", new=call):
+                with self.assertRaises(gemini_parser.GeminiParserError):
+                    await gemini_parser.run_convert_gemini(pdf, directory, directory / "figures", usage_out=usage, provider="openai")
+        call.assert_awaited_once()
+        self.assertIsNone(usage["cost_usd"])
+        self.assertIsNone(usage["tokens_in"])
+        self.assertFalse(usage["usage_complete"])
+        self.assertEqual(usage["failures"][0]["_raw"], response["text"])

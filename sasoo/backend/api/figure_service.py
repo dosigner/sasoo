@@ -29,7 +29,7 @@ from services.odl_parser import (
 from services.analysis_results import get_latest_completed_phase_rows
 from services.concurrency import run_pipeline_blocking
 from services.document_context import load_or_build_document_context
-from services.pricing import calc_cost
+from services.pricing import PricingUsageError, calc_result_cost
 from services.llm.interactions_client import call_interaction
 from services.model_registry import active_provider, resolve as resolve_model
 
@@ -566,6 +566,21 @@ Be exhaustive. Do NOT summarize or abbreviate. Include every relevant numerical 
     except Exception:
         result = await call_interaction(contents, lane="chat", model=_choice.model, store=False)
 
+    usage = {key: value for key, value in result.items() if key != "text"}
+    try:
+        cost = calc_result_cost(result)
+    except PricingUsageError:
+        cost = None
+        usage["usage_complete"] = False
+    usage["cost_usd"] = cost
+    if result.get("incomplete") or result.get("response_status") in {"incomplete", "failed", "cancelled"} or cost is None:
+        logger.warning("Figure explanation response incomplete for paper %s figure %s", paper_id, figure_id)
+        raise HTTPException(status_code=502, detail={
+            "_raw": result.get("text", ""),
+            "_parse_error": "그림 설명 응답이 완료되지 않았거나 사용량을 확인하지 못했습니다",
+            "_usage": usage,
+        })
+
     explanation = result["text"].strip()
 
     # Gemini sometimes returns JSON instead of plain markdown — extract and flatten
@@ -590,8 +605,6 @@ Be exhaustive. Do NOT summarize or abbreviate. Include every relevant numerical 
             explanation = _extract_md(data).strip()
         except (json.JSONDecodeError, TypeError):
             pass  # Not valid JSON, use as-is
-
-    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
 
     # Cache the explanation in the figures table
     await execute_update(

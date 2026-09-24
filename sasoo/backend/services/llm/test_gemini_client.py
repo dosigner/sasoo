@@ -25,6 +25,17 @@ def _fake_interaction(text="결과", interaction_id="int_1", total_thought_token
     )
 
 
+def test_incomplete_response_status_is_preserved():
+    fake_client = MagicMock()
+    response = _fake_interaction()
+    response.status = "incomplete"
+    fake_client.interactions.create.return_value = response
+    with patch("services.llm.gemini_client._get_client", return_value=fake_client):
+        result = asyncio.run(call_interaction("source", lane="pipeline"))
+    assert result["incomplete"] is True
+    assert result["tokens_out"] == 50
+
+
 def test_call_interaction_basic():
     fake_client = MagicMock()
     fake_client.interactions.create.return_value = _fake_interaction(total_thought_tokens=50)

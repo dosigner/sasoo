@@ -16,8 +16,11 @@ PRICING에 두고, 한시 도입가는 만료일과 함께 INTRO_PRICING에 둔�
 기준일로 고른다.
 """
 
+from collections.abc import Mapping
 from datetime import date, datetime, timezone
-from typing import NamedTuple
+from decimal import Decimal, ROUND_HALF_EVEN
+from math import isfinite
+from typing import Final, NamedTuple
 
 # Pricing table (USD per 1M tokens). 한시 할인이 끝난 뒤의 표준가.
 PRICING: dict[str, dict[str, float]] = {
@@ -46,8 +49,9 @@ PRICING: dict[str, dict[str, float]] = {
     "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
     "claude-sonnet-4-5-20250929": {"input": 3.00, "output": 15.00},
 
-    # --- OpenAI 텍스트 (provider 중립화 — 단가는 2026-08-05 공식 페이지 확인값) ---
-    "gpt-5.6-luna": {"input": 0.20, "output": 1.20},
+    # OpenAI Standard rates, verified in the 2026-09-23 migration research.
+    "gpt-5.6-luna": {"input": 0.20, "cached_input": 0.02, "cache_write": 0.25, "output": 1.20},
+    "gpt-6-luna": {"input": 0.10, "cached_input": 0.01, "cache_write": 0.125, "output": 0.50},
 }
 
 
@@ -89,6 +93,19 @@ IMAGE_PRICING: dict[str, float] = {
 
 _FALLBACK = "gemini-3-flash-preview"
 _FALLBACK_OPENAI = "gpt-5.6-luna"
+_OPENAI_LONG_CONTEXT_THRESHOLD: Final = 272_000
+
+
+class PricingUsageError(ValueError):
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(reason)
+
+
+def _token_count(value: object, field: str) -> int:  # noqa: OBJECT_OK - Parse the locked result mapping boundary.
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise PricingUsageError(f"{field} must be a non-negative integer")
+    return value
 
 
 def _fallback_for(model: str) -> str:
@@ -114,6 +131,8 @@ def calc_cost(
     output_tokens: int,
     *,
     as_of: date | None = None,
+    cached_input_tokens: int = 0,
+    cache_write_tokens: int = 0,
 ) -> float:
     """
     Calculate USD cost for a single LLM call.
@@ -134,17 +153,60 @@ def calc_cost(
     Returns:
         Total cost in USD, rounded to 8 decimal places
     """
+    for field, count in (
+        ("input_tokens", input_tokens), ("output_tokens", output_tokens),
+        ("cached_input_tokens", cached_input_tokens), ("cache_write_tokens", cache_write_tokens),
+    ):
+        _token_count(count, field)
+    if cached_input_tokens + cache_write_tokens > input_tokens:
+        raise PricingUsageError("Cache token counts exceed total input tokens")
+    priced_model = model if model in PRICING else _fallback_for(model)
     if (
         input_tokens > PRO_LONG_CONTEXT_THRESHOLD
-        and model in PRO_LONG_CONTEXT
+        and priced_model in PRO_LONG_CONTEXT
     ):
-        pricing = PRO_LONG_CONTEXT[model]
+        pricing = PRO_LONG_CONTEXT[priced_model]
     else:
-        pricing = _rate(model, as_of or datetime.now(timezone.utc).date())
+        pricing = _rate(priced_model, as_of or datetime.now(timezone.utc).date())
 
-    cost = (input_tokens / 1_000_000) * pricing["input"] + \
-           (output_tokens / 1_000_000) * pricing["output"]
-    return round(cost, 8)
+    long_context = priced_model.startswith("gpt-") and input_tokens > _OPENAI_LONG_CONTEXT_THRESHOLD
+    rates = {key: Decimal(str(rate)) for key, rate in pricing.items()}
+    input_cost = (
+        (input_tokens - cached_input_tokens - cache_write_tokens) * rates["input"]
+        + cached_input_tokens * rates.get("cached_input", rates["input"])
+        + cache_write_tokens * rates.get("cache_write", rates["input"])
+    ) * (2 if long_context else 1)
+    output_cost = output_tokens * rates["output"] * (Decimal("1.5") if long_context else 1)
+    cost = (input_cost + output_cost) / 1_000_000
+    return float(cost.quantize(Decimal("0.00000001"), rounding=ROUND_HALF_EVEN))
+
+
+def calc_result_cost(result: Mapping[str, object], *, model: str | None = None) -> float:  # noqa: OBJECT_OK - Locked migration API.
+    """Price reported usage, using a cache-write upper bound when details are absent."""
+    prior_total = result.get("cost_usd_prior_attempts")
+    if prior_total is not None:
+        if (not isinstance(prior_total, (int, float)) or isinstance(prior_total, bool)
+                or not isfinite(prior_total) or prior_total < 0):
+            raise PricingUsageError("Prior-attempt total must be a finite non-negative cost")
+        return float(prior_total)
+    used_model = result.get("model", model)
+    if not isinstance(used_model, str) or not used_model:
+        raise PricingUsageError("A model is required to price usage")
+    if result.get("usage_complete") is False:
+        raise PricingUsageError("Incomplete usage cannot be priced")
+    tokens_in = _token_count(result.get("tokens_in"), "tokens_in")
+    tokens_out = _token_count(result.get("tokens_out"), "tokens_out")
+    if not used_model.startswith("gpt-"):
+        return calc_cost(used_model, tokens_in, tokens_out)
+    cached, written = result.get("tokens_cached"), result.get("tokens_cache_write")
+    cached_count = 0 if cached is None else _token_count(cached, "tokens_cached")
+    write_count = 0 if written is None else _token_count(written, "tokens_cache_write")
+    if cached_count + write_count > tokens_in:
+        raise PricingUsageError("Cache token counts exceed total input tokens")
+    if cached is None or written is None:
+        return calc_cost(used_model, tokens_in, tokens_out, cache_write_tokens=tokens_in)
+    return calc_cost(used_model, tokens_in, tokens_out,
+                     cached_input_tokens=cached_count, cache_write_tokens=write_count)
 
 
 def calc_image_cost(model: str, image_count: int = 1) -> float:

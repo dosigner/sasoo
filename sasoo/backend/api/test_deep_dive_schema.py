@@ -108,6 +108,17 @@ def test_comparison_scope_is_an_enum_not_free_text():
     assert prop.get("enum") == ["in_paper_only"]
 
 
+def test_summary_extension_bounds_and_required_keys():
+    schema = analysis_routes._DEEP_DIVE_SCHEMA
+    for name, maximum in [("section_answers", 12), ("transfer_checks", 8)]:
+        prop = schema["properties"][name]
+        assert prop["maxItems"] == maximum
+        assert set(prop["items"]["required"]) == set(prop["items"]["properties"])
+        assert prop["items"]["properties"]["source_refs"]["maxItems"] == 4
+    assert list(schema["properties"])[-1] == "practical_applications"
+    assert analysis_routes._STAGE_MAX_OUTPUT_TOKENS["deep_dive"] == 16_000
+
+
 def test_instruction_does_not_demand_phrase_echo():
     """폭주 씨앗 지시("평가임을 명시해")가 되살아나지 못하게 잠근다."""
     instruction = analysis_routes._DEEP_DIVE_INSTRUCTION

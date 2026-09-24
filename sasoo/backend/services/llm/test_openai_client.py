@@ -2,8 +2,15 @@ import asyncio
 import os
 import threading
 import unittest
+import base64
+import hashlib
+import json
+from copy import deepcopy
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 class _FakeStatusError(Exception):
@@ -67,8 +74,7 @@ class TestPartTranslator(unittest.TestCase):
         self.assertEqual(content[1], {"type": "input_text", "text": "이 그림은?"})
 
     def test_document_part_raises(self):
-        """OpenAI 경로는 문서 파트를 지원하지 않는다(스펙 R1) — 조용히 떨어뜨리면
-        체인 첫 호출이 빈 컨텍스트로 나가므로 시끄럽게 실패한다."""
+        """Gemini file URIs cannot be consumed by OpenAI."""
         from services.llm.openai_client import _translate_parts
         with self.assertRaises(ValueError):
             _translate_parts([{"type": "document", "uri": "files/abc",
@@ -126,6 +132,18 @@ class TestReturnShape(unittest.TestCase):
 
         self.assertTrue(set(gemini_result.keys()).issubset(set(openai_result.keys())))
 
+    def test_incomplete_response_status_is_preserved(self):
+        from services.llm import openai_client
+
+        fake_client = MagicMock()
+        response = _fake_response()
+        response.status = "incomplete"
+        fake_client.responses.create.return_value = response
+        with patch("services.llm.openai_client._get_client", return_value=fake_client):
+            result = asyncio.run(openai_client.call_interaction("source", lane="pipeline"))
+        self.assertTrue(result["incomplete"])
+        self.assertEqual(result["tokens_out"], 50)
+
     def test_returns_text_model_tokens_and_interaction_id(self):
         from services.llm import openai_client
 
@@ -153,9 +171,61 @@ class TestReturnShape(unittest.TestCase):
             result = asyncio.run(openai_client.call_interaction("안녕", lane="pipeline"))
 
         self.assertEqual(result["tokens_cached"], 64)
+        self.assertIsNone(result["tokens_cache_write"])
 
 
 class TestCallInteractionBehavior(unittest.TestCase):
+    def test_strict_schema_closes_nested_objects_without_mutating_deep_dive_schema(self):
+        from services.analysis_execution import _DEEP_DIVE_SCHEMA
+        from services.llm import openai_client
+
+        # Given the shared schema also used by Gemini.
+        original = deepcopy(_DEEP_DIVE_SCHEMA)
+        fake_client = MagicMock()
+        fake_client.responses.create.return_value = _fake_response()
+
+        # When only this request opts into strict structured output.
+        with patch("services.llm.openai_client._get_client", return_value=fake_client):
+            asyncio.run(openai_client.call_interaction(
+                "source", lane="pipeline", response_schema=_DEEP_DIVE_SCHEMA,
+                strict_schema=True,
+            ))
+
+        # Then the wire schema closes every object and keeps string semantics.
+        format_config = fake_client.responses.create.call_args.kwargs["text"]["format"]
+        wire_schema = format_config["schema"]
+        self.assertIs(format_config["strict"], True)
+        for node in (
+            wire_schema,
+            wire_schema["properties"]["section_answers"]["items"],
+            wire_schema["properties"]["transfer_checks"]["items"],
+        ):
+            self.assertIs(node["additionalProperties"], False)
+            self.assertEqual(node["required"], list(node["properties"]))
+        self.assertEqual(wire_schema["properties"]["as_is"], {"type": "string"})
+        self.assertEqual(wire_schema["properties"]["to_be"], {"type": "string"})
+        self.assertEqual(_DEEP_DIVE_SCHEMA, original)
+
+    def test_schema_remains_non_strict_when_flag_is_omitted(self):
+        from services.analysis_execution import _DEEP_DIVE_SCHEMA
+        from services.llm import openai_client
+
+        # Given a schema with optional string fields.
+        original = deepcopy(_DEEP_DIVE_SCHEMA)
+        fake_client = MagicMock()
+        fake_client.responses.create.return_value = _fake_response()
+
+        # When the caller keeps the existing default.
+        with patch("services.llm.openai_client._get_client", return_value=fake_client):
+            asyncio.run(openai_client.call_interaction(
+                "source", lane="pipeline", response_schema=_DEEP_DIVE_SCHEMA,
+            ))
+
+        # Then neither strict mode nor schema normalization is applied.
+        format_config = fake_client.responses.create.call_args.kwargs["text"]["format"]
+        self.assertIs(format_config["strict"], False)
+        self.assertEqual(format_config["schema"], original)
+
     def test_thinking_level_maps_to_reasoning_effort(self):
         from services.llm import openai_client
 
@@ -207,6 +277,8 @@ class TestCallInteractionBehavior(unittest.TestCase):
             asyncio.run(openai_client.call_interaction("안녕", lane="pipeline"))
         kwargs = fake_client.responses.create.call_args.kwargs
         self.assertNotIn("max_output_tokens", kwargs)
+        self.assertNotIn("service_tier", kwargs)
+        fake_client.with_options.assert_not_called()
 
     def test_media_resolution_is_ignored(self):
         """media_resolution은 Gemini 전용 — 시그니처 호환을 위해 받되 무시한다."""
@@ -233,6 +305,7 @@ class TestCallInteractionBehavior(unittest.TestCase):
             result = asyncio.run(openai_client.call_interaction("재시도", lane="pipeline"))
         self.assertEqual(result["text"], "결과")
         self.assertEqual(fake_client.responses.create.call_count, 2)
+        fake_client.with_options.assert_not_called()
 
     def test_does_not_retry_non_retryable_status(self):
         from services.llm import openai_client
@@ -312,9 +385,7 @@ async def _collect_stream(agen):
 
 
 class TestStreamContract(unittest.TestCase):
-    """gemini_client.stream_interaction과 동일한 token/done 이벤트 계약인지 —
-    채팅 SSE(analysis_routes.py event_generator)가 provider 분기 없이 이
-    이벤트를 그대로 프론트로 전달하므로 키 집합이 정확히 같아야 한다."""
+    """Preserve required token/done fields while allowing provider metadata."""
 
     def test_stream_yields_tokens_then_done(self):
         from services.llm import openai_client
@@ -340,17 +411,10 @@ class TestStreamContract(unittest.TestCase):
         self.assertEqual(done["tokens_in"], 7)
         self.assertEqual(done["tokens_out"], 3)
         self.assertEqual(done["interaction_id"], "resp_x")
-        # gemini_client.stream_interaction의 done 이벤트에는 model 키가 없다
-        # (call_interaction과 달리) — 여기서도 넣지 않아야 셔션이 provider
-        # 분기 없이 위임할 수 있다.
-        self.assertNotIn("model", done)
+        self.assertTrue({"type", "tokens_in", "tokens_out", "tokens_thought",
+                         "interaction_id"}.issubset(done))
 
     def test_stream_done_key_set_matches_gemini_stream(self):
-        """gemini_client.stream_interaction의 done 이벤트 키 집합과 정확히
-        같아야 한다 — call_interaction(TestReturnShape)과 달리 여기서는
-        추가 정보용 키(tokens_cached 등)도 허용하지 않는다: 채팅 SSE가 이
-        dict를 그대로 JSON 직렬화해 프론트로 보내므로 provider가 바뀌어도
-        페이로드 모양이 달라지면 안 된다."""
         from services.llm import gemini_client, openai_client
 
         gemini_events = [
@@ -386,7 +450,7 @@ class TestStreamContract(unittest.TestCase):
             ))
         openai_done = [e for e in openai_result if e["type"] == "done"][-1]
 
-        self.assertEqual(set(gemini_done.keys()), set(openai_done.keys()))
+        self.assertTrue(set(gemini_done.keys()).issubset(openai_done))
 
     def test_stream_tokens_thought_reflects_reasoning_tokens(self):
         from services.llm import openai_client
@@ -442,6 +506,9 @@ class TestStreamContract(unittest.TestCase):
 
         kwargs = fake_client.responses.stream.call_args.kwargs
         self.assertEqual(kwargs["reasoning"], {"effort": "high"})
+        self.assertNotIn("max_output_tokens", kwargs)
+        self.assertNotIn("service_tier", kwargs)
+        fake_client.with_options.assert_not_called()
 
     def test_stream_yields_fallback_done_when_stream_ends_without_completed(self):
         """SDK 스트림이 response.completed 없이 예외 없이 끝나도(예: 서버가 종료
@@ -464,13 +531,16 @@ class TestStreamContract(unittest.TestCase):
         self.assertEqual(result[0], {"type": "token", "text": "안"})
         self.assertEqual(result[1], {"type": "token", "text": "녕"})
         self.assertEqual(len(result), 3)
-        self.assertEqual(result[2], {
-            "type": "done",
-            "tokens_in": 0,
-            "tokens_out": 0,
-            "tokens_thought": 0,
-            "interaction_id": None,
-        })
+        self.assertEqual(result[2]["type"], "done")
+        self.assertTrue({"tokens_in", "tokens_out", "tokens_thought",
+                         "interaction_id"}.issubset(result[2]))
+        self.assertIsNone(result[2]["tokens_in"])
+        self.assertIsNone(result[2]["tokens_out"])
+        self.assertIsNone(result[2]["tokens_cached"])
+        self.assertIsNone(result[2]["tokens_cache_write"])
+        self.assertFalse(result[2]["usage_complete"])
+        self.assertTrue(result[2]["incomplete"])
+        self.assertEqual(result[2]["incomplete_reason"], "missing_completion")
 
     def test_stream_raises_after_tokens_before_done_without_fallback(self):
         """토큰이 이미 나간 뒤 done 전에 실패하면 예외를 그대로 재던지고,
@@ -573,6 +643,256 @@ class TestStreamContract(unittest.TestCase):
         asyncio.run(run())
         self.assertEqual(seen["sem_during"], seen["baseline"] - 1)  # 스트림 중 슬롯 하나 점유
         self.assertEqual(seen["after"], seen["baseline"])  # 종료 후 반납
+
+
+def test_pdf_data_is_sent_as_input_file():
+    from services.llm.openai_client import _translate_parts
+
+    # Given an inline PDF with audit metadata.
+    part = {"type": "document", "mime_type": "application/pdf",
+            "filename": "paper.pdf", "data": "JVBERi0=",
+            "detail": "high", "sha256": "audit-only"}
+    # When the adapter prepares the wire input.
+    sent = _translate_parts([part])[0]["content"][0]
+    # Then only supported PDF fields reach the API.
+    assert sent == {"type": "input_file", "filename": "paper.pdf",
+                    "file_data": "data:application/pdf;base64,JVBERi0=",
+                    "detail": "high"}
+
+
+def test_load_pdf_preserves_source_bytes_and_basename(tmp_path: Path):
+    from services.llm import openai_client
+
+    # Given a PDF at a local path.
+    source = b"%PDF-1.7\nsource bytes\n%%EOF"
+    path = tmp_path / "paper.pdf"
+    path.write_bytes(source)
+    # When the PDF is loaded.
+    part = openai_client.load_pdf_part(path)
+    # Then the payload and audit hash refer to the exact source.
+    assert part == {"type": "document", "mime_type": "application/pdf",
+                    "filename": "paper.pdf", "data": base64.b64encode(source).decode("ascii"),
+                    "detail": "high", "sha256": hashlib.sha256(source).hexdigest()}
+
+
+@pytest.mark.parametrize("source", [b"", b"not a PDF"])
+def test_load_pdf_rejects_invalid_bytes(tmp_path: Path, source: bytes):
+    from services.llm import openai_client
+
+    # Given invalid local input.
+    path = tmp_path / "paper.pdf"
+    path.write_bytes(source)
+    # When it is loaded, then it fails before any API access.
+    with pytest.raises(ValueError):
+        openai_client.load_pdf_part(path)
+
+
+def test_load_pdf_rejects_size_limit_before_reading(tmp_path: Path):
+    from services.llm import openai_client
+
+    # Given a sparse PDF exactly at the exclusive size limit.
+    path = tmp_path / "paper.pdf"
+    with path.open("wb") as source:
+        source.write(b"%PDF-")
+        source.truncate(50_000_000)
+    # When it is loaded, then it is rejected without reading the body.
+    with patch.object(Path, "read_bytes", side_effect=AssertionError("must not read")):
+        with pytest.raises(ValueError):
+            openai_client.load_pdf_part(path)
+
+
+def test_count_and_create_use_identical_model_input():
+    from services.llm import openai_client
+
+    # Given a chained strict PDF request.
+    request = dict(model="gpt-6-luna", system_instruction="system",
+                   thinking_level="high", previous_interaction_id="resp_previous",
+                   strict_schema=True,
+                   response_schema={"type": "object", "properties": {"answer": {"type": "string"}}})
+    prompt = [{"type": "document", "mime_type": "application/pdf",
+               "filename": "paper.pdf", "data": "JVBERi0=", "detail": "high"}]
+    fake = MagicMock()
+    fake.responses.create.return_value = _fake_response()
+    fake.responses.input_tokens.count.return_value = SimpleNamespace(input_tokens=1234)
+    # When count and generation prepare the same request.
+    with patch.object(openai_client, "_get_client", return_value=fake):
+        count = asyncio.run(openai_client.count_input_tokens(prompt, **request))
+        asyncio.run(openai_client.call_interaction(
+            prompt, lane="pipeline", max_output_tokens=16000, service_tier="default", **request))
+    # Then all model-input fields agree, and generation-only fields are omitted.
+    assert count == 1234
+    expected = fake.responses.create.call_args.kwargs.copy()
+    for field in ("store", "max_output_tokens", "service_tier"):
+        expected.pop(field)
+    assert fake.responses.input_tokens.count.call_args.kwargs == expected
+
+
+def test_single_attempt_disables_sdk_and_adapter_retries():
+    from services.llm import openai_client
+
+    # Given a retryable failure and a per-call client override.
+    fake = MagicMock()
+    attempt = fake.with_options.return_value
+    attempt.responses.create.side_effect = RuntimeError("connection reset")
+    # When validation requests a single attempt.
+    with patch.object(openai_client, "_get_client", return_value=fake):
+        with pytest.raises(RuntimeError, match="connection reset"):
+            asyncio.run(openai_client.call_interaction(
+                "source", lane="pipeline", single_attempt=True, service_tier="default"))
+    # Then there is one create and SDK retry is explicitly disabled.
+    fake.with_options.assert_called_once_with(max_retries=0)
+    assert attempt.responses.create.call_count == 1
+    assert attempt.responses.create.call_args.kwargs["service_tier"] == "default"
+    fake.responses.create.assert_not_called()
+
+
+def test_call_preserves_response_status_and_cache_write_usage():
+    from services.llm import openai_client
+
+    # Given an incomplete response with explicit cache usage and returned model.
+    response = _fake_response(cached_tokens=20, reasoning_tokens=30)
+    response.usage.input_tokens_details.cache_write_tokens = 40
+    response.model = "gpt-6-luna-snapshot"
+    response.status = "incomplete"
+    response.incomplete_details = SimpleNamespace(reason="max_output_tokens")
+    response.service_tier = "default"
+    fake = MagicMock()
+    fake.responses.create.return_value = response
+    # When it is returned to the caller.
+    with patch.object(openai_client, "_get_client", return_value=fake):
+        result = asyncio.run(openai_client.call_interaction("source", lane="pipeline", model="gpt-6-luna"))
+    # Then provenance and billable totals remain intact.
+    assert result["model"] == "gpt-6-luna"
+    assert result["response_model"] == response.model
+    assert result["response_status"] == "incomplete"
+    assert result["incomplete_reason"] == "max_output_tokens"
+    assert result["service_tier"] == "default"
+    assert (result["tokens_cached"], result["tokens_cache_write"], result["tokens_out"]) == (20, 40, 50)
+    assert result["usage_complete"] is True
+
+
+def test_call_keeps_missing_usage_unknown():
+    from services.llm import openai_client
+
+    # Given a failure response without usage.
+    fake = MagicMock()
+    fake.responses.create.return_value = SimpleNamespace(status="failed", output_text="")
+    # When it crosses the adapter boundary.
+    with patch.object(openai_client, "_get_client", return_value=fake):
+        result = asyncio.run(openai_client.call_interaction("source", lane="pipeline"))
+    # Then no missing count is reported as zero.
+    for field in ("tokens_in", "tokens_out", "tokens_cached", "tokens_cache_write"):
+        assert result[field] is None
+    assert result["usage_complete"] is False
+    assert result["incomplete"] is True
+
+
+@pytest.mark.parametrize("event_type,status", [("response.completed", "completed"),
+                                             ("response.incomplete", "incomplete"),
+                                             ("response.failed", "failed")])
+def test_stream_preserves_terminal_usage_and_bounded_request(event_type: str, status: str):
+    from services.llm import openai_client
+
+    # Given a terminal stream response and validation client.
+    response = _fake_stream_response()
+    response.status = status
+    response.model = "gpt-6-luna"
+    response.service_tier = "default"
+    response.usage.input_tokens_details = SimpleNamespace(cached_tokens=1, cache_write_tokens=2)
+    response.incomplete_details = SimpleNamespace(reason="max_output_tokens") if status == "incomplete" else None
+    fake = MagicMock()
+    attempt = fake.with_options.return_value
+    attempt.responses.stream.return_value = _FakeResponseStream([_FakeStreamEvent(event_type, response=response)])
+    # When streaming is bounded and single-attempt.
+    with patch.object(openai_client, "_get_client", return_value=fake):
+        events = asyncio.run(_collect_stream(openai_client.stream_interaction(
+            "source", lane="chat", single_attempt=True, service_tier="default", max_output_tokens=2000)))
+    # Then terminal state and usage are not replaced by a fallback completion.
+    fake.with_options.assert_called_once_with(max_retries=0)
+    assert attempt.responses.stream.call_args.kwargs["max_output_tokens"] == 2000
+    assert attempt.responses.stream.call_args.kwargs["service_tier"] == "default"
+    assert len(events) == 1
+    assert events[0]["response_status"] == status
+    assert events[0]["tokens_cache_write"] == 2
+    assert events[0]["tokens_cached"] == 1
+    assert events[0]["incomplete"] is (status != "completed")
+
+
+def test_installed_sdk_count_and_generation_wire_inputs_match():
+    import httpx2
+    from openai import OpenAI
+    from services.llm import openai_client
+
+    # Given the installed SDK with an in-memory HTTP transport.
+    requests = []
+
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        requests.append((request.url.path, json.loads(request.content)))
+        if request.url.path.endswith("input_tokens"):
+            return httpx2.Response(200, json={"object": "response.input_tokens", "input_tokens": 42})
+        return httpx2.Response(200, json={
+            "id": "resp_wire", "object": "response", "created_at": 1,
+            "model": "gpt-6-luna", "status": "completed", "output": [],
+            "service_tier": "default", "usage": {
+                "input_tokens": 42, "output_tokens": 3, "total_tokens": 45,
+                "input_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 4},
+                "output_tokens_details": {"reasoning_tokens": 2},
+            },
+        })
+
+    options = dict(model="gpt-6-luna", thinking_level="high", system_instruction="system",
+                   previous_interaction_id="resp_previous", strict_schema=True,
+                   response_schema={"type": "object", "properties": {"answer": {"type": "string"}}})
+    prompt = [{"type": "document", "mime_type": "application/pdf", "filename": "paper.pdf",
+               "data": "JVBERi0=", "sha256": "audit-only"}]
+    # When both requests pass through the real SDK serialization path.
+    with httpx2.Client(transport=httpx2.MockTransport(handle)) as transport:
+        with OpenAI(api_key="test-key", http_client=transport) as client:
+            with patch.object(openai_client, "_get_client", return_value=client):
+                count = asyncio.run(openai_client.count_input_tokens(prompt, **options))
+                result = asyncio.run(openai_client.call_interaction(
+                    prompt, lane="pipeline", single_attempt=True, service_tier="default",
+                    max_output_tokens=16000, **options))
+    # Then count sees precisely the supported subset of the generation wire input.
+    assert count == result["tokens_in"] == 42
+    assert [path for path, _ in requests] == ["/v1/responses/input_tokens", "/v1/responses"]
+    count_body, create_body = [body for _, body in requests]
+    assert count_body == {key: value for key, value in create_body.items()
+                          if key not in {"store", "service_tier", "max_output_tokens"}}
+    assert create_body["input"][0]["content"][0] == {
+        "type": "input_file", "filename": "paper.pdf", "detail": "high",
+        "file_data": "data:application/pdf;base64,JVBERi0="}
+    assert result["tokens_cache_write"] == 4
+    assert result["tokens_out"] == 3
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_installed_sdk_single_attempt_sends_only_one_http_request(streaming: bool):
+    import httpx2
+    from openai import APIConnectionError, OpenAI
+    from services.llm import openai_client
+
+    # Given an SDK transport that fails before a response is available.
+    requests = []
+
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        requests.append(request.url.path)
+        raise httpx2.ConnectError("mock network failure", request=request)
+
+    # When a single-attempt validation call encounters the network error.
+    with httpx2.Client(transport=httpx2.MockTransport(handle)) as transport:
+        with OpenAI(api_key="test-key", http_client=transport) as client:
+            with patch.object(openai_client, "_get_client", return_value=client):
+                with pytest.raises((RuntimeError, APIConnectionError)):
+                    if streaming:
+                        asyncio.run(_collect_stream(openai_client.stream_interaction(
+                            "source", lane="chat", single_attempt=True, max_output_tokens=100)))
+                    else:
+                        asyncio.run(openai_client.call_interaction(
+                            "source", lane="pipeline", single_attempt=True, max_output_tokens=100))
+            assert client.max_retries == 2
+    # Then neither SDK nor adapter issued a hidden retry.
+    assert requests == ["/v1/responses"]
 
 
 if __name__ == "__main__":

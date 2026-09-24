@@ -7,16 +7,23 @@ gemini_client.call_interaction과 같은 시그니처·같은 반환 dict를 유
     thinking_level           ->  reasoning.effort
     media_resolution         ->  (무시 - Gemini 전용)
 
-PDF 업로드는 없다(스펙 개정 1 R1) — 체인 첫 호출에 로컬 추출 텍스트를
-주입한다. usage.output_tokens는 reasoning 토큰을 이미 포함하므로(R7-2)
-Gemini처럼 thought를 더하지 않는다.
+Local PDF bytes are sent as inline input_file parts. Output token totals already
+include reasoning tokens, so they are never added a second time.
 """
 
 import asyncio
+import base64
+import hashlib
 import logging
 import os
 import threading
-from typing import Any
+from copy import deepcopy
+from pathlib import Path
+from typing import Any, TypedDict
+
+import anyio
+from openai.types.responses import Response
+from openai.types.responses.input_token_count_params import InputTokenCountParams
 
 from services.concurrency import CHAT_EXECUTOR, PIPELINE_EXECUTOR, pipeline_llm_sem
 from services.llm.base import Lane
@@ -69,13 +76,29 @@ def _is_retryable(exc: BaseException) -> bool:
     return status >= 500
 
 
-def _translate_parts(prompt) -> Any:
-    """Gemini 파트 dict 리스트를 Responses API input으로 번역한다.
+class PDFInputError(ValueError):
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(reason)
 
-    str은 그대로(SDK가 user 메시지로 감싼다). 문서 파트는 지원하지 않는다 —
-    OpenAI 체인은 파일이 아니라 텍스트 주입을 쓴다(스펙 R1). 조용히
-    떨어뜨리면 빈 컨텍스트로 호출이 나가므로 ValueError로 시끄럽게 막는다.
-    """
+
+def load_pdf_part(pdf_path: Path) -> dict[str, str]:
+    """Read a bounded local PDF and keep its source hash outside the wire input."""
+    size = pdf_path.stat().st_size
+    if not 0 < size < 50_000_000:
+        raise PDFInputError(f"PDF size must be between 1 and 49,999,999 bytes: {size}")
+    data = pdf_path.read_bytes()
+    if not data.startswith(b"%PDF-") or len(data) >= 50_000_000:
+        raise PDFInputError(f"Invalid PDF input: {pdf_path.name}")
+    return {
+        "type": "document", "mime_type": "application/pdf",
+        "filename": pdf_path.name, "data": base64.b64encode(data).decode("ascii"),
+        "detail": "high", "sha256": hashlib.sha256(data).hexdigest(),
+    }
+
+
+def _translate_parts(prompt) -> Any:
+    """Translate local media parts; provider-owned document URIs are rejected."""
     if isinstance(prompt, str):
         return prompt
     content: list[dict[str, Any]] = []
@@ -87,6 +110,15 @@ def _translate_parts(prompt) -> Any:
             content.append({
                 "type": "input_image",
                 "image_url": f"data:{part['mime_type']};base64,{part['data']}",
+            })
+        elif kind == "document":
+            if (part.get("uri") is not None or part.get("mime_type") != "application/pdf"
+                    or not part.get("data") or not part.get("filename")):
+                raise PDFInputError(f"OpenAI requires an inline PDF document: {kind!r}")
+            content.append({
+                "type": "input_file", "filename": part["filename"],
+                "file_data": f"data:application/pdf;base64,{part['data']}",
+                "detail": "high",
             })
         else:
             raise ValueError(f"OpenAI 경로가 지원하지 않는 파트: {kind!r}")
@@ -101,6 +133,117 @@ def _executor_for(lane: Lane):
     raise ValueError(f"unknown lane: {lane!r}")
 
 
+def _build_request(
+    prompt: str | list[dict[str, str]],
+    *,
+    model: str,
+    system_instruction: str | None = None,
+    thinking_level: str | None = None,
+    previous_interaction_id: str | None = None,
+    response_schema: dict | None = None,
+    strict_schema: bool = False,
+) -> InputTokenCountParams:
+    """Build the model-input fields shared by count, create, and stream."""
+    kwargs: InputTokenCountParams = {
+        "model": model,
+        "input": _translate_parts(prompt),
+        "instructions": system_instruction or _SYSTEM_INSTRUCTION_KO,
+    }
+    if thinking_level:
+        kwargs["reasoning"] = {"effort": thinking_level}
+    if previous_interaction_id:
+        kwargs["previous_response_id"] = previous_interaction_id
+    if response_schema:
+        wire_schema = deepcopy(response_schema) if strict_schema else response_schema
+        if strict_schema:
+            pending = [wire_schema]
+            while pending:
+                node = pending.pop()
+                properties = node.get("properties", {})
+                if node.get("type") == "object":
+                    node["additionalProperties"] = False
+                    node["required"] = list(properties)
+                pending.extend(properties.values())
+                if "items" in node:
+                    pending.append(node["items"])
+        kwargs["text"] = {
+            "format": {
+                "type": "json_schema",
+                "name": "sasoo_result",
+                "schema": wire_schema,
+                "strict": strict_schema,
+            }
+        }
+    return kwargs
+
+
+async def count_input_tokens(
+    prompt: str | list[dict[str, str]],
+    *,
+    model: str,
+    system_instruction: str | None = None,
+    thinking_level: str | None = None,
+    previous_interaction_id: str | None = None,
+    response_schema: dict | None = None,
+    strict_schema: bool = False,
+) -> int:
+    """Count the same model input used by generation, without creating a response."""
+    kwargs = _build_request(
+        prompt, model=model, system_instruction=system_instruction,
+        thinking_level=thinking_level, previous_interaction_id=previous_interaction_id,
+        response_schema=response_schema, strict_schema=strict_schema,
+    )
+
+    def _count() -> int:
+        return _get_client().responses.input_tokens.count(**kwargs).input_tokens
+
+    return await anyio.to_thread.run_sync(_count)
+
+
+class ResponseMetadata(TypedDict):
+    model: str
+    response_model: str | None
+    response_status: str | None
+    incomplete: bool
+    incomplete_reason: str | None
+    service_tier: str | None
+    tokens_in: int | None
+    tokens_out: int | None
+    tokens_thought: int | None
+    tokens_cached: int | None
+    tokens_cache_write: int | None
+    interaction_id: str | None
+    usage_complete: bool
+
+
+def _response_metadata(response: Response | None, *, model: str) -> ResponseMetadata:
+    """Preserve provider usage; missing counts must not become zero-cost success."""
+    usage = getattr(response, "usage", None)
+    input_details = getattr(usage, "input_tokens_details", None)
+    output_details = getattr(usage, "output_tokens_details", None)
+    status = getattr(response, "status", None)
+    tokens_in = getattr(usage, "input_tokens", None)
+    tokens_out = getattr(usage, "output_tokens", None)
+    return {
+        "model": model,
+        "response_model": getattr(response, "model", None),
+        "response_status": status,
+        "incomplete": response is None or status in ("incomplete", "failed", "cancelled"),
+        "incomplete_reason": (
+            "missing_completion" if response is None
+            else getattr(getattr(response, "incomplete_details", None), "reason", None)
+        ),
+        "service_tier": getattr(response, "service_tier", None),
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
+        "tokens_thought": getattr(output_details, "reasoning_tokens", None),
+        "tokens_cached": getattr(input_details, "cached_tokens", None),
+        "tokens_cache_write": getattr(input_details, "cache_write_tokens", None),
+        "interaction_id": getattr(response, "id", None),
+        "usage_complete": tokens_in is not None and tokens_out is not None,
+    }
+
+
 async def call_interaction(
     prompt,
     *,
@@ -110,62 +253,40 @@ async def call_interaction(
     thinking_level: str | None = None,
     previous_interaction_id: str | None = None,
     response_schema: dict | None = None,
+    strict_schema: bool = False,
     store: bool = True,
-    media_resolution: str | None = None,  # noqa: ARG001 - Gemini 전용, 시그니처 호환용
+    media_resolution: str | None = None,
     max_output_tokens: int | None = None,
+    single_attempt: bool = False,
+    service_tier: str | None = None,
 ) -> dict:
-    """한 번의 Responses API 호출. gemini_client.call_interaction과 동형.
-
-    Raises:
-        ValueError: store=False인데 previous_interaction_id를 넘긴 경우.
-    """
+    """Generate once, with optional validation controls over tier and retries."""
     if not store and previous_interaction_id:
         raise ValueError("previous_interaction_id requires store=True")
-
-    kwargs: dict[str, Any] = {
-        "model": model,
-        "input": _translate_parts(prompt),
-        "instructions": system_instruction or _SYSTEM_INSTRUCTION_KO,
-        "store": store,
-    }
-    if thinking_level:
-        kwargs["reasoning"] = {"effort": thinking_level}
-    # Responses API의 대응 필드도 이름이 max_output_tokens다. 안 주면 키를 안
-    # 보낸다 — 기본값을 우리가 정하지 않는다(gemini_client와 같은 원칙).
+    kwargs = {**_build_request(
+        prompt, model=model, system_instruction=system_instruction,
+        thinking_level=thinking_level, previous_interaction_id=previous_interaction_id,
+        response_schema=response_schema, strict_schema=strict_schema,
+    ), "store": store}
     if max_output_tokens is not None:
         kwargs["max_output_tokens"] = max_output_tokens
-    if previous_interaction_id:
-        kwargs["previous_response_id"] = previous_interaction_id
-    if response_schema:
-        kwargs["text"] = {
-            "format": {
-                "type": "json_schema",
-                "name": "sasoo_result",
-                "schema": response_schema,
-                "strict": False,  # 현행 스키마는 strict 제약(전 필드 required 등) 미충족
-            }
-        }
+    if service_tier is not None:
+        kwargs["service_tier"] = service_tier
 
     def _do_call():
-        resp = _get_client().responses.create(**kwargs)
-        usage = getattr(resp, "usage", None)
-        output_details = getattr(usage, "output_tokens_details", None)
-        input_details = getattr(usage, "input_tokens_details", None)
+        client = _get_client()
+        if single_attempt:
+            client = client.with_options(max_retries=0)
+        resp = client.responses.create(**kwargs)
         return {
             "text": getattr(resp, "output_text", "") or "",
-            "model": model,
-            # output_tokens는 reasoning 포함(R7-2) — 재합산 금지
-            "tokens_in": getattr(usage, "input_tokens", 0) or 0,
-            "tokens_out": getattr(usage, "output_tokens", 0) or 0,
-            "tokens_thought": getattr(output_details, "reasoning_tokens", 0) or 0,  # 정보용
-            "interaction_id": getattr(resp, "id", None),
-            # 정보용(Task 12 캐시 적중률 집계) — gemini_client에는 대응 개념이 없다.
-            "tokens_cached": getattr(input_details, "cached_tokens", 0) or 0,
+            **_response_metadata(resp, model=model),
         }
 
     loop = asyncio.get_running_loop()
     last_exc: Exception | None = None
-    for attempt in range(len(_RETRY_DELAYS) + 1):
+    retry_delays = [] if single_attempt else _RETRY_DELAYS
+    for attempt in range(len(retry_delays) + 1):
         try:
             if lane == "pipeline":
                 async with pipeline_llm_sem():
@@ -179,8 +300,8 @@ async def call_interaction(
                 raise RuntimeError(
                     f"OpenAI call failed (non-retryable): {exc}"
                 ) from exc
-            if attempt < len(_RETRY_DELAYS):
-                delay = _RETRY_DELAYS[attempt]
+            if attempt < len(retry_delays):
+                delay = retry_delays[attempt]
                 logger.warning("openai call failed (%s), retrying in %ss", exc, delay)
                 await asyncio.sleep(delay)
 
@@ -195,42 +316,19 @@ async def stream_interaction(
     system_instruction: str | None = None,
     thinking_level: str | None = None,
     store: bool = False,
+    max_output_tokens: int | None = None,
+    single_attempt: bool = False,
+    service_tier: str | None = None,
 ):
-    """토큰 단위 스트리밍. gemini_client.stream_interaction과 같은 이벤트 계약.
-
-    `{"type":"token","text":str}`를 토큰마다 yield하고, 마지막에
-    `{"type":"done","tokens_in":int,"tokens_out":int,"tokens_thought":int,
-    "interaction_id":str|None}`을 yield한다. gemini_client의 done 이벤트에는
-    "model"·"tokens_cached" 키가 없으므로(대응 개념이 없음) 여기서도 넣지
-    않는다 — call_interaction과 달리 이 done dict는 gemini와 바이트 단위로
-    같은 키 집합이어야 셔션이 분기 없이 위임할 수 있다.
-
-    SDK 스트림이 `response.completed` 없이 예외 없이 끝나면(gemini_client와
-    같은 이유의 폴백) `tokens_in/out/thought=0, interaction_id=None`인 폴백
-    done을 yield한다 — 안 그러면 프론트 onDone(비용 집계·액션 버튼)이 영영
-    호출되지 않는다.
-
-    동기 SDK 스트림은 스레드 풀에서 돌리고 asyncio.Queue로 브릿지해 이벤트
-    루프를 막지 않는다(gemini_client와 같은 관용구, 큐 전달 방식만 다르다 —
-    call_soon_threadsafe + put_nowait). 채팅은 stateless(store=False, 히스토리를
-    텍스트로 조립)라 previous_interaction_id 같은 체인 인자는 받지 않는다.
-
-    done 이전에 발생한 예외는 소비자에게 그대로 재던진다(폴백 done은 나가지
-    않는다) — 채팅 라우트의 "첫 토큰 전 실패만 재시도" 정책(analysis_routes.py
-    event_generator)이 이 예외에 의존한다.
-
-    lane="pipeline"이면 gemini_client와 동형으로 스트림이 살아있는 전체 구간
-    동안 `pipeline_llm_sem()` 슬롯 하나를 점유한다(429 방지, call_interaction의
-    pipeline 분기와 동일 정책). chat lane은 세마포어를 쓰지 않는다.
-    """
-    kwargs: dict[str, Any] = {
-        "model": model,
-        "input": _translate_parts(prompt),
-        "instructions": system_instruction or _SYSTEM_INSTRUCTION_KO,
-        "store": store,
-    }
-    if thinking_level:
-        kwargs["reasoning"] = {"effort": thinking_level}
+    """Yield token/done events; absent completion keeps usage unknown and fails closed."""
+    kwargs = {**_build_request(
+        prompt, model=model, system_instruction=system_instruction,
+        thinking_level=thinking_level,
+    ), "store": store}
+    if max_output_tokens is not None:
+        kwargs["max_output_tokens"] = max_output_tokens
+    if service_tier is not None:
+        kwargs["service_tier"] = service_tier
 
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue = asyncio.Queue()
@@ -238,21 +336,18 @@ async def stream_interaction(
 
     def _produce():
         try:
-            with _get_client().responses.stream(**kwargs) as stream:
+            client = _get_client()
+            if single_attempt:
+                client = client.with_options(max_retries=0)
+            with client.responses.stream(**kwargs) as stream:
                 for event in stream:
                     if event.type == "response.output_text.delta":
                         loop.call_soon_threadsafe(
                             queue.put_nowait, {"type": "token", "text": event.delta})
-                    elif event.type == "response.completed":
-                        usage = getattr(event.response, "usage", None)
-                        output_details = getattr(usage, "output_tokens_details", None)
+                    elif event.type in ("response.completed", "response.incomplete", "response.failed"):
                         loop.call_soon_threadsafe(queue.put_nowait, {
                             "type": "done",
-                            # output_tokens는 reasoning 포함(R7-2) — 재합산 금지
-                            "tokens_in": getattr(usage, "input_tokens", 0) or 0,
-                            "tokens_out": getattr(usage, "output_tokens", 0) or 0,
-                            "tokens_thought": getattr(output_details, "reasoning_tokens", 0) or 0,
-                            "interaction_id": getattr(event.response, "id", None),
+                            **_response_metadata(event.response, model=model),
                         })
         except Exception as exc:  # noqa: BLE001 - 소비자에게 전달해 재시도 정책이 판단
             loop.call_soon_threadsafe(queue.put_nowait, exc)
@@ -275,10 +370,7 @@ async def stream_interaction(
                     if not done_seen:
                         yield {
                             "type": "done",
-                            "tokens_in": 0,
-                            "tokens_out": 0,
-                            "tokens_thought": 0,
-                            "interaction_id": None,
+                            **_response_metadata(None, model=model),
                         }
                     break
                 if isinstance(item, Exception):

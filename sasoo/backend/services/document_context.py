@@ -10,7 +10,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional, TypedDict
 
 from models.database import fetch_one
 from services.odl_parser import ensure_text_artifacts, get_pdf_signature
@@ -37,6 +37,32 @@ _QUANT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _SENTENCE_BREAK = re.compile(r"(?<=[\.\?!])\s+")
+
+
+class InputCoverage(TypedDict):
+    mode: Literal["pdf", "text"]
+    status: Literal["provided_pdf", "partial"]
+    missing: list[str]
+    pdf_sha256: str | None
+
+
+def source_signature(text: str, *, pdf_sha256: str | None = None, detail: str = "high") -> str:
+    """Identify the bytes and range actually supplied to the model."""
+    if pdf_sha256:
+        return f"pdf:{pdf_sha256}:{detail}"
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return f"text:{digest}:0:{len(text)}"
+
+
+def input_coverage(text: str, *, pdf_sha256: str | None = None, text_limit: int | None = None) -> InputCoverage:
+    """Describe supplied source material without claiming scientific correctness."""
+    if pdf_sha256:
+        return {"mode": "pdf", "status": "provided_pdf", "missing": [], "pdf_sha256": pdf_sha256}
+    missing = ["원본 PDF를 제공하지 못해 수식과 그림의 판독 범위를 확인하지 못했습니다"]
+    missing.append(f"제공한 텍스트는 {len(text):,}자이며 원문 대비 누락 범위는 확인되지 않았습니다")
+    if text_limit is not None and len(text) >= text_limit:
+        missing.append(f"{text_limit:,}자 입력 제한이 적용되어 원문 뒷부분의 포함 여부를 확인하지 못했습니다")
+    return {"mode": "text", "status": "partial", "missing": missing, "pdf_sha256": None}
 
 
 @dataclass(slots=True)

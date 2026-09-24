@@ -1927,19 +1927,18 @@ async def _record_visual_parse_usage(paper_id: int, usage: dict[str, Any]) -> No
     """visual 단계 Gemini 파서의 토큰/비용을 기존 analysis_results 원장에 1회 집계 기록.
 
     phase는 분석 파이프라인의 "visual"(도표 텍스트 분석)과 충돌하지 않도록 "visual_parse".
-    분석 단계들과 동일하게 (model, tokens_in, tokens_out)로 calc_cost를 재계산해 원장 관례를
-    맞춘다. 기록은 best-effort — DB 미가용/오류로 파이프라인을 깨지 않는다(경고만 남기고 스킵)."""
+    상위 파서가 계산한 시도별 비용을 보존한다. 기록은 best-effort — DB 미가용/오류로 파이프라인을 깨지 않는다(경고만 남기고 스킵)."""
     try:
         model = str(usage.get("model") or "")
-        tokens_in = int(usage.get("tokens_in", 0) or 0)
-        tokens_out = int(usage.get("tokens_out", 0) or 0)
-        if tokens_in <= 0 and tokens_out <= 0:
+        tokens_in = None if usage.get("tokens_in") is None and usage.get("usage_complete") is False else int(usage.get("tokens_in", 0) or 0)
+        tokens_out = None if usage.get("tokens_out") is None and usage.get("usage_complete") is False else int(usage.get("tokens_out", 0) or 0)
+        if not (tokens_in or tokens_out) and usage.get("usage_complete") is not False:
             return
 
-        from services.pricing import calc_cost
+        from services.pricing import calc_result_cost
         from services.document_context import compute_input_hash
 
-        cost = calc_cost(model, tokens_in, tokens_out)
+        cost = usage["cost_usd"] if "cost_usd" in usage else calc_result_cost(usage, model=model)
         result_payload = json.dumps(
             {
                 "engine": usage.get("engine"),
@@ -1948,6 +1947,7 @@ async def _record_visual_parse_usage(paper_id: int, usage: dict[str, Any]) -> No
                 "tokens_in": tokens_in,
                 "tokens_out": tokens_out,
                 "tokens_thought": usage.get("tokens_thought"),
+                **{key: usage[key] for key in ("failures", "usage_complete", "known_cost_usd", "partial", "failed_pages") if key in usage},
             },
             ensure_ascii=False,
         )

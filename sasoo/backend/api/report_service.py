@@ -1,11 +1,10 @@
-"""
-Sasoo - Report service.
-Handles report generation, _format_phase_data helper, and generate_paperbanana endpoint.
-"""
+"""Format report Markdown and render the report's visual summary card."""
 
 import json
 import logging
 from pathlib import Path
+
+from services.summary_contract import validate_summary_extensions
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +15,19 @@ logger = logging.getLogger(__name__)
 def _format_phase_data(phase: str, data: dict) -> str:
     """Format phase result data as readable markdown."""
     parts: list[str] = []
+    if phase in {"visual", "recipe", "deep_dive"}:
+        coverage = data.get("_input_coverage")
+        match coverage:
+            case {"mode": "pdf", "status": "provided_pdf", "missing": list(missing), "pdf_sha256": str(digest)} if len(digest) == 64 and all(char in "0123456789abcdefABCDEF" for char in digest) and all(isinstance(item, str) and item.strip() for item in missing):
+                parts.append("**입력 범위:** 원본 PDF 제공. 모든 내용을 정확히 판독했다는 뜻은 아닙니다.")
+                parts.extend(f"- {item}" for item in missing)
+            case {"mode": str(mode), "status": "partial", "missing": list(missing), "pdf_sha256": digest} if mode in {"text", "pdf"} and all(isinstance(item, str) and item.strip() for item in missing) and ((mode == "text" and digest is None) or (mode == "pdf" and isinstance(digest, str) and len(digest) == 64 and all(char in "0123456789abcdefABCDEF" for char in digest))):
+                parts.append("**부분 분석:** 제공된 입력 범위에 한정한 분석입니다.")
+                parts.extend(f"- {item}" for item in missing)
+                if not missing:
+                    parts.append("누락 범위를 확인하지 못했습니다.")
+            case _:
+                parts.append("**입력 범위 미확인:** 이 결과에는 확인 가능한 원문 제공 기록이 없습니다.")
 
     if phase == "screening":
         parts.append(f"**Domain:** {data.get('domain', 'N/A')}")
@@ -86,6 +98,8 @@ def _format_phase_data(phase: str, data: dict) -> str:
         if data.get("detailed_analysis"):
             parts.append(f"\n{data['detailed_analysis']}\n")
         parts.append(f"**Novelty:** {data.get('novelty_assessment', 'N/A')}")
+        if data.get("comparison_to_prior_work"):
+            parts.append(f"\n**Comparison to Prior Work:** {data['comparison_to_prior_work']}")
         if data.get("comparison_scope") == "in_paper_only":
             parts.append("_(논문이 제시한 비교 범위 안의 평가로, 외부 문헌 검증은 하지 않았습니다)_")
 
@@ -101,6 +115,41 @@ def _format_phase_data(phase: str, data: dict) -> str:
                 parts.append(f"\n**{label}:**")
                 for item in items:
                     parts.append(f"- {item}")
+
+        try:
+            has_extensions = validate_summary_extensions(data)
+        except ValueError:
+            parts.append("\n새 요약 항목의 구조를 확인하지 못했습니다. 기존 분석 본문은 위에 보존했습니다.")
+        else:
+            if has_extensions:
+                answers = data["section_answers"]
+                checks = data["transfer_checks"]
+                if answers:
+                    parts.append("\n### 섹션별 핵심 답변\n")
+                for answer in answers:
+                    parts.append(f"\n#### {answer['section_title']}\n")
+                    parts.append(f"**질문:** {answer['question']}\n")
+                    parts.append(f"**짧은 답:**\n\n{answer['answer']}\n")
+                    if answer["explanation"]:
+                        parts.append(f"**설명:**\n\n{answer['explanation']}\n")
+                    parts.append(f"**근거:** {', '.join(answer['source_refs'])}\n")
+                if checks:
+                    parts.append("\n### 옮겨 쓸 때 확인할 조건\n")
+                    parts.append("아래 적용 전 확인 제안은 저자가 검증한 사실이나 적용 가능 판정이 아닙니다.\n")
+                basis_labels = {
+                    "reported": "원문에 명시",
+                    "inferred": "원문에서 추론",
+                    "not_reported": "제공 자료에서 확인 못함",
+                }
+                for check in checks:
+                    parts.append(f"\n#### {check['item']}\n")
+                    parts.append(f"**근거 성격:** {basis_labels[check['condition_basis']]}\n")
+                    parts.append(f"**원문 조건:**\n\n{check['paper_condition']}\n")
+                    parts.append(f"**적용 전 확인 제안:**\n\n{check['check_before_transfer']}\n")
+                    if check["source_refs"]:
+                        parts.append(f"**근거:** {', '.join(check['source_refs'])}\n")
+                if not answers and not checks:
+                    parts.append("\n이번 분석에서 작성된 항목이 없어요.")
 
     else:
         # Generic formatting

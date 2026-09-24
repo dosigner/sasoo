@@ -1514,7 +1514,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             patch("api.analysis_routes.load_or_build_document_context", return_value={"phase_inputs": {"chat": "CHAT-CONTEXT"}}),
             patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value=latest_rows)),
             patch("api.analysis_routes.stream_interaction", new=fake_stream),
-            patch("api.analysis_routes.calc_cost", return_value=0.0001),
+            patch("api.analysis_routes.calc_result_cost", return_value=0.0001),
         ):
             response = await analysis_routes._chat_with_agent_impl(
                 7,
@@ -1561,7 +1561,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             patch("api.analysis_routes.load_or_build_document_context", return_value={"phase_inputs": {"chat": "CHAT-CONTEXT"}}),
             patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value=latest_rows)),
             patch("api.analysis_routes.stream_interaction", new=fake_stream_raises),
-            patch("api.analysis_routes.calc_cost", return_value=0.0001),
+            patch("api.analysis_routes.calc_result_cost", return_value=0.0001),
         ):
             response = await analysis_routes._chat_with_agent_impl(
                 7,
@@ -2849,6 +2849,98 @@ class OpenAIFigurePartsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(analysis_execution._OPENAI_VISUAL_IMAGE_LIMIT, params)
 
 
+class DeepDiveSummaryResponseTests(unittest.IsolatedAsyncioTestCase):
+    async def test_truncated_summary_is_neither_salvaged_nor_marked_complete(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[])
+        response = {
+            "text": '{"section_answers":[],"transfer_checks":[],"practical_applications":["valid",',
+            "model": "gpt-5.6-luna", "tokens_in": 123, "tokens_out": 16_000,
+            "incomplete": True,
+        }
+        call = AsyncMock(return_value=response)
+        with (
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution.call_interaction", new=call),
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
+        ):
+            await analysis_execution._run_deep_dive(7, "source", [], status, provider="openai")
+        self.assertEqual(status.phases[-1].status, "error")
+        self.assertEqual(status.total_tokens_out, 16_000)
+        call.assert_awaited_once()
+
+    async def test_incomplete_provider_status_rejects_even_valid_json(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[])
+        response = {
+            "text": '{"section_answers":[],"transfer_checks":[]}',
+            "model": "gpt-5.6-luna", "tokens_in": 123, "tokens_out": 16_000,
+            "incomplete": True,
+        }
+        with (
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution._run_chain_stage", new=AsyncMock(return_value=response)),
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
+        ):
+            await analysis_execution._run_deep_dive(7, "source", [], status, provider="openai")
+        self.assertEqual(status.phases[-1].status, "error")
+
+    async def test_malformed_extensions_fail_and_keep_usage_without_repair_call(self):
+        payloads = [
+            "[]", "{}", '{"section_answers":[]}',
+            '{"section_answers":[],"transfer_checks":"invalid"}',
+            '{"method_summary":"first","method_summary":"second","section_answers":[],"transfer_checks":[]}',
+            '{"section_answers":[{"section_title":"Methods","question":"Why?","answer":"first","answer":"second","explanation":"","source_refs":["Methods"]}],"transfer_checks":[]}',
+            '{"problem_definition":"\\u0013a","section_answers":[],"transfer_checks":[]}',
+        ]
+        for payload in payloads:
+            with self.subTest(payload=payload):
+                status = AnalysisStatus(paper_id=7, overall_status="running", phases=[])
+                model_call = AsyncMock(return_value={
+                    "text": payload, "model": "gpt-5.6-luna", "tokens_in": 123, "tokens_out": 456,
+                })
+                insert = AsyncMock()
+                with (
+                    patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+                    patch("services.analysis_execution._run_chain_stage", new=model_call),
+                    patch("services.analysis_execution._insert_analysis_result", new=insert),
+                ):
+                    result = await analysis_execution._run_deep_dive(7, "source", [], status, provider="openai")
+                self.assertEqual(status.phases[-1].status, "error")
+                self.assertIn("_parse_error", json.loads(result["text"]))
+                self.assertEqual(status.total_tokens_out, 456)
+                self.assertEqual(status.total_tokens_in, 123)
+                self.assertGreater(status.total_cost_usd, 0)
+                self.assertEqual(insert.await_args.args[4:6], (123, 456))
+                model_call.assert_awaited_once()
+
+    async def test_empty_extensions_complete(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[])
+        payload = '{"problem_definition":"source","section_answers":[],"transfer_checks":[]}'
+        with (
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)),
+            patch("services.analysis_execution._run_chain_stage", new=AsyncMock(return_value={
+                "text": payload, "model": "gpt-5.6-luna", "tokens_in": 123, "tokens_out": 456,
+            })),
+            patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
+        ):
+            result = await analysis_execution._run_deep_dive(7, "source", [], status, provider="openai")
+        self.assertEqual(status.phases[-1].status, "completed")
+        self.assertEqual(json.loads(result["text"])["section_answers"], [])
+
+    async def test_legacy_cache_is_read_without_generation(self):
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[])
+        cached = {"text": '{"detailed_analysis":"old"}', "model": "cached",
+                  "tokens_in": 1, "tokens_out": 2, "cost_usd": 0.001}
+        model_call = AsyncMock()
+        with (
+            patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=cached)),
+            patch("services.analysis_execution._run_chain_stage", new=model_call),
+        ):
+            result = await analysis_execution._run_deep_dive(7, "source", [], status, provider="openai")
+        self.assertEqual(result, cached)
+        self.assertEqual(status.phases[-1].status, "completed")
+        model_call.assert_not_awaited()
+
+
 class ChainPromptWordingByProviderTests(unittest.IsolatedAsyncioTestCase):
     """리뷰 Important I3-②: 체인 프롬프트 4곳이 OpenAI 경로에서 "PDF"가 아니라
     실제로 준 것(본문 텍스트 + 첫 단계 첨부 그림)을 가리키는지 검증한다.
@@ -3060,7 +3152,7 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
     @contextlib.contextmanager
     def _orchestration_patches(
         self, *, cache_fake, call_fake, visual_result=None, provider="gemini",
-        openai_figure_parts=None, deep_dive_provider=None,
+        openai_figure_parts=None, deep_dive_provider=None, openai_pdf_part=None,
     ):
         paper = {
             "id": 7,
@@ -3176,6 +3268,8 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
             "services.analysis_execution._load_openai_figure_parts",
             new=AsyncMock(return_value=openai_figure_parts or []),
         ))
+        if openai_pdf_part is not None:
+            stack.enter_context(patch("services.analysis_execution.load_pdf_part", return_value=openai_pdf_part))
         if visual_result is not None:
             stack.enter_context(patch("services.analysis_execution._run_visual",
                                       new=AsyncMock(return_value=visual_result)))
@@ -3227,6 +3321,18 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(chain_calls[3]["previous_interaction_id"], chain_calls[2]["interaction_id"])
         # 체인 이어감 스테이지는 지시문 문자열만 전송(대용량 재전송 없음)
         self.assertIsInstance(chain_calls[1]["contents"], str)
+
+    async def test_summary_uses_reader_context_without_legacy_critic_persona(self):
+        with self._orchestration_patches(
+            cache_fake=AsyncMock(return_value=None),
+            call_fake=self._orch_call_fake([]),
+        ) as system_calls:
+            await analysis_execution.run_full_analysis(7)
+        self.assertEqual(system_calls[2]["persona_prompt"], "")
+        self.assertEqual(system_calls[2]["reader_profile"], "PROFILE-BLOCK")
+        self.assertEqual(system_calls[2]["level_key"], "masters")
+        self.assertTrue(system_calls[0]["persona_prompt"])
+        self.assertTrue(system_calls[1]["persona_prompt"])
 
     async def test_deep_dive_provider_split_isolates_chain(self):
         """deep_dive만 provider가 갈리면 체인을 끊고 텍스트 주입으로 새로 시작한다(DEC-019).
@@ -3394,6 +3500,78 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(self._FULL_TEXT_MARKER, first_contents[-1]["text"])
         # 후속 스테이지는 이미지 파트 없이 문자열 그대로(체인 id로만 이어짐).
         self.assertIsInstance(chain_calls[1]["contents"], str)
+
+
+    _PDF = {"type": "document", "mime_type": "application/pdf", "filename": "source.pdf",
+            "data": "JVBERi0xLjQ=", "detail": "high", "sha256": "a" * 64}
+
+    def _assert_wire_pdf(self, contents):
+        from services.llm.openai_client import _translate_parts
+
+        file = _translate_parts(contents)[0]["content"][0]
+        self.assertEqual(file, {"type": "input_file", "filename": "source.pdf",
+                                "file_data": "data:application/pdf;base64,JVBERi0xLjQ=", "detail": "high"})
+        self.assertNotIn("uri", file)
+
+    async def test_native_pdf_run_route_starts_and_continues_response_chain(self):
+        from fastapi import FastAPI
+        from httpx import ASGITransport, AsyncClient
+
+        calls = []
+        app = FastAPI()
+        app.include_router(analysis_routes.router)
+        with self._orchestration_patches(
+            cache_fake=AsyncMock(return_value=None), call_fake=self._orch_call_fake(calls),
+            provider="openai", openai_pdf_part=self._PDF,
+        ), patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value={"folder_name": "folder"})), patch(
+            "api.analysis_routes.ensure_text_artifacts_async", new=AsyncMock()
+        ), patch("api.analysis_routes.active_provider", new=AsyncMock(return_value="openai")), patch(
+            "services.analysis_supervisor.read_budget_state", new=AsyncMock(return_value=(0, 1))
+        ), patch("api.analysis_routes._subprocess_mode", return_value=False), patch.dict(
+            os.environ, {"OPENAI_API_KEY": "test-placeholder"}
+        ):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.post("/api/analysis/7/run")
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(self._last_upload_calls, [])
+        chain = [call for call in calls if call["store"]]
+        self._assert_wire_pdf(chain[0]["contents"])
+        self.assertNotIn(self._FULL_TEXT_MARKER, str(chain[0]["contents"]))
+        self.assertIsNone(chain[0]["previous_interaction_id"])
+        for previous, following in zip(chain, chain[1:]):
+            self.assertEqual(following["previous_interaction_id"], previous["interaction_id"])
+            self.assertIsInstance(following["contents"], str)
+
+    async def test_native_pdf_cache_restart_restores_source_and_digest(self):
+        calls = []
+
+        async def cache(paper_id, phase, input_text, **kwargs):
+            if phase == "visual":
+                return {"text": self._VISUAL_CACHED_TEXT, "model": "gpt-cache",
+                        "tokens_in": 1, "tokens_out": 1, "cost_usd": 0.01}
+            return None
+
+        with self._orchestration_patches(
+            cache_fake=cache, call_fake=self._orch_call_fake(calls), provider="openai", openai_pdf_part=self._PDF,
+        ):
+            await analysis_execution.run_full_analysis(7)
+        self._assert_wire_pdf(calls[0]["contents"])
+        self.assertIsNone(calls[0]["previous_interaction_id"])
+        self.assertIn("CACHED-VISUAL-MARKER", calls[0]["contents"][1]["text"])
+
+    async def test_native_pdf_provider_split_starts_independent_source_chain(self):
+        calls = []
+        with self._orchestration_patches(
+            cache_fake=AsyncMock(return_value=None), call_fake=self._orch_call_fake(calls),
+            deep_dive_provider="openai", openai_pdf_part=self._PDF,
+        ):
+            await analysis_execution.run_full_analysis(7)
+        visual, recipe, deep_dive, viz = [call for call in calls if call["store"]]
+        self.assertEqual(visual["contents"][0]["uri"], "files/uri-abc")
+        self._assert_wire_pdf(deep_dive["contents"])
+        self.assertIsNone(deep_dive["previous_interaction_id"])
+        self.assertIn("체인 재시작으로 복원", deep_dive["contents"][1]["text"])
+        self.assertEqual(viz["previous_interaction_id"], recipe["interaction_id"])
 
 
 class CitationPromptTests(unittest.IsolatedAsyncioTestCase):
@@ -3740,3 +3918,178 @@ class SynthesisRouteTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NativePdfValidationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_single_attempt_rejects_defects_without_salvage_or_retry(self):
+        for text, metadata in [('not json', {}), ('{"value":"' + 'repeat ' * 200 + '"}', {}),
+                               ('{}', {"response_status": "cancelled"})]:
+            with self.subTest(text=text[:20], metadata=metadata):
+                call = AsyncMock(return_value={"text": text, "model": "gpt-6-luna", "tokens_in": 12, "tokens_out": 9, **metadata})
+                with patch("services.analysis_execution.call_interaction", new=call):
+                    result = await analysis_execution._run_chain_stage(
+                        phase="recipe", prompt_chain="source", prompt_fallback="source", system_instruction="",
+                        previous_interaction_id=None, pdf_uri=None, response_schema={}, provider="openai",
+                        single_attempt=True, max_output_tokens=24_000,
+                    )
+                call.assert_awaited_once()
+                self.assertTrue(call.await_args.kwargs["single_attempt"])
+                self.assertEqual(call.await_args.kwargs["max_output_tokens"], 24_000)
+                self.assertEqual(json.loads(result["text"])["_raw"], text)
+                self.assertIn("_parse_error", json.loads(result["text"]))
+                self.assertEqual(result["tokens_out"], 9)
+
+    async def test_deep_dive_attaches_coverage_only_after_strict_validation(self):
+        for text, pdf, expected in [
+            ('{"section_answers":[],"transfer_checks":[]}', FullAnalysisChainOrchestrationTests._PDF, "provided_pdf"),
+            ('{"section_answers":[],"transfer_checks":[]}', None, "partial"),
+            ('{"section_answers":[]}', FullAnalysisChainOrchestrationTests._PDF, None),
+        ]:
+            status = AnalysisStatus(paper_id=7, overall_status="running", phases=[])
+            with patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)), patch(
+                "services.analysis_execution.call_interaction", new=AsyncMock(return_value={
+                    "text": text, "model": "gpt-6-luna", "tokens_in": 12, "tokens_out": 9,
+                })
+            ), patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()):
+                result = await analysis_execution._run_deep_dive(
+                    7, "source", [], status, provider="openai", openai_pdf_part=pdf, single_attempt=True,
+                )
+            payload = json.loads(result["text"])
+            if expected is None:
+                self.assertNotIn("_input_coverage", payload)
+                self.assertEqual(status.phases[-1].status, "error")
+            else:
+                self.assertEqual(payload["_input_coverage"]["status"], expected)
+                self.assertEqual(status.phases[-1].status, "completed")
+
+    def test_pdf_content_detail_and_output_cap_isolate_cache(self):
+        base = dict(model="gpt-6-luna", thinking="high", system_instruction="same", prompt="same", max_output_tokens=16_000)
+        key = analysis_execution._phase_cache_key(**base, source_signature="pdf:hash:high")
+        self.assertNotEqual(key, analysis_execution._phase_cache_key(**base, source_signature="text:hash:150000"))
+        self.assertNotEqual(key, analysis_execution._phase_cache_key(**base, source_signature="pdf:changed:high"))
+        self.assertNotEqual(key, analysis_execution._phase_cache_key(**{**base, "max_output_tokens": 24_000}, source_signature="pdf:hash:high"))
+
+    async def test_missing_usage_retains_raw_failure_and_nullable_cost(self):
+        raw = '{"section_answers":[],"transfer_checks":[]}'
+        result = {"text": raw, "model": "gpt-6-luna", "tokens_in": None,
+                  "tokens_out": None, "usage_complete": False, "response_status": "failed"}
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[])
+        call = AsyncMock(return_value=result)
+        insert = AsyncMock()
+        with patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)), patch(
+            "services.analysis_execution.call_interaction", new=call
+        ), patch("services.analysis_execution._insert_analysis_result", new=insert):
+            await analysis_execution._run_deep_dive(7, "source", [], status, provider="openai", single_attempt=True)
+        call.assert_awaited_once()
+        payload = json.loads(insert.await_args.args[2])
+        self.assertEqual(payload["_raw"], raw)
+        self.assertNotIn("_input_coverage", payload)
+        self.assertFalse(payload["_usage"]["usage_complete"])
+        self.assertIsNone(insert.await_args.args[6])
+        self.assertIsNone(status.phases[-1].cost_usd)
+        self.assertEqual(status.phases[-1].status, "error")
+
+    async def test_chat_incomplete_or_unknown_usage_emits_error_once(self):
+        events = [
+            {"type": "done", "model": "gpt-6-luna", "tokens_in": None, "tokens_out": None, "usage_complete": False},
+            {"type": "done", "model": "gpt-6-luna", "tokens_in": 10, "tokens_out": 20, "response_status": "incomplete"},
+        ]
+        for event in events:
+            calls = []
+
+            async def stream(prompt, **kwargs):
+                calls.append(kwargs)
+                yield event
+
+            with patch.dict(sys.modules, {"services.agents": agents_module}), patch(
+                "api.analysis_routes.fetch_one", new=AsyncMock(return_value={"id": 7, "title": "Paper", "folder_name": "folder", "domain": "ai_ml"})
+            ), patch("api.analysis_routes.get_paper_dir", return_value="/tmp/paper"), patch(
+                "api.analysis_routes.load_or_build_document_context", return_value={"phase_inputs": {"chat": "context"}}
+            ), patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value={})), patch(
+                "api.analysis_routes.stream_interaction", new=stream
+            ), patch("api.analysis_routes.active_provider", new=AsyncMock(return_value="openai")):
+                response = await analysis_routes._chat_with_agent_impl(7, _FakeRequest({"message": "question"}))
+                body = "".join([chunk async for chunk in response.body_iterator])
+            self.assertEqual(len(calls), 1)
+            self.assertIn('"type": "error"', body)
+            self.assertNotIn('"type": "done"', body)
+            if event["tokens_in"] is None:
+                self.assertIn('"cost_usd": null', body)
+
+    async def test_optional_stages_preserve_failed_payloads_without_success_cache(self):
+        raw = '{"summary":"incomplete"}'
+        for stage in ("viz_plan", "synthesis"):
+            status = AnalysisStatus(paper_id=7, overall_status="running", phases=[])
+            response = {"text": json.dumps({"_raw": raw, "_parse_error": "incomplete"}),
+                        "raw_text": raw, "model": "gpt-6-luna", "tokens_in": None,
+                        "tokens_out": None, "usage_complete": False}
+            insert = AsyncMock()
+            with patch("services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)), patch(
+                "services.analysis_execution._run_chain_stage", new=AsyncMock(return_value=response)
+            ), patch("services.analysis_execution.fetch_all", new=AsyncMock(return_value=[])), patch(
+                "services.analysis_execution._insert_analysis_result", new=insert
+            ):
+                if stage == "viz_plan":
+                    result = await analysis_execution._plan_visualizations(7, "source", [], status, provider="openai")
+                    self.assertEqual(result, [])
+                else:
+                    result = await analysis_execution._run_synthesis(7, "source", [], status, provider="openai")
+                    self.assertIsNone(result)
+            stored = json.loads(insert.await_args.args[2])
+            self.assertEqual(stored["_raw"], raw)
+            self.assertIn("_parse_error", stored)
+            self.assertNotIn("visualizations", stored)
+            self.assertIsNone(insert.await_args.args[6])
+
+    async def test_citation_missing_usage_retains_local_data_raw_and_null_cost(self):
+        raw = '{"ref_analyses":[],"summary":"unverified"}'
+        response = {"text": raw, "model": "gpt-6-luna", "tokens_in": None,
+                    "tokens_out": None, "usage_complete": False}
+        local = {"total_references": 1, "top_cited": [
+            {"ref_id": "[1]", "authors": "Kim", "title": "Source", "cite_count": 2, "cite_contexts": []},
+        ]}
+        status = AnalysisStatus(paper_id=7, overall_status="running", phases=[])
+        insert = AsyncMock()
+        with patch("services.citation_analyzer.analyze_citations", return_value=types.SimpleNamespace(to_dict=lambda: local)), patch(
+            "services.analysis_execution._get_cached_phase_result", new=AsyncMock(return_value=None)
+        ), patch("services.analysis_execution.call_interaction", new=AsyncMock(return_value=response)), patch(
+            "services.analysis_execution._insert_analysis_result", new=insert
+        ):
+            result = await analysis_execution._run_citation(
+                7, sections={}, citation_body="source", citation_references="[1] Source",
+                paper_authors="Kim", status=status, provider="openai",
+            )
+        payload = json.loads(result["text"])
+        self.assertEqual(payload["_raw"], raw)
+        self.assertEqual(payload["total_references"], 1)
+        self.assertIsNone(insert.await_args.args[6])
+        self.assertEqual(status.phases[-1].status, "error")
+
+    async def test_figure_noncompleted_response_is_error_with_usage_and_no_cache_write(self):
+        from fastapi import HTTPException
+
+        paper = {"id": 7, "title": "Paper", "folder_name": "folder", "domain": "ai_ml", "agent_used": "neural"}
+        figure = {"id": 9, "paper_id": 7, "figure_num": "Figure 1", "caption": "Caption", "file_path": None}
+        for status in ("incomplete", "failed", "cancelled"):
+            response = {"text": "Incomplete explanation", "model": "gpt-6-luna", "tokens_in": 100,
+                        "tokens_out": 50, "tokens_cached": 0, "tokens_cache_write": 0,
+                        "response_status": status, "incomplete_reason": "max_output_tokens"}
+            call = AsyncMock(return_value=response)
+            update = AsyncMock()
+            with patch("api.figure_service.fetch_one", new=AsyncMock(side_effect=[paper, figure])), patch(
+                "api.figure_service.fetch_all", new=AsyncMock(return_value=[])
+            ), patch("api.figure_service.get_paper_dir", return_value=Path("/tmp/paper")), patch(
+                "api.figure_service.ensure_text_artifacts_async", new=AsyncMock()
+            ), patch("api.figure_service.load_or_build_document_context", return_value={}), patch(
+                "api.figure_service.get_latest_completed_phase_rows", new=AsyncMock(return_value={})
+            ), patch("api.figure_service.active_provider", new=AsyncMock(return_value="openai")), patch(
+                "api.figure_service.call_interaction", new=call
+            ), patch("api.figure_service.execute_update", new=update):
+                with self.assertRaises(HTTPException) as raised:
+                    await figure_service.explain_figure_handler(7, 9)
+            self.assertEqual(raised.exception.status_code, 502)
+            self.assertEqual(raised.exception.detail["_raw"], response["text"])
+            self.assertEqual(raised.exception.detail["_usage"]["response_status"], status)
+            self.assertEqual(raised.exception.detail["_usage"]["cost_usd"], 0.000035)
+            call.assert_awaited_once()
+            update.assert_not_awaited()

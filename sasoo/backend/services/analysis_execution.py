@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import hashlib
 import json
 import logging
 import re
@@ -17,6 +18,12 @@ from models.database import execute_insert, execute_update, fetch_all, fetch_one
 from models.schemas import AnalysisPhase, AnalysisStatus, PhaseStatus
 from services.odl_parser import schedule_paper_artifacts_refresh
 from services.analysis_results import parse_phase_row
+from services.summary_contract import (
+    _SECTION_ANSWER_SCHEMA,
+    _TRANSFER_CHECK_SCHEMA,
+    parse_summary_json,
+    validate_summary_extensions,
+)
 from services.artifact_status import resolve_artifact_status_contract, get_visual_row_counts
 from services.concurrency import run_pipeline_blocking
 from services.document_context import (
@@ -24,13 +31,16 @@ from services.document_context import (
     compute_input_hash,
     find_cached_phase_result,
     load_or_build_document_context,
+    input_coverage,
+    source_signature,
 )
 from services.evidence_repo import ensure_recipe_anchors
 # 종합 스테이지의 핵심 수치 검증은 값 가드(#48)와 같은 수치 동치 판정을 쓴다 —
 # 리터럴 대조를 새로 짜면 "1,550"과 "1550"이 다른 값이 된다.
 from services.evidence_verifier import _numeric_tokens, normalize_text
-from services.pricing import calc_cost
+from services.pricing import PricingUsageError, calc_result_cost
 from services.llm.interactions_client import call_interaction
+from services.llm.openai_client import load_pdf_part
 
 from api.analysis_state import _running_analyses, _cancel_events, _analyses_lock
 from api.analysis_helpers import (
@@ -224,8 +234,14 @@ _CITATION_TOP_N = 7
 _CHAIN_CACHE_VERSION = "2026-08-06-ev1"
 
 
-def _phase_cache_key(*, model: str, thinking: str, system_instruction: str, prompt: str) -> str:
-    return "\n\x1f\n".join((_CHAIN_CACHE_VERSION, model, thinking, system_instruction or "", prompt))
+def _phase_cache_key(
+    *, model: str, thinking: str, system_instruction: str, prompt: str,
+    source_signature: str = "", max_output_tokens: int | None = None,
+) -> str:
+    return "\n\x1f\n".join((
+        _CHAIN_CACHE_VERSION, model, thinking, system_instruction or "", prompt,
+        source_signature, str(max_output_tokens),
+    ))
 
 
 def _visualization_cache_input(
@@ -387,9 +403,9 @@ async def _insert_analysis_result(
     phase: str,
     result_text: str,
     model_used: str,
-    tokens_in: int,
-    tokens_out: int,
-    cost_usd: float,
+    tokens_in: int | None,
+    tokens_out: int | None,
+    cost_usd: float | None,
     input_text: str,
     interaction_id: str | None = None,
     *,
@@ -538,25 +554,32 @@ _CITATION_SCHEMA = {
 }
 
 
-def _result_cost(result: dict) -> float:
-    """LLM 호출 결과 하나의 USD 비용을 계산한다(R7-3).
+def _result_cost(result: dict) -> float | None:
+    try:
+        return calc_result_cost(result)
+    except PricingUsageError as exc:
+        result["text"] = json.dumps({
+            "_raw": result.get("raw_text", result.get("text", "")),
+            "_parse_error": str(exc),
+            "_usage": {key: result.get(key) for key in (
+                "tokens_in", "tokens_out", "tokens_cached", "tokens_cache_write", "usage_complete",
+            )},
+        }, ensure_ascii=False)
+        return None
 
-    재시도가 있었던 결과는 tokens_in/tokens_out이 이미 attempt 합산값이라
-    (사용량 표시를 위해 유지) calc_cost(model, tokens_in, tokens_out)을 그대로
-    호출하면 마지막 attempt 단가가 합산 토큰 전체에 적용돼 앞선 attempt 비용이
-    이중 계산되거나(평면 단가) 장문 임계값이 잘못 적용된다(단가 구간 있는
-    모델). 재시도 게이트가 attempt별로 미리 계산해 둔 총비용
-    (result["cost_usd_prior_attempts"])이 있으면 그 값을 그대로 쓰고,
-    없으면(재시도가 없었던 결과) 평소대로 단일 attempt 비용을 계산한다.
-    """
-    prior_total = result.get("cost_usd_prior_attempts")
-    if prior_total is not None:
-        return prior_total
-    return calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
+
+def _combine_retry_usage(first: dict, retry: dict) -> None:
+    try:
+        retry["cost_usd_prior_attempts"] = calc_result_cost(first) + calc_result_cost(retry)
+    except PricingUsageError:
+        retry["usage_complete"] = False
+    retry["tokens_in"] = None if first.get("tokens_in") is None or retry.get("tokens_in") is None else first["tokens_in"] + retry["tokens_in"]
+    retry["tokens_out"] = None if first.get("tokens_out") is None or retry.get("tokens_out") is None else first["tokens_out"] + retry["tokens_out"]
 
 
 async def _run_screening(
     paper_id: int, screening_input: str, status: AnalysisStatus, *, provider: str = "gemini",
+    single_attempt: bool = False,
 ) -> dict:
     """Phase 1: Screening - classify domain, score relevance, extract topics."""
     phase_status = PhaseStatus(
@@ -624,11 +647,16 @@ async def _run_screening(
             thinking_level=choice.effort,
             response_schema=_SCREENING_SCHEMA,
             store=False,
+            **({"single_attempt": True} if single_attempt and provider == "openai" else {}),
         )
 
     result = await _invoke()
+    result["raw_text"] = result.get("text", "")
+    usage_missing = result.get("usage_complete") is False or result.get("tokens_in") is None or result.get("tokens_out") is None
     defect = _stage_result_defect(result.get("text") or "")
-    if defect:
+    if usage_missing or result.get("incomplete") or result.get("response_status") in {"incomplete", "failed", "cancelled"} or (single_attempt and defect):
+        result["text"] = json.dumps({"_raw": result.get("text", ""), "_parse_error": defect or "응답이 완료되지 않았습니다"})
+    elif defect:
         salvaged = salvage_truncated_json(result.get("text") or "", _SCREENING_SCHEMA)
         if salvaged is not None:
             logger.warning(
@@ -645,15 +673,11 @@ async def _run_screening(
             # 재시도 사용량은 attempt별로 비용을 계산해 합산한다(R7-3) — 토큰을
             # 합쳐 한 번에 계산하면 장문 임계값이 잘못 적용되거나(단가 구간 있는
             # 모델) 이후 tokens_in/out 합산과 겹쳐 비용이 이중 계산된다.
-            retry["cost_usd_prior_attempts"] = calc_cost(
-                result["model"], result.get("tokens_in") or 0, result.get("tokens_out") or 0,
-            ) + calc_cost(
-                retry["model"], retry.get("tokens_in") or 0, retry.get("tokens_out") or 0,
-            )
-            # 사용량 표시(tokens_in/out)는 실사용 총량이 맞으므로 토큰 합산은 유지한다.
-            retry["tokens_in"] = (result.get("tokens_in") or 0) + (retry.get("tokens_in") or 0)
-            retry["tokens_out"] = (result.get("tokens_out") or 0) + (retry.get("tokens_out") or 0)
+            _combine_retry_usage(result, retry)
             result = retry
+            result["raw_text"] = result.get("text", "")
+            if result.get("incomplete") or result.get("response_status") in {"incomplete", "failed", "cancelled"}:
+                result["text"] = json.dumps({"_raw": result["raw_text"], "_parse_error": "응답이 완료되지 않았습니다"})
 
     # structured output 실패 대비 안전망: 마크다운 펜스 제거 후 JSON 검증
     cleaned_text = _clean_llm_json(result["text"])
@@ -696,9 +720,9 @@ async def _run_screening(
     phase_status.tokens_out = result["tokens_out"]
     phase_status.cost_usd = cost
     status.progress_pct = max(status.progress_pct, 16.0)
-    status.total_cost_usd += cost
-    status.total_tokens_in += result["tokens_in"]
-    status.total_tokens_out += result["tokens_out"]
+    status.total_cost_usd += cost or 0.0
+    status.total_tokens_in += result["tokens_in"] or 0
+    status.total_tokens_out += result["tokens_out"] or 0
 
     return result
 
@@ -876,6 +900,7 @@ async def _run_citation(
             status.total_tokens_out += cached["tokens_out"]
             return cached
 
+        result = None
         try:
             result = await call_interaction(
                 llm_prompt,
@@ -885,6 +910,13 @@ async def _run_citation(
                 response_schema=_CITATION_SCHEMA,
                 store=False,
             )
+            result["raw_text"] = result.get("text", "")
+            phase_status.model_used = result["model"]
+            phase_status.tokens_in = result.get("tokens_in")
+            phase_status.tokens_out = result.get("tokens_out")
+            cost = calc_result_cost(result)
+            if result.get("incomplete") or result.get("response_status") in {"incomplete", "failed", "cancelled"}:
+                raise ValueError("인용 분석 응답이 완료되지 않았습니다")
             cleaned_text = _clean_llm_json(result["text"])
 
             try:
@@ -914,15 +946,13 @@ async def _run_citation(
             local_result["key_influences"] = llm_data.get("key_influences", [])
             local_result["citation_limitations"] = llm_data.get("limitations", "")
 
-            cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
-
             phase_status.model_used = result["model"]
             phase_status.tokens_in = result["tokens_in"]
             phase_status.tokens_out = result["tokens_out"]
             phase_status.cost_usd = cost
-            status.total_cost_usd += cost
-            status.total_tokens_in += result["tokens_in"]
-            status.total_tokens_out += result["tokens_out"]
+            status.total_cost_usd += cost or 0.0
+            status.total_tokens_in += result["tokens_in"] or 0
+            status.total_tokens_out += result["tokens_out"] or 0
 
         except Exception as exc:
             logger.warning("Citation LLM analysis failed: %s. Using local results only.", exc)
@@ -931,7 +961,14 @@ async def _run_citation(
             # (find_cached_phase_result가 _parse_error/error 키를 가진 행을 캐시 미스로 처리)
             # 없으면 일시적 네트워크·인증 실패가 인용 분석을 영구히 무력화한다 — 실측된 결함.
             local_result["error"] = f"citation LLM 분석 실패: {exc}"
-            cost = 0.0
+            cost = _result_cost(result) if result is not None else None
+            if result is not None:
+                local_result["_raw"] = result.get("raw_text", result.get("text", ""))
+                local_result["_usage"] = {key: result.get(key) for key in ("tokens_in", "tokens_out", "usage_complete")}
+            phase_status.cost_usd = cost
+            status.total_cost_usd += cost or 0.0
+            status.total_tokens_in += phase_status.tokens_in or 0
+            status.total_tokens_out += phase_status.tokens_out or 0
 
     else:
         local_result["summary"] = ""
@@ -977,8 +1014,8 @@ async def _run_citation(
         "citation",
         result_json,
         phase_status.model_used or "local",
-        phase_status.tokens_in or 0,
-        phase_status.tokens_out or 0,
+        phase_status.tokens_in if top_refs else 0,
+        phase_status.tokens_out if top_refs else 0,
         cost,
         input_hash_source,
         provider=provider,
@@ -986,12 +1023,12 @@ async def _run_citation(
         effort=choice.effort,
     )
 
-    phase_status.status = "completed"
+    phase_status.status = "error" if "error" in local_result else "completed"
     phase_status.completed_at = _utcnow_iso()
     status.progress_pct = max(status.progress_pct, 16.0)
 
     return {"text": result_json, "model": phase_status.model_used or "local",
-            "tokens_in": phase_status.tokens_in or 0, "tokens_out": phase_status.tokens_out or 0}
+            "tokens_in": phase_status.tokens_in if top_refs else 0, "tokens_out": phase_status.tokens_out if top_refs else 0}
 
 
 # ---------------------------------------------------------------------------
@@ -1124,6 +1161,8 @@ _DEEP_DIVE_SCHEMA = {
         "weaknesses": {"type": "array", "items": {"type": "string"}},
         "suggested_improvements": {"type": "array", "items": {"type": "string"}},
         "follow_up_questions": {"type": "array", "items": {"type": "string"}},
+        "section_answers": {"type": "array", "maxItems": 12, "items": _SECTION_ANSWER_SCHEMA},
+        "transfer_checks": {"type": "array", "maxItems": 8, "items": _TRANSFER_CHECK_SCHEMA},
         # 마지막 속성을 자유서술 단일 문자열로 두지 않는다(폭주 자리 방지, DEC-014).
         "practical_applications": {"type": "array", "items": {"type": "string"}},
     },
@@ -1141,6 +1180,7 @@ _DEEP_DIVE_SCHEMA = {
         "strengths", "weaknesses", "comparison_scope",
         "novelty_assessment", "comparison_to_prior_work",
         "suggested_improvements", "follow_up_questions", "practical_applications",
+        "section_answers", "transfer_checks",
     ],
 }
 
@@ -1154,24 +1194,76 @@ _DEEP_DIVE_INSTRUCTION = """이 논문에 대한 심층 분석을 해줘. 전문
 - novelty_assessment와 comparison_to_prior_work는 논문이 스스로 제시한 비교 범위 안에서만
   평가하고, 외부 문헌과 대조하지 마. 이 한정은 comparison_scope 필드가 표시하니
   본문에 같은 문구를 반복해 적지 마.
-- 논문에 없는 반례·실험·선행연구를 만들어내지 마.
-- 빈 문자열로 둘 수 있는 필드는 as_is와 to_be 둘뿐이야(그 구도가 없는 논문이 있으니까).
-  나머지 필드는 전부 채워. 논문 근거가 얇으면 얇은 대로 짧게 쓰되, 비우지는 마.
+- 논문에 없는 반례, 실험, 선행연구, 수치, 설정, 출처를 만들어내지 마.
+- 최상위 서술 필드 중 as_is와 to_be는 해당 구도가 없으면 빈 문자열로 둬.
+  나머지 서술 필드는 근거가 얇으면 자료의 한계를 짧게 설명해.
+  배열은 근거가 없으면 빈 배열을 허용하되 키를 생략하지 마.
+- 전체 요약과 절별 답변에 같은 문장을 반복하지 마. 본문 내부에 제목을 넣지 말고
+  문단으로 설명해. 굵은 글씨는 짧은 핵심 결론과 중요한 조건에만 사용해.
+- JSON 객체의 각 키는 한 번만 써. 여러 문단은 같은 문자열 안에서 줄바꿈으로
+  연결하고, 문단마다 method_summary나 key_results 같은 키를 다시 쓰지 마.
+- 방법의 판단 규칙은 적용 범위와 예외를 함께 설명해. 조건 일부만 떼어 보편 규칙으로
+  만들지 마. 실험이나 정의가 없다고 평가하기 전에 본문, 범례, 제공된 부록을 확인해.
+  일부 조건의 조합 비교와 정식 상호작용 검정, 전체 조합 검증은 서로 다른 주장이야.
+- 출처는 제공 자료에서 직접 확인한 식별자를 그대로 써. 절 번호와 제목의 연결이
+  불명확하면 번호를 새로 조합하지 말고 확인된 제목만 써. 본문 그림과 보충 그림의
+  접두어를 혼동하지 마. 미제공 보충 그림을 직접 읽은 출처로 쓰지 말고 그 내용을
+  설명한 본문 절을 가리켜. source_refs는 핵심 1~2개를 우선하고 절대 4개를 넘기지 마.
+  source_refs에는 절 제목과 그림/표만 쓰고, 식 번호나 참고문헌 번호는 설명 본문에 적어.
+- 표의 행/열, 곡선 이름, 실험별 장비와 조건의 대응이 불명확하면 판독 한계를 밝혀.
+  다른 실험이나 비교 방법의 설정을 이 방법의 설정으로 옮기지 마. 수치, 검색 범위,
+  최적성, 미실시/미정의 주장은 해당 원문 문장과 범례에서 확인된 범위만 써.
+- 자료에서 보고를 확인하지 못한 것과 실제로 수행하지 않은 것은 달라. 반복 수가
+  미보고이면 횟수가 부족하다고 단정하지 마. 짧은 답과 추가 설명의 인과 방향,
+  가설과 부호가 일치하는지 확인해. 누락되거나 깨진 수식은 기억으로 복원하지 마.
 
 출력 필드:
 - problem_definition: 논문이 풀려는 문제가 무엇이고 왜 중요한지 (2~4문장)
 - as_is: 기존 접근이 어디까지 왔고 무엇이 부족한지. 이런 구도가 없는 논문이면 빈 문자열 (2~3문장)
 - to_be: 이 논문이 도달하려는 상태나 목표. 구도가 없으면 빈 문자열 (1~2문장)
-- solution: 문제를 푸는 핵심 아이디어와 그 아이디어가 통하는 이유 (2~4문장)
+- solution: 핵심 아이디어와 그 아이디어가 통하는 이유를 인과 순서로 설명 (3~5문장)
 - method_summary: 방법의 서술형 요약. 실험 논문은 절차의 흐름, 이론 논문은 유도의 뼈대,
-  시뮬레이션 논문은 모델과 설정, 리뷰 논문은 문헌 선정·분류 기준을 중심으로 (1~2문단)
-- key_results: 핵심 결과. 수치와 조건은 논문에 적힌 그대로 옮겨 (1~2문단)
+  시뮬레이션 논문은 모델과 설정, 리뷰 논문은 문헌 선정과 분류 기준을 중심으로.
+  입력이나 실험 대상, 핵심 처리, 관측 또는 출력을 연결해 (2~3문단, 문단당 2~4문장)
+- key_results: 비교 대상, 성립 조건, 수치와 단위, 보고된 불확실성을 함께 설명.
+  논문에 적힌 내용만 옮겨 (1~2문단)
 - novelty_assessment: 새로움 평가
 - comparison_to_prior_work: 기존 연구 대비 비교
 - comparison_scope: 항상 "in_paper_only"로 채워(위 두 평가가 논문 자체 비교 범위 기준이라는 표시)
-- strengths: 강점 리스트 / weaknesses: 약점 리스트
+- strengths: 강점 리스트
+- weaknesses: 핵심 해석 한계를 우선한 리스트. 각 항목에 원문 위치와 저자 설명인지
+  Sasoo의 해석인지 밝혀. 확인되지 않은 조건을 저자가 검증한 사실로 쓰지 마.
+- section_answers: 본문의 실제 절 제목과 등장 순서로 최대 12개. 초록, 편집 요약 상자,
+  참고문헌은 제외해. 실제 절 수보다 부풀리지 말고 12개를 넘으면 핵심 절을 선별해.
+  section_title은 원문 제목을 그대로 써.
+  question은 그 절에서 풀어야 하는 질문 한 문장, answer는 직접 답하는 1~2문장,
+  explanation은 작동 이유와 증거를 푸는 2~4문장(추가 설명이 필요 없으면 빈 문자열),
+  source_refs는 원문 절 제목, 그림 또는 표 번호 1~4개. 페이지 번호는 생성하지 마.
+- transfer_checks: 옮겨 쓰기 전 중요한 조건 최대 8개. item은 항목명,
+  paper_condition은 원문 조건 1~2문장, condition_basis는 reported(원문에 명시),
+  inferred(원문에서 추론), not_reported(제공 자료에서 확인 못함) 중 하나.
+  inferred는 도출 이유를 paper_condition에 적어. check_before_transfer는 왜 확인해야
+  하는지 포함한 확인 제안 1~2문장. 제안을 저자의 검증 사실이나 적용 가능 판정으로 쓰지 마.
+  한 항목에는 같은 근거 성격의 조건만 담아. 명시된 수치와 확인하지 못한 정보를
+  한 조건으로 묶어 not_reported로 표시하지 마. 필요하면 별도 항목으로 구분해.
+  source_refs는 원문 절 제목, 그림 또는 표 번호 최대 4개로 reported/inferred는 최소 1개.
+  받지 않은 보충자료까지 논문 전체에 없다고 단정하지 마. 페이지 번호는 생성하지 마.
 - suggested_improvements: 개선 제안 리스트 / follow_up_questions: 후속 질문 리스트 /
-  practical_applications: 실용적 응용 리스트"""
+  practical_applications: 실용적 응용 리스트
+
+분야별 관점은 연구자 프로필이 아니라 논문의 실제 방법을 기준으로 적용해:
+- 바이오: 세포주, 개체 또는 검체와 연구 유형, 처치와 대조, 측정 시점, 측정과 정규화의
+  의미를 설명해. 독립 표본과 반복 측정, 효과 크기, 불확실성, 상관과 인과를 구분해.
+  모델, 시약, 장비와 분석법 차이가 결론에 미치는 영향을 확인 제안에 담아.
+  특정 실험 기법 체크리스트나 반복수 기준을 모든 바이오 논문에 강제하지 마.
+- 로보틱스: 로봇 구조와 자유도, 작업, 센서와 구동기, 관측 입력과 행동 출력,
+  토크/속도/목표 위치 등의 제어 인터페이스를 설명해. 좌표계, 단위, 주기, 지연,
+  보정, 환경 및 동역학 조건은 제공 자료에서 확인한 것만 써.
+  성공 정의, 초기 조건, 반복 횟수, 실패 사례와 비교 방법, 하드웨어 및 계산 자원 차이,
+  시뮬레이션과 실물 검증의 경계를 확인해. 없는 주기, 질량, 마찰을 기본값으로 채우지 마.
+- 임상 연구는 연구 대상, 측정 지표, 연구 설계와 일반화 범위를 설명해.
+- 이론과 리뷰에는 실험 조건이나 as-is/to-be를 강요하지 말고, 가정, 문헌 선정 범위,
+  적용 가능한 문제 조건을 설명해. 혼합 연구는 필요한 관점만 함께 사용해."""
 
 
 def _stateless_digest(screening_result_text: str, citation_result_text: str) -> str:
@@ -1370,9 +1462,6 @@ def _build_persona_prompt(agent, stage: str | None = None) -> str:
 # 긴 논문에서도 프롬프트가 무한정 커지지 않도록 안전판을 둔다(리뷰 Critical 수정).
 _OPENAI_DOC_TEXT_CHAR_LIMIT = 150_000
 
-# OpenAI 체인 첫 호출(visual)에 별도 첨부하는 그림 이미지 장수 상한(스펙 R1).
-# OpenAI는 PDF 파트를 못 보므로(doc_text 텍스트 주입만) 그림은 이미지 파트로 직접
-# 붙여야 "그림을 봤다"가 참이 된다. 무한정 붙이면 요청이 무거워지므로 상한을 둔다.
 _OPENAI_VISUAL_IMAGE_LIMIT = 8
 
 # figure_service.py의 단일 그림 이미지 mime 추정과 같은 표 — 그림 추출이 사실상
@@ -1384,15 +1473,7 @@ _IMAGE_MIME_BY_SUFFIX = {
 
 
 async def _load_openai_figure_parts(paper_id: int, paper_dir: Path) -> list[dict]:
-    """OpenAI visual 첫 호출에 첨부할 그림 이미지 파트를 만든다(리뷰 Important I3).
-
-    스펙 R1: "visual 스테이지는 추출된 그림 이미지 파트를 별도 첨부한다." OpenAI
-    경로는 document 파트를 지원하지 않아(_translate_parts) PDF를 못 보므로,
-    doc_text 텍스트 주입만으로는 프롬프트의 "PDF를 직접 보고"가 거짓이 된다 — 이
-    함수가 그 간극을 메운다. 최대 _OPENAI_VISUAL_IMAGE_LIMIT장만 읽는다. 개별
-    그림 파일이 없거나 읽기 실패하면 그 그림만 건너뛰고 경고 로그를 남긴다 —
-    분석 전체를 막지 않는다.
-    """
+    """Load selected images only when the original PDF is unavailable."""
     rows = await fetch_all(
         """
         SELECT file_path FROM figures
@@ -1428,15 +1509,9 @@ async def _load_openai_figure_parts(paper_id: int, paper_dir: Path) -> list[dict
     return parts
 
 
-def _doc_reference_phrase(provider: str) -> str:
-    """체인 프롬프트가 가리키는 입력 소스 문구(리뷰 Important I3).
-
-    Gemini 체인은 PDF 파일을 실제로 첨부하므로 "위 논문 PDF"가 사실이다. OpenAI
-    체인은 PDF를 못 보고(document 파트 미지원) 로컬 추출 텍스트 + (visual 스테이지
-    한정) 그림 이미지 파트만 받으므로, 그대로 "PDF"라고 쓰면 거짓 지시문이 된다 —
-    각 호출부가 이 함수로 provider에 맞는 문구를 골라 쓴다.
-    """
-    if provider == "openai":
+def _doc_reference_phrase(provider: str, *, pdf_provided: bool = False) -> str:
+    """Describe the legacy text fallback or supplied PDF source."""
+    if provider == "openai" and not pdf_provided:
         return "위 논문 본문 텍스트(첫 단계에 첨부된 그림 이미지 포함)"
     return "위 논문 PDF"
 
@@ -1453,41 +1528,21 @@ async def _run_chain_stage(
     restart_context: str = "",
     provider: str = "gemini",
     doc_text: str = "",
+    openai_pdf_part: dict[str, str] | None = None,
     figure_parts: Optional[list[dict]] = None,
+    single_attempt: bool = False,
+    max_output_tokens: int | None = None,
 ) -> dict:
-    """체인/폴백 모드에 맞춰 call_interaction을 호출한다.
-
-    - pdf_uri 있음(Gemini 체인 모드): store=True. 체인 첫 호출(previous_interaction_id
-      None)만 PDF 문서를 input에 포함하고, 이후 스테이지는 지시문만 보내 서버 상태를
-      신뢰한다. 단, 중간 스테이지 캐시 히트/스킵으로 previous_interaction_id가 유실된
-      체인 재시작 케이스에는 restart_context(이전 스테이지 결과 텍스트)를 PDF와 함께
-      프롬프트에 실어 서버 상태 단절로 잃은 이전 분석 컨텍스트를 복원한다. figure_parts는
-      이 경로에서 쓰지 않는다(Gemini는 PDF에서 직접 그림을 본다).
-    - doc_text 있음(OpenAI 체인 모드, 스펙 R1): store=True. OpenAI는 document 파트를
-      지원하지 않아 PDF 업로드 대신 로컬 추출 텍스트를 체인 첫 호출에 1회 주입하고,
-      이후 스테이지는 pdf_uri 체인과 동일하게 지시문만 보내 서버 상태를 신뢰한다.
-      restart_context 복원 경로도 pdf_uri 체인과 동일하게 적용된다. 주입 라벨은 실제
-      절단 여부를 그대로 알린다 — doc_text 길이가 _OPENAI_DOC_TEXT_CHAR_LIMIT 이상이면
-      "절단" 라벨, 아니면 "전문" 라벨(호출측이 이미 그 상한으로 잘라 넘긴다). 체인 첫
-      호출(previous_interaction_id None)에 figure_parts가 있으면 이미지 파트들을
-      텍스트 파트 앞에 붙여 contents를 리스트로 조립한다(스펙 R1 — visual 스테이지가
-      추출된 그림을 별도 첨부). 이미지가 없으면(빈 리스트/None) 기존처럼 문자열
-      그대로 보낸다. 후속 스테이지(previous_interaction_id 있음)는 figure_parts를
-      받아도 무시한다 — 서버가 이미 첫 호출에서 본 이미지를 기억한다.
-    - 둘 다 없음(폴백): stateless(store=False). 기존 phase_inputs 텍스트를 프롬프트에
-      삽입한다.
-
-    pdf_uri와 doc_text는 상호 배타다(Gemini는 PDF 파트, OpenAI는 텍스트 주입만 쓴다).
-
-    결과 텍스트가 JSON 파싱 불가이거나, 파싱은 되지만 필드 값이 반복 루프
-    (degenerate repetition)에 오염됐으면 1회 재시도한다(재시도도 실패하면
-    그대로 반환 — 기존 `_raw`/`_parse_error` 경로가 처리).
-    """
-    if pdf_uri and doc_text:
-        raise ValueError("pdf_uri(Gemini 체인)와 doc_text(OpenAI 체인)는 동시 사용 불가")
+    """Attach source once per provider chain, and restore it after cache-only stages."""
+    if pdf_uri and (doc_text or openai_pdf_part):
+        raise ValueError("Gemini URI와 OpenAI 입력은 함께 사용할 수 없습니다")
+    if openai_pdf_part and (provider != "openai" or doc_text):
+        raise ValueError("OpenAI PDF는 OpenAI 공급사의 단독 원문 입력이어야 합니다")
+    output_cap = max_output_tokens if max_output_tokens is not None else _STAGE_MAX_OUTPUT_TOKENS.get(phase)
+    attempt_options = {"single_attempt": True} if single_attempt and provider == "openai" else {}
 
     async def _invoke() -> dict:
-        if pdf_uri or doc_text:
+        if pdf_uri or doc_text or openai_pdf_part:
             if previous_interaction_id is None:
                 chain_text = prompt_chain
                 if restart_context:
@@ -1495,7 +1550,9 @@ async def _run_chain_stage(
                         f"{prompt_chain}\n\n"
                         f"이전 분석 단계 결과(체인 재시작으로 복원):\n{restart_context}"
                     )
-                if pdf_uri:
+                if openai_pdf_part:
+                    contents = [openai_pdf_part, {"type": "text", "text": chain_text}]
+                elif pdf_uri:
                     contents = [
                         {"type": "document", "uri": pdf_uri, "mime_type": "application/pdf"},
                         {"type": "text", "text": chain_text},
@@ -1522,7 +1579,9 @@ async def _run_chain_stage(
                 previous_interaction_id=previous_interaction_id,
                 response_schema=response_schema,
                 store=True,
-                max_output_tokens=_STAGE_MAX_OUTPUT_TOKENS.get(phase),
+                max_output_tokens=output_cap,
+                **attempt_options,
+                strict_schema=phase == "deep_dive" and provider == "openai",
             )
         choice = _stage_choice(phase, provider)
         return await call_interaction(
@@ -1533,16 +1592,26 @@ async def _run_chain_stage(
             thinking_level=choice.effort,
             response_schema=response_schema,
             store=False,
-            max_output_tokens=_STAGE_MAX_OUTPUT_TOKENS.get(phase),
+            max_output_tokens=output_cap,
+            **attempt_options,
+            strict_schema=phase == "deep_dive" and provider == "openai",
         )
 
     result = await _invoke()
+    result["raw_text"] = result.get("text", "")
+    usage_missing = result.get("usage_complete") is False or result.get("tokens_in") is None or result.get("tokens_out") is None
+    if usage_missing or result.get("incomplete") or result.get("response_status") in {"incomplete", "failed", "cancelled"}:
+        result["text"] = json.dumps({"_raw": result["raw_text"], "_parse_error": "응답이 완료되지 않았습니다"})
+        return result
     defect = _stage_result_defect(result.get("text") or "")
+    if defect and single_attempt:
+        result["text"] = json.dumps({"_raw": result["raw_text"], "_parse_error": defect})
+        return result
     if defect:
         # 상한에 걸려 꼬리만 잘린 경우가 있다. 앞부분이 온전하면 그걸 쓰고 재시도를
         # 건너뛴다. 같은 요청을 그대로 다시 보내면 같은 자리에서 또 잘리므로
         # (실측 2026-08-16: 65522 토큰 x 2) 재시도는 값만 두 배가 된다.
-        salvaged = salvage_truncated_json(result.get("text") or "", response_schema or {})
+        salvaged = None if phase == "deep_dive" else salvage_truncated_json(result.get("text") or "", response_schema or {})
         if salvaged is not None:
             logger.warning(
                 "chain stage %s %s (tokens_out=%s); 잘린 앞부분을 살려 재시도를 건너뛴다",
@@ -1558,15 +1627,12 @@ async def _run_chain_stage(
         # 재시도 사용량은 attempt별로 비용을 계산해 합산한다(R7-3) — 토큰을
         # 합쳐 한 번에 계산하면 장문 임계값이 잘못 적용되거나(단가 구간 있는
         # 모델) 이후 tokens_in/out 합산과 겹쳐 비용이 이중 계산된다.
-        retry["cost_usd_prior_attempts"] = calc_cost(
-            result["model"], result.get("tokens_in") or 0, result.get("tokens_out") or 0,
-        ) + calc_cost(
-            retry["model"], retry.get("tokens_in") or 0, retry.get("tokens_out") or 0,
-        )
-        # 사용량 표시(tokens_in/out)는 실사용 총량이 맞으므로 토큰 합산은 유지한다.
-        retry["tokens_in"] = (result.get("tokens_in") or 0) + (retry.get("tokens_in") or 0)
-        retry["tokens_out"] = (result.get("tokens_out") or 0) + (retry.get("tokens_out") or 0)
+        _combine_retry_usage(result, retry)
         result = retry
+        result["raw_text"] = result.get("text", "")
+        if result.get("incomplete") or result.get("response_status") in {"incomplete", "failed", "cancelled"}:
+            result["text"] = json.dumps({"_raw": result["raw_text"], "_parse_error": "응답이 완료되지 않았습니다"})
+            return result
         # 재시도 결과도 검사한다. 파싱 실패는 _raw/_parse_error 경로가 받아 주지만,
         # 파싱은 되면서 값만 오염된 출력은 받아 줄 경로가 없어 그대로 저장됐다.
         # 실측 2026-08-17: DB에 그렇게 저장된 recipe 행이 3개(전부 3.6-flash) 있었고
@@ -1599,8 +1665,12 @@ async def _run_visual(
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
     doc_text: str = "",
+    openai_pdf_part: dict[str, str] | None = None,
+    pdf_sha256: str | None = None,
     figure_parts: Optional[list[dict]] = None,
     provider: str = "gemini",
+    single_attempt: bool = False,
+    max_output_tokens: int | None = None,
 ) -> dict:
     """Phase 3: Visual verification - analyze figures, assess quality.
 
@@ -1614,6 +1684,8 @@ async def _run_visual(
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.VISUAL
+    source_hash = openai_pdf_part["sha256"] if openai_pdf_part else pdf_sha256 if pdf_uri else None
+    source_text = doc_text or visual_input
     choice = _stage_choice("visual", provider)
     paper_dir = get_paper_dir(folder_name)
     visual_contract, figure_count, table_count = await _get_visual_contract(
@@ -1640,7 +1712,7 @@ async def _run_visual(
     figure_count = len(figures)
     table_count = len(tables)
 
-    if visual_contract["visual_state"] != "ready" or (figure_count == 0 and table_count == 0):
+    if not openai_pdf_part and (visual_contract["visual_state"] != "ready" or (figure_count == 0 and table_count == 0)):
         if figure_count == 0 and table_count == 0:
             quality_summary = "이 논문에서는 그림과 표를 추출하지 못해 텍스트 분석만으로 진행했어요."
             key_findings = ["시각 asset이 준비되지 않아 텍스트 분석만으로 후속 단계를 진행했습니다."]
@@ -1665,6 +1737,7 @@ async def _run_visual(
             "artifacts_ready": visual_contract["artifacts_ready"],
             "artifacts_error": visual_contract["artifacts_error"],
             "artifacts_partial": True,
+            "_input_coverage": input_coverage(source_text, text_limit=_OPENAI_DOC_TEXT_CHAR_LIMIT),
         }
         result_text = json.dumps(partial_result, ensure_ascii=False)
         partial_hash_source = build_visual_partial_cache_input(
@@ -1673,7 +1746,7 @@ async def _run_visual(
             table_count=table_count,
             visual_state=str(visual_contract["visual_state"]),
             visual_error=visual_contract["visual_error"],
-        )
+        ) + "\n" + source_signature(source_text)
         cached = await _get_cached_phase_result(
             paper_id, "visual", partial_hash_source, provider=provider, model=choice.model, effort=choice.effort,
         )
@@ -1719,13 +1792,18 @@ async def _run_visual(
 
     instruction = _VISUAL_INSTRUCTION
 
-    prompt_chain = f"{instruction}\n\n{_doc_reference_phrase(provider)}를 직접 보고 시각 요소를 분석해줘.{figure_desc}"
+    prompt_chain = f"{instruction}\n\n{_doc_reference_phrase(provider, pdf_provided=bool(openai_pdf_part))}를 직접 보고 시각 요소를 분석해줘.{figure_desc}"
     prompt_fallback = f"논문 관련 텍스트:\n{visual_input}\n{figure_desc}\n\n{instruction}"
     cache_key = _phase_cache_key(
         model=choice.model,
         thinking=choice.effort or "",
         system_instruction=system_instruction,
         prompt=prompt_fallback,
+        source_signature=source_signature(
+            source_text, pdf_sha256=source_hash,
+            detail=openai_pdf_part.get("detail", "high") if openai_pdf_part else "high",
+        ),
+        max_output_tokens=max_output_tokens if max_output_tokens is not None else _STAGE_MAX_OUTPUT_TOKENS.get("visual"),
     )
 
     cached = await _get_cached_phase_result(
@@ -1752,7 +1830,10 @@ async def _run_visual(
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
         doc_text=doc_text,
+        openai_pdf_part=openai_pdf_part,
         figure_parts=figure_parts,
+        single_attempt=single_attempt,
+        max_output_tokens=max_output_tokens,
         response_schema=_VISUAL_SCHEMA,
         provider=provider,
     )
@@ -1761,6 +1842,8 @@ async def _run_visual(
     # Validate JSON before storing
     try:
         parsed = json.loads(cleaned_text)
+        if not _is_error_result(cleaned_text):
+            parsed["_input_coverage"] = input_coverage(source_text, pdf_sha256=source_hash, text_limit=_OPENAI_DOC_TEXT_CHAR_LIMIT)
         parsed["figure_count"] = figure_count
         parsed["tables_found"] = table_count
         result["text"] = json.dumps(parsed, ensure_ascii=False)
@@ -1796,9 +1879,9 @@ async def _run_visual(
     phase_status.tokens_out = result["tokens_out"]
     phase_status.cost_usd = cost
     status.progress_pct = max(status.progress_pct, 32.0)
-    status.total_cost_usd += cost
-    status.total_tokens_in += result["tokens_in"]
-    status.total_tokens_out += result["tokens_out"]
+    status.total_cost_usd += cost or 0.0
+    status.total_tokens_in += result["tokens_in"] or 0
+    status.total_tokens_out += result["tokens_out"] or 0
 
     return result
 
@@ -1814,8 +1897,12 @@ async def _run_recipe(
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
     doc_text: str = "",
+    openai_pdf_part: dict[str, str] | None = None,
+    pdf_sha256: str | None = None,
     provider: str = "gemini",
     folder_name: str = "",
+    single_attempt: bool = False,
+    max_output_tokens: int | None = None,
 ) -> dict:
     """Phase 3: Recipe extraction - extract structured experimental procedure."""
     phase_status = PhaseStatus(
@@ -1825,6 +1912,8 @@ async def _run_recipe(
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.RECIPE
+    source_hash = openai_pdf_part["sha256"] if openai_pdf_part else pdf_sha256 if pdf_uri else None
+    source_text = doc_text or recipe_input
     choice = _stage_choice("recipe", provider)
 
     should_skip, skip_reason = _screening_gate_decision(screening_result_text, phase="recipe")
@@ -1919,13 +2008,18 @@ steps(단계별 상세 설명, 온도·시간·속도 등 포함), critical_note
 expected_results(예상 결과), safety_notes(안전 주의사항), confidence(0.0~1.0),
 missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibility_score(0.0~1.0)."""
 
-    prompt_chain = f"{instruction}\n\n{_doc_reference_phrase(provider)}와 이전 분석을 바탕으로 실험 레시피를 추출해줘."
+    prompt_chain = f"{instruction}\n\n{_doc_reference_phrase(provider, pdf_provided=bool(openai_pdf_part))}와 이전 분석을 바탕으로 실험 레시피를 추출해줘."
     prompt_fallback = f"논문 텍스트:\n{recipe_input}\n\n{instruction}"
     cache_key = _phase_cache_key(
         model=choice.model,
         thinking=choice.effort or "",
         system_instruction=system_instruction,
         prompt=prompt_fallback,
+        source_signature=source_signature(
+            source_text, pdf_sha256=source_hash,
+            detail=openai_pdf_part.get("detail", "high") if openai_pdf_part else "high",
+        ),
+        max_output_tokens=max_output_tokens if max_output_tokens is not None else _STAGE_MAX_OUTPUT_TOKENS.get("recipe"),
     )
 
     cached = await _get_cached_phase_result(
@@ -1961,6 +2055,9 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
         doc_text=doc_text,
+        openai_pdf_part=openai_pdf_part,
+        single_attempt=single_attempt,
+        max_output_tokens=max_output_tokens,
         response_schema=_RECIPE_SCHEMA,
         restart_context=_build_chain_restart_context(previous_results),
         provider=provider,
@@ -1970,8 +2067,10 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
 
     # Validate JSON before storing
     try:
-        json.loads(cleaned_text)
-        result["text"] = cleaned_text
+        payload = json.loads(cleaned_text)
+        if not _is_error_result(cleaned_text):
+            payload["_input_coverage"] = input_coverage(source_text, pdf_sha256=source_hash, text_limit=_OPENAI_DOC_TEXT_CHAR_LIMIT)
+        result["text"] = json.dumps(payload, ensure_ascii=False)
     except json.JSONDecodeError as exc:
         logger.warning("Phase 3 JSON validation failed: %s", exc)
         result["text"] = json.dumps({"_raw": cleaned_text, "_parse_error": str(exc)})
@@ -2014,9 +2113,9 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
     phase_status.tokens_out = result["tokens_out"]
     phase_status.cost_usd = cost
     status.progress_pct = max(status.progress_pct, 48.0)
-    status.total_cost_usd += cost
-    status.total_tokens_in += result["tokens_in"]
-    status.total_tokens_out += result["tokens_out"]
+    status.total_cost_usd += cost or 0.0
+    status.total_tokens_in += result["tokens_in"] or 0
+    status.total_tokens_out += result["tokens_out"] or 0
 
     return result
 
@@ -2033,7 +2132,11 @@ async def _run_deep_dive(
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
     doc_text: str = "",
+    openai_pdf_part: dict[str, str] | None = None,
+    pdf_sha256: str | None = None,
     provider: str = "gemini",
+    single_attempt: bool = False,
+    max_output_tokens: int | None = None,
 ) -> dict:
     """Phase 4: Deep dive - comprehensive analysis over the stateful chain."""
     phase_status = PhaseStatus(
@@ -2043,6 +2146,8 @@ async def _run_deep_dive(
     )
     status.phases.append(phase_status)
     status.current_phase = AnalysisPhase.DEEP_DIVE
+    source_hash = openai_pdf_part["sha256"] if openai_pdf_part else pdf_sha256 if pdf_uri else None
+    source_text = doc_text or deep_dive_input
     choice = _stage_choice("deep_dive", provider)
 
     should_skip, skip_reason = _screening_gate_decision(screening_result_text, phase="deep_dive")
@@ -2067,7 +2172,7 @@ async def _run_deep_dive(
     stateless_context = _stateless_digest(screening_result_text or "", citation_result_text or "")
 
     prompt_chain = (
-        f"{instruction}\n\n{_doc_reference_phrase(provider)}와 앞선 체인 단계(시각·레시피) 결과, 그리고 아래 "
+        f"{instruction}\n\n{_doc_reference_phrase(provider, pdf_provided=bool(openai_pdf_part))}와 앞선 체인 단계(시각·레시피) 결과, 그리고 아래 "
         "스크리닝·인용 분석 digest를 바탕으로 포괄적인 심층 분석을 제공해줘."
     )
     if stateless_context:
@@ -2082,6 +2187,11 @@ async def _run_deep_dive(
         thinking=choice.effort or "",
         system_instruction=system_instruction,
         prompt=prompt_fallback,
+        source_signature=source_signature(
+            source_text, pdf_sha256=source_hash,
+            detail=openai_pdf_part.get("detail", "high") if openai_pdf_part else "high",
+        ),
+        max_output_tokens=max_output_tokens if max_output_tokens is not None else _STAGE_MAX_OUTPUT_TOKENS.get("deep_dive"),
     )
 
     # 체인 재시작 복원용 컨텍스트는 체인 스테이지(시각·레시피)만 담는다. 스크리닝·인용은
@@ -2116,6 +2226,9 @@ async def _run_deep_dive(
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
         doc_text=doc_text,
+        openai_pdf_part=openai_pdf_part,
+        single_attempt=single_attempt,
+        max_output_tokens=max_output_tokens,
         response_schema=_DEEP_DIVE_SCHEMA,
         restart_context=_build_chain_restart_context(chain_stage_results),
         provider=provider,
@@ -2123,13 +2236,16 @@ async def _run_deep_dive(
 
     cleaned_text = _clean_llm_json(result["text"])
 
-    # Validate JSON before storing
     try:
-        json.loads(cleaned_text)
-        result["text"] = cleaned_text
-    except json.JSONDecodeError as exc:
-        logger.warning("Phase 4 JSON validation failed: %s", exc)
-        result["text"] = json.dumps({"_raw": cleaned_text, "_parse_error": str(exc)})
+        if result.get("incomplete") or result.get("response_status") in {"incomplete", "failed", "cancelled"}:
+            raise ValueError("심층 분석 응답이 출력 상한에 걸렸거나 완료되지 않았습니다")
+        payload = parse_summary_json(cleaned_text)
+        validate_summary_extensions(payload, require=True)
+        payload["_input_coverage"] = input_coverage(source_text, pdf_sha256=source_hash, text_limit=_OPENAI_DOC_TEXT_CHAR_LIMIT)
+        result["text"] = json.dumps(payload, ensure_ascii=False)
+    except ValueError as exc:
+        logger.warning("Phase 4 response validation failed: %s", exc)
+        result["text"] = json.dumps({"_raw": result.get("raw_text", cleaned_text), "_parse_error": str(exc)})
 
     cost = _result_cost(result)
 
@@ -2150,7 +2266,7 @@ async def _run_deep_dive(
 
     if _is_error_result(result["text"]):
         phase_status.status = "error"
-        phase_status.error_message = "LLM 응답을 구조화하지 못했습니다 (JSON 파싱 실패, 1회 재시도 포함)"
+        phase_status.error_message = "심층 분석 응답 형식을 확인하지 못했어요"
     else:
         phase_status.status = "completed"
     phase_status.completed_at = _utcnow_iso()
@@ -2160,9 +2276,9 @@ async def _run_deep_dive(
     phase_status.cost_usd = cost
     # 64% — visualization step still needs to run after deep_dive
     status.progress_pct = max(status.progress_pct, 64.0)
-    status.total_cost_usd += cost
-    status.total_tokens_in += result["tokens_in"]
-    status.total_tokens_out += result["tokens_out"]
+    status.total_cost_usd += cost or 0.0
+    status.total_tokens_in += result["tokens_in"] or 0
+    status.total_tokens_out += result["tokens_out"] or 0
 
     return result
 
@@ -2407,6 +2523,8 @@ async def _plan_visualizations(
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
     doc_text: str = "",
+    openai_pdf_part: dict[str, str] | None = None,
+    pdf_sha256: str | None = None,
     provider: str = "gemini",
 ) -> list[dict]:
     """
@@ -2420,6 +2538,8 @@ async def _plan_visualizations(
         started_at=_utcnow_iso(),
     )
     # Don't append a new phase — we update the existing deep_dive phase's progress
+    source_hash = openai_pdf_part["sha256"] if openai_pdf_part else pdf_sha256 if pdf_uri else None
+    source_text = doc_text or visualization_input
     choice = _stage_choice("visualization", provider)  # role: viz_planning
 
     prev_context = "\n---\n".join(previous_results[:4])
@@ -2446,7 +2566,7 @@ diagram_count에는 diagrams의 개수를 넣는다.
 제목·설명·다이어그램 레이블에 이모지를 쓰지 마.
 실험 방법을 최대한 이해할 수 있는 시각화를 우선시해."""
 
-    prompt_chain = f"{instruction}\n\n{_doc_reference_phrase(provider)}와 이전 분석 단계 결과를 바탕으로 시각화 계획을 세워줘."
+    prompt_chain = f"{instruction}\n\n{_doc_reference_phrase(provider, pdf_provided=bool(openai_pdf_part))}와 이전 분석 단계 결과를 바탕으로 시각화 계획을 세워줘."
     prompt_fallback = (
         f"{instruction}\n\n--- 분석 결과 (Phase 1-4) ---\n{prev_context[:9000]}\n\n"
         f"--- 관련 텍스트 요약 ---\n{visualization_input}"
@@ -2456,6 +2576,11 @@ diagram_count에는 diagrams의 개수를 넣는다.
         thinking=choice.effort or "",
         system_instruction=system_instruction,
         prompt=prompt_fallback,
+        source_signature=source_signature(
+            source_text, pdf_sha256=source_hash,
+            detail=openai_pdf_part.get("detail", "high") if openai_pdf_part else "high",
+        ),
+        max_output_tokens=_STAGE_MAX_OUTPUT_TOKENS.get("visualization"),
     )
 
     cached = await _get_cached_phase_result(
@@ -2475,15 +2600,16 @@ diagram_count에는 diagrams의 개수를 넣는다.
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
         doc_text=doc_text,
+        openai_pdf_part=openai_pdf_part,
         response_schema=_VIZ_PLAN_SCHEMA,
         restart_context=_build_chain_restart_context(previous_results),
         provider=provider,
     )
     cost = _result_cost(result)
 
-    status.total_cost_usd += cost
-    status.total_tokens_in += result["tokens_in"]
-    status.total_tokens_out += result["tokens_out"]
+    status.total_cost_usd += cost or 0.0
+    status.total_tokens_in += result["tokens_in"] or 0
+    status.total_tokens_out += result["tokens_out"] or 0
 
     # Parse the plan
     raw = result["text"].strip()
@@ -2507,7 +2633,7 @@ diagram_count에는 diagrams의 개수를 넣는다.
         }]
 
     # Store the plan in DB
-    result_text = json.dumps({"visualizations": items}, ensure_ascii=False)
+    result_text = result["text"] if _is_error_result(result["text"]) else json.dumps({"visualizations": items}, ensure_ascii=False)
     await _insert_analysis_result(
         paper_id,
         "viz_plan",
@@ -2913,9 +3039,18 @@ async def _run_synthesis(
         provider=provider,
     )
     cost = _result_cost(result)
-    status.total_cost_usd += cost
-    status.total_tokens_in += result["tokens_in"]
-    status.total_tokens_out += result["tokens_out"]
+    status.total_cost_usd += cost or 0.0
+    status.total_tokens_in += result["tokens_in"] or 0
+    status.total_tokens_out += result["tokens_out"] or 0
+
+    if _is_error_result(result["text"]):
+        await _insert_analysis_result(
+            paper_id, "synthesis", result["text"], result["model"],
+            result.get("tokens_in"), result.get("tokens_out"), cost, cache_key,
+            interaction_id=result.get("interaction_id"), provider=provider,
+            model=choice.model, effort=choice.effort,
+        )
+        return None
 
     try:
         parsed = json.loads(_clean_llm_json(result["text"]))
@@ -2959,6 +3094,8 @@ async def _run_visualizations(
     previous_interaction_id: Optional[str] = None,
     pdf_uri: Optional[str] = None,
     doc_text: str = "",
+    openai_pdf_part: dict[str, str] | None = None,
+    pdf_sha256: str | None = None,
     provider: str = "gemini",
 ) -> list[dict]:
     """
@@ -3022,6 +3159,8 @@ async def _run_visualizations(
         previous_interaction_id=previous_interaction_id,
         pdf_uri=pdf_uri,
         doc_text=doc_text,
+        openai_pdf_part=openai_pdf_part,
+        pdf_sha256=pdf_sha256,
         provider=provider,
     )
 
@@ -3141,7 +3280,7 @@ async def _run_visualizations(
 # Background analysis pipeline
 # ---------------------------------------------------------------------------
 
-async def run_full_analysis(paper_id: int) -> None:
+async def run_full_analysis(paper_id: int, *, single_attempt: bool = False) -> None:
     """
     Execute the complete 4-phase analysis pipeline in background.
     Updates paper status and in-memory tracking as it progresses.
@@ -3206,6 +3345,7 @@ async def run_full_analysis(paper_id: int) -> None:
             paper_text,
             status,
             provider=provider,
+            single_attempt=single_attempt,
         )
 
         # Check for cancellation
@@ -3261,7 +3401,7 @@ async def run_full_analysis(paper_id: int) -> None:
 
         def _stage_system_instruction(stage: Optional[str]) -> str:
             return build_chain_system_instruction(
-                persona_prompt=_build_persona_prompt(agent, stage),
+                persona_prompt="" if stage == "deep_dive" else _build_persona_prompt(agent, stage),
                 research_context=settings_raw.get("research_context", ""),
                 focus=focus,
                 level_key=level_key,
@@ -3273,40 +3413,28 @@ async def run_full_analysis(paper_id: int) -> None:
         deep_dive_system_instruction = _stage_system_instruction("deep_dive")
         viz_system_instruction = _stage_system_instruction(None)
 
-        # PDF 직접 입력용 업로드. 실패/부재 시 pdf_uri=None → 각 스테이지는 텍스트 폴백 경로.
-        #
-        # gemini에서만 업로드한다. openai_client._translate_parts는 document 파트를
-        # 지원하지 않는다(스펙 R1 — OpenAI 체인은 파일이 아니라 텍스트 주입을 쓴다).
-        # 게이트 없이 업로드하면 pdf_uri가 채워진 채로 _run_chain_stage가 openai로
-        # 라우팅되어 document 파트를 만들고, openai_client가 그 자리에서 ValueError로
-        # 터진다 — provider=openai + GEMINI_API_KEY 보유(양쪽 키)인 흔한 조합에서
-        # 첫 체인 스테이지가 매번 100% 실패했다(리뷰 Critical 1). openai는 아래 elif
-        # 분기에서 doc_text로 텍스트 체인을 탄다(Task 10, 스펙 R1).
         chain_prev_id: Optional[str] = None
         pdf_uri: Optional[str] = None
-        doc_text: str = ""
+        doc_text = ""
+        openai_pdf_part: dict[str, str] | None = None
+        pdf_sha256: str | None = None
         figure_parts: list[dict] = []
-        if provider == "gemini":
-            pdf_file = _find_paper_pdf(paper_dir)
+        pdf_file = _find_paper_pdf(paper_dir)
+        if provider == "gemini" and pdf_file is not None:
+            try:
+                pdf_uri = await upload_pdf_for_paper(paper_id, str(pdf_file))
+                pdf_sha256 = hashlib.sha256(Path(pdf_file).read_bytes()).hexdigest()
+            except Exception as exc:
+                logger.warning("PDF preparation failed for paper %s: %s", paper_id, exc)
+        elif provider == "openai":
             if pdf_file is not None:
                 try:
-                    pdf_uri = await upload_pdf_for_paper(paper_id, str(pdf_file))
-                except Exception as exc:
-                    logger.warning(
-                        "PDF upload failed for paper %s, falling back to text context: %s", paper_id, exc
-                    )
-            else:
-                logger.warning(
-                    "No PDF found in %s for paper %s; using text-context fallback.", paper_dir, paper_id
-                )
-        elif provider == "openai":
-            # 비절단 원문(full_text)을 체인 첫 호출에 1회 주입한다 — screening용
-            # paper_text(5,000자 절단본)가 아니다. _OPENAI_DOC_TEXT_CHAR_LIMIT 상한만
-            # 적용하고, 그 안이면 절단 없이 그대로 넣는다.
-            doc_text = full_text[:_OPENAI_DOC_TEXT_CHAR_LIMIT]
-            # PDF를 못 보는 대신(스펙 R1) 추출된 그림을 이미지 파트로 최대 8장 직접
-            # 첨부한다 — visual 스테이지(체인 첫 호출)에만 실린다(리뷰 Important I3).
-            figure_parts = await _load_openai_figure_parts(paper_id, paper_dir)
+                    openai_pdf_part = await run_pipeline_blocking(load_pdf_part, Path(pdf_file))
+                except (OSError, ValueError) as exc:
+                    logger.warning("PDF preparation failed for paper %s: %s", paper_id, exc)
+            if openai_pdf_part is None:
+                doc_text = full_text[:_OPENAI_DOC_TEXT_CHAR_LIMIT]
+                figure_parts = await _load_openai_figure_parts(paper_id, paper_dir)
 
         # Phase 2: Citation Analysis (after screening, before visual)
         # TODO(parser-hybrid): visual 단계가 gemini로 승격되면 sections/references는 gemini 텍스트라
@@ -3341,10 +3469,13 @@ async def run_full_analysis(paper_id: int) -> None:
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
             doc_text=doc_text,
+            openai_pdf_part=openai_pdf_part,
+            pdf_sha256=pdf_sha256,
+            single_attempt=single_attempt,
             figure_parts=figure_parts,
             provider=provider,
         )
-        if pdf_uri or doc_text:
+        if pdf_uri or doc_text or openai_pdf_part:
             chain_prev_id = r2.get("interaction_id")
 
         # Check for cancellation
@@ -3373,10 +3504,13 @@ async def run_full_analysis(paper_id: int) -> None:
             previous_interaction_id=chain_prev_id,
             pdf_uri=pdf_uri,
             doc_text=doc_text,
+            openai_pdf_part=openai_pdf_part,
+            pdf_sha256=pdf_sha256,
+            single_attempt=single_attempt,
             provider=provider,
             folder_name=folder_name,
         )
-        if pdf_uri or doc_text:
+        if pdf_uri or doc_text or openai_pdf_part:
             chain_prev_id = r3.get("interaction_id")
 
         # Check for cancellation
@@ -3389,12 +3523,23 @@ async def run_full_analysis(paper_id: int) -> None:
             previous.append(r3["text"])
 
         # Phase 4: Deep Dive (체인 3번째 스테이지)
-        # 이 단계만 provider가 갈릴 수 있다(DEC-019 — Gemini deep_dive 폭주 회피).
-        # 갈리면 서버측 체인 상태를 공유할 수 없으므로 PDF 대신 텍스트를 주입해
-        # 새 체인을 시작한다. 앞선 시각·레시피 결과는 _run_deep_dive가 붙이는
-        # restart_context가 복원한다.
         dd_provider = await provider_for_role("deep_dive")
         dd_chained = dd_provider == provider
+        dd_pdf = openai_pdf_part if dd_chained else None
+        dd_uri = pdf_uri if dd_chained else None
+        dd_hash = pdf_sha256 if dd_chained else None
+        dd_text = doc_text if dd_chained else ""
+        if not dd_chained and pdf_file is not None:
+            try:
+                if dd_provider == "openai":
+                    dd_pdf = await run_pipeline_blocking(load_pdf_part, Path(pdf_file))
+                else:
+                    dd_uri = await upload_pdf_for_paper(paper_id, str(pdf_file))
+                    dd_hash = hashlib.sha256(Path(pdf_file).read_bytes()).hexdigest()
+            except (OSError, ValueError) as exc:
+                logger.warning("Deep-dive PDF preparation failed for paper %s: %s", paper_id, exc)
+        if not dd_chained and not (dd_pdf or dd_uri):
+            dd_text = full_text[:_OPENAI_DOC_TEXT_CHAR_LIMIT]
         r4 = await _run_deep_dive(
             paper_id,
             str(phase_inputs.get("deep_dive", "")),
@@ -3404,13 +3549,16 @@ async def run_full_analysis(paper_id: int) -> None:
             citation_result_text=r_cit.get("text", ""),
             system_instruction=deep_dive_system_instruction,
             previous_interaction_id=chain_prev_id if dd_chained else None,
-            pdf_uri=pdf_uri if dd_chained else None,
-            doc_text=doc_text if dd_chained else full_text[:_OPENAI_DOC_TEXT_CHAR_LIMIT],
+            pdf_uri=dd_uri,
+            doc_text=dd_text,
+            openai_pdf_part=dd_pdf,
+            pdf_sha256=dd_hash,
+            single_attempt=single_attempt,
             provider=dd_provider,
         )
         # provider가 갈렸으면 r4의 interaction_id는 다른 서버의 것이라 이어 쓸 수 없다.
         # visualization은 레시피까지의 체인을 그대로 잇는다.
-        if dd_chained and (pdf_uri or doc_text):
+        if dd_chained and (pdf_uri or doc_text or openai_pdf_part):
             chain_prev_id = r4.get("interaction_id")
 
         # Check for cancellation
@@ -3451,6 +3599,8 @@ async def run_full_analysis(paper_id: int) -> None:
                     previous_interaction_id=chain_prev_id,
                     pdf_uri=pdf_uri,
                     doc_text=doc_text,
+                    openai_pdf_part=openai_pdf_part,
+                    pdf_sha256=pdf_sha256,
                     provider=provider,
                 )
             except Exception as viz_err:
@@ -3469,9 +3619,9 @@ async def run_full_analysis(paper_id: int) -> None:
         # Mark paper as completed
         await execute_update(
             "UPDATE papers SET status = ?, analyzed_at = ? WHERE id = ?",
-            ("completed", _utcnow_iso(), paper_id),
+            ("error" if any(phase.status == "error" for phase in status.phases) else "completed", _utcnow_iso(), paper_id),
         )
-        status.overall_status = "completed"
+        status.overall_status = "error" if any(phase.status == "error" for phase in status.phases) else "completed"
 
     except Exception as e:
         # Mark as error
@@ -3514,5 +3664,3 @@ async def run_full_analysis(paper_id: int) -> None:
                     if status.overall_status != "running":
                         del _running_analyses[paper_id]
         asyncio.create_task(_cleanup_stale())
-
-

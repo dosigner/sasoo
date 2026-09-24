@@ -63,7 +63,7 @@ from services.analysis_results import (
 from services.concurrency import run_chat_blocking, run_pipeline_blocking
 from services.document_context import load_or_build_document_context
 from services.evidence_repo import build_evidence_payload
-from services.pricing import calc_cost
+from services.pricing import calc_result_cost
 from services.llm.interactions_client import call_interaction, stream_interaction
 
 from api.analysis_state import _running_analyses, _cancel_events, _analyses_lock
@@ -1051,7 +1051,7 @@ async def generate_experiment_plan(paper_id: int):
 
 async def _generate_experiment_plan_impl(paper_id: int):
     from services.agents import get_agent_for_domain
-    from services.pricing import calc_cost
+    from services.pricing import calc_result_cost
 
     # 1. Load paper info
     paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
@@ -1142,7 +1142,7 @@ Return ONLY valid JSON (마크다운 펜스 없이):
         logger.warning("Experiment plan JSON validation failed: %s", exc)
         result["text"] = json.dumps({"_raw": cleaned_text, "_parse_error": str(exc)})
 
-    cost = calc_cost(result["model"], result["tokens_in"], result["tokens_out"])
+    cost = calc_result_cost(result)
 
     # 6. Save to DB
     plan_id = await execute_insert(
@@ -1336,7 +1336,14 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
                         streamed_any = True
                         yield f"data: {json.dumps({'type': 'token', 'content': ev['text']}, ensure_ascii=False)}\n\n"
                     elif ev["type"] == "done":
-                        cost = calc_cost(chat_choice.model, ev["tokens_in"], ev["tokens_out"])
+                        try:
+                            cost = calc_result_cost(ev, model=chat_choice.model)
+                        except ValueError:
+                            yield f"data: {json.dumps({'type': 'error', 'message': '응답 사용량을 확인하지 못했습니다', 'tokens_in': ev.get('tokens_in'), 'tokens_out': ev.get('tokens_out'), 'cost_usd': None}, ensure_ascii=False)}\n\n"
+                            return
+                        if ev.get("incomplete") or ev.get("response_status") in {"incomplete", "failed", "cancelled"}:
+                            yield f"data: {json.dumps({'type': 'error', 'message': '응답이 완료되지 않았습니다', 'tokens_in': ev['tokens_in'], 'tokens_out': ev['tokens_out'], 'cost_usd': cost}, ensure_ascii=False)}\n\n"
+                            return
                         yield f"data: {json.dumps({'type': 'done', 'tokens_in': ev['tokens_in'], 'tokens_out': ev['tokens_out'], 'cost_usd': cost}, ensure_ascii=False)}\n\n"
                 return
             except asyncio.CancelledError:

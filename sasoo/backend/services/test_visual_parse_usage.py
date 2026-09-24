@@ -33,7 +33,7 @@ def _usage(pages: int = 3, tin: int = 1000, tout: int = 500, tthought: int = 120
         "tokens_in": tin,
         "tokens_out": tout,
         "tokens_thought": tthought,
-        "cost_usd": 0.123,  # 채널이 준 값 — 기록 헬퍼는 무시하고 calc_cost로 재계산한다.
+        "cost_usd": 0.123,
     }
 
 
@@ -53,8 +53,10 @@ class RefreshRecordsUsageTests(unittest.IsolatedAsyncioTestCase):
             returned = await odl._refresh_paper_artifacts(42, Path("/tmp/paper"))
         return returned, insert_mock, fig_mock, tbl_mock
 
-    async def test_success_records_once_with_values(self):
-        manifest = {"engine": "gemini", "_visual_parse_usage": _usage()}
+    async def test_success_without_upstream_cost_records_once_with_legacy_values(self):
+        usage = _usage()
+        usage.pop("cost_usd")
+        manifest = {"engine": "gemini", "_visual_parse_usage": usage}
         returned, insert_mock, fig_mock, tbl_mock = await self._run_refresh(manifest)
 
         # 기록 1회
@@ -78,6 +80,28 @@ class RefreshRecordsUsageTests(unittest.IsolatedAsyncioTestCase):
         fig_mock.assert_awaited_once()
         tbl_mock.assert_awaited_once()
         self.assertNotIn("_visual_parse_usage", returned)
+
+    async def test_success_preserves_authoritative_upstream_cost(self):
+        manifest = {"engine": "gemini", "_visual_parse_usage": _usage()}
+        _, insert_mock, _, _ = await self._run_refresh(manifest)
+        insert_mock.assert_awaited_once()
+        self.assertEqual(insert_mock.await_args.args[1][6], 0.123)
+        self.assertEqual(calc_cost(MODEL, 1000, 500), 0.006)
+
+    async def test_unknown_upstream_cost_and_raw_failures_survive_persistence(self):
+        failures = [{"page": 1, "_raw": "partial raw text", "_parse_error": "incomplete", "_usage": {"tokens_in": None}}]
+        for token_count in (None, 1000):
+            usage = {**_usage(), "tokens_in": token_count, "tokens_out": token_count,
+                     "cost_usd": None, "usage_complete": False, "failures": failures}
+            _, insert_mock, _, _ = await self._run_refresh({"engine": "gemini", "_visual_parse_usage": usage})
+            insert_mock.assert_awaited_once()
+            params = insert_mock.await_args.args[1]
+            self.assertEqual(params[4], token_count)
+            self.assertEqual(params[5], token_count)
+            self.assertIsNone(params[6])
+            payload = json.loads(params[2])
+            self.assertEqual(payload["failures"], failures)
+            self.assertFalse(payload["usage_complete"])
 
     async def test_no_usage_key_records_nothing(self):
         # ODL 폴백/캐시 히트 → manifest에 transient 키 없음.

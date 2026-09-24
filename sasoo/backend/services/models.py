@@ -43,6 +43,7 @@ MODEL_FLASH_PREV = "gemini-3.7-flash"
 
 # OpenAI 텍스트 모델 — provider 중립화(스펙 2026-07-31 + 개정 1)
 MODEL_LUNA = "gpt-5.6-luna"
+MODEL_GPT6_LUNA = "gpt-6-luna"
 
 # Image generation
 MODEL_IMAGE = "gemini-3.1-flash-image"   # Nano Banana 2 ($0.067/장)

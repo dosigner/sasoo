@@ -382,3 +382,32 @@ class TestInputHashProviderAware(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_source_signature_tracks_actual_pdf_text_and_ranges():
+    from services.document_context import source_signature
+
+    assert source_signature("source", pdf_sha256="a" * 64) != source_signature("source")
+    assert source_signature("source", pdf_sha256="a" * 64) != source_signature("source", pdf_sha256="b" * 64)
+    assert source_signature("source", pdf_sha256="a" * 64, detail="high") != source_signature("source", pdf_sha256="a" * 64, detail="low")
+    assert source_signature("source") != source_signature("source"[:3])
+
+
+def test_coverage_distinguishes_supplied_pdf_from_partial_text():
+    from services.document_context import input_coverage
+
+    assert input_coverage("", pdf_sha256="a" * 64) == {
+        "mode": "pdf", "status": "provided_pdf", "missing": [], "pdf_sha256": "a" * 64,
+    }
+    coverage = input_coverage("source")
+    assert coverage["mode"] == "text"
+    assert coverage["status"] == "partial"
+    assert coverage["pdf_sha256"] is None
+    assert "6자" in coverage["missing"][1]
+
+
+def test_text_input_limit_is_disclosed_in_partial_scope():
+    from services.document_context import input_coverage
+
+    coverage = input_coverage("source", text_limit=6)
+    assert any("6자 입력 제한" in missing for missing in coverage["missing"])
