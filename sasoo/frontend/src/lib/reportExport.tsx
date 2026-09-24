@@ -8,7 +8,7 @@ interface ReportContent {
 }
 
 export function buildReportHtml(report: ReportContent): string {
-  return '<!doctype html>' + renderToStaticMarkup(
+  const html = renderToStaticMarkup(
     <html lang="ko">
       <head>
         <meta charSet="utf-8" />
@@ -32,6 +32,11 @@ export function buildReportHtml(report: ReportContent): string {
       </head>
       <body><main><Markdown>{report.markdown}</Markdown></main></body>
     </html>,
+  );
+  // React hoists image preloads before JSX CSP metadata.
+  return '<!doctype html>' + html.replace(
+    '<head>',
+    `<head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'"/>`,
   );
 }
 

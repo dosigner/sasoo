@@ -1,5 +1,31 @@
+// @vitest-environment jsdom
 import { expect, it } from 'vitest';
 import { buildReportHtml } from './reportExport';
+
+it.each([
+  'https://review-probe.invalid/pixel?paper=SECURITY_SENTINEL',
+  '//review-probe.invalid/pixel?paper=SECURITY_SENTINEL',
+  'http://127.0.0.1:19328/pixel?paper=SECURITY_SENTINEL',
+])('restricts automatic resources before an exported image can load: %s', (imageUrl) => {
+  // Given
+  const html = buildReportHtml({
+    title: '비공개 논문 보고서',
+    markdown: `![remote](${imageUrl})\n\n[원문 확인](https://example.org/paper)`,
+  });
+
+  // When
+  const document = new DOMParser().parseFromString(html, 'text/html');
+
+  // Then
+  const policy = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  expect(policy?.getAttribute('content')).toBe(
+    "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'",
+  );
+  const resource = document.querySelector('link[rel="preload"][as="image"], img');
+  expect(resource).not.toBeNull();
+  expect(resource && policy?.compareDocumentPosition(resource)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(document.querySelector('a')?.getAttribute('href')).toBe('https://example.org/paper');
+});
 
 it('preserves answers, sources, conditions, code and math in a standalone report', () => {
   const html = buildReportHtml({
