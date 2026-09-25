@@ -1,0 +1,61 @@
+{
+  "version": "1.0.1",
+  "commit": "073835293454fd57ac2284e91b935ecb926ca139",
+  "build_check_run": 36111906029,
+  "release_run": 36112642035,
+  "published": true,
+  "is_prerelease": false,
+  "mac_ci_artifact": {
+    "version": "1.0.1",
+    "mac_zip_bytes": 284770161,
+    "mac_zip_sha256": "dc160c26ce3f9de08fd4c3728c776a36f6c5caeba978e0e4bfe4663e94868e18",
+    "public_manifest_sha512_matches_ci_artifact": true,
+    "windows_manifest_version": "1.0.1",
+    "windows_manifest_file": "Sasoo-Setup-1.0.1.exe"
+  },
+  "urls": [
+    {
+      "file": "Sasoo-1.0.1-arm64.dmg",
+      "http_status": "200",
+      "exit_code": 0
+    },
+    {
+      "file": "Sasoo-1.0.1-arm64-mac.zip",
+      "http_status": "200",
+      "exit_code": 0
+    },
+    {
+      "file": "Sasoo-Setup-1.0.1.exe",
+      "http_status": "200",
+      "exit_code": 0
+    },
+    {
+      "file": "latest-mac.yml",
+      "http_status": "200",
+      "exit_code": 0
+    },
+    {
+      "file": "latest.yml",
+      "http_status": "200",
+      "exit_code": 0
+    }
+  ],
+  "local_tests": {
+    "frontend": 314,
+    "electron_common": 267,
+    "backend_python314": 1062,
+    "backend_python312_passed": 1053,
+    "backend_python312_skipped": 9
+  },
+  "scientific_gate": "failed, unchanged; disclosed in release notes",
+  "paid_model_calls": 0,
+  "provider_key_revocation": "not independently verified",
+  "official_mac_package_smoke": {
+    "source": "GitHub Release workflow macOS ZIP; SHA-512 matched public latest-mac.yml",
+    "backend_version": "1.0.1",
+    "library_persisted": true,
+    "pdf_reopened": true,
+    "pdf_canvases": 2,
+    "screenshot": "v1.0.1-macos-ci-pdf.png"
+  }
+}

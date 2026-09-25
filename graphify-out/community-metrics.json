@@ -1,0 +1,1532 @@
+[
+  {
+    "id": 0,
+    "label": "Init Components",
+    "nodes": 127,
+    "cohesion": 0.045869266341707286
+  },
+  {
+    "id": 1,
+    "label": "Analysis API",
+    "nodes": 127,
+    "cohesion": 0.03624546931633546
+  },
+  {
+    "id": 2,
+    "label": "Library Components",
+    "nodes": 126,
+    "cohesion": 0.03987301587301587
+  },
+  {
+    "id": 3,
+    "label": "Api Components",
+    "nodes": 93,
+    "cohesion": 0.0493221131369799
+  },
+  {
+    "id": 4,
+    "label": "Analysis Execution",
+    "nodes": 81,
+    "cohesion": 0.06234567901234568
+  },
+  {
+    "id": 5,
+    "label": "Analysis Runs",
+    "nodes": 76,
+    "cohesion": 0.04596491228070176
+  },
+  {
+    "id": 6,
+    "label": "Ensure Java Runtime",
+    "nodes": 68,
+    "cohesion": 0.06584723441615452
+  },
+  {
+    "id": 7,
+    "label": "Provider Compare",
+    "nodes": 60,
+    "cohesion": 0.05875706214689266
+  },
+  {
+    "id": 8,
+    "label": "Figure Gallery",
+    "nodes": 59,
+    "cohesion": 0.06019871420222092
+  },
+  {
+    "id": 9,
+    "label": "Markdown Components",
+    "nodes": 57,
+    "cohesion": 0.06140350877192982
+  },
+  {
+    "id": 10,
+    "label": "Application Settings",
+    "nodes": 56,
+    "cohesion": 0.06233766233766234
+  },
+  {
+    "id": 11,
+    "label": "Credential Encryption",
+    "nodes": 56,
+    "cohesion": 0.07142857142857142
+  },
+  {
+    "id": 12,
+    "label": "PDF Viewer",
+    "nodes": 55,
+    "cohesion": 0.059932659932659935
+  },
+  {
+    "id": 13,
+    "label": "Blocks Components",
+    "nodes": 54,
+    "cohesion": 0.06568832983927324
+  },
+  {
+    "id": 14,
+    "label": "Analysis API",
+    "nodes": 52,
+    "cohesion": 0.038461538461538464
+  },
+  {
+    "id": 15,
+    "label": "Summary Content",
+    "nodes": 52,
+    "cohesion": 0.08144796380090498
+  },
+  {
+    "id": 16,
+    "label": "Analysis Context",
+    "nodes": 51,
+    "cohesion": 0.05647058823529412
+  },
+  {
+    "id": 17,
+    "label": "Analysis API",
+    "nodes": 51,
+    "cohesion": 0.06588235294117648
+  },
+  {
+    "id": 18,
+    "label": "Resolver Pipeline",
+    "nodes": 49,
+    "cohesion": 0.07482993197278912
+  },
+  {
+    "id": 19,
+    "label": "Measure Components",
+    "nodes": 47,
+    "cohesion": 0.08788159111933395
+  },
+  {
+    "id": 20,
+    "label": "Schemas Components",
+    "nodes": 44,
+    "cohesion": 0.07188160676532769
+  },
+  {
+    "id": 21,
+    "label": "Mermaid Renderer",
+    "nodes": 44,
+    "cohesion": 0.10887949260042283
+  },
+  {
+    "id": 22,
+    "label": "Resolver Pipeline",
+    "nodes": 43,
+    "cohesion": 0.09856035437430787
+  },
+  {
+    "id": 23,
+    "label": "Evidence Components",
+    "nodes": 43,
+    "cohesion": 0.11406423034330011
+  },
+  {
+    "id": 24,
+    "label": "PDF Extraction",
+    "nodes": 42,
+    "cohesion": 0.11846689895470383
+  },
+  {
+    "id": 25,
+    "label": "Figure Candidates",
+    "nodes": 41,
+    "cohesion": 0.12073170731707317
+  },
+  {
+    "id": 26,
+    "label": "Section Splitter",
+    "nodes": 41,
+    "cohesion": 0.06829268292682927
+  },
+  {
+    "id": 27,
+    "label": "Reading Guide",
+    "nodes": 40,
+    "cohesion": 0.09358974358974359
+  },
+  {
+    "id": 28,
+    "label": "PDF Extraction",
+    "nodes": 39,
+    "cohesion": 0.08502024291497975
+  },
+  {
+    "id": 29,
+    "label": "Application Settings",
+    "nodes": 38,
+    "cohesion": 0.07681365576102418
+  },
+  {
+    "id": 30,
+    "label": "Cost Dashboard",
+    "nodes": 38,
+    "cohesion": 0.08108108108108109
+  },
+  {
+    "id": 31,
+    "label": "Papers Components",
+    "nodes": 37,
+    "cohesion": 0.08558558558558559
+  },
+  {
+    "id": 32,
+    "label": "Provider State",
+    "nodes": 37,
+    "cohesion": 0.08108108108108109
+  },
+  {
+    "id": 33,
+    "label": "Document Manifest",
+    "nodes": 37,
+    "cohesion": 0.16966966966966968
+  },
+  {
+    "id": 34,
+    "label": "PDF Extraction",
+    "nodes": 37,
+    "cohesion": 0.13963963963963963
+  },
+  {
+    "id": 35,
+    "label": "Analysis API",
+    "nodes": 36,
+    "cohesion": 0.05555555555555555
+  },
+  {
+    "id": 36,
+    "label": "Figure Generation",
+    "nodes": 36,
+    "cohesion": 0.08095238095238096
+  },
+  {
+    "id": 37,
+    "label": "PDF Extraction",
+    "nodes": 35,
+    "cohesion": 0.07394957983193277
+  },
+  {
+    "id": 38,
+    "label": "Usage Cost Accounting",
+    "nodes": 35,
+    "cohesion": 0.11260504201680673
+  },
+  {
+    "id": 39,
+    "label": "Workbench Summaries",
+    "nodes": 35,
+    "cohesion": 0.08067226890756303
+  },
+  {
+    "id": 40,
+    "label": "Analysis Worker",
+    "nodes": 34,
+    "cohesion": 0.0677361853832442
+  },
+  {
+    "id": 41,
+    "label": "Main Components",
+    "nodes": 33,
+    "cohesion": 0.06628787878787878
+  },
+  {
+    "id": 42,
+    "label": "Analysis Runs",
+    "nodes": 33,
+    "cohesion": 0.11174242424242424
+  },
+  {
+    "id": 43,
+    "label": "Historical Packaging Plan",
+    "nodes": 33,
+    "cohesion": 0.0946969696969697
+  },
+  {
+    "id": 44,
+    "label": "Table Labels",
+    "nodes": 31,
+    "cohesion": 0.12688172043010754
+  },
+  {
+    "id": 45,
+    "label": "Analysis API",
+    "nodes": 30,
+    "cohesion": 0.09195402298850575
+  },
+  {
+    "id": 46,
+    "label": "Resolver Pipeline",
+    "nodes": 30,
+    "cohesion": 0.08505747126436781
+  },
+  {
+    "id": 47,
+    "label": "Evidence Verification",
+    "nodes": 30,
+    "cohesion": 0.1310344827586207
+  },
+  {
+    "id": 48,
+    "label": "Provider Model Routing",
+    "nodes": 29,
+    "cohesion": 0.09852216748768473
+  },
+  {
+    "id": 49,
+    "label": "Odl Java Runtime",
+    "nodes": 29,
+    "cohesion": 0.10098522167487685
+  },
+  {
+    "id": 50,
+    "label": "Credential Encryption",
+    "nodes": 29,
+    "cohesion": 0.07142857142857142
+  },
+  {
+    "id": 51,
+    "label": "Analysis API",
+    "nodes": 28,
+    "cohesion": 0.07936507936507936
+  },
+  {
+    "id": 52,
+    "label": "OpenAI Requests",
+    "nodes": 28,
+    "cohesion": 0.10052910052910052
+  },
+  {
+    "id": 53,
+    "label": "Measure Components",
+    "nodes": 28,
+    "cohesion": 0.13227513227513227
+  },
+  {
+    "id": 54,
+    "label": "Luna Compare",
+    "nodes": 28,
+    "cohesion": 0.14814814814814814
+  },
+  {
+    "id": 55,
+    "label": "Degenerate Field Pruning",
+    "nodes": 27,
+    "cohesion": 0.1339031339031339
+  },
+  {
+    "id": 56,
+    "label": "Document Context",
+    "nodes": 27,
+    "cohesion": 0.11396011396011396
+  },
+  {
+    "id": 57,
+    "label": "Library Path",
+    "nodes": 26,
+    "cohesion": 0.11076923076923077
+  },
+  {
+    "id": 58,
+    "label": "Backend Process Stopper",
+    "nodes": 26,
+    "cohesion": 0.15076923076923077
+  },
+  {
+    "id": 59,
+    "label": "Package Components",
+    "nodes": 26,
+    "cohesion": 0.08923076923076922
+  },
+  {
+    "id": 60,
+    "label": "Tsconfig Components",
+    "nodes": 25,
+    "cohesion": 0.08
+  },
+  {
+    "id": 61,
+    "label": "Sync Version",
+    "nodes": 25,
+    "cohesion": 0.08666666666666667
+  },
+  {
+    "id": 62,
+    "label": "Gemini Requests",
+    "nodes": 24,
+    "cohesion": 0.15579710144927536
+  },
+  {
+    "id": 63,
+    "label": "Table Candidates",
+    "nodes": 24,
+    "cohesion": 0.2028985507246377
+  },
+  {
+    "id": 64,
+    "label": "Figure Resolver",
+    "nodes": 24,
+    "cohesion": 0.11594202898550725
+  },
+  {
+    "id": 65,
+    "label": "Luna Compare",
+    "nodes": 24,
+    "cohesion": 0.18478260869565216
+  },
+  {
+    "id": 66,
+    "label": "Package Components",
+    "nodes": 24,
+    "cohesion": 0.08333333333333333
+  },
+  {
+    "id": 67,
+    "label": "Package Components",
+    "nodes": 24,
+    "cohesion": 0.08333333333333333
+  },
+  {
+    "id": 68,
+    "label": "Analysis API",
+    "nodes": 23,
+    "cohesion": 0.09881422924901186
+  },
+  {
+    "id": 69,
+    "label": "Openai Vision Spike",
+    "nodes": 23,
+    "cohesion": 0.15810276679841898
+  },
+  {
+    "id": 70,
+    "label": "Resolver Pipeline",
+    "nodes": 23,
+    "cohesion": 0.1422924901185771
+  },
+  {
+    "id": 71,
+    "label": "Main Components",
+    "nodes": 23,
+    "cohesion": 0.15019762845849802
+  },
+  {
+    "id": 72,
+    "label": "Papers Params",
+    "nodes": 22,
+    "cohesion": 0.12121212121212122
+  },
+  {
+    "id": 73,
+    "label": "Recipe Output Bounds",
+    "nodes": 22,
+    "cohesion": 0.1038961038961039
+  },
+  {
+    "id": 74,
+    "label": "Base Components",
+    "nodes": 22,
+    "cohesion": 0.12987012987012986
+  },
+  {
+    "id": 75,
+    "label": "Visual Parse Usage",
+    "nodes": 22,
+    "cohesion": 0.11688311688311688
+  },
+  {
+    "id": 76,
+    "label": "Rehype Heading Ids",
+    "nodes": 22,
+    "cohesion": 0.1645021645021645
+  },
+  {
+    "id": 77,
+    "label": "Package Components",
+    "nodes": 22,
+    "cohesion": 0.09090909090909091
+  },
+  {
+    "id": 78,
+    "label": "Test Degenerate Repetition Detector",
+    "nodes": 21,
+    "cohesion": 0.14285714285714285
+  },
+  {
+    "id": 79,
+    "label": "Report Service",
+    "nodes": 21,
+    "cohesion": 0.18095238095238095
+  },
+  {
+    "id": 80,
+    "label": "Deep Dive Schema",
+    "nodes": 21,
+    "cohesion": 0.1
+  },
+  {
+    "id": 81,
+    "label": "Sub Figure Detector",
+    "nodes": 21,
+    "cohesion": 0.1619047619047619
+  },
+  {
+    "id": 82,
+    "label": "Run Convert Gemini Tests",
+    "nodes": 21,
+    "cohesion": 0.20952380952380953
+  },
+  {
+    "id": 83,
+    "label": "Fake Response Stream",
+    "nodes": 21,
+    "cohesion": 0.2
+  },
+  {
+    "id": 84,
+    "label": "Luna Compare",
+    "nodes": 21,
+    "cohesion": 0.2
+  },
+  {
+    "id": 85,
+    "label": "Pnpm Workspace",
+    "nodes": 21,
+    "cohesion": 0.09523809523809523
+  },
+  {
+    "id": 86,
+    "label": "Integration Nullable Report Tests",
+    "nodes": 20,
+    "cohesion": 0.15789473684210525
+  },
+  {
+    "id": 87,
+    "label": "Test Call Interaction Behavior",
+    "nodes": 20,
+    "cohesion": 0.14736842105263157
+  },
+  {
+    "id": 88,
+    "label": "Package Components",
+    "nodes": 20,
+    "cohesion": 0.1
+  },
+  {
+    "id": 89,
+    "label": "Tsconfig Components",
+    "nodes": 20,
+    "cohesion": 0.1
+  },
+  {
+    "id": 90,
+    "label": "Summary Contract",
+    "nodes": 19,
+    "cohesion": 0.23976608187134502
+  },
+  {
+    "id": 91,
+    "label": "Forms Liquid Glass Principles",
+    "nodes": 19,
+    "cohesion": 0.1286549707602339
+  },
+  {
+    "id": 92,
+    "label": "Figure Resolver",
+    "nodes": 19,
+    "cohesion": 0.28654970760233917
+  },
+  {
+    "id": 93,
+    "label": "Visual Fallback Tests",
+    "nodes": 19,
+    "cohesion": 0.15789473684210525
+  },
+  {
+    "id": 94,
+    "label": "Reconcile Tests",
+    "nodes": 19,
+    "cohesion": 0.10526315789473684
+  },
+  {
+    "id": 95,
+    "label": "Openai Spike",
+    "nodes": 19,
+    "cohesion": 0.17543859649122806
+  },
+  {
+    "id": 96,
+    "label": "Package Components",
+    "nodes": 19,
+    "cohesion": 0.10526315789473684
+  },
+  {
+    "id": 97,
+    "label": "Tsconfig Components",
+    "nodes": 19,
+    "cohesion": 0.10526315789473684
+  },
+  {
+    "id": 98,
+    "label": "Base Agent",
+    "nodes": 18,
+    "cohesion": 0.1437908496732026
+  },
+  {
+    "id": 99,
+    "label": "Page Response Error",
+    "nodes": 18,
+    "cohesion": 0.1503267973856209
+  },
+  {
+    "id": 100,
+    "label": "Partial Failure Tolerance Tests",
+    "nodes": 18,
+    "cohesion": 0.17647058823529413
+  },
+  {
+    "id": 101,
+    "label": "Pricing Usage Error",
+    "nodes": 18,
+    "cohesion": 0.12418300653594772
+  },
+  {
+    "id": 102,
+    "label": "Tsconfig Components",
+    "nodes": 18,
+    "cohesion": 0.1111111111111111
+  },
+  {
+    "id": 103,
+    "label": "Verify Win Artifacts",
+    "nodes": 18,
+    "cohesion": 0.1503267973856209
+  },
+  {
+    "id": 104,
+    "label": "Verify Mac Artifacts",
+    "nodes": 18,
+    "cohesion": 0.1568627450980392
+  },
+  {
+    "id": 105,
+    "label": "Request Spec",
+    "nodes": 17,
+    "cohesion": 0.15441176470588236
+  },
+  {
+    "id": 106,
+    "label": "Requirements Components",
+    "nodes": 17,
+    "cohesion": 0.11764705882352941
+  },
+  {
+    "id": 107,
+    "label": "Md Agent",
+    "nodes": 17,
+    "cohesion": 0.16176470588235295
+  },
+  {
+    "id": 108,
+    "label": "Gemini Requests",
+    "nodes": 17,
+    "cohesion": 0.16176470588235295
+  },
+  {
+    "id": 109,
+    "label": "Cached Phase Lookup Tests",
+    "nodes": 17,
+    "cohesion": 0.19117647058823528
+  },
+  {
+    "id": 110,
+    "label": "Gemini Requests",
+    "nodes": 17,
+    "cohesion": 0.17647058823529413
+  },
+  {
+    "id": 111,
+    "label": "Odl Parser Error",
+    "nodes": 17,
+    "cohesion": 0.16911764705882354
+  },
+  {
+    "id": 112,
+    "label": "Pdf Index Tests",
+    "nodes": 17,
+    "cohesion": 0.11764705882352941
+  },
+  {
+    "id": 113,
+    "label": "Scientific Notation Value Guard Tests",
+    "nodes": 17,
+    "cohesion": 0.11764705882352941
+  },
+  {
+    "id": 114,
+    "label": "Components",
+    "nodes": 16,
+    "cohesion": 0.21666666666666667
+  },
+  {
+    "id": 115,
+    "label": "Analysis Helpers",
+    "nodes": 16,
+    "cohesion": 0.21666666666666667
+  },
+  {
+    "id": 116,
+    "label": "Evidence Repo",
+    "nodes": 16,
+    "cohesion": 0.19166666666666668
+  },
+  {
+    "id": 117,
+    "label": "Citation Analyzer",
+    "nodes": 16,
+    "cohesion": 0.15833333333333333
+  },
+  {
+    "id": 118,
+    "label": "Test Model Prefix Routing",
+    "nodes": 16,
+    "cohesion": 0.13333333333333333
+  },
+  {
+    "id": 119,
+    "label": "Cell Components",
+    "nodes": 15,
+    "cohesion": 0.23809523809523808
+  },
+  {
+    "id": 120,
+    "label": "Neural Components",
+    "nodes": 15,
+    "cohesion": 0.24761904761904763
+  },
+  {
+    "id": 121,
+    "label": "Fake Request",
+    "nodes": 15,
+    "cohesion": 0.14285714285714285
+  },
+  {
+    "id": 122,
+    "label": "Chain Prompt Wording By Provider",
+    "nodes": 15,
+    "cohesion": 0.13333333333333333
+  },
+  {
+    "id": 123,
+    "label": "Visualization Cache Key Tests",
+    "nodes": 15,
+    "cohesion": 0.20952380952380953
+  },
+  {
+    "id": 124,
+    "label": "Parsed Reference",
+    "nodes": 15,
+    "cohesion": 0.26666666666666666
+  },
+  {
+    "id": 125,
+    "label": "Gemini Parser Error",
+    "nodes": 15,
+    "cohesion": 0.13333333333333333
+  },
+  {
+    "id": 126,
+    "label": "Media Resolution Injection Tests",
+    "nodes": 15,
+    "cohesion": 0.17142857142857143
+  },
+  {
+    "id": 127,
+    "label": "Python Manager",
+    "nodes": 15,
+    "cohesion": 0.3142857142857143
+  },
+  {
+    "id": 128,
+    "label": "Pnpm Workspace",
+    "nodes": 15,
+    "cohesion": 0.13333333333333333
+  },
+  {
+    "id": 129,
+    "label": "Vite Components",
+    "nodes": 15,
+    "cohesion": 0.13333333333333333
+  },
+  {
+    "id": 130,
+    "label": "Evidence Repo Tests",
+    "nodes": 14,
+    "cohesion": 0.26373626373626374
+  },
+  {
+    "id": 131,
+    "label": "Gemini Requests",
+    "nodes": 14,
+    "cohesion": 0.1978021978021978
+  },
+  {
+    "id": 132,
+    "label": "Citation Focus",
+    "nodes": 14,
+    "cohesion": 0.16483516483516483
+  },
+  {
+    "id": 133,
+    "label": "Circuit Components",
+    "nodes": 13,
+    "cohesion": 0.28205128205128205
+  },
+  {
+    "id": 134,
+    "label": "Photon Components",
+    "nodes": 13,
+    "cohesion": 0.2692307692307692
+  },
+  {
+    "id": 135,
+    "label": "Mermaid Repair And Regenerate Tests",
+    "nodes": 13,
+    "cohesion": 0.21794871794871795
+  },
+  {
+    "id": 136,
+    "label": "Migrate Library",
+    "nodes": 13,
+    "cohesion": 0.20512820512820512
+  },
+  {
+    "id": 137,
+    "label": "Agent Profile",
+    "nodes": 13,
+    "cohesion": 0.16666666666666666
+  },
+  {
+    "id": 138,
+    "label": "Resolver Audit Tests",
+    "nodes": 13,
+    "cohesion": 0.32051282051282054
+  },
+  {
+    "id": 139,
+    "label": "Evidence Anchor Draft",
+    "nodes": 13,
+    "cohesion": 0.24358974358974358
+  },
+  {
+    "id": 140,
+    "label": "Raster Cache",
+    "nodes": 13,
+    "cohesion": 0.21794871794871795
+  },
+  {
+    "id": 141,
+    "label": "Gemini Requests",
+    "nodes": 13,
+    "cohesion": 0.1794871794871795
+  },
+  {
+    "id": 142,
+    "label": "Fake Api Error",
+    "nodes": 13,
+    "cohesion": 0.15384615384615385
+  },
+  {
+    "id": 143,
+    "label": "Test Parser Provider Routing",
+    "nodes": 13,
+    "cohesion": 0.20512820512820512
+  },
+  {
+    "id": 144,
+    "label": "Model Pins",
+    "nodes": 13,
+    "cohesion": 0.15384615384615385
+  },
+  {
+    "id": 145,
+    "label": "Design Tokens",
+    "nodes": 13,
+    "cohesion": 0.19230769230769232
+  },
+  {
+    "id": 146,
+    "label": "Sanitize Mermaid Code Tests",
+    "nodes": 12,
+    "cohesion": 0.16666666666666666
+  },
+  {
+    "id": 147,
+    "label": "Structured Caption",
+    "nodes": 12,
+    "cohesion": 0.18181818181818182
+  },
+  {
+    "id": 148,
+    "label": "Md Loader",
+    "nodes": 12,
+    "cohesion": 0.21212121212121213
+  },
+  {
+    "id": 149,
+    "label": "Reference Branch Selection Tests",
+    "nodes": 12,
+    "cohesion": 0.21212121212121213
+  },
+  {
+    "id": 150,
+    "label": "Vlm Probe",
+    "nodes": 12,
+    "cohesion": 0.3181818181818182
+  },
+  {
+    "id": 151,
+    "label": "Verify Recipe Parameters Tests",
+    "nodes": 12,
+    "cohesion": 0.25757575757575757
+  },
+  {
+    "id": 152,
+    "label": "Test Provider For Role",
+    "nodes": 12,
+    "cohesion": 0.22727272727272727
+  },
+  {
+    "id": 153,
+    "label": "Thinking Levels",
+    "nodes": 11,
+    "cohesion": 0.2545454545454545
+  },
+  {
+    "id": 154,
+    "label": "Section Label Tests",
+    "nodes": 11,
+    "cohesion": 0.23636363636363636
+  },
+  {
+    "id": 155,
+    "label": "Sub Label Validation Tests",
+    "nodes": 11,
+    "cohesion": 0.2727272727272727
+  },
+  {
+    "id": 156,
+    "label": "Validate Synthesis Tests",
+    "nodes": 11,
+    "cohesion": 0.32727272727272727
+  },
+  {
+    "id": 157,
+    "label": "Pending Delete Scheduler",
+    "nodes": 11,
+    "cohesion": 0.21818181818181817
+  },
+  {
+    "id": 158,
+    "label": "Agent Info",
+    "nodes": 10,
+    "cohesion": 0.2222222222222222
+  },
+  {
+    "id": 159,
+    "label": "Superscript Citation Tests",
+    "nodes": 10,
+    "cohesion": 0.26666666666666666
+  },
+  {
+    "id": 160,
+    "label": "Sub Figure Numbering Tests",
+    "nodes": 10,
+    "cohesion": 0.26666666666666666
+  },
+  {
+    "id": 161,
+    "label": "Odl Parser Unit Tests",
+    "nodes": 10,
+    "cohesion": 0.26666666666666666
+  },
+  {
+    "id": 162,
+    "label": "Normalizer 1 Tests",
+    "nodes": 10,
+    "cohesion": 0.2
+  },
+  {
+    "id": 163,
+    "label": "Value Guard Tests",
+    "nodes": 10,
+    "cohesion": 0.2
+  },
+  {
+    "id": 164,
+    "label": "Window Components",
+    "nodes": 10,
+    "cohesion": 0.2
+  },
+  {
+    "id": 165,
+    "label": "Analysis Phase",
+    "nodes": 9,
+    "cohesion": 0.25
+  },
+  {
+    "id": 166,
+    "label": "Citation Top Ref Filter Tests",
+    "nodes": 9,
+    "cohesion": 0.3888888888888889
+  },
+  {
+    "id": 167,
+    "label": "Paper Efficiency Tests",
+    "nodes": 9,
+    "cohesion": 0.3611111111111111
+  },
+  {
+    "id": 168,
+    "label": "Evidence Anchors Tests",
+    "nodes": 9,
+    "cohesion": 0.3055555555555556
+  },
+  {
+    "id": 169,
+    "label": "Terminate Workers Tests",
+    "nodes": 9,
+    "cohesion": 0.2222222222222222
+  },
+  {
+    "id": 170,
+    "label": "Display Status Tests",
+    "nodes": 9,
+    "cohesion": 0.2222222222222222
+  },
+  {
+    "id": 171,
+    "label": "Refresh Records Usage Tests",
+    "nodes": 9,
+    "cohesion": 0.4722222222222222
+  },
+  {
+    "id": 172,
+    "label": "Parsed Paper",
+    "nodes": 8,
+    "cohesion": 0.25
+  },
+  {
+    "id": 173,
+    "label": "Analysis Execution",
+    "nodes": 8,
+    "cohesion": 0.2857142857142857
+  },
+  {
+    "id": 174,
+    "label": "Citation Analyzer",
+    "nodes": 8,
+    "cohesion": 0.25
+  },
+  {
+    "id": 175,
+    "label": "Test Return Shape",
+    "nodes": 8,
+    "cohesion": 0.25
+  },
+  {
+    "id": 176,
+    "label": "Stop Reconciler Shutdown Tests",
+    "nodes": 8,
+    "cohesion": 0.25
+  },
+  {
+    "id": 177,
+    "label": "Spawn Builder Tests",
+    "nodes": 8,
+    "cohesion": 0.25
+  },
+  {
+    "id": 178,
+    "label": "Efficiency Storage Tests",
+    "nodes": 8,
+    "cohesion": 0.25
+  },
+  {
+    "id": 179,
+    "label": "Extraction Accuracy Regression Tests",
+    "nodes": 8,
+    "cohesion": 0.25
+  },
+  {
+    "id": 180,
+    "label": "Test Pdf Parse Role",
+    "nodes": 8,
+    "cohesion": 0.25
+  },
+  {
+    "id": 181,
+    "label": "Viewport Like",
+    "nodes": 8,
+    "cohesion": 0.35714285714285715
+  },
+  {
+    "id": 182,
+    "label": "Agents Components",
+    "nodes": 7,
+    "cohesion": 0.3333333333333333
+  },
+  {
+    "id": 183,
+    "label": "Chain Stage Salvage Tests",
+    "nodes": 7,
+    "cohesion": 0.42857142857142855
+  },
+  {
+    "id": 184,
+    "label": "Open AI Figure Parts Tests",
+    "nodes": 7,
+    "cohesion": 0.2857142857142857
+  },
+  {
+    "id": 185,
+    "label": "Synthesis Route Tests",
+    "nodes": 7,
+    "cohesion": 0.38095238095238093
+  },
+  {
+    "id": 186,
+    "label": "First Surname Tests",
+    "nodes": 7,
+    "cohesion": 0.3333333333333333
+  },
+  {
+    "id": 187,
+    "label": "OpenAI Requests",
+    "nodes": 7,
+    "cohesion": 0.38095238095238093
+  },
+  {
+    "id": 188,
+    "label": "Test Key Env For",
+    "nodes": 7,
+    "cohesion": 0.38095238095238093
+  },
+  {
+    "id": 189,
+    "label": "Read Budget State Tests",
+    "nodes": 7,
+    "cohesion": 0.42857142857142855
+  },
+  {
+    "id": 190,
+    "label": "Run Synthesis Tests",
+    "nodes": 7,
+    "cohesion": 0.2857142857142857
+  },
+  {
+    "id": 191,
+    "label": "Stoppable Backend",
+    "nodes": 7,
+    "cohesion": 0.3333333333333333
+  },
+  {
+    "id": 192,
+    "label": "Log Batcher",
+    "nodes": 7,
+    "cohesion": 0.38095238095238093
+  },
+  {
+    "id": 193,
+    "label": "Error Emitter",
+    "nodes": 7,
+    "cohesion": 0.3333333333333333
+  },
+  {
+    "id": 194,
+    "label": "Package Components",
+    "nodes": 7,
+    "cohesion": 0.2857142857142857
+  },
+  {
+    "id": 195,
+    "label": "cover Flow Transform",
+    "nodes": 7,
+    "cohesion": 0.42857142857142855
+  },
+  {
+    "id": 196,
+    "label": "Agent Read Only Api Tests",
+    "nodes": 6,
+    "cohesion": 0.5333333333333333
+  },
+  {
+    "id": 197,
+    "label": "Input Coverage",
+    "nodes": 6,
+    "cohesion": 0.3333333333333333
+  },
+  {
+    "id": 198,
+    "label": "Evidence Verification",
+    "nodes": 6,
+    "cohesion": 0.3333333333333333
+  },
+  {
+    "id": 199,
+    "label": "Test Retry Policy",
+    "nodes": 6,
+    "cohesion": 0.4
+  },
+  {
+    "id": 200,
+    "label": "Failing Response Stream",
+    "nodes": 6,
+    "cohesion": 0.3333333333333333
+  },
+  {
+    "id": 201,
+    "label": "OpenAI Requests",
+    "nodes": 6,
+    "cohesion": 0.4
+  },
+  {
+    "id": 202,
+    "label": "OpenAI Requests",
+    "nodes": 6,
+    "cohesion": 0.4
+  },
+  {
+    "id": 203,
+    "label": "Superscript Fallback Gate Tests",
+    "nodes": 6,
+    "cohesion": 0.4666666666666667
+  },
+  {
+    "id": 204,
+    "label": "Evidence Regression Tests",
+    "nodes": 6,
+    "cohesion": 0.3333333333333333
+  },
+  {
+    "id": 205,
+    "label": "Error Boundary",
+    "nodes": 6,
+    "cohesion": 0.3333333333333333
+  },
+  {
+    "id": 206,
+    "label": "Reading Code Block",
+    "nodes": 6,
+    "cohesion": 0.3333333333333333
+  },
+  {
+    "id": 207,
+    "label": "Svg Pixel Size",
+    "nodes": 6,
+    "cohesion": 0.5333333333333333
+  },
+  {
+    "id": 208,
+    "label": "Report Service",
+    "nodes": 5,
+    "cohesion": 0.4
+  },
+  {
+    "id": 209,
+    "label": "Phase Cache Key Test",
+    "nodes": 5,
+    "cohesion": 0.4
+  },
+  {
+    "id": 210,
+    "label": "Api Authentication Tests",
+    "nodes": 5,
+    "cohesion": 0.4
+  },
+  {
+    "id": 211,
+    "label": "Base Agent",
+    "nodes": 5,
+    "cohesion": 0.4
+  },
+  {
+    "id": 212,
+    "label": "Fake Papers Table",
+    "nodes": 5,
+    "cohesion": 0.4
+  },
+  {
+    "id": 213,
+    "label": "Runtime Library Path Tests",
+    "nodes": 5,
+    "cohesion": 0.4
+  },
+  {
+    "id": 214,
+    "label": "Normalize Viz Plan Tests",
+    "nodes": 5,
+    "cohesion": 0.7
+  },
+  {
+    "id": 215,
+    "label": "Analysis API",
+    "nodes": 4,
+    "cohesion": 0.5
+  },
+  {
+    "id": 216,
+    "label": "Figure Prompt Context Tests",
+    "nodes": 4,
+    "cohesion": 0.5
+  },
+  {
+    "id": 217,
+    "label": "Get Recipe Evidence Tests",
+    "nodes": 4,
+    "cohesion": 0.5
+  },
+  {
+    "id": 218,
+    "label": "Obsolete Settings Cleanup Tests",
+    "nodes": 4,
+    "cohesion": 0.5
+  },
+  {
+    "id": 219,
+    "label": "Analysis Execution",
+    "nodes": 4,
+    "cohesion": 0.5
+  },
+  {
+    "id": 220,
+    "label": "Analysis Execution",
+    "nodes": 4,
+    "cohesion": 0.5
+  },
+  {
+    "id": 221,
+    "label": "Analysis Execution",
+    "nodes": 4,
+    "cohesion": 0.5
+  },
+  {
+    "id": 222,
+    "label": "Reconciler Flag Gate Tests",
+    "nodes": 4,
+    "cohesion": 0.5
+  },
+  {
+    "id": 223,
+    "label": "Evidence Repo",
+    "nodes": 4,
+    "cohesion": 0.5
+  },
+  {
+    "id": 224,
+    "label": "Forged Quote Gate Tests",
+    "nodes": 4,
+    "cohesion": 0.5
+  },
+  {
+    "id": 225,
+    "label": "Normalizer Dash Consistency Tests",
+    "nodes": 4,
+    "cohesion": 0.5
+  },
+  {
+    "id": 226,
+    "label": "Pdf Fixture",
+    "nodes": 4,
+    "cohesion": 0.5
+  },
+  {
+    "id": 227,
+    "label": "Target Key Tests",
+    "nodes": 4,
+    "cohesion": 0.5
+  },
+  {
+    "id": 228,
+    "label": "Vlm Selection Does Not Drop",
+    "nodes": 4,
+    "cohesion": 0.5
+  },
+  {
+    "id": 229,
+    "label": "Test Active Provider",
+    "nodes": 4,
+    "cohesion": 0.5
+  },
+  {
+    "id": 230,
+    "label": "Generate Figure Names Tests",
+    "nodes": 4,
+    "cohesion": 0.5
+  },
+  {
+    "id": 231,
+    "label": "Image Provider",
+    "nodes": 4,
+    "cohesion": 0.5
+  },
+  {
+    "id": 232,
+    "label": "Popover Components",
+    "nodes": 4,
+    "cohesion": 0.5
+  },
+  {
+    "id": 233,
+    "label": "Workbench Header",
+    "nodes": 4,
+    "cohesion": 0.6666666666666666
+  },
+  {
+    "id": 234,
+    "label": "Analysis API",
+    "nodes": 3,
+    "cohesion": 0.6666666666666666
+  },
+  {
+    "id": 235,
+    "label": "Analysis API",
+    "nodes": 3,
+    "cohesion": 0.6666666666666666
+  },
+  {
+    "id": 236,
+    "label": "Stage Thinking Level Tests",
+    "nodes": 3,
+    "cohesion": 0.6666666666666666
+  },
+  {
+    "id": 237,
+    "label": "Analysis Execution",
+    "nodes": 3,
+    "cohesion": 0.6666666666666666
+  },
+  {
+    "id": 238,
+    "label": "Test Availability",
+    "nodes": 3,
+    "cohesion": 0.6666666666666666
+  },
+  {
+    "id": 239,
+    "label": "Recipe Parameter Iteration Tests",
+    "nodes": 3,
+    "cohesion": 0.6666666666666666
+  },
+  {
+    "id": 240,
+    "label": "Provider Order Tests",
+    "nodes": 3,
+    "cohesion": 0.6666666666666666
+  },
+  {
+    "id": 241,
+    "label": "Generate Folder Name Tests",
+    "nodes": 3,
+    "cohesion": 0.6666666666666666
+  },
+  {
+    "id": 242,
+    "label": "Generate Paperbanana Name Tests",
+    "nodes": 3,
+    "cohesion": 0.6666666666666666
+  },
+  {
+    "id": 243,
+    "label": "Stub Sub Figure Detector",
+    "nodes": 3,
+    "cohesion": 0.6666666666666666
+  },
+  {
+    "id": 244,
+    "label": "Crypto Storage Tests",
+    "nodes": 3,
+    "cohesion": 0.6666666666666666
+  },
+  {
+    "id": 245,
+    "label": "Schema Shape Tests",
+    "nodes": 3,
+    "cohesion": 0.6666666666666666
+  },
+  {
+    "id": 246,
+    "label": "Requirements Test",
+    "nodes": 2,
+    "cohesion": 1.0
+  },
+  {
+    "id": 247,
+    "label": "Analysis Execution",
+    "nodes": 2,
+    "cohesion": 1.0
+  },
+  {
+    "id": 248,
+    "label": "PDF Extraction",
+    "nodes": 2,
+    "cohesion": 1.0
+  },
+  {
+    "id": 249,
+    "label": "PDF Extraction",
+    "nodes": 2,
+    "cohesion": 1.0
+  },
+  {
+    "id": 250,
+    "label": "Usage Cost Accounting",
+    "nodes": 2,
+    "cohesion": 1.0
+  },
+  {
+    "id": 251,
+    "label": "Vite Components",
+    "nodes": 2,
+    "cohesion": 1.0
+  },
+  {
+    "id": 252,
+    "label": "Init Components",
+    "nodes": 1,
+    "cohesion": 1.0
+  },
+  {
+    "id": 253,
+    "label": "Init Components",
+    "nodes": 1,
+    "cohesion": 1.0
+  },
+  {
+    "id": 254,
+    "label": "Postcss Components",
+    "nodes": 1,
+    "cohesion": 1.0
+  }
+]

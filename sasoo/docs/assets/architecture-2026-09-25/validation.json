@@ -373,11 +373,21 @@
     }
   ],
   "graphify": {
-    "status": "corpus detected, extraction scope awaiting user selection",
-    "detected_files": 3064,
-    "detected_words": 19242341,
-    "suggested_scope": "sasoo/",
-    "suggested_scope_files": 368
+    "status": "complete with extraction integrity warnings",
+    "code_files": 294,
+    "document_files": 16,
+    "total_files": 310,
+    "nodes": 4997,
+    "edges": 11023,
+    "communities": 255,
+    "directed": false,
+    "graph": "../../../../graphify-out/graph.json",
+    "report": "../../../../graphify-out/GRAPH_REPORT.md",
+    "raw_dangling_endpoint_edges": 678,
+    "raw_self_loop_edges": 26,
+    "undirected_same_endpoint_collapsed_edges": 318,
+    "semantic_usage": "not reported by host tool; unknown",
+    "external_model_api_calls": 0
   },
   "viewer_interaction_check": {
     "artifact": "system-architecture.en.html",

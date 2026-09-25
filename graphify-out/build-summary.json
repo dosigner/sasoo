@@ -1,0 +1,19 @@
+{
+  "files": 310,
+  "code_files": 294,
+  "document_files": 16,
+  "nodes": 4997,
+  "edges": 11023,
+  "communities": 255,
+  "directed": false,
+  "scope_file": "scope.json",
+  "semantic_usage": "unavailable",
+  "graph_health": "warnings",
+  "diagnostic_counts": {
+    "dangling_endpoint_edges": 678,
+    "self_loop_edges": 26,
+    "undirected_same_endpoint_collapsed_edges": 318
+  },
+  "source_scope": "2026-09-25 app working tree, including development/test tools; generated assets excluded",
+  "release_app_commit": "073835293454fd57ac2284e91b935ecb926ca139"
+}

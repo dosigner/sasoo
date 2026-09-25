@@ -38,7 +38,7 @@ PDF 원문 옆에서 논문의 흐름을 이해하고, 그림과 표를 확인�
 
 Sasoo는 논문을 읽는 동안 원문을 곁에 둡니다. 요약에서 전체 흐름을 잡고, 섹션별 질문으로 내용을 따라가며, 연결된 Figure와 Table을 눌러 근거를 확인할 수 있습니다. PDF와 분석 결과는 로컬 라이브러리에 보관해 다시 열어 볼 수 있습니다.
 
-> **개발 미리보기:** 아래 화면과 기능 설명은 2026-09-25 개발 작업 트리 기준입니다. 저장된 분석을 불러온 한국어 UI이며, 일부 화면 변경은 미커밋 상태입니다. 공개 설치본은 [v1.0.0](https://github.com/dosigner/sasoo/releases/tag/v1.0.0)으로, 화면과 기능이 다를 수 있습니다. v1.0.1은 검증 중입니다.
+> **화면 안내:** 아래는 v1.0.1에 반영된 화면을 개발 앱에서 캡처한 자료입니다(2026-09-25). 저장된 분석을 불러온 한국어 UI 예시이며, 실제 분석 내용은 논문과 모델 설정에 따라 달라집니다. 공개 설치본은 [v1.0.1](https://github.com/dosigner/sasoo/releases/tag/v1.0.1)에서 받을 수 있습니다.
 
 <p align="center">
   <img src="sasoo/docs/assets/readme-2026-09-25/workbench-light.png" alt="왼쪽의 Diffusion Policy 원본 PDF와 오른쪽의 요약을 나란히 보여주는 Sasoo 개발 화면" width="1000" />
@@ -98,12 +98,12 @@ AI 해설과 추출 값은 원문과 대조해 사용하세요. 분석 완료나
 
 ### 설치 파일
 
-2026-09-25 확인한 공개 버전은 **v1.0.0**입니다.
+2026-09-25 확인한 공개 버전은 **v1.0.1**입니다.
 
 | 플랫폼 | 공식 릴리스 파일 | 참고 |
 | --- | --- | --- |
-| macOS Apple Silicon | [DMG](https://github.com/dosigner/sasoo/releases/download/v1.0.0/Sasoo-1.0.0-arm64.dmg) / [ZIP](https://github.com/dosigner/sasoo/releases/download/v1.0.0/Sasoo-1.0.0-arm64-mac.zip) | 미서명, 미공증 |
-| Windows x64 | [설치 EXE](https://github.com/dosigner/sasoo/releases/download/v1.0.0/Sasoo-Setup-1.0.0.exe) | 미서명, SmartScreen 경고 가능 |
+| macOS Apple Silicon | [DMG](https://github.com/dosigner/sasoo/releases/download/v1.0.1/Sasoo-1.0.1-arm64.dmg) / [ZIP](https://github.com/dosigner/sasoo/releases/download/v1.0.1/Sasoo-1.0.1-arm64-mac.zip) | 미서명, 미공증 |
+| Windows x64 | [설치 EXE](https://github.com/dosigner/sasoo/releases/download/v1.0.1/Sasoo-Setup-1.0.1.exe) | 미서명, SmartScreen 경고 가능 |
 
 Linux와 Intel Mac용 공식 설치 파일은 없습니다. Linux 소스 빌드 명령은 있지만, 위 배포 지원 범위에는 포함되지 않습니다.
 
@@ -179,6 +179,10 @@ PDF 문맥을 준비한 뒤 다음 순서로 주요 분석을 수행합니다. �
 [확대 보기](sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.ko.svg) | [탐색용 HTML](sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.ko.html)
 
 이 도식은 주요 단계의 순서를 보여줍니다. 논문 내용과 실행 상태에 따라 단계가 건너뛰어지거나 중단될 수 있습니다. 종합 결과와 추가 시각화는 별도로 생성됩니다. 실제 실행 로직은 [analysis_execution.py](sasoo/backend/services/analysis_execution.py)에 있습니다.
+
+### 코드 관계 지도
+
+[Graphify 탐색용 HTML](graphify-out/graph.html)과 [추출 보고서](graphify-out/GRAPH_REPORT.md)에서 함수와 모듈의 연결을 확인할 수 있습니다. 앱 소스 294개와 문서 16개를 대상으로 했으며, 생성된 도식과 번들 Java 문서는 제외했습니다. 추출 누락과 무방향 그래프 병합의 한계는 보고서에 기록했습니다.
 
 ### 로컬 실행
 

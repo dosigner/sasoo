@@ -20,7 +20,7 @@ Archify 2.17로 만든 README용 시각 자료입니다. SVG는 README에 표시
 
 선은 구성 요소 사이의 주요 관계를 요약합니다. 생략한 응답 경로, 오류 분기, 캐시 조회와 내부 호출이 있으므로 완전한 호출 그래프나 런타임 실행 증거로 해석하지 않습니다. 분석 단계 사이의 무표기 화살표는 실행 순서를 나타내며, 개별 단계의 성공을 보장하지 않습니다.
 
-Graphify는 전체 저장소의 corpus 검사를 수행했습니다. 3,064개 파일과 약 1,924만 단어가 검출되어 스킬의 크기 제한에 따라 하위 폴더 선택을 요청한 상태입니다. 아직 Graphify 추출/클러스터링이 완료된 것으로 표시하지 않습니다. 현재 도식은 위 소스를 직접 확인한 내용을 바탕으로 작성했습니다.
+Graphify로 앱 소스 294개와 문서 16개를 분석해 4,997개 노드, 11,023개 연결, 255개 커뮤니티를 추출했습니다. 생성 이미지/도식과 번들 Java 문서는 제외했습니다. `run_full_analysis()`의 호출 관계를 코드 위치와 대조해 주요 분석 순서를 확인했습니다. [코드 관계 지도](../../../../graphify-out/graph.html)와 [추출 보고서](../../../../graphify-out/GRAPH_REPORT.md)를 함께 제공합니다. 원시 추출에는 연결 대상 누락 678건, 자기 연결 26건, 무방향 그래프 병합 318건의 경고가 있어 완전한 호출 그래프로 해석하지 않습니다.
 
 ## 검증
 
@@ -35,7 +35,7 @@ These are documentation diagrams built with Archify. Download an HTML file and o
 
 Both authored languages use English viewer controls. Source files above ground the main relationships; omitted return paths, error branches, caches, and internal calls mean these diagrams are not complete call graphs or runtime evidence. Unlabeled pipeline arrows express stage order, not guaranteed success.
 
-Graphify has detected the repository corpus but has not extracted a graph yet: the corpus exceeds its size threshold and the requested scope decision is pending. The current diagrams are based on direct source inspection. Deterministic validation, automated browser evidence, perceptual review, and exported images are recorded separately in the manifest.
+Graphify analyzed 294 source files and 16 documents, yielding 4,997 nodes, 11,023 edges, and 255 communities. Generated visuals and bundled Java material were excluded. The main analysis sequence was checked against the extracted calls and source locations of `run_full_analysis()`. Raw extraction has 678 dangling-endpoint edges, 26 self-loops, and 318 same-endpoint collapses in the undirected graph; it is a navigation aid rather than a complete call graph. Deterministic validation, automated browser evidence, perceptual review, and exported images are recorded separately in the manifest.
 
 
 Archify 뷰어 코드의 라이선스는 [ARCHIFY-LICENSE.txt](ARCHIFY-LICENSE.txt)에 포함했습니다. 이 파일은 Sasoo 프로젝트 전체의 라이선스를 새로 정하는 문서가 아닙니다.

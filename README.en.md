@@ -38,7 +38,7 @@ An AI research workbench for understanding a paper, checking its figures and tab
 
 Sasoo keeps the original paper within reach while you read. Start with the summary, follow questions through each section, and open linked figures and tables to check the evidence. PDFs and analysis results stay in a local library so you can return to them later.
 
-> **Development preview:** The screens and features below reflect the development working tree on September 25, 2026. They show the Korean UI with saved analysis results, including some uncommitted interface changes. The public download is [v1.0.0](https://github.com/dosigner/sasoo/releases/tag/v1.0.0); its interface and features may differ. v1.0.1 is under validation.
+> **About the screenshots:** These development-app captures show the interface included in v1.0.1 (September 25, 2026). They use the Korean UI with saved analysis results; actual content depends on the paper and model settings. Download the public [v1.0.1 release](https://github.com/dosigner/sasoo/releases/tag/v1.0.1).
 
 <p align="center">
   <img src="sasoo/docs/assets/readme-2026-09-25/workbench-light.png" alt="Sasoo development screen with the original Diffusion Policy PDF on the left and its summary on the right" width="1000" />
@@ -98,12 +98,12 @@ Check AI explanations and extracted values against the paper. A completed analys
 
 ### Downloads
 
-The public release checked on September 25, 2026 is **v1.0.0**.
+The public release checked on September 25, 2026 is **v1.0.1**.
 
 | Platform | Official release file | Notes |
 | --- | --- | --- |
-| macOS Apple Silicon | [DMG](https://github.com/dosigner/sasoo/releases/download/v1.0.0/Sasoo-1.0.0-arm64.dmg) / [ZIP](https://github.com/dosigner/sasoo/releases/download/v1.0.0/Sasoo-1.0.0-arm64-mac.zip) | Unsigned and unnotarized |
-| Windows x64 | [Installer EXE](https://github.com/dosigner/sasoo/releases/download/v1.0.0/Sasoo-Setup-1.0.0.exe) | Unsigned; SmartScreen may warn |
+| macOS Apple Silicon | [DMG](https://github.com/dosigner/sasoo/releases/download/v1.0.1/Sasoo-1.0.1-arm64.dmg) / [ZIP](https://github.com/dosigner/sasoo/releases/download/v1.0.1/Sasoo-1.0.1-arm64-mac.zip) | Unsigned and unnotarized |
+| Windows x64 | [Installer EXE](https://github.com/dosigner/sasoo/releases/download/v1.0.1/Sasoo-Setup-1.0.1.exe) | Unsigned; SmartScreen may warn |
 
 Official Linux and Intel Mac binaries are not available. A Linux source build command exists, but Linux is outside the distribution support listed above.
 
@@ -179,6 +179,10 @@ After preparing the PDF context, the app runs the main analysis stages in this o
 [Full-size diagram](sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.en.svg) | [Explorable HTML](sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.en.html)
 
 This diagram shows the order of the main stages. Stages may be skipped or interrupted depending on the paper and run state. Synthesis and additional visualizations are generated separately. See [analysis_execution.py](sasoo/backend/services/analysis_execution.py) for the execution logic.
+
+### Code relationships
+
+Explore functions and modules in the [Graphify HTML graph](graphify-out/graph.html) and [extraction report](graphify-out/GRAPH_REPORT.md). The scan covers 294 source files and 16 documents, excluding generated diagrams and bundled Java documentation. The report records extraction gaps and the limits of merging relationships into an undirected graph.
 
 ### Run locally
 

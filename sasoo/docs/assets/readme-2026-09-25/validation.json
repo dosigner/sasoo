@@ -555,7 +555,8 @@
     "semantic_review": "manual",
     "archify_diagrams_per_language": 3,
     "mermaid_blocks_per_language": 0,
-    "technology_badges_per_language": 12
+    "technology_badges_per_language": 12,
+    "graphify_links": true
   },
   "render": [
     {
@@ -708,6 +709,7 @@
         "개발",
         "시스템 구성",
         "분석 파이프라인",
+        "코드 관계 지도",
         "로컬 실행",
         "라이선스"
       ],
@@ -864,6 +866,7 @@
         "개발",
         "시스템 구성",
         "분석 파이프라인",
+        "코드 관계 지도",
         "로컬 실행",
         "라이선스"
       ],
@@ -1020,6 +1023,7 @@
         "개발",
         "시스템 구성",
         "분석 파이프라인",
+        "코드 관계 지도",
         "로컬 실행",
         "라이선스"
       ],
@@ -1176,6 +1180,7 @@
         "개발",
         "시스템 구성",
         "분석 파이프라인",
+        "코드 관계 지도",
         "로컬 실행",
         "라이선스"
       ],
@@ -1332,6 +1337,7 @@
         "Development",
         "System architecture",
         "Analysis pipeline",
+        "Code relationships",
         "Run locally",
         "License"
       ],
@@ -1488,6 +1494,7 @@
         "Development",
         "System architecture",
         "Analysis pipeline",
+        "Code relationships",
         "Run locally",
         "License"
       ],
@@ -1644,6 +1651,7 @@
         "Development",
         "System architecture",
         "Analysis pipeline",
+        "Code relationships",
         "Run locally",
         "License"
       ],
@@ -1800,6 +1808,7 @@
         "Development",
         "System architecture",
         "Analysis pipeline",
+        "Code relationships",
         "Run locally",
         "License"
       ],
@@ -1956,8 +1965,8 @@
     "sasoo/electron/updater.ts": "aee30d523da6e71ed01ff0e2109b5d4851921f1c77ad6ee52b6afe5f2d3a3aab"
   },
   "readme_sha256": {
-    "README.md": "56588a1fc777e579861c6e153e266b80d3c773bff688f65926fb1a2ce4584172",
-    "README.en.md": "4b7f183d5fd63f78da2e65f3eb883acfcbcade32dd97b1c3abaf609cff7cc56f"
+    "README.md": "4e38ac1765395735e4cb54d606509c34441b9cd4d6bfe5409607fa0633660cee",
+    "README.en.md": "0621be0359812986a230e9eb2d83959bf6a66d0f8c14715055b163a7c0f8563c"
   },
   "limitations": [
     "Not GitHub server rendering",
@@ -1969,5 +1978,40 @@
     "Capture harness retried after blocked generation requests left an empty transient view. Saved DB results were intact; page reload restored them.",
     "First GIF conversion used a crop larger than the screencast frame; final crop uses measured frame dimensions.",
     "Bundled Playwright headless executable was absent; local rendering used installed Google Chrome."
-  ]
+  ],
+  "release_link_verification": {
+    "release": "v1.0.1",
+    "release_commit": "073835293454fd57ac2284e91b935ecb926ca139",
+    "published_at": "2026-09-25T08:33:55Z",
+    "is_draft": false,
+    "is_prerelease": false,
+    "latest_release": "v1.0.1",
+    "http_checks": [
+      {
+        "file": "Sasoo-1.0.1-arm64.dmg",
+        "http_status": "200",
+        "exit_code": 0
+      },
+      {
+        "file": "Sasoo-1.0.1-arm64-mac.zip",
+        "http_status": "200",
+        "exit_code": 0
+      },
+      {
+        "file": "Sasoo-Setup-1.0.1.exe",
+        "http_status": "200",
+        "exit_code": 0
+      },
+      {
+        "file": "latest-mac.yml",
+        "http_status": "200",
+        "exit_code": 0
+      },
+      {
+        "file": "latest.yml",
+        "http_status": "200",
+        "exit_code": 0
+      }
+    ]
+  }
 }

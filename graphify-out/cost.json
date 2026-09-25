@@ -1,0 +1,14 @@
+{
+  "runs": [
+    {
+      "date": "2026-09-25T08:21:33.605370+00:00",
+      "files": 310,
+      "input_tokens": null,
+      "output_tokens": null,
+      "usage_status": "unavailable from host agent tool",
+      "external_model_api_calls": 0
+    }
+  ],
+  "total_input_tokens": null,
+  "total_output_tokens": null
+}

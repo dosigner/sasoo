@@ -1,0 +1,11 @@
+{
+  "scan_root": "sasoo",
+  "extra_excludes": [
+    "docs/assets/**",
+    "backend/java-runtime/**",
+    "frontend/src/assets/**",
+    "frontend/public/favicon*",
+    "docs/04-design/*before-after.html"
+  ],
+  "reason": "App implementation and source documentation; exclude generated diagrams, screenshots, icons, and bundled third-party runtime material."
+}
