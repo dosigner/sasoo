@@ -1,0 +1,389 @@
+{
+  "date": "2026-09-25",
+  "tool": "Archify 2.17",
+  "base_revision": "65487cedb3b537483bf1d7a17a2bc7602bed7ed0",
+  "scope": "Documentation diagrams verified against source inspection. Authored topology is not runtime coverage.",
+  "viewer_language": "English controls and HTML lang for both languages; authored content is Korean or English.",
+  "diagrams": [
+    {
+      "diagram_type": "workflow",
+      "language": "ko",
+      "specification": "reading-workflow.ko.v3.json",
+      "specification_sha256": "df3cc766496980313ab1183f60f4142faabafb5c8577ca144003a58abc10e34e",
+      "artifact": "reading-workflow.ko.html",
+      "artifact_sha256": "d80d0599207b26ebf45aefc2298681c190279b2ea035c83181c2d3612ce9397c",
+      "artifact_bytes": 708339,
+      "validation": "9/9 showcase, 0 errors, 0 warnings",
+      "browser_evidence": "passed",
+      "visual_review": "passed",
+      "correction_rounds": 2,
+      "viewports": [
+        {
+          "width": 1440,
+          "height": 900,
+          "theme": "light",
+          "scrollWidth": 1440,
+          "scrollHeight": 900,
+          "ok": true
+        },
+        {
+          "width": 1600,
+          "height": 1000,
+          "theme": "light",
+          "scrollWidth": 1600,
+          "scrollHeight": 1000,
+          "ok": true
+        },
+        {
+          "width": 1920,
+          "height": 1080,
+          "theme": "light",
+          "scrollWidth": 1920,
+          "scrollHeight": 1080,
+          "ok": true
+        },
+        {
+          "width": 2048,
+          "height": 1320,
+          "theme": "light",
+          "scrollWidth": 2048,
+          "scrollHeight": 1320,
+          "ok": true
+        }
+      ],
+      "exports": [
+        {
+          "file": "reading-workflow.ko.svg",
+          "sha256": "ad8fab40d8efc1320bdc8b7a7af7bb46cae76fb4aaf8b435d0f14bf201cbc747",
+          "bytes": 52528,
+          "raw_export_sha256": "7b1b3cb4ddcae27a336a8fba0b96fab132642795c086a0c79cbce13e894f5026",
+          "normalization": "Trailing spaces removed from CSS only; XML parsed after normalization."
+        },
+        {
+          "file": "reading-workflow.ko.png",
+          "sha256": "941aad12475bbd819f22980ac13167ec4357371944e6d4f069422fd952de44c8",
+          "bytes": 396701
+        }
+      ]
+    },
+    {
+      "diagram_type": "architecture",
+      "language": "ko",
+      "specification": "system-architecture.ko.json",
+      "specification_sha256": "5846fcbe4bd6c1ea898fcb297c98c8a22544b70f01c5764f0ac5dd6e11d7ce77",
+      "artifact": "system-architecture.ko.html",
+      "artifact_sha256": "54f10e5b5a3ee04ad88e3efa4689a7cd26f9a520c54ac2ede1fd8f68057ea035",
+      "artifact_bytes": 706613,
+      "validation": "9/9 showcase, 0 errors, 0 warnings",
+      "browser_evidence": "passed",
+      "visual_review": "passed",
+      "correction_rounds": 0,
+      "viewports": [
+        {
+          "width": 1440,
+          "height": 900,
+          "theme": "light",
+          "scrollWidth": 1440,
+          "scrollHeight": 900,
+          "ok": true
+        },
+        {
+          "width": 1600,
+          "height": 1000,
+          "theme": "light",
+          "scrollWidth": 1600,
+          "scrollHeight": 1000,
+          "ok": true
+        },
+        {
+          "width": 1920,
+          "height": 1080,
+          "theme": "light",
+          "scrollWidth": 1920,
+          "scrollHeight": 1080,
+          "ok": true
+        },
+        {
+          "width": 2048,
+          "height": 1320,
+          "theme": "light",
+          "scrollWidth": 2048,
+          "scrollHeight": 1320,
+          "ok": true
+        }
+      ],
+      "exports": [
+        {
+          "file": "system-architecture.ko.svg",
+          "sha256": "09dc0aad6a2a196bcaa0e443cf487c426039a0d6e5b9dd75ca7388b75273f7c2",
+          "bytes": 50279,
+          "raw_export_sha256": "0018d532974627d338bba00de4eb2459ed76a8ade8632bec4c225cce86767c8f",
+          "normalization": "Trailing spaces removed from CSS only; XML parsed after normalization."
+        },
+        {
+          "file": "system-architecture.ko.png",
+          "sha256": "04eb41ceca7910fc818066e69a91ac27095f2ac9e97ec465a7705c581467b014",
+          "bytes": 427486
+        }
+      ]
+    },
+    {
+      "diagram_type": "workflow",
+      "language": "ko",
+      "specification": "analysis-pipeline.ko.v3.json",
+      "specification_sha256": "e2b216442602e7a79bc32725ade572486e1f57c05ac1150d7f4a0649bcebd789",
+      "artifact": "analysis-pipeline.ko.html",
+      "artifact_sha256": "2788af79b133f7e3875ab98885e8db910bab335529b80535b884c1fdc8a14223",
+      "artifact_bytes": 702367,
+      "validation": "9/9 showcase, 0 errors, 0 warnings",
+      "browser_evidence": "passed",
+      "visual_review": "passed",
+      "correction_rounds": 2,
+      "viewports": [
+        {
+          "width": 1440,
+          "height": 900,
+          "theme": "light",
+          "scrollWidth": 1440,
+          "scrollHeight": 900,
+          "ok": true
+        },
+        {
+          "width": 1600,
+          "height": 1000,
+          "theme": "light",
+          "scrollWidth": 1600,
+          "scrollHeight": 1000,
+          "ok": true
+        },
+        {
+          "width": 1920,
+          "height": 1080,
+          "theme": "light",
+          "scrollWidth": 1920,
+          "scrollHeight": 1080,
+          "ok": true
+        },
+        {
+          "width": 2048,
+          "height": 1320,
+          "theme": "light",
+          "scrollWidth": 2048,
+          "scrollHeight": 1320,
+          "ok": true
+        }
+      ],
+      "exports": [
+        {
+          "file": "analysis-pipeline.ko.svg",
+          "sha256": "9abaa31aac1c8f97b2a128e12ba41c975146b8039e3b2246de9b332dcfc2a076",
+          "bytes": 46322,
+          "raw_export_sha256": "f6ba6b74726a7ec5003487fdbd5dd87dbd8d9cf0e071b04a75eff54aa9bd9d0c",
+          "normalization": "Trailing spaces removed from CSS only; XML parsed after normalization."
+        },
+        {
+          "file": "analysis-pipeline.ko.png",
+          "sha256": "19b16eb424972f7c84602b311e2d76400ebd5d7e81717664ab8446c0d9424ea3",
+          "bytes": 282247
+        }
+      ]
+    },
+    {
+      "diagram_type": "workflow",
+      "language": "en",
+      "specification": "reading-workflow.en.v2.json",
+      "specification_sha256": "3e92bfadc257562eff5876cb3ef11048b8ac3bb14f4157f5432c27d3c47887d9",
+      "artifact": "reading-workflow.en.html",
+      "artifact_sha256": "9990e59030de8c68d2a0bbfb3e20e6aa76555215a171d568312d2e0e435c9e75",
+      "artifact_bytes": 708138,
+      "validation": "9/9 showcase, 0 errors, 0 warnings",
+      "browser_evidence": "passed",
+      "visual_review": "passed",
+      "correction_rounds": 1,
+      "viewports": [
+        {
+          "width": 1440,
+          "height": 900,
+          "theme": "light",
+          "scrollWidth": 1440,
+          "scrollHeight": 900,
+          "ok": true
+        },
+        {
+          "width": 1600,
+          "height": 1000,
+          "theme": "light",
+          "scrollWidth": 1600,
+          "scrollHeight": 1000,
+          "ok": true
+        },
+        {
+          "width": 1920,
+          "height": 1080,
+          "theme": "light",
+          "scrollWidth": 1920,
+          "scrollHeight": 1080,
+          "ok": true
+        },
+        {
+          "width": 2048,
+          "height": 1320,
+          "theme": "light",
+          "scrollWidth": 2048,
+          "scrollHeight": 1320,
+          "ok": true
+        }
+      ],
+      "exports": [
+        {
+          "file": "reading-workflow.en.svg",
+          "sha256": "ef49b3dac7d06ea0a4bac11ba16c0b02726a9c0846d5947b878012ab505735d7",
+          "bytes": 52327,
+          "raw_export_sha256": "2d4755cfec62f708b0c4fda503bb8f5b27b632a0624b2b9dc4b6ed59179931aa",
+          "normalization": "Trailing spaces removed from CSS only; XML parsed after normalization."
+        },
+        {
+          "file": "reading-workflow.en.png",
+          "sha256": "a703527e73adcf338edfc1866340b53e0e44c8443a7c39b384741760df43609d",
+          "bytes": 459786
+        }
+      ]
+    },
+    {
+      "diagram_type": "architecture",
+      "language": "en",
+      "specification": "system-architecture.en.json",
+      "specification_sha256": "d633e070ca46d63be399fb14790d55974ca7a8d5adf45e80452277aef6217fd1",
+      "artifact": "system-architecture.en.html",
+      "artifact_sha256": "3b33d07619589d6f7b1355852ea6c1110452a8235d6e8b84fd85d4611700a67d",
+      "artifact_bytes": 706491,
+      "validation": "9/9 showcase, 0 errors, 0 warnings",
+      "browser_evidence": "passed",
+      "visual_review": "passed",
+      "correction_rounds": 0,
+      "viewports": [
+        {
+          "width": 1440,
+          "height": 900,
+          "theme": "light",
+          "scrollWidth": 1440,
+          "scrollHeight": 900,
+          "ok": true
+        },
+        {
+          "width": 1600,
+          "height": 1000,
+          "theme": "light",
+          "scrollWidth": 1600,
+          "scrollHeight": 1000,
+          "ok": true
+        },
+        {
+          "width": 1920,
+          "height": 1080,
+          "theme": "light",
+          "scrollWidth": 1920,
+          "scrollHeight": 1080,
+          "ok": true
+        },
+        {
+          "width": 2048,
+          "height": 1320,
+          "theme": "light",
+          "scrollWidth": 2048,
+          "scrollHeight": 1320,
+          "ok": true
+        }
+      ],
+      "exports": [
+        {
+          "file": "system-architecture.en.svg",
+          "sha256": "da750dea771e48df9b99bc06fabaebf626e60ecc6078dca1e7ba4effbb1492f3",
+          "bytes": 50192,
+          "raw_export_sha256": "7ba98424f67337588ced759822e04d8faa130ba57988eba8bc504c4e69ad9ab0",
+          "normalization": "Trailing spaces removed from CSS only; XML parsed after normalization."
+        },
+        {
+          "file": "system-architecture.en.png",
+          "sha256": "c6747c873ac50bb987678074cbf374b42e2d63d52d8294fa7b97bdfc934b5b0b",
+          "bytes": 449448
+        }
+      ]
+    },
+    {
+      "diagram_type": "workflow",
+      "language": "en",
+      "specification": "analysis-pipeline.en.v2.json",
+      "specification_sha256": "1f42001f14df2ce9c9b01b63e34a98fc9361ae10746bc64e1280e5b85c375593",
+      "artifact": "analysis-pipeline.en.html",
+      "artifact_sha256": "f5dc1a04b4a02274aeb301bb6e647e5ccf565af2e032dfead8d00d093398c521",
+      "artifact_bytes": 702215,
+      "validation": "9/9 showcase, 0 errors, 0 warnings",
+      "browser_evidence": "passed",
+      "visual_review": "passed",
+      "correction_rounds": 1,
+      "viewports": [
+        {
+          "width": 1440,
+          "height": 900,
+          "theme": "light",
+          "scrollWidth": 1440,
+          "scrollHeight": 900,
+          "ok": true
+        },
+        {
+          "width": 1600,
+          "height": 1000,
+          "theme": "light",
+          "scrollWidth": 1600,
+          "scrollHeight": 1000,
+          "ok": true
+        },
+        {
+          "width": 1920,
+          "height": 1080,
+          "theme": "light",
+          "scrollWidth": 1920,
+          "scrollHeight": 1080,
+          "ok": true
+        },
+        {
+          "width": 2048,
+          "height": 1320,
+          "theme": "light",
+          "scrollWidth": 2048,
+          "scrollHeight": 1320,
+          "ok": true
+        }
+      ],
+      "exports": [
+        {
+          "file": "analysis-pipeline.en.svg",
+          "sha256": "edb515a7c34314e9234d6ec94d44153e5491613ce68b1658df0fd0c5580418b7",
+          "bytes": 46201,
+          "raw_export_sha256": "029712979207dbfbd088a1922bae6a80767ab85a9817b8d87e3ca8508074f09c",
+          "normalization": "Trailing spaces removed from CSS only; XML parsed after normalization."
+        },
+        {
+          "file": "analysis-pipeline.en.png",
+          "sha256": "a38ba115a4ef22aae2dc3d737598e1617995978b06012fb106b642fefac77736",
+          "bytes": 310824
+        }
+      ]
+    }
+  ],
+  "graphify": {
+    "status": "corpus detected, extraction scope awaiting user selection",
+    "detected_files": 3064,
+    "detected_words": 19242341,
+    "suggested_scope": "sasoo/",
+    "suggested_scope_files": 368
+  },
+  "viewer_interaction_check": {
+    "artifact": "system-architecture.en.html",
+    "focus": "FastAPI passport opened with 3 outgoing and 1 incoming relationships",
+    "search": "FastAPI query returned 1 of 6 nodes",
+    "escape": "closed finder",
+    "canonical_exports": "SVG and PNG exports from each delivered HTML"
+  }
+}

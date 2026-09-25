@@ -1,0 +1,114 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Sasoo 주요 분석 단계",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "discovery",
+      "label": "범위와 배경"
+    },
+    {
+      "id": "evidence",
+      "label": "자료와 실험 조건"
+    },
+    {
+      "id": "understanding",
+      "label": "논문 이해"
+    }
+  ],
+  "mainPath": [
+    "screen",
+    "citation",
+    "visual",
+    "recipe",
+    "deep"
+  ],
+  "nodes": [
+    {
+      "id": "screen",
+      "lane": "discovery",
+      "col": 0,
+      "type": "backend",
+      "label": "스크리닝",
+      "sublabel": "분야와 핵심 주장",
+      "width": 180
+    },
+    {
+      "id": "citation",
+      "lane": "discovery",
+      "col": 1,
+      "type": "backend",
+      "label": "인용 분석",
+      "sublabel": "참고문헌과 인용 맥락",
+      "width": 180
+    },
+    {
+      "id": "visual",
+      "lane": "evidence",
+      "col": 1,
+      "type": "backend",
+      "label": "시각 자료 분석",
+      "sublabel": "그림과 표",
+      "width": 180
+    },
+    {
+      "id": "recipe",
+      "lane": "evidence",
+      "col": 2,
+      "type": "backend",
+      "label": "레시피 추출",
+      "sublabel": "실험 절차와 파라미터",
+      "width": 180
+    },
+    {
+      "id": "deep",
+      "lane": "understanding",
+      "col": 2,
+      "type": "backend",
+      "label": "심층 분석",
+      "sublabel": "문제, 방법, 결과와 한계",
+      "width": 180
+    }
+  ],
+  "edges": [
+    {
+      "id": "screen-citation",
+      "from": "screen",
+      "to": "citation"
+    },
+    {
+      "id": "citation-visual",
+      "from": "citation",
+      "to": "visual"
+    },
+    {
+      "id": "visual-recipe",
+      "from": "visual",
+      "to": "recipe"
+    },
+    {
+      "id": "recipe-deep",
+      "from": "recipe",
+      "to": "deep"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "violet",
+      "title": "순서와 실행 상태",
+      "items": [
+        "논문 내용과 실행 상태에 따라 단계가 건너뛰어지거나 중단될 수 있습니다."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "후속 생성",
+      "items": [
+        "종합 결과와 추가 시각화는 별도로 생성됩니다."
+      ]
+    }
+  ]
+}

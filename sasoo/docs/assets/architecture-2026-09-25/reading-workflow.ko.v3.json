@@ -1,0 +1,130 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Sasoo 논문 읽기 workflow",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "reader",
+      "label": "논문 읽기"
+    },
+    {
+      "id": "analysis",
+      "label": "분석과 보관"
+    }
+  ],
+  "mainPath": [
+    "upload",
+    "prepare",
+    "analyze",
+    "read",
+    "source"
+  ],
+  "nodes": [
+    {
+      "id": "upload",
+      "lane": "reader",
+      "col": 0,
+      "type": "frontend",
+      "label": "PDF 업로드",
+      "sublabel": "라이브러리에 원문 보관",
+      "width": 180
+    },
+    {
+      "id": "prepare",
+      "lane": "analysis",
+      "col": 0,
+      "type": "backend",
+      "label": "문맥 준비",
+      "sublabel": "텍스트와 시각 자료",
+      "yOffset": 80,
+      "width": 180
+    },
+    {
+      "id": "analyze",
+      "lane": "analysis",
+      "col": 1,
+      "type": "cloud",
+      "label": "AI 분석",
+      "sublabel": "선택한 외부 공급사",
+      "yOffset": 80,
+      "width": 180
+    },
+    {
+      "id": "read",
+      "lane": "reader",
+      "col": 2,
+      "type": "frontend",
+      "label": "워크벤치에서 읽기",
+      "sublabel": "원문과 해설을 나란히",
+      "width": 180
+    },
+    {
+      "id": "source",
+      "lane": "reader",
+      "col": 3,
+      "type": "frontend",
+      "label": "근거 확인",
+      "sublabel": "그림 / 표 / PDF 페이지",
+      "width": 180
+    },
+    {
+      "id": "library",
+      "lane": "analysis",
+      "col": 3,
+      "type": "database",
+      "label": "로컬 라이브러리",
+      "sublabel": "PDF와 저장된 분석",
+      "width": 180,
+      "yOffset": 80
+    }
+  ],
+  "edges": [
+    {
+      "id": "upload-prepare",
+      "from": "upload",
+      "to": "prepare",
+      "label": "분석 시작"
+    },
+    {
+      "id": "prepare-analyze",
+      "from": "prepare",
+      "to": "analyze",
+      "label": "분석 입력"
+    },
+    {
+      "id": "analyze-read",
+      "from": "analyze",
+      "to": "read",
+      "label": "준비된 결과"
+    },
+    {
+      "id": "read-source",
+      "from": "read",
+      "to": "source",
+      "label": "참조 선택"
+    },
+    {
+      "id": "source-read",
+      "from": "source",
+      "to": "read",
+      "label": "읽던 위치로 복귀",
+      "role": "return"
+    },
+    {
+      "id": "analyze-library",
+      "from": "analyze",
+      "to": "library",
+      "label": "결과 저장"
+    },
+    {
+      "id": "library-read",
+      "from": "library",
+      "to": "read",
+      "label": "다시 열기",
+      "role": "return"
+    }
+  ]
+}

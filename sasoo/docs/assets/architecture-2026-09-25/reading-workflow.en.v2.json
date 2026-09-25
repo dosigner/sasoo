@@ -1,0 +1,131 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Sasoo paper reading workflow",
+    "quality_profile": "showcase",
+    "locale": "en"
+  },
+  "lanes": [
+    {
+      "id": "reader",
+      "label": "Reading"
+    },
+    {
+      "id": "analysis",
+      "label": "Analysis and storage"
+    }
+  ],
+  "mainPath": [
+    "upload",
+    "prepare",
+    "analyze",
+    "read",
+    "source"
+  ],
+  "nodes": [
+    {
+      "id": "upload",
+      "lane": "reader",
+      "col": 0,
+      "type": "frontend",
+      "label": "Upload PDF",
+      "sublabel": "Keep the source locally",
+      "width": 180
+    },
+    {
+      "id": "prepare",
+      "lane": "analysis",
+      "col": 0,
+      "type": "backend",
+      "label": "Prepare context",
+      "sublabel": "Text and visual material",
+      "width": 180,
+      "yOffset": 80
+    },
+    {
+      "id": "analyze",
+      "lane": "analysis",
+      "col": 1,
+      "type": "cloud",
+      "label": "AI analysis",
+      "sublabel": "Selected external provider",
+      "width": 180,
+      "yOffset": 80
+    },
+    {
+      "id": "read",
+      "lane": "reader",
+      "col": 2,
+      "type": "frontend",
+      "label": "Read workbench",
+      "sublabel": "PDF beside explanations",
+      "width": 180
+    },
+    {
+      "id": "source",
+      "lane": "reader",
+      "col": 3,
+      "type": "frontend",
+      "label": "Check evidence",
+      "sublabel": "Figures / tables / PDF",
+      "width": 180
+    },
+    {
+      "id": "library",
+      "lane": "analysis",
+      "col": 3,
+      "type": "database",
+      "label": "Local library",
+      "sublabel": "PDF and saved analysis",
+      "width": 180,
+      "yOffset": 80
+    }
+  ],
+  "edges": [
+    {
+      "id": "upload-prepare",
+      "from": "upload",
+      "to": "prepare",
+      "label": "Start analysis"
+    },
+    {
+      "id": "prepare-analyze",
+      "from": "prepare",
+      "to": "analyze",
+      "label": "Analysis input"
+    },
+    {
+      "id": "analyze-read",
+      "from": "analyze",
+      "to": "read",
+      "label": "Ready results"
+    },
+    {
+      "id": "read-source",
+      "from": "read",
+      "to": "source",
+      "label": "Select reference"
+    },
+    {
+      "id": "source-read",
+      "from": "source",
+      "to": "read",
+      "label": "Return to reading",
+      "role": "return"
+    },
+    {
+      "id": "analyze-library",
+      "from": "analyze",
+      "to": "library",
+      "label": "Save results"
+    },
+    {
+      "id": "library-read",
+      "from": "library",
+      "to": "read",
+      "label": "Reopen",
+      "role": "return"
+    }
+  ]
+}

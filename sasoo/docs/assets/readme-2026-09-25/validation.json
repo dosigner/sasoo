@@ -1,0 +1,1973 @@
+{
+  "date": "2026-09-25",
+  "base_commit": "65487cedb3b537483bf1d7a17a2bc7602bed7ed0",
+  "scope": "Development Electron captures with saved responses and QA source-page previews. Local README rendering only.",
+  "builds": {
+    "frontend": "passed",
+    "electron": "passed"
+  },
+  "app_observations": {
+    "pageErrors": [],
+    "httpErrors": [
+      {
+        "path": "/api/analysis/721/synthesis",
+        "status": 404
+      },
+      {
+        "path": "/api/analysis/721/experiment-plan",
+        "status": 404
+      },
+      {
+        "path": "/api/analysis/721/figures/22/explain",
+        "status": 409
+      },
+      {
+        "path": "/api/analysis/721/figures/23/explain",
+        "status": 409
+      },
+      {
+        "path": "/api/analysis/721/run",
+        "status": 409
+      },
+      {
+        "path": "/api/analysis/721/run",
+        "status": 409
+      },
+      {
+        "path": "/api/analysis/721/synthesis",
+        "status": 404
+      },
+      {
+        "path": "/api/analysis/721/experiment-plan",
+        "status": 404
+      },
+      {
+        "path": "/api/analysis/721/synthesis",
+        "status": 404
+      },
+      {
+        "path": "/api/analysis/721/experiment-plan",
+        "status": 404
+      }
+    ],
+    "generationRequests": [
+      {
+        "method": "POST",
+        "path": "/api/analysis/721/figures/22/explain"
+      },
+      {
+        "method": "POST",
+        "path": "/api/analysis/721/figures/23/explain"
+      },
+      {
+        "method": "POST",
+        "path": "/api/analysis/721/run"
+      },
+      {
+        "method": "POST",
+        "path": "/api/analysis/721/run"
+      }
+    ]
+  },
+  "model_calls": 0,
+  "navigation": {
+    "label": "Figure 2",
+    "pdfPage": "3",
+    "before": 2543,
+    "after": 2543,
+    "returnDelta": 0,
+    "frames": 46,
+    "expectedPage": 3
+  },
+  "assets": [
+    {
+      "file": "evidence-return.gif",
+      "bytes": 308703,
+      "width": 1000,
+      "height": 599,
+      "frames": 49,
+      "sha256": "8cce53f32ee2f30161052638d86911c928450e1583fd2ae9cb6333c224bda07a"
+    },
+    {
+      "file": "evidence-source.png",
+      "bytes": 461668,
+      "width": 1400,
+      "height": 839,
+      "frames": 1,
+      "sha256": "2dd3a5112e2e8ff276b16fe3f9c33fad58f1d1a8af375aa25384f8df7b623ac0"
+    },
+    {
+      "file": "paper-connections.png",
+      "bytes": 1775334,
+      "width": 1774,
+      "height": 887,
+      "frames": 1,
+      "sha256": "a803988a6b21ae03eaeb9254afbe59a7be45c85032bef56f9723aba4b640f8ff"
+    },
+    {
+      "file": "recipe-detail.png",
+      "bytes": 91433,
+      "width": 685,
+      "height": 640,
+      "frames": 1,
+      "sha256": "bfcb7d14e1bf0b79dad637cf5acbf18aa51637e3a1c2e65884797dda3cbdcc5b"
+    },
+    {
+      "file": "summary-detail.png",
+      "bytes": 87080,
+      "width": 685,
+      "height": 620,
+      "frames": 1,
+      "sha256": "5f44440535dcfefc265362dab6f01635655a8eafd707a29903be904426cb455b"
+    },
+    {
+      "file": "workbench-light.png",
+      "bytes": 375325,
+      "width": 1400,
+      "height": 839,
+      "frames": 1,
+      "sha256": "a6ee96c74f7d07fe56821bc71996467e43d6236cc10717a84ce29cfd1322de61"
+    }
+  ],
+  "asset_bytes": 3099543,
+  "relative_links": [
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/logo.png",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/package.json",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/frontend/package.json",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/frontend/package.json",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/frontend/package.json",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/frontend/package.json",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": ".github/workflows/release.yml",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/backend/requirements.txt",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/backend/requirements.txt",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/frontend/package.json",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/frontend/package.json",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/backend/services/model_registry.py",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/backend/services/model_registry.py",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": "README.en.md",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/readme-2026-09-25/paper-connections.png",
+      "state": "new asset"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/readme-2026-09-25/workbench-light.png",
+      "state": "new asset"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/reading-workflow.ko.svg",
+      "state": "new asset"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/reading-workflow.ko.svg",
+      "state": "new asset"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/reading-workflow.ko.svg",
+      "state": "new asset"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/reading-workflow.ko.html",
+      "state": "new asset"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/readme-2026-09-25/summary-detail.png",
+      "state": "new asset"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/readme-2026-09-25/evidence-return.gif",
+      "state": "new asset"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/readme-2026-09-25/evidence-source.png",
+      "state": "new asset"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/readme-2026-09-25/recipe-detail.png",
+      "state": "new asset"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/readme-2026-09-25/PROVENANCE.md",
+      "state": "new asset"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/backend/services/model_registry.py",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/backend/services/models.py",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/system-architecture.ko.svg",
+      "state": "new asset"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/system-architecture.ko.svg",
+      "state": "new asset"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/system-architecture.ko.svg",
+      "state": "new asset"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/system-architecture.ko.html",
+      "state": "new asset"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.ko.svg",
+      "state": "new asset"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.ko.svg",
+      "state": "new asset"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.ko.svg",
+      "state": "new asset"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.ko.html",
+      "state": "new asset"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/backend/services/analysis_execution.py",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/package.json",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": ".github/workflows/release.yml",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/docs/03-release/release-checklist.md",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": ".github/workflows/release.yml",
+      "state": "tracked"
+    },
+    {
+      "document": "README.md",
+      "target": "sasoo/package.json",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/logo.png",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/package.json",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/frontend/package.json",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/frontend/package.json",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/frontend/package.json",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/frontend/package.json",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": ".github/workflows/release.yml",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/backend/requirements.txt",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/backend/requirements.txt",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/frontend/package.json",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/frontend/package.json",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/backend/services/model_registry.py",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/backend/services/model_registry.py",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": "README.md",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/readme-2026-09-25/paper-connections.png",
+      "state": "new asset"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/readme-2026-09-25/workbench-light.png",
+      "state": "new asset"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/reading-workflow.en.svg",
+      "state": "new asset"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/reading-workflow.en.svg",
+      "state": "new asset"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/reading-workflow.en.svg",
+      "state": "new asset"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/reading-workflow.en.html",
+      "state": "new asset"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/readme-2026-09-25/summary-detail.png",
+      "state": "new asset"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/readme-2026-09-25/evidence-return.gif",
+      "state": "new asset"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/readme-2026-09-25/evidence-source.png",
+      "state": "new asset"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/readme-2026-09-25/recipe-detail.png",
+      "state": "new asset"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/readme-2026-09-25/PROVENANCE.md",
+      "state": "new asset"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/backend/services/model_registry.py",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/backend/services/models.py",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/system-architecture.en.svg",
+      "state": "new asset"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/system-architecture.en.svg",
+      "state": "new asset"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/system-architecture.en.svg",
+      "state": "new asset"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/system-architecture.en.html",
+      "state": "new asset"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.en.svg",
+      "state": "new asset"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.en.svg",
+      "state": "new asset"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.en.svg",
+      "state": "new asset"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.en.html",
+      "state": "new asset"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/backend/services/analysis_execution.py",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/package.json",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": ".github/workflows/release.yml",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/docs/03-release/release-checklist.md",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": ".github/workflows/release.yml",
+      "state": "tracked"
+    },
+    {
+      "document": "README.en.md",
+      "target": "sasoo/package.json",
+      "state": "tracked"
+    },
+    {
+      "document": "sasoo/docs/assets/readme-2026-09-25/PROVENANCE.md",
+      "target": "sasoo/docs/assets/architecture-2026-09-25/validation.json",
+      "state": "new asset"
+    }
+  ],
+  "language_parity": {
+    "image_sources": true,
+    "shell_code_blocks": true,
+    "section_count": true,
+    "external_links": true,
+    "semantic_review": "manual",
+    "archify_diagrams_per_language": 3,
+    "mermaid_blocks_per_language": 0,
+    "technology_badges_per_language": 12
+  },
+  "render": [
+    {
+      "language": "ko",
+      "width": 390,
+      "theme": "light",
+      "scrollWidth": 390,
+      "images": [
+        {
+          "src": "sasoo/docs/assets/logo.png",
+          "loaded": true,
+          "displayWidth": 96,
+          "naturalWidth": 800
+        },
+        {
+          "src": "https://img.shields.io/badge/Electron-43-47848F?style=for-the-badge&logo=electron&logoColor=white",
+          "loaded": true,
+          "displayWidth": 145,
+          "naturalWidth": 145
+        },
+        {
+          "src": "https://img.shields.io/badge/React-19-149ECA?style=for-the-badge&logo=react&logoColor=white",
+          "loaded": true,
+          "displayWidth": 121,
+          "naturalWidth": 121
+        },
+        {
+          "src": "https://img.shields.io/badge/TypeScript-6-3178C6?style=for-the-badge&logo=typescript&logoColor=white",
+          "loaded": true,
+          "displayWidth": 147,
+          "naturalWidth": 147
+        },
+        {
+          "src": "https://img.shields.io/badge/Vite-8-646CFF?style=for-the-badge&logo=vite&logoColor=white",
+          "loaded": true,
+          "displayWidth": 101,
+          "naturalWidth": 101
+        },
+        {
+          "src": "https://img.shields.io/badge/Tailwind%20CSS-4-0F766E?style=for-the-badge&logo=tailwindcss&logoColor=white",
+          "loaded": true,
+          "displayWidth": 164,
+          "naturalWidth": 164
+        },
+        {
+          "src": "https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white",
+          "loaded": true,
+          "displayWidth": 143,
+          "naturalWidth": 143
+        },
+        {
+          "src": "https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white",
+          "loaded": true,
+          "displayWidth": 101,
+          "naturalWidth": 101
+        },
+        {
+          "src": "https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white",
+          "loaded": true,
+          "displayWidth": 93,
+          "naturalWidth": 93
+        },
+        {
+          "src": "https://img.shields.io/badge/PDF.js-C43D2D?style=for-the-badge",
+          "loaded": true,
+          "displayWidth": 70,
+          "naturalWidth": 70
+        },
+        {
+          "src": "https://img.shields.io/badge/Mermaid-C43778?style=for-the-badge&logo=mermaid&logoColor=white",
+          "loaded": true,
+          "displayWidth": 108,
+          "naturalWidth": 108
+        },
+        {
+          "src": "https://img.shields.io/badge/OpenAI-412991?style=for-the-badge",
+          "loaded": true,
+          "displayWidth": 76,
+          "naturalWidth": 76
+        },
+        {
+          "src": "https://img.shields.io/badge/Gemini-8861DD?style=for-the-badge&logo=googlegemini&logoColor=white",
+          "loaded": true,
+          "displayWidth": 95,
+          "naturalWidth": 95
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/paper-connections.png",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1774
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/workbench-light.png",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1400
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/reading-workflow.ko.svg",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1088
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/summary-detail.png",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 685
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/evidence-return.gif",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1000
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/recipe-detail.png",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 685
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/system-architecture.ko.svg",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1392
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.ko.svg",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 988
+        }
+      ],
+      "diagrams": 3,
+      "headings": [
+        "Sasoo",
+        "논문을 읽고, 근거로 돌아가다",
+        "원문과 해설을 한 화면에서",
+        "논문 한 편의 workflow",
+        "읽는 동안 필요한 도구",
+        "질문을 따라 논문 이해하기",
+        "설명에서 그림과 표로, 다시 읽던 곳으로",
+        "실험 조건을 다음 작업에 활용하기",
+        "시작하기",
+        "설치 파일",
+        "API 키와 비용",
+        "데이터와 개인정보",
+        "개발",
+        "시스템 구성",
+        "분석 파이프라인",
+        "로컬 실행",
+        "라이선스"
+      ],
+      "expandedWidth": 390,
+      "errors": []
+    },
+    {
+      "language": "ko",
+      "width": 390,
+      "theme": "dark",
+      "scrollWidth": 390,
+      "images": [
+        {
+          "src": "sasoo/docs/assets/logo.png",
+          "loaded": true,
+          "displayWidth": 96,
+          "naturalWidth": 800
+        },
+        {
+          "src": "https://img.shields.io/badge/Electron-43-47848F?style=for-the-badge&logo=electron&logoColor=white",
+          "loaded": true,
+          "displayWidth": 145,
+          "naturalWidth": 145
+        },
+        {
+          "src": "https://img.shields.io/badge/React-19-149ECA?style=for-the-badge&logo=react&logoColor=white",
+          "loaded": true,
+          "displayWidth": 121,
+          "naturalWidth": 121
+        },
+        {
+          "src": "https://img.shields.io/badge/TypeScript-6-3178C6?style=for-the-badge&logo=typescript&logoColor=white",
+          "loaded": true,
+          "displayWidth": 147,
+          "naturalWidth": 147
+        },
+        {
+          "src": "https://img.shields.io/badge/Vite-8-646CFF?style=for-the-badge&logo=vite&logoColor=white",
+          "loaded": true,
+          "displayWidth": 101,
+          "naturalWidth": 101
+        },
+        {
+          "src": "https://img.shields.io/badge/Tailwind%20CSS-4-0F766E?style=for-the-badge&logo=tailwindcss&logoColor=white",
+          "loaded": true,
+          "displayWidth": 164,
+          "naturalWidth": 164
+        },
+        {
+          "src": "https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white",
+          "loaded": true,
+          "displayWidth": 143,
+          "naturalWidth": 143
+        },
+        {
+          "src": "https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white",
+          "loaded": true,
+          "displayWidth": 101,
+          "naturalWidth": 101
+        },
+        {
+          "src": "https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white",
+          "loaded": true,
+          "displayWidth": 93,
+          "naturalWidth": 93
+        },
+        {
+          "src": "https://img.shields.io/badge/PDF.js-C43D2D?style=for-the-badge",
+          "loaded": true,
+          "displayWidth": 70,
+          "naturalWidth": 70
+        },
+        {
+          "src": "https://img.shields.io/badge/Mermaid-C43778?style=for-the-badge&logo=mermaid&logoColor=white",
+          "loaded": true,
+          "displayWidth": 108,
+          "naturalWidth": 108
+        },
+        {
+          "src": "https://img.shields.io/badge/OpenAI-412991?style=for-the-badge",
+          "loaded": true,
+          "displayWidth": 76,
+          "naturalWidth": 76
+        },
+        {
+          "src": "https://img.shields.io/badge/Gemini-8861DD?style=for-the-badge&logo=googlegemini&logoColor=white",
+          "loaded": true,
+          "displayWidth": 95,
+          "naturalWidth": 95
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/paper-connections.png",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1774
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/workbench-light.png",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1400
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/reading-workflow.ko.svg",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1088
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/summary-detail.png",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 685
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/evidence-return.gif",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1000
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/recipe-detail.png",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 685
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/system-architecture.ko.svg",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1392
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.ko.svg",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 988
+        }
+      ],
+      "diagrams": 3,
+      "headings": [
+        "Sasoo",
+        "논문을 읽고, 근거로 돌아가다",
+        "원문과 해설을 한 화면에서",
+        "논문 한 편의 workflow",
+        "읽는 동안 필요한 도구",
+        "질문을 따라 논문 이해하기",
+        "설명에서 그림과 표로, 다시 읽던 곳으로",
+        "실험 조건을 다음 작업에 활용하기",
+        "시작하기",
+        "설치 파일",
+        "API 키와 비용",
+        "데이터와 개인정보",
+        "개발",
+        "시스템 구성",
+        "분석 파이프라인",
+        "로컬 실행",
+        "라이선스"
+      ],
+      "expandedWidth": 390,
+      "errors": []
+    },
+    {
+      "language": "ko",
+      "width": 1280,
+      "theme": "light",
+      "scrollWidth": 1280,
+      "images": [
+        {
+          "src": "sasoo/docs/assets/logo.png",
+          "loaded": true,
+          "displayWidth": 96,
+          "naturalWidth": 800
+        },
+        {
+          "src": "https://img.shields.io/badge/Electron-43-47848F?style=for-the-badge&logo=electron&logoColor=white",
+          "loaded": true,
+          "displayWidth": 145,
+          "naturalWidth": 145
+        },
+        {
+          "src": "https://img.shields.io/badge/React-19-149ECA?style=for-the-badge&logo=react&logoColor=white",
+          "loaded": true,
+          "displayWidth": 121,
+          "naturalWidth": 121
+        },
+        {
+          "src": "https://img.shields.io/badge/TypeScript-6-3178C6?style=for-the-badge&logo=typescript&logoColor=white",
+          "loaded": true,
+          "displayWidth": 147,
+          "naturalWidth": 147
+        },
+        {
+          "src": "https://img.shields.io/badge/Vite-8-646CFF?style=for-the-badge&logo=vite&logoColor=white",
+          "loaded": true,
+          "displayWidth": 101,
+          "naturalWidth": 101
+        },
+        {
+          "src": "https://img.shields.io/badge/Tailwind%20CSS-4-0F766E?style=for-the-badge&logo=tailwindcss&logoColor=white",
+          "loaded": true,
+          "displayWidth": 164,
+          "naturalWidth": 164
+        },
+        {
+          "src": "https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white",
+          "loaded": true,
+          "displayWidth": 143,
+          "naturalWidth": 143
+        },
+        {
+          "src": "https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white",
+          "loaded": true,
+          "displayWidth": 101,
+          "naturalWidth": 101
+        },
+        {
+          "src": "https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white",
+          "loaded": true,
+          "displayWidth": 93,
+          "naturalWidth": 93
+        },
+        {
+          "src": "https://img.shields.io/badge/PDF.js-C43D2D?style=for-the-badge",
+          "loaded": true,
+          "displayWidth": 70,
+          "naturalWidth": 70
+        },
+        {
+          "src": "https://img.shields.io/badge/Mermaid-C43778?style=for-the-badge&logo=mermaid&logoColor=white",
+          "loaded": true,
+          "displayWidth": 108,
+          "naturalWidth": 108
+        },
+        {
+          "src": "https://img.shields.io/badge/OpenAI-412991?style=for-the-badge",
+          "loaded": true,
+          "displayWidth": 76,
+          "naturalWidth": 76
+        },
+        {
+          "src": "https://img.shields.io/badge/Gemini-8861DD?style=for-the-badge&logo=googlegemini&logoColor=white",
+          "loaded": true,
+          "displayWidth": 95,
+          "naturalWidth": 95
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/paper-connections.png",
+          "loaded": true,
+          "displayWidth": 900,
+          "naturalWidth": 1774
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/workbench-light.png",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 1400
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/reading-workflow.ko.svg",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 1088
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/summary-detail.png",
+          "loaded": true,
+          "displayWidth": 685,
+          "naturalWidth": 685
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/evidence-return.gif",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 1000
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/recipe-detail.png",
+          "loaded": true,
+          "displayWidth": 685,
+          "naturalWidth": 685
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/system-architecture.ko.svg",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 1392
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.ko.svg",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 988
+        }
+      ],
+      "diagrams": 3,
+      "headings": [
+        "Sasoo",
+        "논문을 읽고, 근거로 돌아가다",
+        "원문과 해설을 한 화면에서",
+        "논문 한 편의 workflow",
+        "읽는 동안 필요한 도구",
+        "질문을 따라 논문 이해하기",
+        "설명에서 그림과 표로, 다시 읽던 곳으로",
+        "실험 조건을 다음 작업에 활용하기",
+        "시작하기",
+        "설치 파일",
+        "API 키와 비용",
+        "데이터와 개인정보",
+        "개발",
+        "시스템 구성",
+        "분석 파이프라인",
+        "로컬 실행",
+        "라이선스"
+      ],
+      "expandedWidth": 1280,
+      "errors": []
+    },
+    {
+      "language": "ko",
+      "width": 1280,
+      "theme": "dark",
+      "scrollWidth": 1280,
+      "images": [
+        {
+          "src": "sasoo/docs/assets/logo.png",
+          "loaded": true,
+          "displayWidth": 96,
+          "naturalWidth": 800
+        },
+        {
+          "src": "https://img.shields.io/badge/Electron-43-47848F?style=for-the-badge&logo=electron&logoColor=white",
+          "loaded": true,
+          "displayWidth": 145,
+          "naturalWidth": 145
+        },
+        {
+          "src": "https://img.shields.io/badge/React-19-149ECA?style=for-the-badge&logo=react&logoColor=white",
+          "loaded": true,
+          "displayWidth": 121,
+          "naturalWidth": 121
+        },
+        {
+          "src": "https://img.shields.io/badge/TypeScript-6-3178C6?style=for-the-badge&logo=typescript&logoColor=white",
+          "loaded": true,
+          "displayWidth": 147,
+          "naturalWidth": 147
+        },
+        {
+          "src": "https://img.shields.io/badge/Vite-8-646CFF?style=for-the-badge&logo=vite&logoColor=white",
+          "loaded": true,
+          "displayWidth": 101,
+          "naturalWidth": 101
+        },
+        {
+          "src": "https://img.shields.io/badge/Tailwind%20CSS-4-0F766E?style=for-the-badge&logo=tailwindcss&logoColor=white",
+          "loaded": true,
+          "displayWidth": 164,
+          "naturalWidth": 164
+        },
+        {
+          "src": "https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white",
+          "loaded": true,
+          "displayWidth": 143,
+          "naturalWidth": 143
+        },
+        {
+          "src": "https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white",
+          "loaded": true,
+          "displayWidth": 101,
+          "naturalWidth": 101
+        },
+        {
+          "src": "https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white",
+          "loaded": true,
+          "displayWidth": 93,
+          "naturalWidth": 93
+        },
+        {
+          "src": "https://img.shields.io/badge/PDF.js-C43D2D?style=for-the-badge",
+          "loaded": true,
+          "displayWidth": 70,
+          "naturalWidth": 70
+        },
+        {
+          "src": "https://img.shields.io/badge/Mermaid-C43778?style=for-the-badge&logo=mermaid&logoColor=white",
+          "loaded": true,
+          "displayWidth": 108,
+          "naturalWidth": 108
+        },
+        {
+          "src": "https://img.shields.io/badge/OpenAI-412991?style=for-the-badge",
+          "loaded": true,
+          "displayWidth": 76,
+          "naturalWidth": 76
+        },
+        {
+          "src": "https://img.shields.io/badge/Gemini-8861DD?style=for-the-badge&logo=googlegemini&logoColor=white",
+          "loaded": true,
+          "displayWidth": 95,
+          "naturalWidth": 95
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/paper-connections.png",
+          "loaded": true,
+          "displayWidth": 900,
+          "naturalWidth": 1774
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/workbench-light.png",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 1400
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/reading-workflow.ko.svg",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 1088
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/summary-detail.png",
+          "loaded": true,
+          "displayWidth": 685,
+          "naturalWidth": 685
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/evidence-return.gif",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 1000
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/recipe-detail.png",
+          "loaded": true,
+          "displayWidth": 685,
+          "naturalWidth": 685
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/system-architecture.ko.svg",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 1392
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.ko.svg",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 988
+        }
+      ],
+      "diagrams": 3,
+      "headings": [
+        "Sasoo",
+        "논문을 읽고, 근거로 돌아가다",
+        "원문과 해설을 한 화면에서",
+        "논문 한 편의 workflow",
+        "읽는 동안 필요한 도구",
+        "질문을 따라 논문 이해하기",
+        "설명에서 그림과 표로, 다시 읽던 곳으로",
+        "실험 조건을 다음 작업에 활용하기",
+        "시작하기",
+        "설치 파일",
+        "API 키와 비용",
+        "데이터와 개인정보",
+        "개발",
+        "시스템 구성",
+        "분석 파이프라인",
+        "로컬 실행",
+        "라이선스"
+      ],
+      "expandedWidth": 1280,
+      "errors": []
+    },
+    {
+      "language": "en",
+      "width": 390,
+      "theme": "light",
+      "scrollWidth": 390,
+      "images": [
+        {
+          "src": "sasoo/docs/assets/logo.png",
+          "loaded": true,
+          "displayWidth": 96,
+          "naturalWidth": 800
+        },
+        {
+          "src": "https://img.shields.io/badge/Electron-43-47848F?style=for-the-badge&logo=electron&logoColor=white",
+          "loaded": true,
+          "displayWidth": 145,
+          "naturalWidth": 145
+        },
+        {
+          "src": "https://img.shields.io/badge/React-19-149ECA?style=for-the-badge&logo=react&logoColor=white",
+          "loaded": true,
+          "displayWidth": 121,
+          "naturalWidth": 121
+        },
+        {
+          "src": "https://img.shields.io/badge/TypeScript-6-3178C6?style=for-the-badge&logo=typescript&logoColor=white",
+          "loaded": true,
+          "displayWidth": 147,
+          "naturalWidth": 147
+        },
+        {
+          "src": "https://img.shields.io/badge/Vite-8-646CFF?style=for-the-badge&logo=vite&logoColor=white",
+          "loaded": true,
+          "displayWidth": 101,
+          "naturalWidth": 101
+        },
+        {
+          "src": "https://img.shields.io/badge/Tailwind%20CSS-4-0F766E?style=for-the-badge&logo=tailwindcss&logoColor=white",
+          "loaded": true,
+          "displayWidth": 164,
+          "naturalWidth": 164
+        },
+        {
+          "src": "https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white",
+          "loaded": true,
+          "displayWidth": 143,
+          "naturalWidth": 143
+        },
+        {
+          "src": "https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white",
+          "loaded": true,
+          "displayWidth": 101,
+          "naturalWidth": 101
+        },
+        {
+          "src": "https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white",
+          "loaded": true,
+          "displayWidth": 93,
+          "naturalWidth": 93
+        },
+        {
+          "src": "https://img.shields.io/badge/PDF.js-C43D2D?style=for-the-badge",
+          "loaded": true,
+          "displayWidth": 70,
+          "naturalWidth": 70
+        },
+        {
+          "src": "https://img.shields.io/badge/Mermaid-C43778?style=for-the-badge&logo=mermaid&logoColor=white",
+          "loaded": true,
+          "displayWidth": 108,
+          "naturalWidth": 108
+        },
+        {
+          "src": "https://img.shields.io/badge/OpenAI-412991?style=for-the-badge",
+          "loaded": true,
+          "displayWidth": 76,
+          "naturalWidth": 76
+        },
+        {
+          "src": "https://img.shields.io/badge/Gemini-8861DD?style=for-the-badge&logo=googlegemini&logoColor=white",
+          "loaded": true,
+          "displayWidth": 95,
+          "naturalWidth": 95
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/paper-connections.png",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1774
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/workbench-light.png",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1400
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/reading-workflow.en.svg",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1117
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/summary-detail.png",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 685
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/evidence-return.gif",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1000
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/recipe-detail.png",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 685
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/system-architecture.en.svg",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1392
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.en.svg",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 988
+        }
+      ],
+      "diagrams": 3,
+      "headings": [
+        "Sasoo",
+        "Read the paper. Return to the evidence.",
+        "Keep the source beside the explanation",
+        "A paper's workflow",
+        "Tools for reading",
+        "Read through questions",
+        "Open the evidence, then return to your place",
+        "Carry experimental details into your next task",
+        "Get started",
+        "Downloads",
+        "API keys and costs",
+        "Data and privacy",
+        "Development",
+        "System architecture",
+        "Analysis pipeline",
+        "Run locally",
+        "License"
+      ],
+      "expandedWidth": 390,
+      "errors": []
+    },
+    {
+      "language": "en",
+      "width": 390,
+      "theme": "dark",
+      "scrollWidth": 390,
+      "images": [
+        {
+          "src": "sasoo/docs/assets/logo.png",
+          "loaded": true,
+          "displayWidth": 96,
+          "naturalWidth": 800
+        },
+        {
+          "src": "https://img.shields.io/badge/Electron-43-47848F?style=for-the-badge&logo=electron&logoColor=white",
+          "loaded": true,
+          "displayWidth": 145,
+          "naturalWidth": 145
+        },
+        {
+          "src": "https://img.shields.io/badge/React-19-149ECA?style=for-the-badge&logo=react&logoColor=white",
+          "loaded": true,
+          "displayWidth": 121,
+          "naturalWidth": 121
+        },
+        {
+          "src": "https://img.shields.io/badge/TypeScript-6-3178C6?style=for-the-badge&logo=typescript&logoColor=white",
+          "loaded": true,
+          "displayWidth": 147,
+          "naturalWidth": 147
+        },
+        {
+          "src": "https://img.shields.io/badge/Vite-8-646CFF?style=for-the-badge&logo=vite&logoColor=white",
+          "loaded": true,
+          "displayWidth": 101,
+          "naturalWidth": 101
+        },
+        {
+          "src": "https://img.shields.io/badge/Tailwind%20CSS-4-0F766E?style=for-the-badge&logo=tailwindcss&logoColor=white",
+          "loaded": true,
+          "displayWidth": 164,
+          "naturalWidth": 164
+        },
+        {
+          "src": "https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white",
+          "loaded": true,
+          "displayWidth": 143,
+          "naturalWidth": 143
+        },
+        {
+          "src": "https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white",
+          "loaded": true,
+          "displayWidth": 101,
+          "naturalWidth": 101
+        },
+        {
+          "src": "https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white",
+          "loaded": true,
+          "displayWidth": 93,
+          "naturalWidth": 93
+        },
+        {
+          "src": "https://img.shields.io/badge/PDF.js-C43D2D?style=for-the-badge",
+          "loaded": true,
+          "displayWidth": 70,
+          "naturalWidth": 70
+        },
+        {
+          "src": "https://img.shields.io/badge/Mermaid-C43778?style=for-the-badge&logo=mermaid&logoColor=white",
+          "loaded": true,
+          "displayWidth": 108,
+          "naturalWidth": 108
+        },
+        {
+          "src": "https://img.shields.io/badge/OpenAI-412991?style=for-the-badge",
+          "loaded": true,
+          "displayWidth": 76,
+          "naturalWidth": 76
+        },
+        {
+          "src": "https://img.shields.io/badge/Gemini-8861DD?style=for-the-badge&logo=googlegemini&logoColor=white",
+          "loaded": true,
+          "displayWidth": 95,
+          "naturalWidth": 95
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/paper-connections.png",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1774
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/workbench-light.png",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1400
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/reading-workflow.en.svg",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1117
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/summary-detail.png",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 685
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/evidence-return.gif",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1000
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/recipe-detail.png",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 685
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/system-architecture.en.svg",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 1392
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.en.svg",
+          "loaded": true,
+          "displayWidth": 358,
+          "naturalWidth": 988
+        }
+      ],
+      "diagrams": 3,
+      "headings": [
+        "Sasoo",
+        "Read the paper. Return to the evidence.",
+        "Keep the source beside the explanation",
+        "A paper's workflow",
+        "Tools for reading",
+        "Read through questions",
+        "Open the evidence, then return to your place",
+        "Carry experimental details into your next task",
+        "Get started",
+        "Downloads",
+        "API keys and costs",
+        "Data and privacy",
+        "Development",
+        "System architecture",
+        "Analysis pipeline",
+        "Run locally",
+        "License"
+      ],
+      "expandedWidth": 390,
+      "errors": []
+    },
+    {
+      "language": "en",
+      "width": 1280,
+      "theme": "light",
+      "scrollWidth": 1280,
+      "images": [
+        {
+          "src": "sasoo/docs/assets/logo.png",
+          "loaded": true,
+          "displayWidth": 96,
+          "naturalWidth": 800
+        },
+        {
+          "src": "https://img.shields.io/badge/Electron-43-47848F?style=for-the-badge&logo=electron&logoColor=white",
+          "loaded": true,
+          "displayWidth": 145,
+          "naturalWidth": 145
+        },
+        {
+          "src": "https://img.shields.io/badge/React-19-149ECA?style=for-the-badge&logo=react&logoColor=white",
+          "loaded": true,
+          "displayWidth": 121,
+          "naturalWidth": 121
+        },
+        {
+          "src": "https://img.shields.io/badge/TypeScript-6-3178C6?style=for-the-badge&logo=typescript&logoColor=white",
+          "loaded": true,
+          "displayWidth": 147,
+          "naturalWidth": 147
+        },
+        {
+          "src": "https://img.shields.io/badge/Vite-8-646CFF?style=for-the-badge&logo=vite&logoColor=white",
+          "loaded": true,
+          "displayWidth": 101,
+          "naturalWidth": 101
+        },
+        {
+          "src": "https://img.shields.io/badge/Tailwind%20CSS-4-0F766E?style=for-the-badge&logo=tailwindcss&logoColor=white",
+          "loaded": true,
+          "displayWidth": 164,
+          "naturalWidth": 164
+        },
+        {
+          "src": "https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white",
+          "loaded": true,
+          "displayWidth": 143,
+          "naturalWidth": 143
+        },
+        {
+          "src": "https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white",
+          "loaded": true,
+          "displayWidth": 101,
+          "naturalWidth": 101
+        },
+        {
+          "src": "https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white",
+          "loaded": true,
+          "displayWidth": 93,
+          "naturalWidth": 93
+        },
+        {
+          "src": "https://img.shields.io/badge/PDF.js-C43D2D?style=for-the-badge",
+          "loaded": true,
+          "displayWidth": 70,
+          "naturalWidth": 70
+        },
+        {
+          "src": "https://img.shields.io/badge/Mermaid-C43778?style=for-the-badge&logo=mermaid&logoColor=white",
+          "loaded": true,
+          "displayWidth": 108,
+          "naturalWidth": 108
+        },
+        {
+          "src": "https://img.shields.io/badge/OpenAI-412991?style=for-the-badge",
+          "loaded": true,
+          "displayWidth": 76,
+          "naturalWidth": 76
+        },
+        {
+          "src": "https://img.shields.io/badge/Gemini-8861DD?style=for-the-badge&logo=googlegemini&logoColor=white",
+          "loaded": true,
+          "displayWidth": 95,
+          "naturalWidth": 95
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/paper-connections.png",
+          "loaded": true,
+          "displayWidth": 900,
+          "naturalWidth": 1774
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/workbench-light.png",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 1400
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/reading-workflow.en.svg",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 1117
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/summary-detail.png",
+          "loaded": true,
+          "displayWidth": 685,
+          "naturalWidth": 685
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/evidence-return.gif",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 1000
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/recipe-detail.png",
+          "loaded": true,
+          "displayWidth": 685,
+          "naturalWidth": 685
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/system-architecture.en.svg",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 1392
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.en.svg",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 988
+        }
+      ],
+      "diagrams": 3,
+      "headings": [
+        "Sasoo",
+        "Read the paper. Return to the evidence.",
+        "Keep the source beside the explanation",
+        "A paper's workflow",
+        "Tools for reading",
+        "Read through questions",
+        "Open the evidence, then return to your place",
+        "Carry experimental details into your next task",
+        "Get started",
+        "Downloads",
+        "API keys and costs",
+        "Data and privacy",
+        "Development",
+        "System architecture",
+        "Analysis pipeline",
+        "Run locally",
+        "License"
+      ],
+      "expandedWidth": 1280,
+      "errors": []
+    },
+    {
+      "language": "en",
+      "width": 1280,
+      "theme": "dark",
+      "scrollWidth": 1280,
+      "images": [
+        {
+          "src": "sasoo/docs/assets/logo.png",
+          "loaded": true,
+          "displayWidth": 96,
+          "naturalWidth": 800
+        },
+        {
+          "src": "https://img.shields.io/badge/Electron-43-47848F?style=for-the-badge&logo=electron&logoColor=white",
+          "loaded": true,
+          "displayWidth": 145,
+          "naturalWidth": 145
+        },
+        {
+          "src": "https://img.shields.io/badge/React-19-149ECA?style=for-the-badge&logo=react&logoColor=white",
+          "loaded": true,
+          "displayWidth": 121,
+          "naturalWidth": 121
+        },
+        {
+          "src": "https://img.shields.io/badge/TypeScript-6-3178C6?style=for-the-badge&logo=typescript&logoColor=white",
+          "loaded": true,
+          "displayWidth": 147,
+          "naturalWidth": 147
+        },
+        {
+          "src": "https://img.shields.io/badge/Vite-8-646CFF?style=for-the-badge&logo=vite&logoColor=white",
+          "loaded": true,
+          "displayWidth": 101,
+          "naturalWidth": 101
+        },
+        {
+          "src": "https://img.shields.io/badge/Tailwind%20CSS-4-0F766E?style=for-the-badge&logo=tailwindcss&logoColor=white",
+          "loaded": true,
+          "displayWidth": 164,
+          "naturalWidth": 164
+        },
+        {
+          "src": "https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white",
+          "loaded": true,
+          "displayWidth": 143,
+          "naturalWidth": 143
+        },
+        {
+          "src": "https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white",
+          "loaded": true,
+          "displayWidth": 101,
+          "naturalWidth": 101
+        },
+        {
+          "src": "https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white",
+          "loaded": true,
+          "displayWidth": 93,
+          "naturalWidth": 93
+        },
+        {
+          "src": "https://img.shields.io/badge/PDF.js-C43D2D?style=for-the-badge",
+          "loaded": true,
+          "displayWidth": 70,
+          "naturalWidth": 70
+        },
+        {
+          "src": "https://img.shields.io/badge/Mermaid-C43778?style=for-the-badge&logo=mermaid&logoColor=white",
+          "loaded": true,
+          "displayWidth": 108,
+          "naturalWidth": 108
+        },
+        {
+          "src": "https://img.shields.io/badge/OpenAI-412991?style=for-the-badge",
+          "loaded": true,
+          "displayWidth": 76,
+          "naturalWidth": 76
+        },
+        {
+          "src": "https://img.shields.io/badge/Gemini-8861DD?style=for-the-badge&logo=googlegemini&logoColor=white",
+          "loaded": true,
+          "displayWidth": 95,
+          "naturalWidth": 95
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/paper-connections.png",
+          "loaded": true,
+          "displayWidth": 900,
+          "naturalWidth": 1774
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/workbench-light.png",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 1400
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/reading-workflow.en.svg",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 1117
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/summary-detail.png",
+          "loaded": true,
+          "displayWidth": 685,
+          "naturalWidth": 685
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/evidence-return.gif",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 1000
+        },
+        {
+          "src": "sasoo/docs/assets/readme-2026-09-25/recipe-detail.png",
+          "loaded": true,
+          "displayWidth": 685,
+          "naturalWidth": 685
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/system-architecture.en.svg",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 1392
+        },
+        {
+          "src": "sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.en.svg",
+          "loaded": true,
+          "displayWidth": 948,
+          "naturalWidth": 988
+        }
+      ],
+      "diagrams": 3,
+      "headings": [
+        "Sasoo",
+        "Read the paper. Return to the evidence.",
+        "Keep the source beside the explanation",
+        "A paper's workflow",
+        "Tools for reading",
+        "Read through questions",
+        "Open the evidence, then return to your place",
+        "Carry experimental details into your next task",
+        "Get started",
+        "Downloads",
+        "API keys and costs",
+        "Data and privacy",
+        "Development",
+        "System architecture",
+        "Analysis pipeline",
+        "Run locally",
+        "License"
+      ],
+      "expandedWidth": 1280,
+      "errors": []
+    }
+  ],
+  "existing_modified_app_files_unchanged": 14,
+  "source_sha256": {
+    "sasoo/frontend/src/App.tsx": "cd10ded61c90e176dc9bf6694a1d214f5f007e620057574e7c3bbd4b1cb9f8be",
+    "sasoo/frontend/src/components/AgentAvatar.tsx": "75ddfa0cdd4e86689dd3e8c55714f82447fcc65d139f377ea77f2df27e0333aa",
+    "sasoo/frontend/src/components/AnalysisPanel.reading.dom.test.tsx": "f9685555ea01c9006df309e27241b254396a4c3b63796891dc20fc6da3d50bc6",
+    "sasoo/frontend/src/components/AnalysisPanel.tsx": "092a16a22e827a6347e97194936e423c8b8d7085d27d948b67fea643dfc5be79",
+    "sasoo/frontend/src/components/ChatPanel.tsx": "0f1d08c154b9ccafcc99433eb3a33832a1b992005af195f51c6facbdbdc11c68",
+    "sasoo/frontend/src/components/CostDashboard.tsx": "d4447e9db50cdd8dfaa63f2445a3b6de527e201973908d9fbcf0b95d4bcac5d9",
+    "sasoo/frontend/src/components/DeepDiveSummary.dom.test.tsx": "b62bd4af512fe1054c6747355bdc9f4f4755df34b86c5cac97f7dfb611c0b492",
+    "sasoo/frontend/src/components/DeepDiveSummary.tsx": "a94bc484cbe9f79a5eca0ebe164d7983e49c59bd572bd4f106349eb0c16a1fa9",
+    "sasoo/frontend/src/components/ErrorBoundary.tsx": "9962d4f97959ad8ddf2a475c60359eecd68735a8f7708308693036dbee61135f",
+    "sasoo/frontend/src/components/ExperimentPlanTab.tsx": "8e9d90b1b725c36cc2b55965853bfe8752bdd74e22a46648fc94cb9114503493",
+    "sasoo/frontend/src/components/FigureGallery.tsx": "befab2c7049bb96e75da51902ebc7d0766d5852eb22e24608494d550e223ca13",
+    "sasoo/frontend/src/components/LevelSlider.tsx": "facf9a957af4d86a13ee89d1c00e975db826bc734215fa739aad596b40641b42",
+    "sasoo/frontend/src/components/Markdown.reading.dom.test.tsx": "396e2b1ec061ca22513fc2155aaecfa1224b79fe875881fc0c9d1a177198bb2c",
+    "sasoo/frontend/src/components/Markdown.tsx": "a8de689fe6a2d7f97d711e2c0b7831ba58716e93e00a10df2edb9d2c402031cc",
+    "sasoo/frontend/src/components/MermaidRenderer.tsx": "c87646cf9edefd1c81cd165133b5c73039aecefbb17fe0375c33a353746ed901",
+    "sasoo/frontend/src/components/PdfViewer.tsx": "677c174bb7fef2a3c04b1a148bb1ad884ee667b86a0b8a17914dbb0e812f5294",
+    "sasoo/frontend/src/components/ProgressTracker.tsx": "3527ad5aec5c93888f6d7dc2d010e53b0f6d4d454d07b2bdf82976a0dba7e049",
+    "sasoo/frontend/src/components/ReadingCodeBlock.dom.test.tsx": "24ade2bcc6de769f29a115057e75f190dde8e3ec7f114f651429ea5e83d10563",
+    "sasoo/frontend/src/components/ReadingCodeBlock.tsx": "1a6a6851067d19cb657068aeee7e828c018181cb2317ce37307447bd6cf8f831",
+    "sasoo/frontend/src/components/ReadingGuideTab.tsx": "aeb9925a11ebd436a9e4ded9a686d6ec070e4aa3a646433f7dc1a9219ea36f72",
+    "sasoo/frontend/src/components/RecipeCard.tsx": "fb7feb0e86b75f266b810ec976813428638b4ebce27217ac26291b8586c4ff96",
+    "sasoo/frontend/src/components/ReportExport.dom.test.tsx": "cee52bfbb3c4424d82d8a70d447950188f310d654c2a997d049a235358cee328",
+    "sasoo/frontend/src/components/ReportExport.tsx": "24b50eb9c0ab02f205e17b083cf2528ae2e8573777253645a5f8f9ac84b69835",
+    "sasoo/frontend/src/components/SectionOutline.tsx": "b0dbb71ddde3231d563c3ec01841d379235359dd7a6e8ce20d75320b23af4622",
+    "sasoo/frontend/src/components/TableGallery.tsx": "989698e06a1bb393e6e4305761fb116547795f55677febde248990f091911544",
+    "sasoo/frontend/src/components/Titlebar.tsx": "d223432bdb24d933ea74aca43cf9780dc67ae080bd07cb35f375d68fde39e778",
+    "sasoo/frontend/src/components/Toast.tsx": "4b9c27d4ef71daf03ce9a09ededacea5828202eeaf76467e3cfaacbdaffbdccf",
+    "sasoo/frontend/src/components/UpdateBanner.tsx": "4820b69e79fdcb65f0e1407551abbb755ac75cc33ce1c7e344ed8807885fd05b",
+    "sasoo/frontend/src/components/VisualizationGallery.tsx": "cf2bfb586ed979a94edc6559e20d489f883eeb1d3668f60b2ba633455b0707cf",
+    "sasoo/frontend/src/components/amicro/ArcCards.tsx": "d1075e7881febf71b5288bfc42bd4383f3c72d5c0f6ceb4b14ccc6c5f23eea2b",
+    "sasoo/frontend/src/components/amicro/CascadeIn.tsx": "4d7e408de36b385103c60c7d3e0d349a73c15f61b00b0c6c552fdebc5cadb5e8",
+    "sasoo/frontend/src/components/amicro/CoverFlow.tsx": "e3e314d4c52f7196c4cab640498991626200b19caaae381c7c22b8add72ed918",
+    "sasoo/frontend/src/components/home/RecentPaperRow.tsx": "d5d39f19253808dfb100562315e245152fc71072dd5406eef34e2a74b47b1b8c",
+    "sasoo/frontend/src/components/home/UploadPanel.tsx": "a577d761b98726cdf55b4a43080fbe7f01ab17cfbdf9a45f54b5069ed091d92c",
+    "sasoo/frontend/src/components/icons/AppIcon.tsx": "8592c23a812568e31f8b024531bef22d03e8189615f5adb5c00e328af547c7fb",
+    "sasoo/frontend/src/components/icons/index.ts": "db7a8824667bec7651dc12024cf957b4616946b223d39bfd10d7eb51275f13d7",
+    "sasoo/frontend/src/components/layout/AppSidebar.tsx": "ba32950b46033a700d8b9b020d0a950d03cbf82dde11a484e70323cfdb988759",
+    "sasoo/frontend/src/components/layout/PageScaffold.tsx": "7ae97c6034af634b246375e2fa757dd6142161b0690756f0f27e9b6c4e790d67",
+    "sasoo/frontend/src/components/layout/WorkbenchScaffold.tsx": "58955ab4cd3054ef6fbb489b2e81ff3285847b3aefae8fc8b65b748b6f3cf8b9",
+    "sasoo/frontend/src/components/profile/AreaPicker.tsx": "c9149a07b891d93a33e7e6bcc3adb3aee8a89dba5f124a8d8332669e9eed5b00",
+    "sasoo/frontend/src/components/profile/LevelCards.tsx": "9a0a98a0ba6cf6715ae6ffe36dfb1c66399dcc76a7acf6a9e617a5c78869e70b",
+    "sasoo/frontend/src/components/settings/ProviderCards.tsx": "d0c817af0404c2f37f238d1e93471a4270e80567068f1dc9d42bf784936759ab",
+    "sasoo/frontend/src/components/settings/SaveBar.tsx": "262a81c13ee30d4eedbbf8bd8f3f5fb474a0ba127b27c32e2b21f1d46991f007",
+    "sasoo/frontend/src/components/settings/SettingPrimitives.tsx": "878bddc681cdc0c5fa1d0349d8987eec249f45889aefa093b147a974774b36a9",
+    "sasoo/frontend/src/components/synthesis/DiagramCard.tsx": "cecb159572d631498ec199480a518d0f1bcbca87c6429ea006d42d86aac1cbac",
+    "sasoo/frontend/src/components/synthesis/DiagramLightbox.dom.test.tsx": "d0181fe027e17074ea98eace6bb240ee8804c9f6b4903a966dd28b247b116e02",
+    "sasoo/frontend/src/components/synthesis/DiagramLightbox.tsx": "503f0fd583ef7162e9527c482d7c5b906bc9b20d68f7b8cf29d1719ddd17aed8",
+    "sasoo/frontend/src/components/synthesis/EquationChain.test.ts": "c0ac0ae6e57cd18a6133c3be558383faefae855a3091782987c5504ea30ba1b7",
+    "sasoo/frontend/src/components/synthesis/EquationChain.tsx": "43c8ff1dc62f2ee5bd9ac5114c4f3796b259c3c2b6fba09062714ffa4cefda15",
+    "sasoo/frontend/src/components/synthesis/FigureStrip.tsx": "74bf753ae5d854362aa9e9e7bfa87c63c24491f7045736e34393d44afd173b61",
+    "sasoo/frontend/src/components/synthesis/SummaryBlock.dom.test.tsx": "6e760d3a183cc6404f968d1afaaaaa52bdaecea9d62bc737af649b8663c88902",
+    "sasoo/frontend/src/components/synthesis/SynthesisView.tsx": "657e90a501fb3b96e685d8397728c8ffe828ef8fe8624658b3fbb6843f9f9f54",
+    "sasoo/frontend/src/components/synthesis/blocks.test.ts": "22bca10b96f3dc1e756e8410e3c5f73e130e9f7d1addc7315fc69fa7c7d38bfb",
+    "sasoo/frontend/src/components/synthesis/blocks.tsx": "448624ff081052c69ac40115c9b5feafd1358a125242a61fd76aa8ace081b6d8",
+    "sasoo/frontend/src/components/ui/Badge.tsx": "c71b315aaef55ca758d6f639e12bec7ab5f7b0774d96b52853f3fdb64a03fd89",
+    "sasoo/frontend/src/components/ui/ContentState.tsx": "0e763f8adbe0206328da1eaef68e96c7b6d9ef157041261b637b75d66a6ca359",
+    "sasoo/frontend/src/components/ui/Modal.tsx": "e68576537dbc468ccb992d9721dd5eaab22f397c2947ecca48527e6656b0a463",
+    "sasoo/frontend/src/components/ui/Popover.tsx": "6fd076a2a6247b097a178c2ed400e0311099ee98b08cd58cd6358dd583900e2d",
+    "sasoo/frontend/src/components/ui/Select.tsx": "ffea505405bf9ccc514624a4fb3ffb765e02a0c7b2c78ab5140822d7c04ef4a3",
+    "sasoo/frontend/src/components/ui/Toggle.tsx": "8547f613303535c3d8d9865a0fa1d8a8a846dc49b15dc1d734f9ec81976b1285",
+    "sasoo/frontend/src/components/ui/Tooltip.tsx": "e19ca1b21e20ec54d97da1d9e796ca08a23af1cfbc208eca77a4aaef700a4244",
+    "sasoo/frontend/src/components/ui/index.ts": "473140d3b06b76a002629cbe07c6c3e01f3d86e64521b6d49484c3119e1c0791",
+    "sasoo/frontend/src/components/workbench/SelectionExplainPopover.tsx": "305e4f90e13799464e94096da182e17c542bf76eb7268e36f48825622bd577d7",
+    "sasoo/frontend/src/components/workbench/WorkbenchHeader.tsx": "6aa1eed09ac33f3ab9d1f079f6fcad75ca43e743dbc9fa422f425721cd0066f8",
+    "sasoo/frontend/src/hooks/useAnalysis.ts": "6f8832cadc1c0c0153bfcaa3129eec9f5d0aeb9cacc28cbe682f97aee4a6c084",
+    "sasoo/frontend/src/hooks/useFocusTrap.ts": "ef33c430f0ee464fd4f577681ed7d676f09c1fd580e1fd8fa4d5e7ecafcf125f",
+    "sasoo/frontend/src/hooks/usePapers.ts": "0e6bc9fa9eb2dc3d920641555011d2bd47c1dde24993164f12c1ff4001f5f5f4",
+    "sasoo/frontend/src/hooks/usePendingDelete.ts": "bc8048072d919aae11de710f61d49af2420b78e9e8ab4bf95bac2f696dcd3cbb",
+    "sasoo/frontend/src/hooks/useReadingGuide.ts": "482e91782d0a4a4964946bea463d2e11178f22ef9d617f8d96b49da05e71f611",
+    "sasoo/frontend/src/hooks/useWorkbenchAnalysisControls.ts": "ccb360de93216804d7652098286ee4cd9bcb2d1433aa175de92a4e554a8534ef",
+    "sasoo/frontend/src/hooks/useWorkbenchLayout.ts": "ff673dd701c98258bb846a322282cba3370a14cee1ae859b7d5dc62b830d1e74",
+    "sasoo/frontend/src/index.css": "09812f5c7cf15d1a5b7e2e8e99904797b3925d480cb106b4cb70a99d51fbc2e8",
+    "sasoo/frontend/src/lib/agents.ts": "5cb94aa7a13c45b569028256abbaf3b6fd26c373645e8cb3e43c809f94f79c4e",
+    "sasoo/frontend/src/lib/api.ts": "fcc7ee82dc816009f84d234148455e635359c47bd260ba873de5033536c2ce56",
+    "sasoo/frontend/src/lib/artifactState.test.ts": "1dd70ad8339e97bd6b1cec9e5768d9fd0d42e3ccde0b4de0f5be37c3416f2e26",
+    "sasoo/frontend/src/lib/artifactState.ts": "5b5b1746b73f5de082e18554aea88d32e6f7265d7ddc979d7b43097c4ab725c9",
+    "sasoo/frontend/src/lib/citations.test.ts": "05d45ff7e20cec1ebe8d0ecc73536c716494dd1b2d6ddc1ffea6afc3f3e79020",
+    "sasoo/frontend/src/lib/citations.ts": "8677184196a76d0a2a4a1bea9185b5147a54da7a89649c8043710d22ed6c7f01",
+    "sasoo/frontend/src/lib/confidence.ts": "d9d46429083b4906c0297d789e28443395de1d1572d928f9e607aaec5bb8b14f",
+    "sasoo/frontend/src/lib/coverflow.test.ts": "0b71b6ffbbbcb4def587a887fdcfe649735954a62ceefc55e3967e98ed1bb7d7",
+    "sasoo/frontend/src/lib/coverflow.ts": "b2fc21e9db6e5aac17f53b075e887bfbc33f78d199a1d377ded2454ed8fb8698",
+    "sasoo/frontend/src/lib/download.test.ts": "a27d7e25428894f92b3c4d473407063a41c6b2bb23dbf9e41314c38cef39170c",
+    "sasoo/frontend/src/lib/download.ts": "7036dc0ba63ae4af191a08381cbdd2067e70220f84468731ec6d40c9a2056b3c",
+    "sasoo/frontend/src/lib/evidence.test.ts": "fd330c0cf6e88aa0ba4af8b472c9c0e5e24378bcdf5c53554cedf5e91aecbff2",
+    "sasoo/frontend/src/lib/evidence.ts": "4b853a14765afe346f42b6704c74f9bfb8287d38a27258a770ede3af7b882f87",
+    "sasoo/frontend/src/lib/guideCache.test.ts": "c465fb64720fef1e0d694582915308e1c4841675bbcfaf1d7093acef39573e4f",
+    "sasoo/frontend/src/lib/guideCache.ts": "e158bc2137efc35a329e51d4b6ced54f5c5f6284c5ec63eca3467f52e5fde4af",
+    "sasoo/frontend/src/lib/josa.test.ts": "8d21f28952363249ba1ee26fd4de694be894a06ab48a17f54648b7f72b050c2f",
+    "sasoo/frontend/src/lib/josa.ts": "dd9b2ae085b8f096017ed4b9212474131745e4b91e758d017dcb5fff32564dbd",
+    "sasoo/frontend/src/lib/mathDelimiters.test.ts": "9bee0e74f7abf889d78a1c6ab89bbe8bdfe6a18dcac17d3d5ec51d82929878cc",
+    "sasoo/frontend/src/lib/mathDelimiters.ts": "0908114ca3decf167bf46a5bff99081475e150446ce6d64ed1d059bb07ea31ab",
+    "sasoo/frontend/src/lib/mdOutline.test.ts": "5e59e8ba4b2d6a955aac0f741afee2e58b4d3a6e37aa79eb6b457d778f857724",
+    "sasoo/frontend/src/lib/mdOutline.ts": "be0b8a1408ca9da919f47b7dd42184c7dec286334a69f620d66864d842ec246b",
+    "sasoo/frontend/src/lib/pdfHighlight.test.ts": "04f5072174ae30e6b96a714b128b61dba983d860aeee5cf92018b67ce26d0518",
+    "sasoo/frontend/src/lib/pdfHighlight.ts": "8c454ae552e6de0b8741d7772c3aa089b0b3ac4f8782de4fd4b6451e96fa5f1f",
+    "sasoo/frontend/src/lib/pendingDelete.test.ts": "0547650112c4c9fe82714c5df15c76023d2bc02fdb26f4f0d2cb0291ad1b5af5",
+    "sasoo/frontend/src/lib/pendingDelete.ts": "2f6e48164c31c568baaca6f599e9d8cc1cea0c2407314ca622f784a8b28a62af",
+    "sasoo/frontend/src/lib/readingGuide.test.ts": "af8338dde47ed7f881722a6a30de97347f3cb989463a50062dc7f73307def9a5",
+    "sasoo/frontend/src/lib/readingGuide.ts": "735d683898872d31594d904ea01ae6525c0e091a79dadeaf591720d9a94924ae",
+    "sasoo/frontend/src/lib/readingNavigation.ts": "e2bfca3a280228f378f5010d9d28cf228ae1f4b3d4ac638f071ff8fd09663a17",
+    "sasoo/frontend/src/lib/recipeCsv.test.ts": "a28132bff06baf62e8a7f79ab8a320cd6e91990d201a5614b03325c38c8ca4ab",
+    "sasoo/frontend/src/lib/recipeCsv.ts": "54b8d5c3bd9b3cffde5bb232e642f092b74258448294d6774dbc9b3ad2e767fb",
+    "sasoo/frontend/src/lib/rehypeHeadingIds.pipeline.test.ts": "ae1c9cf8c93ac61e50a2c306131be27d1867d774de62edd92b154734ff9c8e40",
+    "sasoo/frontend/src/lib/rehypeHeadingIds.test.ts": "4a31ae4468361de59dfb3c210acbb0436e9c31f144d9714df3b7da870a2917d6",
+    "sasoo/frontend/src/lib/rehypeHeadingIds.ts": "b872322711d720b2ca1eb92d5c06f51cf2b094381a1041e778b893a41d463de3",
+    "sasoo/frontend/src/lib/reportExport.dom.test.tsx": "db0ef1f791b7b65c768c053add158b8411150b6b144a3ea111cd63e619af30b3",
+    "sasoo/frontend/src/lib/reportExport.tsx": "4cb6d417ed59bb1d43d6cdb960be20a49e828f1e3172cca6d8b934c0b68edf5d",
+    "sasoo/frontend/src/lib/selectionExplain.test.ts": "201d2ede74eff14b8bbac60b21a400977b7e4f96f0ac29284ea36433dad4c838",
+    "sasoo/frontend/src/lib/selectionExplain.ts": "4153bfbf3af02d2f1d5fefe225a45b6dd256b19a0ba60e8c2dc220e3c100b58c",
+    "sasoo/frontend/src/lib/spring.ts": "2f7121757d4ca93761db4393884a1e0edb77c699a13c6f22b988b89faf4fb922",
+    "sasoo/frontend/src/lib/strings.ts": "daf0702f0f4889c99cbd11e5ec0da81b0908e68f80ad322022ecb2df3c7895a2",
+    "sasoo/frontend/src/lib/summaryContent.test.ts": "1a30d289144406d9481fa9c9981cd9fc4a50f39ac8e3bc07404fe891a3b294e7",
+    "sasoo/frontend/src/lib/summaryContent.ts": "89f5b31dfdd13455cae7fbb389bce38e1b48a379a84dbab7803dd0dd0b57acf0",
+    "sasoo/frontend/src/lib/svgSize.test.ts": "7f3e758d1f5d8abedaff6f99f9563942d3477b13dde06d12d33927357f092126",
+    "sasoo/frontend/src/lib/svgSize.ts": "8687563f8c266e88bc3cb608b677517c78dc97a8030d2cfa3fe2cdf33cde69bd",
+    "sasoo/frontend/src/lib/synthesisBlocks.test.ts": "57d53959f457f6838e0de4219c191539f86d3b3387926fc04efd5708f9090f29",
+    "sasoo/frontend/src/lib/synthesisBlocks.ts": "4980eb794dc91ed7438ef324ccd88eec296f21f9a328c4890204908f9c874541",
+    "sasoo/frontend/src/lib/theme.ts": "34a73fa160694fa8b1a6a96a01676450af41a7314757f48f4267e3031dc20150",
+    "sasoo/frontend/src/lib/tokenBuffer.test.ts": "b3799271e272714f3ba3ba7e4c66d39c21e8c1a0f488722e5d4eec9e9d9ecfb0",
+    "sasoo/frontend/src/lib/tokenBuffer.ts": "59dd97cd19e056949be3db50edd88c936ea53d1bc73c9daf6c3881147f47f13a",
+    "sasoo/frontend/src/lib/vizExport.ts": "45a9cae58d5a7b64a05d657743cc3c7fcbd4a2013c1d502835f24a12f20d915f",
+    "sasoo/frontend/src/lib/workbenchSummaries.test.ts": "f7960f136f8d793e4cc30ad364fc1b7fb9bf97b2f8db05bd55922ea36e6a5fbd",
+    "sasoo/frontend/src/lib/workbenchSummaries.ts": "b2547c005aebe5a3754246ed3c1d7d490eb8961e80872fe777126a3612a18b29",
+    "sasoo/frontend/src/main.tsx": "99de6eaf3196be618b80c607e5f79ba6f740dfe3e8def6f128276ef5ea7e700b",
+    "sasoo/frontend/src/pages/Home.tsx": "9b63833a8111f719b4315da1ea0fb63606e5abff992b841543f4e1e7b56ac501",
+    "sasoo/frontend/src/pages/Library.tsx": "17a0be43b0ae6c8c1de0202026a34aa7654e562817b941c794f8be4921486f23",
+    "sasoo/frontend/src/pages/Profile.tsx": "6918fc39a175d83817e390978fca27666703bc72bffd0b68dc5d752bbfbfcc6a",
+    "sasoo/frontend/src/pages/Settings.tsx": "2f20e847624c59da3d206a19c4cb908801b2da8490d21957e722c18cc1a88655",
+    "sasoo/frontend/src/pages/Workbench.tsx": "82f153505d52e2b8a82399f538db781edd74e8b71bc39aab873162be70b01473",
+    "sasoo/electron/app-quit-handler.test.ts": "24bf98f50fa0213abc8137bb143e9192dc65f7979ce2a008abd1899e830940f1",
+    "sasoo/electron/app-quit-handler.ts": "95197b650a32a41129b12ac0914da888471d0747cf4216942548e6e541d04527",
+    "sasoo/electron/backend-process-launcher.test.ts": "14e8e3b890af2866ace563c1f1cc44de67ffc3333e8c6834f6f4120d02cec8b0",
+    "sasoo/electron/backend-process-launcher.ts": "8c46ebe1ab763c5bb7fba20fcf2818e10e8bdb810ab3066ae8ae340f1be93e7e",
+    "sasoo/electron/backend-process-stopper.test.ts": "7653d5b6b464166e43c5b7a3b5ff6a1a1e6b9e6bba1595a6a67085fb7875498f",
+    "sasoo/electron/backend-process-stopper.ts": "04cbccbe1b0e5b1feb9c57b46642bd1c7cbb6b505c44f0de42cdad03cc2d310e",
+    "sasoo/electron/config.ts": "ee95249d7e38673da8ae928d1a8dffbbf8ce70d0bac6dd0e6e61a35a0a7e9a8a",
+    "sasoo/electron/log-batcher.test.ts": "8ac48b42ad1bf32bfc913056425e0e8fe2b8fc6b45d56e9467c4a65a003ad023",
+    "sasoo/electron/log-batcher.ts": "b0bcc25464531d0cea31a2fad9a63df43a59ea1b3b3301c4d170c3c0e82994ab",
+    "sasoo/electron/main.ts": "5a81f1a5de438dc118ad0b170d1d7342b30726d4e6441f3601ada5ea53dc5a80",
+    "sasoo/electron/preload.ts": "5ae2745f733570843498495a5a8f08f4beb65b499347c001804a035e7a8df816",
+    "sasoo/electron/python-manager.test.ts": "33a46e0daf729b4d640431401f39feb2109be885e11f2fdd69b54323044f5393",
+    "sasoo/electron/python-manager.ts": "8713ba77b2c59b6091bbbc743232a729eb9d25d934c04159bd7a909886361587",
+    "sasoo/electron/stdio-epipe-guard.test.ts": "f3baa464816e5d178ce41b9f346b2c02ce832d1a7b77ff82952456e59e97a603",
+    "sasoo/electron/stdio-epipe-guard.ts": "3ec52ea5ac5abc019c1008868be50a15f0c335f5232c3183b661d5da471da2f3",
+    "sasoo/electron/updater.ts": "aee30d523da6e71ed01ff0e2109b5d4851921f1c77ad6ee52b6afe5f2d3a3aab"
+  },
+  "readme_sha256": {
+    "README.md": "56588a1fc777e579861c6e153e266b80d3c773bff688f65926fb1a2ce4584172",
+    "README.en.md": "4b7f183d5fd63f78da2e65f3eb883acfcbcade32dd97b1c3abaf609cff7cc56f"
+  },
+  "limitations": [
+    "Not GitHub server rendering",
+    "Not scientific validation",
+    "Not package or Windows validation"
+  ],
+  "tooling_recovery": [
+    "Initial fixture copy encountered Electron profile sockets; a fresh copy excluded Electron profiles.",
+    "Capture harness retried after blocked generation requests left an empty transient view. Saved DB results were intact; page reload restored them.",
+    "First GIF conversion used a crop larger than the screencast frame; final crop uses measured frame dimensions.",
+    "Bundled Playwright headless executable was absent; local rendering used installed Google Chrome."
+  ]
+}

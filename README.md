@@ -1,270 +1,232 @@
 <div align="center">
 
-<img src="sasoo/docs/assets/logo.png" alt="Sasoo logo" width="132" />
+<img src="sasoo/docs/assets/logo.png" alt="Sasoo 로고" width="96" />
 
 # Sasoo
 
-### 논문을 읽기 전에 구조를 세우고, 읽는 동안 figure를 해석하고, 읽은 뒤에는 재현 파라미터까지 남기는 AI 연구 워크벤치
+### 논문을 읽고, 근거로 돌아가다
 
-<p>
-  <a href="https://github.com/dosigner/sasoo/releases/latest">
-    <img src="https://img.shields.io/badge/release-latest-111827?style=for-the-badge" alt="Latest release" />
-  </a>
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-334155?style=for-the-badge" alt="Platforms" />
+PDF 원문 옆에서 논문의 흐름을 이해하고, 그림과 표를 확인하고, 실험 조건을 정리하는 AI 연구 워크벤치.
+
+<p align="center">
+  <a href="sasoo/package.json"><img src="https://img.shields.io/badge/Electron-43-47848F?style=for-the-badge&amp;logo=electron&amp;logoColor=white" alt="Electron 43" /></a>
+  <a href="sasoo/frontend/package.json"><img src="https://img.shields.io/badge/React-19-149ECA?style=for-the-badge&amp;logo=react&amp;logoColor=white" alt="React 19" /></a>
+  <a href="sasoo/frontend/package.json"><img src="https://img.shields.io/badge/TypeScript-6-3178C6?style=for-the-badge&amp;logo=typescript&amp;logoColor=white" alt="TypeScript 6" /></a>
+  <a href="sasoo/frontend/package.json"><img src="https://img.shields.io/badge/Vite-8-646CFF?style=for-the-badge&amp;logo=vite&amp;logoColor=white" alt="Vite 8" /></a>
+  <a href="sasoo/frontend/package.json"><img src="https://img.shields.io/badge/Tailwind%20CSS-4-0F766E?style=for-the-badge&amp;logo=tailwindcss&amp;logoColor=white" alt="Tailwind CSS 4" /></a>
+  <a href=".github/workflows/release.yml"><img src="https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&amp;logo=python&amp;logoColor=white" alt="Python 3.12" /></a>
 </p>
 
-<p>
-  <img src="https://img.shields.io/badge/Electron-43-1f2937?style=flat-square&logo=electron&logoColor=9feaf9" alt="Electron 43" />
-  <img src="https://img.shields.io/badge/React-18-0f172a?style=flat-square&logo=react" alt="React 18" />
-  <img src="https://img.shields.io/badge/FastAPI-0.115-065f46?style=flat-square&logo=fastapi" alt="FastAPI" />
-  <img src="https://img.shields.io/badge/TypeScript-5.3-1d4ed8?style=flat-square&logo=typescript" alt="TypeScript 5.3" />
-  <img src="https://img.shields.io/badge/Python-3.12-1d4ed8?style=flat-square&logo=python" alt="Python 3.12" />
+<p align="center">
+  <a href="sasoo/backend/requirements.txt"><img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&amp;logo=fastapi&amp;logoColor=white" alt="FastAPI" /></a>
+  <a href="sasoo/backend/requirements.txt"><img src="https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&amp;logo=sqlite&amp;logoColor=white" alt="SQLite" /></a>
+  <a href="sasoo/frontend/package.json"><img src="https://img.shields.io/badge/PDF.js-C43D2D?style=for-the-badge" alt="PDF.js" /></a>
+  <a href="sasoo/frontend/package.json"><img src="https://img.shields.io/badge/Mermaid-C43778?style=for-the-badge&amp;logo=mermaid&amp;logoColor=white" alt="Mermaid" /></a>
+  <a href="sasoo/backend/services/model_registry.py"><img src="https://img.shields.io/badge/OpenAI-412991?style=for-the-badge" alt="OpenAI" /></a>
+  <a href="sasoo/backend/services/model_registry.py"><img src="https://img.shields.io/badge/Gemini-8861DD?style=for-the-badge&amp;logo=googlegemini&amp;logoColor=white" alt="Gemini" /></a>
 </p>
 
-<p>
-  <a href="https://github.com/dosigner/sasoo/releases">
-    <img src="https://img.shields.io/badge/Downloads-GitHub%20Releases-111827?style=for-the-badge&logo=github&logoColor=white" alt="GitHub Releases" />
-  </a>
-</p>
+<sub>개발 소스의 기술 스택. 배지를 누르면 실제 의존성 또는 모델 설정으로 이동합니다.</sub>
 
-<p>
-  Sasoo는 PDF를 그냥 요약하지 않습니다.<br/>
-  논문을 보관 가능한 단위로 정리하고, 도메인에 맞는 에이전트를 붙이고, figure/table과 recipe를 다시 꺼내 보기 쉬운 형태로 남깁니다.
-</p>
+[**다운로드**](https://github.com/dosigner/sasoo/releases/latest) | [시작하기](#시작하기) | [개발](#개발) | [English](README.en.md)
+
+<img src="sasoo/docs/assets/readme-2026-09-25/paper-connections.png" alt="논문 속 강조 구절이 그림과 메모로 이어지는 보라색 연결선. 제품의 읽기 흐름을 표현한 AI 생성 일러스트입니다." width="900" />
 
 </div>
 
-<div align="center">
-  <img src="sasoo/docs/assets/procedure.ko.svg" alt="Sasoo 5단계 분석 워크플로" width="900" />
-</div>
+## 원문과 해설을 한 화면에서
 
-<div align="center">
-  <img src="sasoo/docs/assets/demo.gif" alt="PDF 업로드부터 에이전트 배정, 시각화, figure 해설, recipe 추출까지 26초 데모" width="900" />
-</div>
+Sasoo는 논문을 읽는 동안 원문을 곁에 둡니다. 요약에서 전체 흐름을 잡고, 섹션별 질문으로 내용을 따라가며, 연결된 Figure와 Table을 눌러 근거를 확인할 수 있습니다. PDF와 분석 결과는 로컬 라이브러리에 보관해 다시 열어 볼 수 있습니다.
 
+> **개발 미리보기:** 아래 화면과 기능 설명은 2026-09-25 개발 작업 트리 기준입니다. 저장된 분석을 불러온 한국어 UI이며, 일부 화면 변경은 미커밋 상태입니다. 공개 설치본은 [v1.0.0](https://github.com/dosigner/sasoo/releases/tag/v1.0.0)으로, 화면과 기능이 다를 수 있습니다. v1.0.1은 검증 중입니다.
 
-<!-- README-I18N:START -->
+<p align="center">
+  <img src="sasoo/docs/assets/readme-2026-09-25/workbench-light.png" alt="왼쪽의 Diffusion Policy 원본 PDF와 오른쪽의 요약을 나란히 보여주는 Sasoo 개발 화면" width="1000" />
+</p>
 
-**한국어** | [English](./README.en.md)
+## 논문 한 편의 workflow
 
-<!-- README-I18N:END -->
+PDF를 올리고 분석을 시작한 뒤, 해설과 원문을 오가며 읽습니다. 저장된 결과는 라이브러리에서 다시 열 수 있습니다.
 
----
+<p align="center">
+  <a href="sasoo/docs/assets/architecture-2026-09-25/reading-workflow.ko.svg"><img src="sasoo/docs/assets/architecture-2026-09-25/reading-workflow.ko.svg" alt="PDF 업로드, 문맥 준비, 외부 AI 분석, 워크벤치 읽기와 근거 복귀, 로컬 저장을 연결한 workflow" width="1000" /></a>
+</p>
 
-<div align="center">
-  <img src="sasoo/docs/assets/storyline.png" alt="Sasoo 스토리라인: 논문 더미 정리, figure 검토, 라이브러리 보관" width="900" />
-  <p><sub>읽기 전 — 구조를 세우고 · 읽는 동안 — figure를 해석하고 · 읽은 뒤 — 재현 파라미터까지 남깁니다</sub></p>
-</div>
+[확대 보기](sasoo/docs/assets/architecture-2026-09-25/reading-workflow.ko.svg) | [탐색용 HTML](sasoo/docs/assets/architecture-2026-09-25/reading-workflow.ko.html)
 
-## 3분 안에 시작하기
+도식은 Archify로 제작했습니다. 탐색용 HTML은 파일을 내려받아 브라우저에서 열면 검색, 확대, 연결 관계 탐색을 사용할 수 있습니다. 한국어 도식의 고정 뷰어 버튼은 영어입니다.
 
-Gemini 무료 키만 있으면 비용 없이 바로 써볼 수 있습니다.
+## 읽는 동안 필요한 도구
 
-1. **다운로드** — [GitHub Releases](https://github.com/dosigner/sasoo/releases/latest)에서 `Sasoo-<version>-arm64.dmg`(macOS Apple Silicon)를 받습니다.
-2. **설치** — `Sasoo.app`를 `/Applications`로 옮깁니다. 실행이 차단되면 아래의 [macOS note](#macos-note) 절차(명령 1줄)를 따릅니다.
-3. **무료 API 키 발급** — [Google AI Studio](https://aistudio.google.com/apikey)에서 Google 계정으로 로그인하고 `Get API key`를 누르면 끝입니다. 신용카드 등록 없이 무료 티어로 발급되며, 핵심 분석은 이 Gemini 키 하나로 동작합니다.
-4. **첫 분석** — 앱 실행 → `Settings`에 키 입력 → PDF를 드래그하면 도메인 감지와 5단계 분석이 시작됩니다.
+### 질문을 따라 논문 이해하기
 
-## Why Sasoo
+**요약**에서 문제, 기존 접근, 해결 원리, 결과와 한계를 읽습니다. 섹션별 질문과 짧은 답을 먼저 훑고, 필요한 곳에서 근거와 설명을 펼쳐 보세요. **읽기 안내**에는 원문에서 확인할 질문과 조건이 모입니다.
 
-<table>
-<tr>
-<td width="33%" valign="top">
-<strong>Archive-first</strong><br/>
-한 번 올린 논문은 끝나지 않습니다. PDF, figure, table, recipe, 질문 기록, 보고서가 모두 라이브러리에 남습니다.
-</td>
-<td width="33%" valign="top">
-<strong>Figure-aware</strong><br/>
-본문 요약만 하지 않고 figure/table 추출, caption 매칭, 시각 자료 품질 검토, 개별 figure 설명까지 이어집니다.
-</td>
-<td width="33%" valign="top">
-<strong>Agent-routed</strong><br/>
-광학, 바이오, 딥러닝, 회로 계열 에이전트로 논문마다 다른 시선으로 읽고, 사용자 데이터 폴더에 `.md` 파일을 넣어 나만의 에이전트도 더할 수 있습니다.
-</td>
-</tr>
-</table>
+<p align="center">
+  <img src="sasoo/docs/assets/readme-2026-09-25/summary-detail.png" alt="논문 섹션별 질문, 짧은 답, 근거와 설명 펼치기 버튼을 보여주는 요약 확대 화면" width="685" />
+</p>
 
-## Current Release
+### 설명에서 그림과 표로, 다시 읽던 곳으로
 
-현재 릴리스는 [`v0.8.0`](https://github.com/dosigner/sasoo/releases/latest)입니다. macOS Apple Silicon용 미서명 ZIP/DMG와 Windows x64용 미서명 설치본을 배포합니다.
+요약에 연결된 Figure/Table을 누르면 해당 자료와 PDF 페이지로 이동합니다. **요약으로 돌아가기**를 누르면 읽던 위치로 복귀합니다. 연결할 원문 자료가 있는 참조에서 사용할 수 있습니다.
 
-- macOS Apple Silicon 빌드는 미서명 ZIP/DMG로 배포하며, 아래의 `xattr` 절차가 필요합니다.
-- Windows 빌드도 미서명이라 처음 실행할 때 SmartScreen 경고가 뜹니다. `추가 정보 → 실행`으로 넘어가면 됩니다.
-- 데스크톱 설정 저장과 라이브러리 경로 처리 안정화가 반영됐습니다.
-- `resolver_v1` 기반 figure/table 추출 경로가 기본값입니다.
-- 릴리즈 빌드에서 Java 기반 OpenDataLoader 런타임을 함께 패키징합니다.
-- Workbench, Library, 연구자 프로필, Settings, Experiment Plan 흐름이 한 묶음으로 정리되어 있습니다.
+<p align="center">
+  <img src="sasoo/docs/assets/readme-2026-09-25/evidence-return.gif" alt="요약의 Figure 참조를 눌러 그림과 원본 PDF 페이지를 확인한 뒤 요약의 같은 위치로 돌아오는 실제 앱 동작" width="1000" />
+</p>
 
-## What You Get
+요약의 참조 선택 → 그림과 PDF 페이지 확인 → 요약으로 복귀. 데모의 그림 미리보기는 원본 PDF 페이지를 사용합니다. [정지 화면 보기](sasoo/docs/assets/readme-2026-09-25/evidence-source.png).
 
-| Surface | What it does |
-| --- | --- |
-| Upload | PDF 업로드, 파일 검증, 최근 분석/라이브러리 기록, 도메인 및 담당 에이전트 확인 |
-| Workbench | PDF 뷰어와 분석 패널을 나란히 두고 요약, figure, table, recipe, experiment plan, chat을 함께 검토 |
-| Library | 제목, 저자, DOI, 태그, 상태, 연도 기준으로 검색하고 다시 열기 |
-| Profile | 연구 배경과 기본 설명 수준을 관리하는 연구자 프로필 |
-| Settings | Gemini/OpenAI 키, 라이브러리 경로, 자동 분석, 테마, 추출 파이프라인, 비용 대시보드 관리 |
+### 실험 조건을 다음 작업에 활용하기
 
-## Domain Agents
+**레시피**에서 실험 절차와 파라미터를 모아 보고 CSV로 내보낼 수 있습니다. 값과 함께 근거 상태, 빠진 정보를 확인하세요. 아래 예시의 **검증 미실행**은 해당 값의 근거 검증 기록이 없다는 뜻입니다.
 
-| Agent | Focus |
-| --- | --- |
-| **Photon** | 광학, 레이저, FSO, 실험 셋업 검토 |
-| **Cell** | 바이오, 분자생물학, 샘플 수와 실험 조건 점검 |
-| **Neural** | 딥러닝, CV, NLP, ablation과 비교 실험 검토 |
-| **Circuit** | 회로, 반도체, 신호처리, 조건과 FoM 정리 |
-| **User overrides** | 사용자 데이터 폴더에 `.md` 파일을 직접 추가해 에이전트 확장 |
+<p align="center">
+  <img src="sasoo/docs/assets/readme-2026-09-25/recipe-detail.png" alt="실험 파라미터의 이름, 값, 설명과 검증 미실행 표시가 함께 있는 레시피 확대 화면" width="685" />
+</p>
 
-## Workflow
+워크벤치에는 **요약, 종합, 읽기 안내, 그림, 표, 레시피** 여섯 탭이 있습니다. 종합 화면은 주요 내용을 한데 모으고, 채팅에서는 논문과 분석에 관해 후속 질문을 할 수 있습니다. 분야별 에이전트 Photon(광학), Cell(바이오), Neural(딥러닝), Circuit(회로)이 설명의 관점을 조정하며, 사용자 데이터 폴더의 Markdown 파일로 에이전트를 확장할 수 있습니다.
 
-```mermaid
-flowchart LR
-    A["PDF 업로드"] --> B["도메인 분류 + 에이전트 배정"]
-    B --> C["텍스트/figure/table artifact 생성"]
-    C --> D["5단계 분석 실행"]
-    D --> E["Workbench 검토"]
-    E --> F["Library 보관"]
-    E --> G["Chat / Experiment Plan"]
-```
+AI 해설과 추출 값은 원문과 대조해 사용하세요. 분석 완료나 출처 링크가 정확성 또는 실험 재현성을 보장하지는 않습니다. 일부 원문만 제공한 분석은 전체 논문을 검토한 결과가 아닙니다. 화면은 저장된 응답의 표시와 탐색 예시이며, [캡처 출처와 범위](sasoo/docs/assets/readme-2026-09-25/PROVENANCE.md)에 제작 기준을 기록했습니다.
 
-### 5-Phase Analysis
+## 시작하기
 
-1. `Screening`
-   논문의 도메인, 핵심 주장, 실험성, relevance를 빠르게 거릅니다.
-2. `Citation Analysis`
-   참고문헌을 정리하고 인용 빈도와 역할을 분석합니다.
-3. `Visual Verification`
-   figure/table을 중심으로 축, 품질, caption 맥락, 시각 artifact 상태를 확인합니다.
-4. `Recipe Extraction`
-   방법론과 실험 파라미터를 구조화된 recipe 카드로 뽑습니다.
-5. `Deep Dive`
-   claim, evidence, weak point, follow-up 질문, Mermaid 기반 설명 흐름까지 확장합니다.
+1. **설치:** [공식 GitHub Releases](https://github.com/dosigner/sasoo/releases/latest)에서 운영체제에 맞는 파일을 받아 설치합니다.
+2. **설정:** 사용할 공급사의 API 키를 입력하고, 공급사 선택, 라이브러리 경로, 자동 분석 설정을 확인합니다.
+3. **첫 논문:** PDF를 업로드한 뒤 분석을 시작하고, 워크벤치에서 원문과 결과를 나란히 읽습니다. 자동 분석을 켜 두면 업로드 후 API 요청이 시작될 수 있습니다.
 
-## Installation
+**외부 AI API 사용료는 별도입니다.** API 키와 해당 모델을 사용할 권한이 필요하며, 무료 분석을 보장하지 않습니다.
 
-| Platform | Asset | Notes |
+### 설치 파일
+
+2026-09-25 확인한 공개 버전은 **v1.0.0**입니다.
+
+| 플랫폼 | 공식 릴리스 파일 | 참고 |
 | --- | --- | --- |
-| Windows 10/11 | [GitHub Releases](https://github.com/dosigner/sasoo/releases) | 새 버전 자산이 게시된 경우에만 제공 |
-| macOS Apple Silicon | `Sasoo-<version>-arm64-mac.zip` · `Sasoo-<version>-arm64.dmg` | 공식 GitHub Release에서 제공하는 미서명 ZIP/DMG |
-| Linux | source build | 현재 GitHub release asset은 제공하지 않음 |
+| macOS Apple Silicon | [DMG](https://github.com/dosigner/sasoo/releases/download/v1.0.0/Sasoo-1.0.0-arm64.dmg) / [ZIP](https://github.com/dosigner/sasoo/releases/download/v1.0.0/Sasoo-1.0.0-arm64-mac.zip) | 미서명, 미공증 |
+| Windows x64 | [설치 EXE](https://github.com/dosigner/sasoo/releases/download/v1.0.0/Sasoo-Setup-1.0.0.exe) | 미서명, SmartScreen 경고 가능 |
 
-### macOS note
+Linux와 Intel Mac용 공식 설치 파일은 없습니다. Linux 소스 빌드 명령은 있지만, 위 배포 지원 범위에는 포함되지 않습니다.
 
-macOS 배포본은 Apple Developer ID로 서명되거나 공증되지 않은 ZIP입니다. 따라서 Gatekeeper가 실행을 차단할 수 있으며, 아래 명령은 해당 앱의 quarantine 속성을 사용자가 직접 제거하는 우회 절차입니다.
+<details>
+<summary>macOS에서 실행이 차단될 때</summary>
 
-1. 반드시 [`dosigner/sasoo` 공식 GitHub Releases](https://github.com/dosigner/sasoo/releases)에서 ZIP을 받습니다. 제3자가 다시 올린 파일에는 이 절차를 사용하지 마세요.
-2. ZIP을 풀고 `Sasoo.app`를 `/Applications`로 옮깁니다.
-3. 실행이 차단될 때만 Terminal에서 아래 명령을 실행합니다.
+공식 릴리스에서 받은 `Sasoo.app`를 `/Applications`로 옮깁니다. Gatekeeper가 실행을 차단할 때만 출처를 확인한 해당 앱에 다음 명령을 사용하세요.
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Sasoo.app
 ```
 
-4. Finder에서 `Sasoo.app`를 우클릭하고 `Open`을 선택해 1회 실행합니다.
+필요하면 Finder에서 앱을 우클릭하고 **열기**를 선택합니다. 이 명령은 quarantine 보호를 제거하며, 발행자를 검증하거나 Apple 서명/공증을 대신하지 않습니다. 제3자가 배포한 앱에는 사용하지 마세요.
 
-> [!WARNING]
-> 이 명령은 Apple의 서명과 공증 검증을 통과시키는 것이 아니라 quarantine 보호를 제거합니다. 출처를 직접 확인한 공식 Sasoo 앱에만 사용하고, 다운로드한 ZIP이나 앱을 다른 경로에 둔 경우 명령의 경로를 정확히 확인하세요.
+</details>
 
-## API Keys
+<details>
+<summary>Windows에서 SmartScreen 경고가 나올 때</summary>
 
-핵심 분석은 `Gemini` 키만으로 동작합니다. Gemini 키는 [Google AI Studio](https://aistudio.google.com/apikey)에서 신용카드 등록 없이 무료 티어로 발급할 수 있습니다. 기본 이미지 생성 경로가 OpenAI라서, 그대로 쓰려면 `OpenAI` 키도 넣는 것이 좋습니다.
+공식 릴리스의 설치 EXE를 실행합니다. 미서명 빌드는 알 수 없는 게시자로 표시될 수 있습니다. 공식 다운로드 출처를 확인한 경우에만 **추가 정보 → 실행**을 선택하세요.
 
-- Gemini: screening, visual 분석, deep dive, Mermaid/diagram 생성 등 대부분의 텍스트·비전 분석
-- OpenAI: figure/이미지 생성(기본 이미지 프로바이더 — `Settings`에서 이미지 생성을 Gemini로 바꾸면 OpenAI 키 없이도 동작)
+</details>
 
-설치 후 `Settings`에서 바로 입력할 수 있습니다.
+## API 키와 비용
 
-API 키의 암호화 키는 기본적으로 macOS Keychain, Windows Credential Manager 등 OS 자격 증명 저장소에 보관됩니다. 이전 버전의 `.sasoo_key`로 암호화된 값은 첫 실행 때 OS 저장소로 마이그레이션된 뒤 해당 파일을 제거합니다.
+OpenAI와 Gemini 중 사용할 공급사를 설정에서 선택합니다. 한 공급사의 키만 저장했다면 사용 가능한 키에 맞춰 공급사가 선택됩니다. 키를 저장했더라도 잔액, 권한 또는 모델 접근 제한으로 요청이 실패할 수 있습니다.
 
-## Quick Start
+| 공급사 | API 키 발급 | 사용 기능 |
+| --- | --- | --- |
+| OpenAI | [OpenAI API 키](https://platform.openai.com/api-keys) | 논문 분석, 채팅, 그림 해설, 개념도 생성 |
+| Gemini | [Google AI Studio](https://aistudio.google.com/apikey) | 논문 분석, 채팅, 그림 해설, 개념도 생성 |
 
-1. 앱을 설치하고 실행합니다.
-2. `Settings`에서 API 키와 라이브러리 저장 경로를 확인합니다.
-3. PDF를 업로드합니다.
-4. 감지된 도메인과 에이전트를 확인한 뒤 Workbench로 진입합니다.
-5. 분석을 시작하고 summary, figure, table, recipe를 순서대로 검토합니다.
-6. 필요하면 chat과 experiment plan으로 후속 질문과 재현 계획을 만듭니다.
+개발 소스의 기본 분석 공급사는 OpenAI이며 텍스트 분석 모델은 `gpt-5.6-luna`입니다. 이미지 생성 모델과 단계별 배정은 별도로 관리됩니다. 실제 배정은 [모델 레지스트리](sasoo/backend/services/model_registry.py)와 [모델 ID](sasoo/backend/services/models.py)에서 확인할 수 있습니다.
 
-## Architecture
+설정 화면의 비용은 보고된 사용량과 앱에 등록된 단가로 계산한 **추정치**입니다. 공급사의 청구액과 다를 수 있으며, 사용량을 확인하지 못한 요청이 무료라는 뜻은 아닙니다.
 
-```mermaid
-flowchart TB
-    A["Electron shell"] --> B["React frontend"]
-    A --> C["FastAPI backend"]
-    C --> D["SQLite settings / analysis cache"]
-    C --> E["Library storage"]
-    C --> F["OpenDataLoader + resolver_v1"]
-    C --> G["Gemini"]
-    C --> H["OpenAI"]
-    B --> I["Upload / Workbench / Library / Profile / Settings"]
-```
+## 데이터와 개인정보
 
-### Main pieces
+**보관은 로컬에서, AI 처리는 외부 API에서 이루어집니다.** PDF와 분석 결과는 로컬 라이브러리에 저장됩니다. 분석, 채팅, 이미지 생성 시에는 기능에 필요한 자료가 선택한 공급사로 전송됩니다.
 
-- Frontend: React 18 + TypeScript + Vite
-- Desktop shell: Electron
-- Backend API: FastAPI
-- Persistence: SQLite + filesystem library storage
-- Extraction: Java-based OpenDataLoader, resolver-based figure/table pipeline
-- LLM layer: Gemini(텍스트·비전 분석) + OpenAI(이미지 생성)
+| 작업 | 외부 API에 전달될 수 있는 자료 |
+| --- | --- |
+| 논문 분석 | 원본 PDF, 추출 텍스트, 그림과 표 이미지 |
+| 채팅 / 그림 해설 | 질문, 관련 원문과 분석 내용, 대상 이미지 |
+| 개념도 생성 | 분석을 바탕으로 만든 설명과 생성 요청 |
 
-## Local Development
+개발 소스의 OpenAI 분석은 원본 PDF를 `input_file`로 첨부하며, Gemini 분석도 PDF를 공급사에 업로드할 수 있습니다. 로컬 Java 파서로 추출하더라도 이후 AI 처리에서 외부 전송이 일어날 수 있습니다. 생성 개념도는 논문 원본 그림과 구분합니다.
 
-저장소 루트에는 문서와 릴리즈 파일이 있고, 실제 앱 코드는 `sasoo/` 아래에 있습니다.
+전송할 권한이 있는 문서를 사용하고 공급사의 데이터 정책을 확인하세요. API 키는 로컬에서 암호화해 저장하고, 암호화 키는 macOS Keychain 또는 Windows Credential Manager 등 OS 자격 증명 저장소에 보관합니다. 구형 `.sasoo_key`는 가능한 경우 자동 이전하며, 이전할 수 없거나 폐기한 API 키는 다시 입력해야 합니다.
+
+## 개발
+
+앱 코드는 `sasoo/`에 있습니다. Electron이 React/Vite 화면과 로컬 FastAPI 백엔드를 실행하며, SQLite와 파일시스템에 데이터를 보관합니다. PDF 추출에는 Java 기반 OpenDataLoader를 사용합니다.
+
+### 시스템 구성
+
+로컬 앱의 화면, 분석 엔진, 저장소와 외부 AI 공급사의 관계입니다. 문서는 로컬에 저장되며, AI 기능을 실행하면 필요한 내용이 외부 API로 전달됩니다.
+
+<p align="center">
+  <a href="sasoo/docs/assets/architecture-2026-09-25/system-architecture.ko.svg"><img src="sasoo/docs/assets/architecture-2026-09-25/system-architecture.ko.svg" alt="Electron 화면과 React, FastAPI, PDF 추출, 로컬 저장소, 외부 AI 공급사의 기술 구성도" width="1000" /></a>
+</p>
+
+[확대 보기](sasoo/docs/assets/architecture-2026-09-25/system-architecture.ko.svg) | [탐색용 HTML](sasoo/docs/assets/architecture-2026-09-25/system-architecture.ko.html)
+
+### 분석 파이프라인
+
+PDF 문맥을 준비한 뒤 다음 순서로 주요 분석을 수행합니다. 분야별 에이전트는 스크리닝 결과를 바탕으로 선택됩니다.
+
+<p align="center">
+  <a href="sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.ko.svg"><img src="sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.ko.svg" alt="스크리닝, 인용 분석, 시각 자료 분석, 레시피 추출, 심층 분석 순서를 보여주는 도식" width="1000" /></a>
+</p>
+
+[확대 보기](sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.ko.svg) | [탐색용 HTML](sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.ko.html)
+
+이 도식은 주요 단계의 순서를 보여줍니다. 논문 내용과 실행 상태에 따라 단계가 건너뛰어지거나 중단될 수 있습니다. 종합 결과와 추가 시각화는 별도로 생성됩니다. 실제 실행 로직은 [analysis_execution.py](sasoo/backend/services/analysis_execution.py)에 있습니다.
+
+### 로컬 실행
+
+[패키지 요구사항](sasoo/package.json)은 Node.js **22.13 이상**입니다. [릴리스 CI](.github/workflows/release.yml)는 **Node.js 24, pnpm 10, Python 3.12, Java 21**을 사용합니다. 로컬 개발에서도 해당 버전을 기준으로 환경을 준비하세요. PDF 추출에 쓸 Java 런타임은 `JAVA_HOME` 또는 `SASOO_JAVA_HOME`으로 지정할 수 있습니다.
 
 ```bash
 git clone https://github.com/dosigner/sasoo.git
 cd sasoo/sasoo
-pnpm install
-python3 -m venv backend/.venv
+pnpm install --frozen-lockfile
+python3.12 -m venv backend/.venv
 source backend/.venv/bin/activate
-pip install -r backend/requirements.txt pyinstaller
+python -m pip install -r backend/requirements.txt -r backend/requirements-test.txt pyinstaller
 pnpm dev
 ```
 
-### Useful commands
+위 명령은 macOS/Linux 셸 기준입니다. Windows PowerShell에서는 가상환경 생성에 `py -3.12 -m venv backend/.venv`, 활성화에 `.\backend\.venv\Scripts\Activate.ps1`을 사용합니다.
+
+<details>
+<summary>테스트와 패키징 명령</summary>
+
+`sasoo/`에서 실행합니다.
 
 ```bash
-pnpm dev
-pnpm build:mac:release
-pnpm build:win:release
-pnpm build:linux
+pnpm --dir=frontend test
+pnpm --dir=frontend tsc --noEmit
+pnpm --dir=frontend lint
+pnpm test:unit
 ```
 
-### Release references
+활성화한 Python 가상환경에서 백엔드 테스트를 실행합니다.
 
-- GitHub Actions workflow: [`/.github/workflows/release.yml`](.github/workflows/release.yml)
-- Release checklist: [`/sasoo/docs/03-release/release-checklist.md`](sasoo/docs/03-release/release-checklist.md)
-- Electron build plan: [`/sasoo/docs/03-release/electron-build-plan.md`](sasoo/docs/03-release/electron-build-plan.md)
-
-## Repository Map
-
-```text
-.
-├── README.md
-├── .github/workflows/release.yml
-└── sasoo/
-    ├── frontend/
-    │   ├── src/pages/
-    │   ├── src/components/
-    │   └── src/lib/
-    ├── backend/
-    │   ├── api/
-    │   ├── services/
-    │   ├── models/
-    │   └── agents/
-    ├── electron/
-    ├── scripts/
-    └── docs/03-release/
+```bash
+cd backend
+python -m pytest services api models
+cd ..
 ```
 
-## Notes For Reviewers
+```bash
+pnpm build:mac:release  # Run on macOS.
+pnpm build:win:release  # Run on Windows.
+```
 
-- 현재 릴리스는 [`v0.8.0`](https://github.com/dosigner/sasoo/releases/latest)이며, 공식 GitHub Releases에서 macOS 미서명 ZIP/DMG와 Windows 미서명 설치본을 제공합니다.
-- macOS 공개 빌드는 현재 미서명 ZIP 정책이며 README의 제한된 `xattr` 설치 절차를 사용합니다.
-- Windows 빌드는 v0.8.0에서 처음 배포하며, 실기기 검증 없이 CI 산출물을 그대로 올린 상태입니다.
-- 릴리즈 재태깅 상황에서는 GitHub 자동 changelog가 역방향 비교 링크를 만들 수 있으므로 본문을 수동 검토하는 편이 안전합니다.
+일반 `pnpm build`는 백엔드를 새로 묶지 않습니다. 플랫폼별 release 명령은 백엔드 빌드와 산출물 검증을 포함합니다. 개발 화면 확인, 논문 원문 정확성 검토, 패키지 설치 검증은 각각 필요합니다. Windows 설치 파일이 생성됐다는 사실만으로 실기기 동작을 검증한 것은 아닙니다.
 
-## License
+패키징 세부 사항은 [릴리스 체크리스트](sasoo/docs/03-release/release-checklist.md)와 [릴리스 워크플로](.github/workflows/release.yml)를 참고하세요.
 
-[MIT](LICENSE)
+</details>
+
+## 라이선스
+
+패키지 메타데이터에는 [MIT](sasoo/package.json)로 표기되어 있습니다. 저장소에는 별도의 프로젝트 `LICENSE` 파일이 아직 없습니다.

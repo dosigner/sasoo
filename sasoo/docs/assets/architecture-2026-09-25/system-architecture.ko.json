@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Sasoo 기술 구성",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1392,
+      650
+    ]
+  },
+  "components": [
+    {
+      "id": "shell",
+      "type": "frontend",
+      "label": "Electron",
+      "sublabel": "데스크톱 앱 실행",
+      "pos": [
+        60,
+        130
+      ],
+      "size": [
+        180,
+        88
+      ]
+    },
+    {
+      "id": "ui",
+      "type": "frontend",
+      "label": "React + TypeScript",
+      "sublabel": "Vite / PDF.js / Mermaid",
+      "pos": [
+        380,
+        130
+      ],
+      "size": [
+        220,
+        88
+      ]
+    },
+    {
+      "id": "backend",
+      "type": "backend",
+      "label": "FastAPI + Python",
+      "sublabel": "분석과 로컬 API",
+      "pos": [
+        760,
+        130
+      ],
+      "size": [
+        210,
+        88
+      ]
+    },
+    {
+      "id": "providers",
+      "type": "cloud",
+      "label": "OpenAI / Gemini",
+      "sublabel": "외부 AI API",
+      "pos": [
+        1140,
+        130
+      ],
+      "size": [
+        210,
+        88
+      ]
+    },
+    {
+      "id": "extract",
+      "type": "backend",
+      "label": "OpenDataLoader",
+      "sublabel": "Java 기반 PDF 추출",
+      "pos": [
+        760,
+        440
+      ],
+      "size": [
+        210,
+        88
+      ]
+    },
+    {
+      "id": "storage",
+      "type": "database",
+      "label": "SQLite + 파일",
+      "sublabel": "로컬 PDF와 분석 결과",
+      "pos": [
+        1140,
+        440
+      ],
+      "size": [
+        210,
+        88
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "shell-ui",
+      "from": "shell",
+      "to": "ui",
+      "label": "화면 실행"
+    },
+    {
+      "id": "ui-backend",
+      "from": "ui",
+      "to": "backend",
+      "label": "로컬 HTTP API"
+    },
+    {
+      "id": "backend-provider",
+      "from": "backend",
+      "to": "providers",
+      "label": "분석 요청",
+      "variant": "emphasis"
+    },
+    {
+      "id": "backend-extract",
+      "from": "backend",
+      "to": "extract",
+      "label": "원문 추출",
+      "labelDy": 24
+    },
+    {
+      "id": "backend-store",
+      "from": "backend",
+      "to": "storage",
+      "label": "읽기 / 저장"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "violet",
+      "title": "로컬 실행",
+      "items": [
+        "Electron이 프런트엔드와 Python 백엔드를 시작합니다."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "보관과 AI 처리",
+      "items": [
+        "PDF와 결과는 로컬에 보관하며 AI 요청은 외부 공급사로 전송됩니다."
+      ]
+    }
+  ]
+}

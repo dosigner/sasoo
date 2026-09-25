@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Sasoo system architecture",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1392,
+      650
+    ],
+    "locale": "en"
+  },
+  "components": [
+    {
+      "id": "shell",
+      "type": "frontend",
+      "label": "Electron",
+      "sublabel": "Desktop application",
+      "pos": [
+        60,
+        130
+      ],
+      "size": [
+        180,
+        88
+      ]
+    },
+    {
+      "id": "ui",
+      "type": "frontend",
+      "label": "React + TypeScript",
+      "sublabel": "Vite / PDF.js / Mermaid",
+      "pos": [
+        380,
+        130
+      ],
+      "size": [
+        220,
+        88
+      ]
+    },
+    {
+      "id": "backend",
+      "type": "backend",
+      "label": "FastAPI + Python",
+      "sublabel": "Analysis and local API",
+      "pos": [
+        760,
+        130
+      ],
+      "size": [
+        210,
+        88
+      ]
+    },
+    {
+      "id": "providers",
+      "type": "cloud",
+      "label": "OpenAI / Gemini",
+      "sublabel": "External AI APIs",
+      "pos": [
+        1140,
+        130
+      ],
+      "size": [
+        210,
+        88
+      ]
+    },
+    {
+      "id": "extract",
+      "type": "backend",
+      "label": "OpenDataLoader",
+      "sublabel": "Java PDF extraction",
+      "pos": [
+        760,
+        440
+      ],
+      "size": [
+        210,
+        88
+      ]
+    },
+    {
+      "id": "storage",
+      "type": "database",
+      "label": "SQLite + files",
+      "sublabel": "Local PDFs and results",
+      "pos": [
+        1140,
+        440
+      ],
+      "size": [
+        210,
+        88
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "shell-ui",
+      "from": "shell",
+      "to": "ui",
+      "label": "Load interface"
+    },
+    {
+      "id": "ui-backend",
+      "from": "ui",
+      "to": "backend",
+      "label": "Local HTTP API"
+    },
+    {
+      "id": "backend-provider",
+      "from": "backend",
+      "to": "providers",
+      "label": "AI request",
+      "variant": "emphasis"
+    },
+    {
+      "id": "backend-extract",
+      "from": "backend",
+      "to": "extract",
+      "label": "Extract source",
+      "labelDy": 24
+    },
+    {
+      "id": "backend-store",
+      "from": "backend",
+      "to": "storage",
+      "label": "Read / write"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "violet",
+      "title": "Local runtime",
+      "items": [
+        "Electron starts the frontend and Python backend."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Storage and AI",
+      "items": [
+        "PDFs and results stay local; AI requests go to external providers."
+      ]
+    }
+  ]
+}
