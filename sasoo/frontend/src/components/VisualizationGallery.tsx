@@ -287,7 +287,6 @@ export function VisualizationGallery({
     );
   }
 
-  // If deep_dive is done but visualizations haven't arrived yet, show generating state
   if (!loading && !legacyMermaid) {
     return (
       <div>
@@ -295,13 +294,10 @@ export function VisualizationGallery({
           <AppIcon name="experiment" className="w-4 h-4 text-accent" />
           {S.mermaid.visualizations}
         </h3>
-        <div className="card flex flex-col items-center justify-center py-8 text-center">
-          <Loader2 className="w-6 h-6 text-accent animate-spin mb-2" />
+        <div className="workbench-empty-state gap-2">
+          <AppIcon name="experiment" className="h-7 w-7 text-accent" />
           <p className="text-sm text-fg-muted">
-            {S.mermaid.generating}
-          </p>
-          <p className="text-2xs text-fg-muted mt-1">
-            {S.mermaid.generatingTime}
+            {S.mermaid.notGenerated}
           </p>
         </div>
       </div>
@@ -323,4 +319,3 @@ export function VisualizationGallery({
     </Suspense>
   );
 }
-

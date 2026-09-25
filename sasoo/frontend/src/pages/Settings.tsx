@@ -286,8 +286,12 @@ export default function Settings() {
 
   // 공급사 카드의 키 상태는 저장된 값 기준이다. 타이핑 중인 입력으로 판정하면
   // 글자를 칠 때마다 카드가 깜빡인다.
-  const hasSavedOpenAIKey = Boolean(baselineSettings.openai_api_key);
-  const hasSavedGeminiKey = Boolean(baselineSettings.gemini_api_key);
+  const hasSavedOpenAIKey = Boolean(baselineSettings.openai_api_key) && !openaiKeyUnreadable;
+  const hasSavedGeminiKey = Boolean(baselineSettings.gemini_api_key) && !geminiKeyUnreadable;
+  const activeKeyReady = aiProvider === 'openai'
+    ? hasSavedOpenAIKey
+    : hasSavedGeminiKey;
+  const savedLibraryPath = Boolean(baselineSettings.library_path);
 
   if (loading) {
     return (
@@ -310,11 +314,13 @@ export default function Settings() {
               {S.settings.heroBody}
             </p>
             <div className="page-status-strip mt-3">
-              <span className="archive-inline-status archive-inline-status-muted">
-                {S.settings.apiKeys} {geminiKeyStatus ? S.settings.statusConfigured : S.settings.statusMissing}
+              <span className={`archive-inline-status ${activeKeyReady ? 'archive-inline-status-success' : 'archive-inline-status-warning'}`}>
+                <AppIcon name={activeKeyReady ? 'success' : 'warning'} className="h-3.5 w-3.5" />
+                {S.settings.apiKeys} {activeKeyReady ? S.settings.keyConfigured : S.settings.statusMissing}
               </span>
-              <span className="archive-inline-status archive-inline-status-muted">
-                {S.settings.librarySection} {libraryPath ? S.settings.statusConfigured : S.settings.statusMissing}
+              <span className={`archive-inline-status ${savedLibraryPath ? 'archive-inline-status-success' : 'archive-inline-status-warning'}`}>
+                <AppIcon name={savedLibraryPath ? 'success' : 'warning'} className="h-3.5 w-3.5" />
+                {S.settings.librarySection} {savedLibraryPath ? S.settings.keyConfigured : S.settings.keyNotConfigured}
               </span>
               <span className="archive-inline-status archive-inline-status-muted">
                 {S.settings.appearance} {theme === 'light' ? S.settings.light : S.settings.dark}
@@ -367,137 +373,143 @@ export default function Settings() {
               <p className="mt-2 text-xs text-fg-muted">{S.settings.aiProviderLocked}</p>
             )}
           </div>
-          <SettingRow
-            full
-            label={S.settings.openaiKey}
-            badge={
-              openaiKeyStatus ? (
-                <span className="text-2xs text-success-fg bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-sm">
-                  {S.settings.keyConfigured} ({openaiKeyStatus})
-                </span>
-              ) : openaiKeyUnreadable ? (
-                <span className="text-2xs text-danger-fg bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded-sm">
-                  {S.settings.keyUnreadable}
-                </span>
-              ) : (
-                <span className="text-2xs text-warning-fg bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded-sm">
-                  {S.settings.keyNotConfigured}
-                </span>
-              )
-            }
-          >
-            {openaiKeyUnreadable && (
-              <p className="text-2xs text-danger mb-1.5">
-                {S.settings.keyUnreadableHelp}
-              </p>
-            )}
-            <div className="relative">
-              <input
-                ref={openaiInputRef}
-                type={showOpenaiKey ? 'text' : 'password'}
-                value={openaiKey}
-                onChange={(e) => setOpenaiKey(e.target.value)}
-                name="sasoo-openai-api-key"
-                autoComplete="off"
-                data-lpignore="true"
-                data-1p-ignore="true"
-                data-bwignore="true"
-                spellCheck={false}
-                placeholder={S.settings.enterNewKey}
-                className="input pr-10"
-              />
-              <button
-                onClick={() => setShowOpenaiKey(!showOpenaiKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-fg-muted hover:text-fg-secondary transition-colors"
-                style={{ borderRadius: 'var(--radius-control)' }}
-                type="button"
-              >
-                {showOpenaiKey ? (
-                  <AppIcon name="eye-off" className="w-4 h-4" />
+          <div className="settings-key-group">
+            <SettingRow
+              full
+              label={S.settings.openaiKey}
+              labelFor="settings-openai-key"
+              badge={
+                openaiKeyUnreadable ? (
+                  <span className="text-2xs text-danger-fg bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded-sm">
+                    {S.settings.keyUnreadable}
+                  </span>
+                ) : openaiKeyStatus ? (
+                  <span className="text-2xs text-success-fg bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-sm">
+                    {S.settings.keyConfigured} ({openaiKeyStatus})
+                  </span>
                 ) : (
-                  <AppIcon name="eye" className="w-4 h-4" />
-                )}
-              </button>
-            </div>
-            <p className="text-2xs text-fg-muted mt-1">
-              {S.settings.openaiHelp}{' '}
-              <a
-                href="https://platform.openai.com/api-keys"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-accent hover:text-accent-hover underline underline-offset-2"
-              >
-                OpenAI Platform
-              </a>
-              {S.settings.getKeyAt('')}
-            </p>
-          </SettingRow>
+                  <span className="text-2xs text-warning-fg bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded-sm">
+                    {S.settings.keyNotConfigured}
+                  </span>
+                )
+              }
+            >
+              {openaiKeyUnreadable && (
+                <p className="text-2xs text-danger mb-1.5">
+                  {S.settings.keyUnreadableHelp}
+                </p>
+              )}
+              <div className="relative">
+                <input
+                  id="settings-openai-key"
+                  ref={openaiInputRef}
+                  type={showOpenaiKey ? 'text' : 'password'}
+                  value={openaiKey}
+                  onChange={(e) => setOpenaiKey(e.target.value)}
+                  name="sasoo-openai-api-key"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-bwignore="true"
+                  spellCheck={false}
+                  placeholder={S.settings.enterNewKey}
+                  className="input pr-10"
+                />
+                <button
+                  onClick={() => setShowOpenaiKey(!showOpenaiKey)}
+                  className="absolute right-1 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-control text-fg-muted transition-colors hover:text-fg-secondary"
+                  type="button"
+                  aria-label={`${S.settings.openaiKey} ${showOpenaiKey ? '숨기기' : '보기'}`}
+                >
+                  {showOpenaiKey ? (
+                    <AppIcon name="eye-off" className="w-4 h-4" />
+                  ) : (
+                    <AppIcon name="eye" className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+              <p className="text-2xs text-fg-muted mt-1">
+                {S.settings.openaiHelp}{' '}
+                <a
+                  href="https://platform.openai.com/api-keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent hover:text-accent-hover underline underline-offset-2"
+                >
+                  OpenAI Platform
+                </a>
+                {S.settings.getKeyAt('')}
+              </p>
+            </SettingRow>
 
-          <SettingRow
-            full
-            label={S.settings.geminiKey}
-            badge={
-              geminiKeyStatus ? (
-                <span className="text-2xs text-success-fg bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-sm">
-                  {S.settings.keyConfigured} ({geminiKeyStatus})
-                </span>
-              ) : geminiKeyUnreadable ? (
-                <span className="text-2xs text-danger-fg bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded-sm">
-                  {S.settings.keyUnreadable}
-                </span>
-              ) : (
-                <span className="text-2xs text-warning-fg bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded-sm">
-                  {S.settings.keyNotConfigured}
-                </span>
-              )
-            }
-          >
-            {geminiKeyUnreadable && (
-              <p className="text-2xs text-danger mb-1.5">
-                {S.settings.keyUnreadableHelp}
-              </p>
-            )}
-            <div className="relative">
-              <input
-                ref={geminiInputRef}
-                type={showGeminiKey ? 'text' : 'password'}
-                value={geminiKey}
-                onChange={(e) => setGeminiKey(e.target.value)}
-                name="sasoo-gemini-api-key"
-                autoComplete="off"
-                data-lpignore="true"
-                data-1p-ignore="true"
-                data-bwignore="true"
-                spellCheck={false}
-                placeholder={S.settings.enterNewKey}
-                className="input pr-10"
-              />
-              <button
-                onClick={() => setShowGeminiKey(!showGeminiKey)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-fg-muted hover:text-fg-secondary transition-colors"
-                style={{ borderRadius: 'var(--radius-control)' }}
-                type="button"
-              >
-                {showGeminiKey ? (
-                  <AppIcon name="eye-off" className="w-4 h-4" />
+            <SettingRow
+              full
+              label={S.settings.geminiKey}
+              labelFor="settings-gemini-key"
+              badge={
+                geminiKeyUnreadable ? (
+                  <span className="text-2xs text-danger-fg bg-danger/10 border border-danger/20 px-1.5 py-0.5 rounded-sm">
+                    {S.settings.keyUnreadable}
+                  </span>
+                ) : geminiKeyStatus ? (
+                  <span className="text-2xs text-success-fg bg-success/10 border border-success/20 px-1.5 py-0.5 rounded-sm">
+                    {S.settings.keyConfigured} ({geminiKeyStatus})
+                  </span>
                 ) : (
-                  <AppIcon name="eye" className="w-4 h-4" />
-                )}
-              </button>
-            </div>
-            <p className="text-2xs text-fg-muted mt-1">
-              {S.settings.geminiHelp}{' '}
-              <a
-                href="https://aistudio.google.com/api-keys"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-accent hover:text-accent-hover underline underline-offset-2"
-              >
-                Google AI Studio
-              </a>
-              {S.settings.getKeyAt('')}
-            </p>
-          </SettingRow>
+                  <span className="text-2xs text-warning-fg bg-warning/10 border border-warning/20 px-1.5 py-0.5 rounded-sm">
+                    {S.settings.keyNotConfigured}
+                  </span>
+                )
+              }
+            >
+              {geminiKeyUnreadable && (
+                <p className="text-2xs text-danger mb-1.5">
+                  {S.settings.keyUnreadableHelp}
+                </p>
+              )}
+              <div className="relative">
+                <input
+                  id="settings-gemini-key"
+                  ref={geminiInputRef}
+                  type={showGeminiKey ? 'text' : 'password'}
+                  value={geminiKey}
+                  onChange={(e) => setGeminiKey(e.target.value)}
+                  name="sasoo-gemini-api-key"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-bwignore="true"
+                  spellCheck={false}
+                  placeholder={S.settings.enterNewKey}
+                  className="input pr-10"
+                />
+                <button
+                  onClick={() => setShowGeminiKey(!showGeminiKey)}
+                  className="absolute right-1 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-control text-fg-muted transition-colors hover:text-fg-secondary"
+                  type="button"
+                  aria-label={`${S.settings.geminiKey} ${showGeminiKey ? '숨기기' : '보기'}`}
+                >
+                  {showGeminiKey ? (
+                    <AppIcon name="eye-off" className="w-4 h-4" />
+                  ) : (
+                    <AppIcon name="eye" className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+              <p className="text-2xs text-fg-muted mt-1">
+                {S.settings.geminiHelp}{' '}
+                <a
+                  href="https://aistudio.google.com/api-keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent hover:text-accent-hover underline underline-offset-2"
+                >
+                  Google AI Studio
+                </a>
+                {S.settings.getKeyAt('')}
+              </p>
+            </SettingRow>
+          </div>
         </SettingSection>
 
         {/* 2. 분석 */}
@@ -544,9 +556,10 @@ export default function Settings() {
           title={S.settings.librarySection}
           description={S.settings.librarySectionDesc}
         >
-          <SettingRow full label={S.settings.libraryPath}>
+          <SettingRow full label={S.settings.libraryPath} labelFor="settings-library-path">
             <div className="flex flex-wrap gap-2">
               <input
+                id="settings-library-path"
                 type="text"
                 value={libraryPath}
                 onChange={(e) => setLibraryPath(e.target.value)}
@@ -558,6 +571,7 @@ export default function Settings() {
                 onClick={handleBrowseDirectory}
                 className="btn-ghost px-3 shrink-0"
                 title={S.settings.browseFolder}
+                aria-label={S.settings.browseFolder}
               >
                 <AppIcon name="folder" className="w-4 h-4" />
               </button>
@@ -565,7 +579,7 @@ export default function Settings() {
                 type="button"
                 onClick={handleSave}
                 disabled={saving || !hasChanges}
-                className="btn-primary shrink-0 text-sm"
+                className="btn-ghost shrink-0 text-sm"
               >
                 {saving ? (
                   <Loader2 className="w-4 h-4 animate-spin" />

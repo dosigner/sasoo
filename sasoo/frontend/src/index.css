@@ -277,6 +277,22 @@
   border-radius: var(--radius-control);
 }
 
+.settings-key-group {
+  overflow: hidden;
+  border: 1px solid rgb(var(--border));
+  border-radius: var(--radius-control);
+  background: rgb(var(--surface-hover));
+}
+
+.settings-key-group .settings-row-block {
+  border-radius: 0;
+  background: transparent;
+}
+
+.settings-key-group .settings-row-block + .settings-row-block {
+  border-top: 1px solid rgb(var(--border));
+}
+
 @utility page-header-dense {
   @apply flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between;
 }
@@ -298,9 +314,14 @@
   border-color: rgb(var(--success) / 0.4);
 }
 
-@utility archive-inline-status-error {
+@utility archive-inline-status-warning {
   @apply text-warning-fg;
   border-color: rgb(var(--warning) / 0.4);
+}
+
+@utility archive-inline-status-error {
+  @apply text-danger-fg;
+  border-color: rgb(var(--danger) / 0.4);
 }
 
 @utility settings-hero-body {
@@ -371,10 +392,24 @@
      44rem 컬럼이라, sticky면 사이드바 폭(--sidebar-width, 접히면
      --sidebar-collapsed-width)을 알 필요가 없고 폭도 저절로 맞는다.
      z-20은 패널 내부 sticky 대역이다 — 토스트(z-50)가 덮어야 맞다. */
-  @apply sticky bottom-0 z-20 mt-4 flex flex-wrap items-center justify-between gap-3
-           border-t border-border/80 bg-surface/95 px-4 py-3 backdrop-blur-lg;
-  border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+  @apply sticky bottom-3 z-20 mx-1 mt-4 mb-3 flex flex-wrap items-center justify-between gap-3
+           border border-border bg-surface/90 px-4 py-3 shadow-lg backdrop-blur-lg;
+  border-radius: var(--radius-surface);
   animation: savebar-in 120ms var(--ease-out-strong);
+}
+
+@utility workbench-tab-heading {
+  @apply flex flex-wrap items-start justify-between gap-3 border-b border-border/60 pb-3;
+}
+
+@utility workbench-result-card {
+  @apply overflow-hidden border border-border bg-surface shadow-none;
+  border-radius: var(--radius-surface);
+}
+
+@utility workbench-empty-state {
+  @apply flex min-h-40 flex-col items-center justify-center border border-border bg-surface px-4 py-6 text-center;
+  border-radius: var(--radius-surface);
 }
 
 @utility toast-surface {
@@ -2014,6 +2049,11 @@
   .figure-modal-inspector,
   .settings-savebar {
     background-color: rgb(var(--surface));
+  }
+
+  .settings-savebar {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
   }
 
   .toast-surface {

@@ -531,7 +531,7 @@ function FigureCard({
 
   return (
     <div
-      className="group relative overflow-hidden rounded-[12px] bg-surface p-0 shadow-[0_1px_2px_rgba(0,0,0,.04),0_2px_8px_rgba(0,0,0,.04)] transition-transform duration-150 active:scale-[0.96] focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent dark:shadow-none"
+      className="group relative workbench-result-card p-0 transition-colors hover:border-accent/40 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
       data-citation-anchor={citationAnchor(figure)}
       role="button"
       tabIndex={0}

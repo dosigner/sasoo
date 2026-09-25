@@ -175,7 +175,7 @@ export default function TableGallery({
                   ? `table-${table.table_num.match(/\d+/)![0]}`
                   : undefined
               }
-              className="space-y-4 overflow-hidden rounded-[12px] bg-surface p-4 shadow-[0_1px_2px_rgba(0,0,0,.04),0_2px_8px_rgba(0,0,0,.04)] dark:shadow-none"
+              className="workbench-result-card space-y-4 p-4"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">

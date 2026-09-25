@@ -28,12 +28,14 @@ export function SettingSection({
 
 export function SettingRow({
   label,
+  labelFor,
   description,
   badge,
   full = false,
   children,
 }: {
   label: string;
+  labelFor?: string;
   description?: React.ReactNode;
   badge?: React.ReactNode;
   full?: boolean;
@@ -43,7 +45,11 @@ export function SettingRow({
     return (
       <div className="settings-row-block">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-fg">{label}</span>
+          {labelFor ? (
+            <label htmlFor={labelFor} className="text-sm font-medium text-fg">{label}</label>
+          ) : (
+            <span className="text-sm font-medium text-fg">{label}</span>
+          )}
           {badge}
         </div>
         {description && (
@@ -57,7 +63,11 @@ export function SettingRow({
     <div className="settings-row-block flex items-center justify-between gap-4">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-fg">{label}</span>
+          {labelFor ? (
+            <label htmlFor={labelFor} className="text-sm font-medium text-fg">{label}</label>
+          ) : (
+            <span className="text-sm font-medium text-fg">{label}</span>
+          )}
           {badge}
         </div>
         {description && (

@@ -93,7 +93,7 @@ export default function RecipeCard({
           <AppIcon name="recipe" className="w-4 h-4 text-accent" />
           {S.recipe.title}
         </h3>
-        <div className="card flex flex-col items-center justify-center py-8 text-center">
+        <div className="workbench-empty-state">
           <AppIcon name="recipe" className="w-8 h-8 text-fg-muted mb-2" />
           <p className="text-sm text-fg-muted">
             {S.recipe.noRecipe}

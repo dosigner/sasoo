@@ -916,7 +916,7 @@ export default function AnalysisPanel({
                 </details>
               )}
             </div>
-          ) : <div className="border border-border/45 bg-surface/50 px-4 py-3" style={{ borderRadius: 'var(--radius-surface)' }}>
+          ) : <div className="rounded-surface border border-border bg-surface px-4 py-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-40 flex-1">
                 <div className="mb-1 flex items-center gap-2 text-2xs tracking-[0.08em] text-fg-muted">
@@ -931,7 +931,14 @@ export default function AnalysisPanel({
                     {workbenchStatus.totalCount > 0 && `${workbenchStatus.completedCount}/${workbenchStatus.totalCount}`}
                   </span>
                 </div>
-                <div className="mt-2 h-[3px] rounded-full bg-border">
+                <div
+                  className="mt-2 h-[3px] rounded-full bg-border"
+                  role="progressbar"
+                  aria-label={S.workbench.statusRailTitle}
+                  aria-valuemin={0}
+                  aria-valuemax={Math.max(workbenchStatus.totalCount, 1)}
+                  aria-valuenow={workbenchStatus.completedCount}
+                >
                   <div
                     className="h-[3px] rounded-full bg-accent transition-[width] duration-150"
                     style={{ width: `${Math.round(workbenchStatus.progressRatio * 100)}%` }}
@@ -953,6 +960,7 @@ export default function AnalysisPanel({
                 type="button"
                 onClick={() => !tab.disabled && selectTab(tab.key)}
                 disabled={tab.disabled}
+                aria-pressed={activeTab === tab.key}
                 className={`segmented-control__item shrink-0 whitespace-nowrap ${
                   activeTab === tab.key ? 'segmented-control__item-active' : ''
                 } ${tab.disabled ? 'segmented-control__item-disabled' : ''}`}
@@ -974,6 +982,14 @@ export default function AnalysisPanel({
         }}
       >
           <div key={paperId} ref={summaryRef} data-summary-panel hidden={activeTab !== 'summary'} className="reading-panel-content space-y-5">
+            <div className="workbench-tab-heading">
+              <h2 className="text-lg font-semibold text-fg">{S.workbench.summaryTab}</h2>
+              {workbenchStatus.totalCount > 0 && (
+                <span className="status-pill border-accent/20 bg-accent/10 text-accent tabular-nums">
+                  {workbenchStatus.completedCount}/{workbenchStatus.totalCount}
+                </span>
+              )}
+            </div>
             {status && status.overall_status !== 'pending' && !compactCompleted && (
                 <ProgressTracker
                   phases={status.phases}
@@ -1062,11 +1078,11 @@ export default function AnalysisPanel({
 
         {activeTab === 'figures' && (
           <div className="reading-panel-content space-y-5">
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/45 pb-3">
+            <div className="workbench-tab-heading">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <AppIcon name="figures" className="w-4 h-4 text-accent" />
-                  <h3 className="text-sm font-semibold text-fg">{S.workbench.figuresTab}</h3>
+                  <h3 className="text-lg font-semibold text-fg">{S.workbench.figuresTab}</h3>
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-fg-muted">
                   {visualSummary.figureLine || '시각 검증 결과와 Figure를 한곳에서 확인할 수 있어요.'}
@@ -1091,11 +1107,11 @@ export default function AnalysisPanel({
 
         {activeTab === 'tables' && (
           <div className="reading-panel-content space-y-5">
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/45 pb-3">
+            <div className="workbench-tab-heading">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <AppIcon name="tables" className="w-4 h-4 text-accent" />
-                  <h3 className="text-sm font-semibold text-fg">{S.workbench.tablesTab}</h3>
+                  <h3 className="text-lg font-semibold text-fg">{S.workbench.tablesTab}</h3>
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-fg-muted">
                   {visualSummary.tableLine || '복구한 Table 구조와 저장한 CSV/HTML 자산을 한곳에서 확인할 수 있어요.'}
@@ -1119,16 +1135,18 @@ export default function AnalysisPanel({
 
         {activeTab === 'recipe' && (
           <div className="reading-panel-content space-y-5">
-            <div className="border-b border-border/45 pb-3">
-              <div className="flex items-center gap-2">
-                <AppIcon name="recipe" className="w-4 h-4 text-accent" />
-                <h3 className="text-sm font-semibold text-fg">
-                  {S.workbench.recipeTab}
-                </h3>
+            <div className="workbench-tab-heading">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <AppIcon name="recipe" className="w-4 h-4 text-accent" />
+                  <h3 className="text-lg font-semibold text-fg">
+                    {S.workbench.recipeTab}
+                  </h3>
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-fg-muted">
+                  {recipeSummary.summaryLine || '재현 파라미터와 핵심 실험 정보를 먼저 검토하세요.'}
+                </p>
               </div>
-              <p className="mt-1 text-xs leading-relaxed text-fg-muted">
-                {recipeSummary.summaryLine || '재현 파라미터와 핵심 실험 정보를 먼저 검토하세요.'}
-              </p>
             </div>
 
             <RecipeCard

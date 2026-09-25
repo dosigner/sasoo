@@ -312,17 +312,21 @@ export default function ReadingGuideTab({
     return (
       <>
         {confirmModal}
-        <div className="reading-prose flex flex-wrap items-start justify-between gap-3 border-b border-border/45 pb-3">
+        <div className="reading-prose workbench-tab-heading">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <AppIcon name="library" className="h-4 w-4 text-accent" />
-              <h3 className="text-sm font-[650] text-fg">{S.readingGuide.title}</h3>
+              <h3 className="text-lg font-semibold text-fg">{S.readingGuide.title}</h3>
             </div>
             <p className="mt-1 font-normal text-fg">{S.readingGuide.intro}</p>
-            <p className="mt-1 text-sm text-fg-muted">{S.readingGuide.costNotice}</p>
           </div>
           <button type="button" onClick={() => setConfirmOpen(true)} disabled={!paperId}
             className="btn-primary shrink-0 px-3 py-1.5 text-xs">{S.readingGuide.generate}</button>
+        </div>
+        <div className="workbench-empty-state mt-4 gap-2">
+          <AppIcon name="library" className="h-7 w-7 text-accent" />
+          <p className="text-sm font-medium text-fg">{S.readingGuide.emptyTitle}</p>
+          <p className="max-w-sm text-xs text-fg-muted">{S.readingGuide.costNotice}</p>
         </div>
       </>
     );
@@ -340,11 +344,11 @@ export default function ReadingGuideTab({
     <div className="reading-prose space-y-5">
       {confirmModal}
 
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/45 pb-3">
+      <div className="workbench-tab-heading">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <AppIcon name="library" className="h-4 w-4 text-accent" />
-            <h3 className="text-sm font-[650] text-fg">{S.readingGuide.title}</h3>
+            <h3 className="text-lg font-semibold text-fg">{S.readingGuide.title}</h3>
           </div>
           <p className="mt-1 text-xs text-fg-muted">{S.readingGuide.intro}</p>
           {metaLine && (

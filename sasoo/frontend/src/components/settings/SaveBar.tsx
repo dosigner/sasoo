@@ -35,7 +35,7 @@ export function SaveBar({ changeCount, saving, error, onSave, onDiscard }: Props
         <button type="button" className="btn btn-ghost" onClick={onDiscard} disabled={saving}>
           {S.settings.discard}
         </button>
-        <button type="button" className="btn btn-primary" onClick={onSave} disabled={saving}>
+        <button type="button" className="btn bg-accent accent-solid-fg hover:bg-accent-hover" onClick={onSave} disabled={saving}>
           {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           {saving ? S.settings.saving : S.settings.save}
         </button>

@@ -115,9 +115,9 @@ export function SynthesisView({
   if (!synthesis) {
     return (
       <div className="space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/45 pb-3">
+        <div className="workbench-tab-heading">
           <div className="min-w-0 flex-1">
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-fg">
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-fg">
               <Sparkles className="h-4 w-4 text-accent" />{T.viewTitle}
             </h2>
             <p className="mt-1 break-keep text-xs leading-relaxed text-fg-muted">{T.createGuide}</p>
@@ -145,9 +145,9 @@ export function SynthesisView({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/45 pb-3">
+      <div className="workbench-tab-heading">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-fg">{T.viewTitle}</h2>
+          <h2 className="text-lg font-semibold text-fg">{T.viewTitle}</h2>
           <p className="mt-1 text-xs text-fg-muted">{T.diagramCount(items.length)}</p>
         </div>
         <div className="ml-auto flex items-center gap-1">

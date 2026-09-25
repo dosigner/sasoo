@@ -262,6 +262,7 @@ export const S = {
   // ── Reading Guide ──
   readingGuide: {
     title: '읽기 안내',
+    emptyTitle: '아직 읽기 안내가 없어요',
     intro: '논문의 기호와 배경 개념, 각 섹션의 역할을 정리해요.',
     // 비용은 실측이 아니라 채팅 1회 기준의 정직한 비교로만 말한다.
     costNotice: '질문 도우미 답변 한 번과 비슷한 비용이 들어요. 한 번 만들면 이 기기에 저장돼요.',
