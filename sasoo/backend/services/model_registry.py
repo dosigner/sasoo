@@ -16,9 +16,10 @@ thinking_level 실값)의 이식이므로 바꾸면 동작 변경이다. 실값 
     chat 엔드포인트)가 thinking_level 인자를 아예 넘기지 않으므로 None이 맞다.
     (mermaid는 2026-09-06에 high로 올렸다. 아래 레지스트리 주석 참조.)
 
-OpenAI 열 원칙(스펙 개정 1 R3/R4): 모델은 Luna 하나, effort만 변주.
-deep_dive는 high까지(xhigh 금지). screening·리졸버·naming은 최저 사고량 —
-Task 0 실측(2026-08-05)에서 minimal 미지원 확정 — OpenAI 최저 effort는 low.
+OpenAI roles use one Luna model with task-specific effort.
+Use xhigh for deep_dive by user choice on 2026-10-07.
+The four-paper single-run sweep did not establish a universal optimum.
+Other role efforts stay at their existing values.
 """
 
 from dataclasses import dataclass
@@ -76,12 +77,11 @@ _REGISTRY: dict[str, dict[str, ModelChoice]] = {
     "openai": {
         "screening": ModelChoice(MODEL_LUNA, "low"),
         "visual": ModelChoice(MODEL_LUNA, "low"),
-        # OpenAI는 minimal 미지원(플랜 Task 0 실측) — 최저치가 low다.
-        # box_2d 규약 준수는 2026-08-21 실측으로 확인(tools/openai_vision_spike.py).
+        # Keep low for PDF parsing; the older box_2d check did not test GPT-6 Luna.
         "pdf_parse": ModelChoice(MODEL_LUNA, "low"),
         "citation": ModelChoice(MODEL_LUNA, "low"),
         "recipe": ModelChoice(MODEL_LUNA, "medium"),
-        "deep_dive": ModelChoice(MODEL_LUNA, "high"),
+        "deep_dive": ModelChoice(MODEL_LUNA, "xhigh"),
         "viz_planning": ModelChoice(MODEL_LUNA, "medium"),
         "mermaid": ModelChoice(MODEL_LUNA, "high"),  # gemini 열과 같은 의도(2026-09-06)
         "chat": ModelChoice(MODEL_LUNA, "low"),

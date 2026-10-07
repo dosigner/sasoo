@@ -91,19 +91,21 @@ class TestActiveProvider(unittest.TestCase):
 
 
 class TestOpenAIColumn(unittest.TestCase):
-    def test_deep_dive_is_high_not_xhigh(self):
-        """스펙 개정 R3 — xhigh 금지."""
-        self.assertEqual(resolve("deep_dive", "openai").effort, "high")
+    def test_deep_dive_uses_requested_xhigh(self):
+        """Use xhigh only for OpenAI deep dive."""
+        self.assertEqual(resolve("deep_dive", "openai").effort, "xhigh")
 
     def test_all_openai_text_roles_use_luna(self):
         for role in ROLES:
             if role == "image":
                 continue
             with self.subTest(role=role):
-                self.assertEqual(resolve(role, "openai").model, "gpt-5.6-luna")
+                self.assertEqual(resolve(role, "openai").model, "gpt-6-luna")
 
-    def test_no_role_uses_xhigh(self):
+    def test_other_roles_keep_their_effort(self):
         for role in ROLES:
+            if role == "deep_dive":
+                continue
             with self.subTest(role=role):
                 self.assertNotEqual(resolve(role, "openai").effort, "xhigh")
 
@@ -127,9 +129,9 @@ class TestPdfParseRole(unittest.TestCase):
         self.assertEqual(choice.effort, "low")
 
     def test_openai_pdf_parse_uses_luna_low(self):
-        """OpenAI는 minimal을 BadRequestError로 거부한다(플랜 Task 0 실측). low가 최저치."""
+        """Keep the PDF parser effort at its established low setting."""
         choice = resolve("pdf_parse", "openai")
-        self.assertEqual(choice.model, "gpt-5.6-luna")
+        self.assertEqual(choice.model, "gpt-6-luna")
         self.assertEqual(choice.effort, "low")
 
     def test_pdf_parse_is_declared_in_roles(self):
@@ -179,7 +181,7 @@ class TestSynthesisRole(unittest.TestCase):
         self.assertEqual(resolve("synthesis", "gemini").model, MODEL_FLASH_HQ)
 
     def test_openai_uses_luna(self):
-        self.assertEqual(resolve("synthesis", "openai").model, "gpt-5.6-luna")
+        self.assertEqual(resolve("synthesis", "openai").model, "gpt-6-luna")
 
     def test_not_in_provider_override_table(self):
         """DEC-022: 표는 비어 있어야 한다 — synthesis도 예외가 아니다."""

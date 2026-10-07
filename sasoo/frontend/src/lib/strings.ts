@@ -461,7 +461,7 @@ export const S = {
     aiProvider: 'AI 공급사',
     aiProviderDesc: '분석·그림 판독·도해 생성에 모두 적용돼요.',
     aiProviderOpenAI: 'OpenAI',
-    aiProviderOpenAIModel: 'GPT-5.6 Luna',
+    aiProviderOpenAIModel: 'GPT-6 Luna',
     aiProviderGemini: 'Google',
     aiProviderGeminiModel: 'Gemini 3.8 Flash',
     aiProviderKeyReady: '키 등록됨',

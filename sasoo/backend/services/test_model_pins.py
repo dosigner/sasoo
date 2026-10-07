@@ -38,11 +38,8 @@ import services.models as models
 from services.pricing import PRICING
 
 
-def test_gpt6_candidate_does_not_promote_operational_luna():
-    # Given the candidate rollout, when resolving model constants:
-    candidate, operational = models.MODEL_GPT6_LUNA, models.MODEL_LUNA
-    # Then the candidate is available while the deployed choice stays unchanged.
-    assert (candidate, operational) == ("gpt-6-luna", "gpt-5.6-luna")
+def test_gpt6_luna_is_the_operational_openai_model():
+    assert models.MODEL_GPT6_LUNA == models.MODEL_LUNA == "gpt-6-luna"
 
 
 def test_flash_hq_is_the_38_flash_id():
