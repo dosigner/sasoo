@@ -192,6 +192,8 @@ function Lightbox({
   const [explanations, setExplanations] = useState<Record<number, CachedExplanation>>({});
   const [loadingId, setLoadingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [partial, setPartial] = useState<{ figureId: number; text: string } | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const [scrolled, setScrolled] = useState(false);
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -250,7 +252,9 @@ function Lightbox({
     setLoadingId(figureId);
     setError(null);
 
-    generateFigureExplanation(paperId, figureId)
+    generateFigureExplanation(paperId, figureId, (text) => {
+      if (!cancelled) setPartial({ figureId, text });
+    })
       .then((res) => {
         if (cancelled) return;
         setExplanations((prev) => ({
@@ -271,7 +275,7 @@ function Lightbox({
     return () => {
       cancelled = true;
     };
-  }, [figure, paperId, explanations]);
+  }, [figure, paperId, explanations, retryCount]);
 
   // Scroll right panel to top when changing figures
   useEffect(() => {
@@ -294,6 +298,7 @@ function Lightbox({
   const figureId = figure.id ?? 0;
   const cached = explanations[figureId];
   const isLoading = loadingId === figureId;
+  const streamedText = partial?.figureId === figureId ? partial.text : '';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
@@ -408,36 +413,25 @@ function Lightbox({
             className="flex-1 overflow-y-auto min-w-0 min-h-0 figure-explanation-panel"
             onScroll={handleRightPanelScroll}
           >
-            {isLoading ? (
+            {isLoading && !streamedText ? (
               <ExplanationSkeleton />
             ) : error ? (
-              <div className="flex flex-col items-center justify-center h-full text-center p-8">
+              <div className="flex flex-col items-center justify-center min-h-full text-center p-8">
                 <div className="w-12 h-12 rounded-full bg-danger/10 flex items-center justify-center mb-4">
                   <AppIcon name="error" className="w-6 h-6 text-danger" />
                 </div>
-                <p className="text-sm text-fg-secondary mb-2">{S.figures.explanationFailed}</p>
+                <p role="alert" className="text-sm text-fg-secondary mb-2">{S.figures.explanationFailed}</p>
                 <p className="text-xs text-fg-muted mb-4">{error}</p>
+                {streamedText && (
+                  <div className="text-left w-full mb-4">
+                    <p className="text-xs text-danger mb-3">생성이 중단된 설명입니다. 완료된 결과로 저장되지 않았습니다.</p>
+                    <Markdown>{streamedText}</Markdown>
+                  </div>
+                )}
                 <button
                   onClick={() => {
-                    if (figure.id) {
-                      setError(null);
-                      setLoadingId(figure.id);
-                      generateFigureExplanation(paperId, figure.id)
-                        .then((res) => {
-                          setExplanations((prev) => ({
-                            ...prev,
-                            [figure.id!]: {
-                              explanation: res.explanation,
-                              modelUsed: res.model_used,
-                            },
-                          }));
-                          setLoadingId(null);
-                        })
-                        .catch((err) => {
-                          setError(err.message || S.figures.explanationFailed);
-                          setLoadingId(null);
-                        });
-                    }
+                    setPartial(null);
+                    setRetryCount((count) => count + 1);
                   }}
                   className="btn-secondary text-xs"
                   aria-label={S.figures.retry}
@@ -445,21 +439,27 @@ function Lightbox({
                   {S.figures.retry}
                 </button>
               </div>
-            ) : cached ? (
+            ) : cached || streamedText ? (
               <div className="p-6">
                 <div className="flex items-center gap-2 mb-5 pb-3 border-b border-border/50">
                   <AppIcon name="sparkles" className="w-4 h-4 text-accent" />
                   <h3 className="text-sm font-semibold text-fg">
                     {S.figures.expertExplanation}
                   </h3>
-                  {cached.modelUsed && cached.modelUsed !== 'cached' && (
+                  {cached?.modelUsed && cached.modelUsed !== 'cached' && (
                     <Badge variant="accent" className="ml-auto">
                       {cached.modelUsed}
                     </Badge>
                   )}
                 </div>
+                {isLoading && (
+                  <p role="status" className="flex items-center gap-2 text-xs text-fg-muted mb-4">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    {S.figures.explanationLoading}
+                  </p>
+                )}
                 <div className="analysis-content figure-explanation-content">
-                  <Markdown>{cached.explanation}</Markdown>
+                  <Markdown>{cached?.explanation ?? streamedText}</Markdown>
                 </div>
               </div>
             ) : (

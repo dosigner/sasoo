@@ -190,6 +190,8 @@ class FigureExplanationResponse(BaseModel):
     tokens_in: int = 0
     tokens_out: int = 0
     cost_usd: float = 0.0
+    tokens_cached: Optional[int] = None
+    tokens_cache_write: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------

@@ -1975,9 +1975,10 @@ class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):
         figure = {"id": 9, "paper_id": 7, "figure_num": "Figure 1", "caption": "Caption", "file_path": None}
         captured = {}
 
-        async def _fake_call(prompt: str, **kwargs):
-            captured["prompt"] = prompt
-            return {"text": "설명", "model": "gemini", "tokens_in": 1, "tokens_out": 1}
+        async def _fake_stream(prompt, **kwargs):
+            captured["prompt"] = "\n".join(part.get("text", "") for part in prompt)
+            yield {"type": "token", "text": "설명"}
+            yield {"type": "done", "tokens_in": 1, "tokens_out": 1, "interaction_id": "completed-figure"}
 
         with (
             patch("api.figure_service.fetch_one", new=AsyncMock(side_effect=[paper, figure])),
@@ -1995,7 +1996,7 @@ class FigurePromptContextTests(unittest.IsolatedAsyncioTestCase):
                     }
                 ),
             ),
-            patch("api.figure_service.call_interaction", new=_fake_call),
+            patch("api.figure_service.stream_interaction", new=_fake_stream),
             patch("api.figure_service.execute_update", new=AsyncMock()),
         ):
             response = await figure_service.explain_figure_handler(7, 9)
@@ -4066,7 +4067,12 @@ class NativePdfValidationTests(unittest.IsolatedAsyncioTestCase):
             response = {"text": "Incomplete explanation", "model": "gpt-6-luna", "tokens_in": 100,
                         "tokens_out": 50, "tokens_cached": 0, "tokens_cache_write": 0,
                         "response_status": status, "incomplete_reason": "max_output_tokens"}
-            call = AsyncMock(return_value=response)
+            calls = []
+
+            async def stream(prompt, **kwargs):
+                calls.append(kwargs)
+                yield {"type": "token", "text": response["text"]}
+                yield {"type": "done", **response}
             update = AsyncMock()
             with patch("api.figure_service.fetch_one", new=AsyncMock(side_effect=[paper, figure])), patch(
                 "api.figure_service.fetch_all", new=AsyncMock(return_value=[])
@@ -4075,7 +4081,7 @@ class NativePdfValidationTests(unittest.IsolatedAsyncioTestCase):
             ), patch("api.figure_service.load_or_build_document_context", return_value={}), patch(
                 "api.figure_service.get_latest_completed_phase_rows", new=AsyncMock(return_value={})
             ), patch("api.figure_service.active_provider", new=AsyncMock(return_value="openai")), patch(
-                "api.figure_service.call_interaction", new=call
+                "api.figure_service.stream_interaction", new=stream
             ), patch("api.figure_service.execute_update", new=update):
                 with self.assertRaises(HTTPException) as raised:
                     await figure_service.explain_figure_handler(7, 9)
@@ -4083,7 +4089,7 @@ class NativePdfValidationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(raised.exception.detail["_raw"], response["text"])
             self.assertEqual(raised.exception.detail["_usage"]["response_status"], status)
             self.assertEqual(raised.exception.detail["_usage"]["cost_usd"], 0.000035)
-            call.assert_awaited_once()
+            self.assertEqual(len(calls), 1)
             update.assert_not_awaited()
 
 

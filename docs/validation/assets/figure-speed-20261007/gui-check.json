@@ -1,0 +1,56 @@
+{
+  "partial": {
+    "text": "전문가 상세 설명\n\nAI가 그림을 분석하고 있어요...\n\n그림 개요\n\n측정 시간 10 ms, 전압 2 V입니다.",
+    "status": true,
+    "width": 1400,
+    "height": 900
+  },
+  "shared": {
+    "requests": {
+      "1": 1,
+      "2": 1
+    },
+    "generations": {
+      "1": 1,
+      "2": 1
+    },
+    "active": [
+      1,
+      2
+    ]
+  },
+  "failure": "설명을 만들지 못했어요\n\n검증용 연결 중단\n\n생성이 중단된 설명입니다. 완료된 결과로 저장되지 않았습니다.\n\n그림 개요\n\n측정 시간 10 ms, 전압 2 V입니다.\n\n다시 시도",
+  "complete": {
+    "text": "전문가 상세 설명\nfixture-model\n그림 개요\n\n측정 시간 10 ms, 전압 2 V입니다.\n\n결과 해석\n\n전압이 시간에 따라 증가합니다.",
+    "status": false,
+    "errors": []
+  },
+  "stats": {
+    "requests": {
+      "1": 1,
+      "2": 2
+    },
+    "generations": {
+      "1": 1,
+      "2": 2
+    },
+    "active": []
+  },
+  "small": {
+    "width": 1024,
+    "height": 680,
+    "text": "전문가 상세 설명\nfixture-model\n그림 개요\n\n측정 시간 10 ms, 전압 2 V입니다.\n\n결과 해석\n\n전압이 시간에 따라 증가합니다.",
+    "overflow": false
+  },
+  "longPartialError": {
+    "viewport": [
+      1024,
+      680
+    ],
+    "topVisible": true,
+    "retryVisible": true,
+    "panelHeight": 528,
+    "scrollHeight": 2234,
+    "errors": []
+  }
+}

@@ -74,7 +74,7 @@ from api.report_service import (
     _format_phase_data,
     _generate_paperbanana_image,
 )
-from api.figure_service import explain_figure_handler
+from api.figure_service import explain_figure_handler, stream_figure_explanation
 from services.analysis_execution import (
     _MERMAID_STYLE_RULES,
     _MERMAID_SYNTAX_RULES,
@@ -992,6 +992,15 @@ async def explain_figure(paper_id: int, figure_id: int):
     return await explain_figure_handler(paper_id, figure_id)
 
 
+@router.post("/{paper_id}/figures/{figure_id}/explain/stream")
+async def explain_figure_stream(paper_id: int, figure_id: int):
+    return StreamingResponse(
+        stream_figure_explanation(paper_id, figure_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.post("/{paper_id}/paperbanana", response_model=PaperBananaResponse)
 async def generate_paperbanana(paper_id: int, request: PaperBananaRequest):
     """
@@ -1384,4 +1393,3 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-

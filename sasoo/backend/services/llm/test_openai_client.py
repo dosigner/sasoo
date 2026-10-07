@@ -387,6 +387,24 @@ async def _collect_stream(agen):
 class TestStreamContract(unittest.TestCase):
     """Preserve required token/done fields while allowing provider metadata."""
 
+    def test_explicit_cache_boundary_reaches_sdk_before_dynamic_image(self):
+        from services.llm import openai_client
+
+        fake_client = MagicMock()
+        fake_client.responses.stream.return_value = _FakeResponseStream([
+            _FakeStreamEvent("response.completed", response=_fake_stream_response()),
+        ])
+        prompt = [{"type": "text", "text": "Shared paper context",
+                   "prompt_cache_breakpoint": {"mode": "explicit"}},
+                  {"type": "text", "text": "Figure 2"},
+                  {"type": "image", "data": "QUJD", "mime_type": "image/png"}]
+        with patch.object(openai_client, "_get_client", return_value=fake_client):
+            asyncio.run(_collect_stream(openai_client.stream_interaction(prompt, lane="chat")))
+        sent = fake_client.responses.stream.call_args.kwargs
+        self.assertEqual(sent["prompt_cache_options"], {"mode": "explicit"})
+        self.assertEqual(sent["input"][0]["content"][0]["prompt_cache_breakpoint"], {"mode": "explicit"})
+        self.assertEqual(sent["input"][0]["content"][-1]["type"], "input_image")
+
     def test_stream_yields_tokens_then_done(self):
         from services.llm import openai_client
 

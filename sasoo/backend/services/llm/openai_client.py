@@ -105,7 +105,10 @@ def _translate_parts(prompt) -> Any:
     for part in prompt:
         kind = part.get("type")
         if kind == "text":
-            content.append({"type": "input_text", "text": part["text"]})
+            text_part = {"type": "input_text", "text": part["text"]}
+            if part.get("prompt_cache_breakpoint"):
+                text_part["prompt_cache_breakpoint"] = part["prompt_cache_breakpoint"]
+            content.append(text_part)
         elif kind == "image":
             content.append({
                 "type": "input_image",
@@ -325,6 +328,8 @@ async def stream_interaction(
         prompt, model=model, system_instruction=system_instruction,
         thinking_level=thinking_level,
     ), "store": store}
+    if isinstance(prompt, list) and any(part.get("prompt_cache_breakpoint") for part in prompt):
+        kwargs["prompt_cache_options"] = {"mode": "explicit"}
     if max_output_tokens is not None:
         kwargs["max_output_tokens"] = max_output_tokens
     if service_tier is not None:

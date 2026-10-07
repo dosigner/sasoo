@@ -199,6 +199,8 @@ export interface FigureExplanationResponse {
   tokens_in: number;
   tokens_out: number;
   cost_usd: number;
+  tokens_cached?: number | null;
+  tokens_cache_write?: number | null;
 }
 
 // Recipe types
@@ -676,15 +678,68 @@ export async function getTables(paperId: string): Promise<TableListResponse> {
   return request<TableListResponse>(`/analysis/${paperId}/tables`);
 }
 
+const figureExplanationRequests = new Map<string, {
+  promise: Promise<FigureExplanationResponse>;
+  text: string;
+  listeners: Set<(text: string) => void>;
+}>();
+
 export async function generateFigureExplanation(
   paperId: string,
-  figureId: number
+  figureId: number,
+  onProgress?: (text: string) => void,
 ): Promise<FigureExplanationResponse> {
-  return request<FigureExplanationResponse>(
-    `/analysis/${paperId}/figures/${figureId}/explain`,
-    { method: 'POST' }
-  );
+  const key = `${paperId}:${figureId}`;
+  let pending = figureExplanationRequests.get(key);
+  if (!pending) {
+    const listeners = new Set<(text: string) => void>();
+    let text = '';
+    const promise = (async () => {
+      const response = await fetch(`${getApiBase()}/analysis/${paperId}/figures/${figureId}/explain/stream`, {
+        method: 'POST',
+        headers: await getBackendAuthorizationHeaders(),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: SseFigureFailure }));
+        throw new ApiError(response.status, error.detail || SseFigureFailure);
+      }
+      let result: FigureExplanationResponse | undefined;
+      await readEventStream(response, (event) => {
+        if (event.type === 'token') {
+          text += event.content ?? '';
+          for (const listener of listeners) listener(text);
+        } else if (event.type === 'error') {
+          throw new ChatStreamError(event.message || SseFigureFailure);
+        } else if (event.type === 'done') {
+          result = event.result;
+          if (!result || result.figure_id !== figureId || result.paper_id !== Number(paperId)
+            || typeof result.explanation !== 'string' || !result.explanation.trim()
+            || typeof result.model_used !== 'string'
+            || [result.tokens_in, result.tokens_out, result.cost_usd].some((value) => !Number.isFinite(value) || value < 0)) {
+            throw new ChatStreamError('그림 설명의 완료 응답이 올바르지 않습니다.');
+          }
+          return true;
+        }
+        return false;
+      });
+      if (!result) throw new ChatStreamError(SseFigureFailure);
+      return result;
+    })().finally(() => figureExplanationRequests.delete(key));
+    pending = { promise, listeners, get text() { return text; } };
+    figureExplanationRequests.set(key, pending);
+  }
+  if (onProgress) {
+    pending.listeners.add(onProgress);
+    if (pending.text) onProgress(pending.text);
+  }
+  try {
+    return await pending.promise;
+  } finally {
+    if (onProgress) pending.listeners.delete(onProgress);
+  }
 }
+
+const SseFigureFailure = '그림 설명을 생성하지 못했습니다.';
 
 export async function getRecipe(paperId: string): Promise<Recipe> {
   return request<Recipe>(`/analysis/${paperId}/recipe`);
@@ -804,6 +859,49 @@ export class ChatStreamError extends Error {
   }
 }
 
+interface StreamEvent {
+  type?: string;
+  content?: string;
+  message?: string;
+  tokens_in?: number;
+  tokens_out?: number;
+  cost_usd?: number;
+  result?: FigureExplanationResponse;
+}
+
+async function readEventStream(response: Response, onEvent: (event: StreamEvent) => boolean): Promise<void> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new ChatStreamError('응답 스트림이 없습니다.');
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const consume = (line: string): boolean => {
+    if (!line.startsWith('data: ')) return false;
+    let event: StreamEvent;
+    try {
+      event = JSON.parse(line.slice(6));
+      if (!event || typeof event !== 'object') throw new Error('Invalid event');
+    } catch {
+      throw new ChatStreamError('응답 스트림을 해석하지 못했습니다.');
+    }
+    return onEvent(event);
+  };
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) if (consume(line)) return;
+      if (done) {
+        if (buffer && consume(buffer)) return;
+        throw new ChatStreamError('응답이 완료되기 전에 연결이 끊겼습니다.');
+      }
+    }
+  } finally {
+    void reader.cancel().catch(() => {});
+  }
+}
+
 /**
  * `history` must NOT contain `message` — the backend appends it as the final
  * user turn, so including it here would send the question to Gemini twice.
@@ -840,56 +938,21 @@ export async function chatWithAgent(
     throw new ApiError(response.status, err.detail || 'Chat failed');
   }
 
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('No response body');
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-
-        let data: {
-          type?: string;
-          content?: string;
-          message?: string;
-          tokens_in?: number;
-          tokens_out?: number;
-          cost_usd?: number;
-        };
-        try {
-          data = JSON.parse(line.slice(6));
-        } catch {
-          throw new ChatStreamError('응답 스트림을 해석하지 못했습니다.');
-        }
-
-        if (data.type === 'token') {
-          onToken(data.content ?? '');
-        } else if (data.type === 'done') {
-          onDone({
-            tokens_in: data.tokens_in ?? 0,
-            tokens_out: data.tokens_out ?? 0,
-            cost_usd: data.cost_usd ?? 0,
-          });
-          return;
-        } else if (data.type === 'error') {
-          throw new ChatStreamError(data.message || 'Chat failed');
-        }
-      }
+  await readEventStream(response, (data) => {
+    if (data.type === 'token') {
+      onToken(data.content ?? '');
+    } else if (data.type === 'done') {
+      onDone({
+        tokens_in: data.tokens_in ?? 0,
+        tokens_out: data.tokens_out ?? 0,
+        cost_usd: data.cost_usd ?? 0,
+      });
+      return true;
+    } else if (data.type === 'error') {
+      throw new ChatStreamError(data.message || 'Chat failed');
     }
-  } finally {
-    // Frees the connection when we return on `done`, throw, or the caller aborts.
-    void reader.cancel().catch(() => {});
-  }
+    return false;
+  });
 }
 
 // ---------------------------------------------------------------------------
