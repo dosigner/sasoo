@@ -24,7 +24,7 @@ import {
   type Figure,
   type Table,
 } from '@/lib/api';
-import { buildPhaseSummary, buildWorkbenchStatusSummary } from '@/lib/workbenchSummaries';
+import { artifactsUnsettled, buildPhaseSummary, buildWorkbenchStatusSummary } from '@/lib/workbenchSummaries';
 import { S } from '@/lib/strings';
 import { getSummaryDisplayStatus, readInputCoverage, readSummaryExtensions } from '@/lib/summaryContent';
 import { focusReadingTarget } from '@/lib/readingNavigation';
@@ -325,11 +325,10 @@ function PhaseSection({
         </span>
 
         <span className="text-fg-muted shrink-0">
-          {expanded ? (
-            <AppIcon name="chevron-down" className="w-4 h-4" />
-          ) : (
-            <AppIcon name="chevron-right" className="w-4 h-4" />
-          )}
+          <AppIcon
+            name="chevron-right"
+            className={`w-4 h-4 transition-transform duration-200 ease-out ${expanded ? 'rotate-90' : ''}`}
+          />
         </span>
       </button>
 
@@ -338,7 +337,8 @@ function PhaseSection({
       )}
 
       {hasContent && (
-        <div className="pb-5" hidden={!expanded}>
+        // hidden이 풀리는 순간 CSS 애니메이션이 다시 시작되므로, 펼칠 때마다 짧게 나타난다.
+        <div className="phase-section-body pb-5" hidden={!expanded}>
           {phaseStatus === 'running' && !content && (
             <div className="flex items-center gap-2 py-4" role="status" aria-busy="true">
               <Loader2 className="w-4 h-4 text-accent animate-spin" />
@@ -711,7 +711,9 @@ export default function AnalysisPanel({
 }: AnalysisPanelProps) {
   const [activeTab, setActiveTab] = useState<'summary' | 'synthesis' | 'guide' | 'figures' | 'tables' | 'recipe'>('summary');
   const [deepDiveExpanded, setDeepDiveExpanded] = useState(true);
-  const [summaryFocus, setSummaryFocus] = useState<{ index: number | null; token: number } | null>(null);
+  const [screeningExpanded, setScreeningExpanded] = useState(true);
+  const [citationExpanded, setCitationExpanded] = useState(false);
+  const [summaryFocus, setSummaryFocus] = useState<{ index: number | null; token: number; selector?: string } | null>(null);
   const [returnFromSummary, setReturnFromSummary] = useState<'figures' | 'tables' | null>(null);
   const pendingSummaryCitation = useRef<string | null>(null);
   const activeTabRef = useRef(activeTab);
@@ -761,6 +763,8 @@ export default function AnalysisPanel({
   useLayoutEffect(() => {
     setActiveTab('summary');
     setDeepDiveExpanded(true);
+    setScreeningExpanded(true);
+    setCitationExpanded(false);
     setSummaryFocus(null);
     setReturnFromSummary(null);
     pendingSummaryCitation.current = null;
@@ -781,6 +785,22 @@ export default function AnalysisPanel({
     setSummaryFocus({ index, token: ++summaryRequestToken.current });
   }, [selectTab]);
 
+  // 상태부 단계 목록에서 누른 단계의 결과로 이동한다. 요약 탭에 섹션이 있는 단계는
+  // 펼친 뒤 그 섹션 머리로 스크롤하고, 시각 자료와 레시피는 각자의 탭을 연다.
+  const openPhase = useCallback((phase: AnalysisPhase) => {
+    if (phase === 'visual') return selectTab('figures');
+    if (phase === 'recipe') return selectTab('recipe');
+    selectTab('summary');
+    if (phase === 'screening') setScreeningExpanded(true);
+    else if (phase === 'citation') setCitationExpanded(true);
+    else setDeepDiveExpanded(true);
+    setSummaryFocus({
+      index: null,
+      token: ++summaryRequestToken.current,
+      selector: `[data-phase="${phase}"] > button`,
+    });
+  }, [selectTab]);
+
   useLayoutEffect(() => {
     if (activeTab !== 'summary') return;
     if (!summaryFocus || handledSummaryToken.current === summaryFocus.token) {
@@ -788,9 +808,9 @@ export default function AnalysisPanel({
       return;
     }
     const frame = requestAnimationFrame(() => {
-      const selector = summaryFocus.index === null
+      const selector = summaryFocus.selector ?? (summaryFocus.index === null
         ? '[data-summary-anchor="main"]'
-        : `[data-summary-answer="${summaryFocus.index}"] h4`;
+        : `[data-summary-answer="${summaryFocus.index}"] h4`);
       const target = summaryRef.current?.querySelector<HTMLElement>(selector)
         ?? summaryRef.current?.querySelector<HTMLElement>('[data-phase="deep_dive"] > button');
       if (target) focusReadingTarget(target);
@@ -883,7 +903,7 @@ export default function AnalysisPanel({
     && status.phases.every((phase) => phase.status === 'completed' || phase.status === 'skipped')
     && extensions?.kind !== 'invalid'
     && coverageKind !== 'partial' && coverageKind !== 'unknown'
-    && !['본문 준비 중', '시각 자료 동기화 오류', '시각 자료 동기화 중', '시각 자료 일부만 준비됨'].includes(workbenchStatus.trustStateLabel)
+    && !artifactsUnsettled(artifactStatus)
     && ![figures?.visual_state, tables?.visual_state].some((value) => value === 'partial' || value === 'running' || value === 'error')
     && ![figures?.artifacts_ready, tables?.artifacts_ready].includes(false);
 
@@ -906,7 +926,7 @@ export default function AnalysisPanel({
               <span className="font-semibold text-fg">{workbenchStatus.runStateLabel}</span>
               <span className="tabular-nums">완료 {workbenchStatus.completedCount}{skippedPhases.length > 0 ? `, 건너뜀 ${skippedPhases.length}` : ''}</span>
               {skippedPhases.length > 0 && (
-                <details className="text-fg-muted">
+                <details className="relative text-fg-muted">
                   <summary className="cursor-pointer focus-visible:outline-2 focus-visible:outline-accent">건너뛴 단계 보기</summary>
                   <ul className="absolute z-20 mt-1 rounded-surface border border-border bg-surface p-3 shadow-lg">
                     {skippedPhases.map((phase) => (
@@ -940,7 +960,7 @@ export default function AnalysisPanel({
                   aria-valuenow={workbenchStatus.completedCount}
                 >
                   <div
-                    className="h-[3px] rounded-full bg-accent transition-[width] duration-150"
+                    className="h-[3px] rounded-full bg-accent transition-[width] duration-500 ease-out"
                     style={{ width: `${Math.round(workbenchStatus.progressRatio * 100)}%` }}
                   />
                 </div>
@@ -950,6 +970,11 @@ export default function AnalysisPanel({
                 {workbenchStatus.nextActionLabel}
               </p>
             </div>
+            {status && status.overall_status !== 'pending' && status.phases.length > 0 && (
+              <div className="-mx-1.5 mt-2.5">
+                <ProgressTracker phases={status.phases} onSelect={openPhase} />
+              </div>
+            )}
           </div>}
 
           <div className={compactCompleted ? 'mt-2.5' : 'mt-4'}>
@@ -984,19 +1009,7 @@ export default function AnalysisPanel({
           <div key={paperId} ref={summaryRef} data-summary-panel hidden={activeTab !== 'summary'} className="reading-panel-content space-y-5">
             <div className="workbench-tab-heading">
               <h2 className="text-lg font-semibold text-fg">{S.workbench.summaryTab}</h2>
-              {workbenchStatus.totalCount > 0 && (
-                <span className="status-pill border-accent/20 bg-accent/10 text-accent tabular-nums">
-                  {workbenchStatus.completedCount}/{workbenchStatus.totalCount}
-                </span>
-              )}
             </div>
-            {status && status.overall_status !== 'pending' && !compactCompleted && (
-                <ProgressTracker
-                  phases={status.phases}
-                  overallProgress={status.progress_pct}
-                  variant="minimal"
-                />
-              )}
 
             <div className="space-y-0">
               <PhaseSection
@@ -1005,6 +1018,8 @@ export default function AnalysisPanel({
                 errorMessage={getPhaseErrorMessage('screening')}
                 content={getPhaseContent('screening')}
                 defaultExpanded={true}
+                expanded={screeningExpanded}
+                onExpandedChange={setScreeningExpanded}
                 summaryLine={screeningSummary.summaryLine}
                 collapsedMeta={screeningSummary.collapsedMeta}
                 expandedMeta={screeningSummary.expandedMeta}
@@ -1036,6 +1051,8 @@ export default function AnalysisPanel({
                 errorMessage={getPhaseErrorMessage('citation')}
                 content={getPhaseContent('citation')}
                 defaultExpanded={false}
+                expanded={citationExpanded}
+                onExpandedChange={setCitationExpanded}
                 summaryLine={citationSummary.summaryLine}
                 collapsedMeta={citationSummary.collapsedMeta}
                 expandedMeta={citationSummary.expandedMeta}

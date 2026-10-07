@@ -54,6 +54,19 @@ describe('buildWorkbenchStatusSummary — progressRatio', () => {
     expect(summary.runStateLabel.length).toBeGreaterThan(0);
   });
 
+  it('완료 4/5 + 건너뜀 1: progressRatio는 1이다', () => {
+    const status = makeStatus(['completed', 'skipped', 'completed', 'completed', 'completed'], 'completed', null);
+    const summary = buildWorkbenchStatusSummary({
+      status,
+      figures: [],
+      tables: [],
+      recipe: null,
+      visualizations: null,
+    });
+    expect(summary.progressRatio).toBe(1);
+    expect(summary.completedCount).toBe(4);
+  });
+
   it('진행 중 3/5: progressRatio는 0.6이다', () => {
     const status = makeStatus(
       ['completed', 'completed', 'completed', 'running', 'pending'],

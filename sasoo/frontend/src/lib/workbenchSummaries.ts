@@ -357,6 +357,18 @@ export function buildChatStarterPrompts({
   return prompts.slice(0, 3);
 }
 
+// 본문·시각 artifact가 아직 정리 중이거나 일부만 준비됐는지. trustStateLabel이 '결과 준비됨'
+// 계열 폴백이 아닌 경고 라벨을 고르는 조건과 같다. 라벨 문자열 비교로 판정하면 문구만 바꿔도
+// 조용히 깨지므로 상태값으로 판정한다.
+export function artifactsUnsettled(artifactStatus?: ArtifactStatus | null): boolean {
+  const visualState = artifactStatus?.visual_state;
+  return artifactStatus?.text_ready === false
+    || visualState === 'error'
+    || visualState === 'running'
+    || visualState === 'partial'
+    || (artifactStatus?.text_ready === true && artifactStatus?.visual_ready === false);
+}
+
 // 상태부·헤더 칩이 실제로 표시할 라벨/톤을 고른다. trustStateLabel은 항상 채워지는
 // 폴백값(마지막 폴백 '결과 준비됨')이라 `trustStateLabel || runStateLabel` 식은 도달
 // 불가한 폴백이 된다 — pending/running/analyzing/error/cancelled는 runStateLabel(accent
@@ -402,7 +414,9 @@ function buildWorkbenchStatusSummaryCore({
   const totalCount = status?.phases.length ?? 5;
   const completedCount = status?.phases.filter((phase) => phase.status === 'completed').length ?? 0;
   const staleModel = status?.phases.find((phase) => Boolean(phase.stale_model))?.stale_model ?? null;
-  const progressRatio = totalCount > 0 ? completedCount / totalCount : 0;
+  // 건너뛴 단계도 끝난 단계다. 분자에서 빼면 하나만 건너뛰어도 완료 후 막대가 80%에 멈춘다.
+  const settledCount = completedCount + (status?.phases.filter((phase) => phase.status === 'skipped').length ?? 0);
+  const progressRatio = totalCount > 0 ? settledCount / totalCount : 0;
   const currentPhase = status?.current_phase;
   const currentPhaseLabel = currentPhase ? PHASE_LABELS[currentPhase] : '분석 대기';
   const hasFigures = figures.length > 0;

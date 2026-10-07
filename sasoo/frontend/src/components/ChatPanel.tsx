@@ -1,12 +1,12 @@
 import { Children, useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import {
+  ArrowDown,
   Bot,
   MessageSquare,
   Send,
   Sparkles,
   Square,
   Trash2,
-  User,
   X,
 } from 'lucide-react';
 import { type Components } from 'react-markdown';
@@ -95,6 +95,8 @@ export default function ChatPanel({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [totalCost, setTotalCost] = useState(0);
   const [scrolled, setScrolled] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
+  const stickToBottomRef = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   // Aborts the turn currently on the wire; queued turns have not started yet.
@@ -104,6 +106,17 @@ export default function ChatPanel({
   const agent = agentName ? getAgentMeta(agentName) : null;
   const agentColor = agent?.color || '#5e6ad2';
   const hasMessages = messages.length > 0;
+  // 닫힘 애니메이션 동안 카드를 유지한다. 런처는 카드가 완전히 빠진 뒤에 나타나야
+  // 같은 flex 줄에 둘이 잠깐 나란히 섰다가 튀는 일이 없다.
+  const [cardMounted, setCardMounted] = useState(open);
+  useEffect(() => {
+    if (!open) return;
+    setCardMounted(true);
+    // 다시 열면 새 카드에서 대화 끝을 보여준다.
+    stickToBottomRef.current = true;
+    setAtBottom(true);
+  }, [open]);
+  const cardVisible = open || cardMounted;
   const busy = messages.some((msg) => msg.status === 'pending' || msg.status === 'streaming');
 
   // 런처는 평소 원형 아이콘 버튼으로 접혀 있다가, ready가 false→true로 바뀌는
@@ -127,6 +140,8 @@ export default function ChatPanel({
     setMessages([]);
     setTotalCost(0);
     setScrolled(false);
+    setAtBottom(true);
+    stickToBottomRef.current = true;
   }, [paperId]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -134,8 +149,10 @@ export default function ChatPanel({
   // 스트리밍 중에는 토큰 플러시마다(약 25회/초) 이 효과가 돈다. scrollIntoView는
   // 호출할 때마다 부드러운 스크롤을 새로 시작해 끝나지 않고, 조상 스크롤 컨테이너까지
   // 건드린다. 메시지 목록의 scrollTop만 직접 옮겨 채팅 영역 안에서만 끝낸다.
+  // 사용자가 위로 올려 읽는 중이면 따라 내려가지 않는다. 값은 스크롤 이벤트에서만
+  // 갱신하므로, 토큰으로 scrollHeight가 늘어난 직후에도 직전 위치 기준으로 판단한다.
   useEffect(() => {
-    if (!open) return;
+    if (!open || !stickToBottomRef.current) return;
     const el = messagesRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
@@ -153,19 +170,6 @@ export default function ChatPanel({
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 112)}px`;
   }, [draft, open]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onToggleOpen();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, onToggleOpen]);
 
   const lastUserMessage = useMemo(
     () => [...messages].reverse().find((msg) => msg.role === 'user')?.content ?? '',
@@ -284,6 +288,9 @@ export default function ChatPanel({
 
     onDraftChange('');
     if (inputRef.current) inputRef.current.style.height = 'auto';
+    // 새 질문을 보내면 읽던 위치와 무관하게 대화 끝으로 돌아간다.
+    stickToBottomRef.current = true;
+    setAtBottom(true);
     setMessages((prev) => [
       ...prev,
       { id: nextMessageId(), role: 'user' as const, content: text, status: 'pending' as const },
@@ -301,7 +308,9 @@ export default function ChatPanel({
   }, [onDraftChange, ready]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // 한글 IME 조합을 확정하는 Enter도 keydown으로 들어온다. 이때 보내면 마지막
+    // 글자가 덜 조합된 채 전송되거나 입력창에 남는다.
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleSend();
     }
@@ -314,9 +323,30 @@ export default function ChatPanel({
   // Scroll edge effect: the header's border/shadow only appears once content
   // has actually scrolled behind it, not as a permanent hairline.
   const handleMessagesScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    const next = e.currentTarget.scrollTop > 0;
+    const el = e.currentTarget;
+    const next = el.scrollTop > 0;
     setScrolled((prev) => (prev === next ? prev : next));
+    const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
+    stickToBottomRef.current = bottom;
+    setAtBottom((prev) => (prev === bottom ? prev : bottom));
   }, []);
+
+  const scrollToBottom = useCallback(() => {
+    const el = messagesRef.current;
+    if (!el) return;
+    stickToBottomRef.current = true;
+    setAtBottom(true);
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, []);
+
+  // Escape는 포커스가 카드 안에 있을 때만 닫는다. window 전역 리스너는 PDF 검색창이나
+  // 모달의 Escape까지 가로챘다.
+  const handleCardKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
+      e.stopPropagation();
+      onToggleOpen();
+    }
+  }, [onToggleOpen]);
 
   const clearConversation = useCallback(() => {
     abortRef.current?.abort();
@@ -328,17 +358,8 @@ export default function ChatPanel({
 
   return (
     <div className="pointer-events-none fixed inset-0 z-40">
-      {open && (
-        <button
-          type="button"
-          onClick={onToggleOpen}
-          className="chat-floating-backdrop pointer-events-auto"
-          aria-label="질문 도우미 닫기"
-        />
-      )}
-
       <div className="pointer-events-auto absolute bottom-4 right-4 flex items-end justify-end sm:bottom-5 sm:right-5">
-        {!open && (
+        {!cardVisible && (
           <button
             type="button"
             onClick={onToggleOpen}
@@ -381,36 +402,55 @@ export default function ChatPanel({
         )}
 
         {/* data-expanded: 대화가 시작되면 카드 높이를 최대치로 고정한다(index.css).
-            카드가 bottom 고정이라 그러지 않으면 토큰마다 위로 자란다. */}
-        {open && (
-          <div className="chat-floating-card" data-expanded={hasMessages || undefined}>
+            카드가 bottom 고정이라 그러지 않으면 토큰마다 위로 자란다.
+            data-state=closed: 닫힘 애니메이션이 끝날 때까지 마운트를 유지한다. */}
+        {cardVisible && (
+          <div
+            className="chat-floating-card"
+            data-expanded={hasMessages || undefined}
+            data-state={open ? 'open' : 'closed'}
+            onKeyDown={handleCardKeyDown}
+            onAnimationEnd={(e) => {
+              if (e.target === e.currentTarget && !open) setCardMounted(false);
+            }}
+          >
             <div className="chat-floating-header" data-scrolled={scrolled || undefined}>
-              <div className="min-w-0">
-                <div className="mb-1 flex items-center gap-2">
-                  <span
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: ready ? agentColor : 'rgb(var(--fg-muted))' }}
-                  />
-                  <span className="truncate text-sm font-semibold text-fg">
-                    {agent?.display_name_ko || '질문 도우미'}
+              <div className="flex min-w-0 items-center gap-2">
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: ready ? agentColor : 'rgb(var(--fg-muted))' }}
+                />
+                <span className="truncate text-sm font-semibold text-fg">
+                  {agent?.display_name_ko || '질문 도우미'}
+                </span>
+                {totalCost > 0 && (
+                  <span className="shrink-0 text-2xs tabular-nums text-fg-muted" title="이 대화의 누적 비용">
+                    ${totalCost.toFixed(4)}
                   </span>
-                  <span className={ready ? 'chip-tint chip-tint-success' : 'text-2xs font-normal text-fg-muted'}>
-                    {ready ? '준비됨' : '대기'}
-                  </span>
-                </div>
-                <p className="text-2xs text-fg-muted">
-                  {ready ? '현재 논문 맥락을 유지한 채 질문을 이어갈 수 있어요.' : readyMessage}
-                </p>
+                )}
               </div>
 
-              <button
-                type="button"
-                onClick={onToggleOpen}
-                className="btn-icon-subtle shrink-0"
-                aria-label="질문 도우미 닫기"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex shrink-0 items-center gap-1">
+                {hasMessages && (
+                  <button
+                    type="button"
+                    onClick={clearConversation}
+                    className="btn-icon-subtle"
+                    aria-label="대화 초기화"
+                    title="대화 초기화"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onToggleOpen}
+                  className="btn-icon-subtle"
+                  aria-label="질문 도우미 닫기"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             {!ready ? (
@@ -427,156 +467,114 @@ export default function ChatPanel({
               </div>
             ) : (
               <>
-                <div className="border-b border-border/45 px-4 py-3">
-                  <div className="mb-2 flex items-center gap-2 text-2xs uppercase tracking-[0.16em] text-fg-muted">
-                    <Sparkles className="h-3 w-3" />
-                    추천 질문
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {starters.slice(0, 3).map((prompt) => (
-                      <button
-                        key={prompt}
-                        type="button"
-                        onClick={() => handleStarter(prompt)}
-                        className="chat-starter-chip"
-                      >
-                        {prompt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div
-                  ref={messagesRef}
-                  className="flex-1 overflow-y-auto px-4 py-4"
-                  onScroll={handleMessagesScroll}
-                >
-                  {!hasMessages && (
-                    <div className="chat-empty-state">
-                      <div className="chat-empty-icon">
-                        <MessageSquare className="h-4 w-4 text-fg-muted" />
-                      </div>
-                      <div>
-                        <p className="text-xs text-fg-secondary">논문을 읽으면서 바로 질문해 보세요.</p>
-                        <p className="mt-1 text-2xs text-fg-muted">
-                          핵심 기여, Figure 해석, 재현 리스크처럼 작업형 질문에 최적화했어요.
+                <div className="relative flex min-h-0 flex-1 flex-col">
+                  <div
+                    ref={messagesRef}
+                    className="flex-1 overflow-y-auto px-4 pb-4 pt-1"
+                    onScroll={handleMessagesScroll}
+                  >
+                    {!hasMessages ? (
+                      // 추천 질문은 대화를 시작하기 전에만 보인다. 누르면 입력창만 채우고,
+                      // 전송(비용 발생)은 사용자가 직접 한다.
+                      <div className="chat-empty-state">
+                        <p className="text-xs text-fg-secondary">
+                          논문을 읽으면서 바로 질문해 보세요.
                         </p>
+                        {starters.length > 0 && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {starters.slice(0, 3).map((prompt) => (
+                              <button
+                                key={prompt}
+                                type="button"
+                                onClick={() => handleStarter(prompt)}
+                                className="chat-starter-chip"
+                              >
+                                <Sparkles className="h-3 w-3 shrink-0 text-fg-muted" />
+                                {prompt}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  )}
+                    ) : (
+                      <div className="space-y-3">
+                        {messages.map((msg, index) => {
+                          const isUser = msg.role === 'user';
+                          const showActions =
+                            !isUser &&
+                            msg.status === 'done' &&
+                            index === messages.length - 1 &&
+                            !busy;
 
-                  <div className="space-y-4">
-                    {messages.map((msg, index) => {
-                      const isStreaming = msg.status === 'streaming';
-                      const showActions =
-                        msg.role === 'agent' &&
-                        msg.status === 'done' &&
-                        index === messages.length - 1 &&
-                        !busy;
-
-                      return (
-                        <div
-                          key={msg.id}
-                          className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                        >
-                          <div className={`chat-bubble-wrap ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                            <div className="mb-1 flex items-center gap-1.5 px-1 text-2xs text-fg-muted">
-                              {msg.role === 'agent' ? (
-                                <>
-                                  <span
-                                    className="flex h-5 w-5 items-center justify-center rounded-full border border-border/55"
-                                    style={{ backgroundColor: `${agentColor}20` }}
-                                  >
-                                    <Bot className="h-3 w-3" style={{ color: agentColor }} />
-                                  </span>
-                                  <span>{agent?.display_name_ko || '에이전트'}</span>
-                                </>
-                              ) : (
-                                <>
-                                  {msg.status === 'pending' && <span>대기 중</span>}
-                                  <span>나</span>
-                                  <span className="flex h-5 w-5 items-center justify-center rounded-full border border-border/55 bg-surface/90">
-                                    <User className="h-3 w-3 text-fg-muted" />
-                                  </span>
-                                </>
-                              )}
-                            </div>
-                            <div className={`chat-bubble ${msg.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-agent'}`}>
-                              {msg.role === 'agent' ? (
-                                <>
-                                  <Markdown className="chat-markdown" components={markdownComponents}>
-                                    {msg.content}
-                                  </Markdown>
-                                  {isStreaming && (
-                                    <span className="ml-1 inline-block h-3.5 w-1.5 animate-pulse bg-accent align-middle" />
-                                  )}
+                          return (
+                            <div
+                              key={msg.id}
+                              className={`chat-message flex ${isUser ? 'justify-end' : 'justify-start'}`}
+                            >
+                              <div className={`chat-bubble-wrap ${isUser ? 'items-end' : 'chat-bubble-wrap-agent items-start'}`}>
+                                <div className={`chat-bubble ${isUser ? 'chat-bubble-user' : 'chat-bubble-agent'}`}>
+                                  {isUser ? (
+                                    <span className="whitespace-pre-wrap">{msg.content}</span>
+                                  ) : msg.content ? (
+                                    <Markdown className="chat-markdown" components={markdownComponents}>
+                                      {msg.content}
+                                    </Markdown>
+                                  ) : msg.status === 'streaming' ? (
+                                    <span className="chat-typing" role="status" aria-label="답변을 작성하고 있어요">
+                                      <span />
+                                      <span />
+                                      <span />
+                                    </span>
+                                  ) : null}
                                   {msg.status === 'error' && (
                                     <p className="text-2xs text-danger">
                                       {msg.error || '답변을 받지 못했어요.'}
                                     </p>
                                   )}
-                                </>
-                              ) : (
-                                <span className="whitespace-pre-wrap">{msg.content}</span>
-                              )}
-                            </div>
+                                </div>
+                                {msg.status === 'pending' && (
+                                  <span className="mt-1 px-1 text-2xs text-fg-muted">대기 중</span>
+                                )}
 
-                            {showActions && (
-                              <div className="chat-follow-actions">
-                                <button
-                                  type="button"
-                                  onClick={() => enqueue('방금 답변을 핵심만 3줄로 요약해줘.')}
-                                  className="chat-follow-chip"
-                                >
-                                  요약해서 보기
-                                </button>
-                                {lastUserMessage && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      onDraftChange(lastUserMessage);
-                                      inputRef.current?.focus();
-                                    }}
-                                    className="chat-follow-chip"
-                                  >
-                                    다시 물어보기
-                                  </button>
+                                {showActions && (
+                                  <div className="chat-follow-actions">
+                                    <button
+                                      type="button"
+                                      onClick={() => enqueue('방금 답변을 핵심만 3줄로 요약해줘.')}
+                                      className="chat-follow-chip"
+                                    >
+                                      요약해서 보기
+                                    </button>
+                                    {lastUserMessage && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          onDraftChange(lastUserMessage);
+                                          inputRef.current?.focus();
+                                        }}
+                                        className="chat-follow-chip"
+                                      >
+                                        다시 물어보기
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
                               </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
+                  {!atBottom && hasMessages && (
+                    <button type="button" onClick={scrollToBottom} className="chat-jump-bottom">
+                      <ArrowDown className="h-3 w-3" />
+                      {busy ? '새 답변 보기' : '맨 아래로'}
+                    </button>
+                  )}
                 </div>
 
-                <div className="border-t border-border/45 px-4 py-3">
-                  <div className="mb-2 flex items-center justify-between gap-3 text-2xs text-fg-muted">
-                    <span>{totalCost > 0 ? `누적 비용 $${totalCost.toFixed(4)}` : '답변이 끝나면 대화 비용을 확인할 수 있어요.'}</span>
-                    <div className="flex items-center gap-3">
-                      {busy && (
-                        <button
-                          type="button"
-                          onClick={stopStreaming}
-                          className="inline-flex items-center gap-1 text-fg-muted transition-colors hover:text-fg-secondary"
-                        >
-                          <Square className="h-3 w-3" />
-                          답변 중지
-                        </button>
-                      )}
-                      {hasMessages && (
-                        <button
-                          type="button"
-                          onClick={clearConversation}
-                          className="inline-flex items-center gap-1 text-fg-muted transition-colors hover:text-fg-secondary"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                          대화 초기화
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                <div className="px-3 pb-3 pt-1">
                   <div className="chat-composer">
                     <textarea
                       ref={inputRef}
@@ -585,13 +583,21 @@ export default function ChatPanel({
                       onKeyDown={handleKeyDown}
                       rows={1}
                       disabled={!ready}
-                      placeholder={
-                        busy
-                          ? '답변 중에도 질문을 이어서 보낼 수 있어요...'
-                          : '질문을 입력하세요... (Shift+Enter 줄바꿈)'
-                      }
+                      aria-label="질문 입력"
+                      placeholder={busy ? '답변 중에도 이어서 질문할 수 있어요' : '질문을 입력하세요 (Shift+Enter 줄바꿈)'}
                       className="chat-composer-input"
                     />
+                    {busy && (
+                      <button
+                        type="button"
+                        onClick={stopStreaming}
+                        className="chat-stop-button"
+                        aria-label="답변 중지"
+                        title="답변 중지"
+                      >
+                        <Square className="h-3 w-3 fill-current" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={handleSend}

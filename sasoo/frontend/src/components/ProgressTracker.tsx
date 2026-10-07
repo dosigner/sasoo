@@ -9,8 +9,8 @@ import AppIcon from '@/components/icons/AppIcon';
 
 interface ProgressTrackerProps {
   phases: PhaseInfo[];
-  overallProgress: number;
-  variant?: 'default' | 'minimal';
+  /** 단계를 누르면 그 결과가 있는 섹션이나 탭으로 이동한다. 대기 중인 단계는 누를 수 없다. */
+  onSelect?: (phase: AnalysisPhase) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -30,48 +30,44 @@ const PHASE_META: Record<AnalysisPhase, { label: string }> = {
 // Component
 // ---------------------------------------------------------------------------
 
-export default function ProgressTracker({
-  phases,
-  overallProgress: _overallProgress,
-  variant: _variant,
-}: ProgressTrackerProps) {
-  // I9: 'glass rounded-2xl' 박스·'분석 진행' 헤더·자체 진행바·%는 전부 삭제한다.
-  // 전체 진행률은 상태부 레일(AnalysisPanel의 workbenchStatus.progressRatio)이 담당하고,
-  // 이 컴포넌트는 단계 리스트만 보여준다.
+// 상태부 진행 막대 바로 아래에 붙는 한 줄 단계 목록이다. 요약 탭 본문에 따로 두던
+// 세로 목록과 탭 제목 옆 n/5 표시는 상태부와 같은 정보를 반복해서 없앴다.
+export default function ProgressTracker({ phases, onSelect }: ProgressTrackerProps) {
   return (
-    <div>
-      {/* Phase steps: slim vertical list (전체 진행률은 상태부가 담당) */}
-      <div className="flex flex-col gap-2">
-        {phases.map((phase) => {
-          const meta = PHASE_META[phase.phase];
-          if (!meta) return null;
+    <ol className="flex flex-wrap gap-x-1 gap-y-1" aria-label={S.workbench.statusRailTitle}>
+      {phases.map((phase) => {
+        const meta = PHASE_META[phase.phase];
+        if (!meta) return null;
+        const running = phase.status === 'running';
 
-          return (
-            <div key={phase.phase} className="flex items-center gap-2">
+        return (
+          <li key={phase.phase}>
+            <button
+              type="button"
+              onClick={() => onSelect?.(phase.phase)}
+              disabled={!onSelect || phase.status === 'pending'}
+              aria-current={running ? 'step' : undefined}
+              className="inline-flex items-center gap-1.5 rounded-control px-1.5 py-0.5 text-xs transition-colors duration-150 hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-default disabled:hover:bg-transparent"
+            >
               {phase.status === 'completed' ? (
-                <AppIcon name="success" className="w-3.5 h-3.5 shrink-0 text-success" />
+                <AppIcon name="success" className="h-3.5 w-3.5 shrink-0 text-success" />
               ) : phase.status === 'error' ? (
-                <AppIcon name="error" className="w-3.5 h-3.5 shrink-0 text-danger" />
+                <AppIcon name="error" className="h-3.5 w-3.5 shrink-0 text-danger" />
               ) : (
                 <span
+                  aria-hidden="true"
                   className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                    phase.status === 'running' ? 'bg-accent' : 'bg-border'
+                    running ? 'bg-accent animate-pulse-subtle' : 'bg-border'
                   }`}
                 />
               )}
-              <span
-                className={`text-xs ${
-                  phase.status === 'running'
-                    ? 'font-[650] text-fg'
-                    : 'font-normal text-fg-muted'
-                }`}
-              >
+              <span className={running ? 'font-[650] text-fg' : 'font-normal text-fg-muted'}>
                 {meta.label}{phase.status === 'skipped' ? ` (${S.status.skipped})` : ''}
               </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+            </button>
+          </li>
+        );
+      })}
+    </ol>
   );
 }

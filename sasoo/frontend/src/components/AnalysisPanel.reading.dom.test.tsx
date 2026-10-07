@@ -222,6 +222,35 @@ describe('AnalysisPanel summary reading', () => {
     expect(chatWithAgent).not.toHaveBeenCalled();
   });
 
+  it('lists phases once in the status rail and opens the clicked phase result', async () => {
+    const statuses = ['completed', 'completed', 'running', 'pending', 'pending'] as const;
+    const running: AnalysisStatus = {
+      ...status, overall_status: 'running', progress_pct: 40, current_phase: 'visual',
+      phases: status.phases.map((item, i) => ({ ...item, status: statuses[i] })),
+    };
+    const container = await render(data, { status: running });
+    const lists = container.querySelectorAll('ol');
+    expect(lists).toHaveLength(1);
+    expect(lists[0].closest('[data-summary-panel]')).toBeNull();
+    const step = (label: string) => {
+      const result = [...lists[0].querySelectorAll('button')].find((element) => element.textContent === label);
+      if (!result) throw new Error(`Step not found: ${label}`);
+      return result;
+    };
+    expect(step('레시피').disabled).toBe(true);
+    expect(step('시각 자료').getAttribute('aria-current')).toBe('step');
+
+    expect(phase(container, 'citation').getAttribute('aria-expanded')).toBe('false');
+    act(() => step('인용 분석').click());
+    await flushFrames();
+    expect(phase(container, 'citation').getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(phase(container, 'citation'));
+
+    act(() => step('시각 자료').click());
+    expect(container.textContent).toContain('검증용 그림 목록');
+    expect(chatWithAgent).not.toHaveBeenCalled();
+  });
+
   it('opens a collapsed summary and focuses the matching answer on every explicit request', async () => {
     const container = await render();
     act(() => {

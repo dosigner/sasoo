@@ -939,6 +939,12 @@
     animation: fadeInUp 0.2s var(--ease-out-strong) forwards;
   }
 
+  /* 요약 탭 단계 섹션을 펼칠 때. hidden이 풀리면 애니메이션이 다시 시작된다. 본문 안의
+     sticky 목차와 fixed 팝오버가 깨지지 않도록 transform 없이 opacity만 쓴다. */
+  .phase-section-body:not([hidden]) {
+    animation: fadeIn 0.18s ease-out both;
+  }
+
   /* Home sections enter top-to-bottom with a short stagger (hero → lists → tiles). */
   .home-stagger > * {
     animation: fadeInUp 0.25s var(--ease-out-strong) both;
@@ -1466,22 +1472,54 @@
   }
 
   .chat-starter-chip {
-    @apply border border-border/50 bg-surface/70 px-3 py-1.5 text-xs text-fg-secondary transition-colors duration-200 hover:border-accent/20 hover:bg-surface-hover hover:text-fg;
+    @apply inline-flex items-center gap-1.5 border border-border/50 bg-surface/70 px-3 py-1.5 text-left text-xs text-fg-secondary transition-colors duration-150 hover:border-accent/20 hover:bg-surface-hover hover:text-fg;
     border-radius: var(--radius-pill);
   }
 
   .chat-empty-state {
-    @apply mb-4 flex items-start gap-3 border border-border/50 bg-surface/40 px-4 py-4 text-left;
-    border-radius: var(--radius-surface);
-  }
-
-  .chat-empty-icon {
-    @apply flex h-8 w-8 shrink-0 items-center justify-center border border-border/60 bg-surface/80;
-    border-radius: var(--radius-pill);
+    @apply pt-3 text-left;
   }
 
   .chat-bubble-wrap {
-    @apply flex max-w-[92%] flex-col;
+    @apply flex max-w-[88%] flex-col;
+  }
+
+  /* 에이전트 답변은 말풍선 없이 본문처럼 읽힌다. 사용자 질문만 말풍선으로 구분한다. */
+  .chat-bubble-wrap-agent {
+    @apply max-w-full;
+  }
+
+  /* 새 메시지만 들어올 때 한 번 나타난다(id 키라 기존 메시지는 다시 돌지 않는다). */
+  .chat-message {
+    animation: fadeIn 0.18s ease-out both;
+  }
+
+  .chat-typing {
+    @apply inline-flex items-center gap-1 py-1.5;
+  }
+
+  .chat-typing > span {
+    @apply h-1.5 w-1.5 rounded-full bg-fg-muted;
+    animation: chatTyping 1.2s ease-in-out infinite;
+  }
+
+  .chat-typing > span:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+
+  .chat-typing > span:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+
+  @keyframes chatTyping {
+    0%,
+    80%,
+    100% {
+      opacity: 0.25;
+    }
+    40% {
+      opacity: 1;
+    }
   }
 
   .chat-bubble {
@@ -1494,7 +1532,7 @@
   }
 
   .chat-bubble-agent {
-    @apply rounded-bl-md border-border/60 bg-surface/80 text-fg;
+    @apply border-transparent bg-transparent px-1 py-0.5 text-fg;
   }
 
   .chat-follow-actions {
@@ -1505,6 +1543,11 @@
     @apply rounded-full border border-border/50 bg-surface/50 px-3 py-1 text-2xs text-fg-muted transition-colors duration-200 hover:border-accent/20 hover:text-fg;
   }
 
+  .chat-jump-bottom {
+    @apply absolute bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1 border border-border/60 bg-surface px-3 py-1 text-2xs text-fg-secondary shadow-[0_4px_12px_rgba(0,0,0,0.12)] transition-colors duration-150 hover:bg-surface-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-accent;
+    border-radius: var(--radius-pill);
+  }
+
   .chat-composer {
     @apply flex items-end gap-2 rounded-control border border-border/60 bg-surface/80 px-3 py-2;
   }
@@ -1513,12 +1556,12 @@
     @apply min-h-8 max-h-[112px] flex-1 resize-none bg-transparent px-1 py-1 text-xs text-fg placeholder:text-fg-muted focus:outline-hidden;
   }
 
-  .chat-send-button {
-    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-accent/20 bg-accent/10 text-accent transition-[color,background-color,border-color,transform] duration-150 hover:bg-accent/20 disabled:pointer-events-none disabled:opacity-40;
+  .chat-stop-button {
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/60 text-fg-secondary transition-colors duration-150 hover:bg-surface-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-accent;
   }
 
-  .chat-floating-backdrop {
-    @apply absolute inset-0 bg-transparent;
+  .chat-send-button {
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-accent/20 bg-accent/10 text-accent transition-[color,background-color,border-color,transform] duration-150 hover:bg-accent/20 disabled:pointer-events-none disabled:opacity-40;
   }
 
   /* 휴지 상태 기본값은 44px 원형 아이콘 버튼 하나뿐이다(overflow-hidden으로 텍스트를
@@ -1547,6 +1590,33 @@
   .chat-floating-card {
     @apply flex max-h-[min(42rem,calc(100vh-2rem))] flex-col overflow-hidden rounded-surface border border-border/60 bg-surface/95 shadow-[0_22px_64px_rgba(0,0,0,0.26)] backdrop-blur-xl;
     width: min(26rem, calc(100vw - 1.5rem));
+    transform-origin: bottom right;
+    animation: chatCardIn 0.2s var(--ease-out-strong) both;
+  }
+
+  /* 닫힘 애니메이션이 끝나면 ChatPanel이 onAnimationEnd에서 언마운트한다.
+     그래서 이 상태에는 반드시 animationend가 발생하는 애니메이션이 걸려 있어야 한다. */
+  .chat-floating-card[data-state='closed'] {
+    pointer-events: none;
+    animation: chatCardOut 0.14s ease-in both;
+  }
+
+  @keyframes chatCardIn {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes chatCardOut {
+    to {
+      opacity: 0;
+      transform: translateY(6px) scale(0.98);
+    }
   }
 
   /* 카드는 bottom 고정이라 내용이 늘면 위로 자란다. 스트리밍 중에는 그게 초당
@@ -1557,7 +1627,7 @@
   }
 
   .chat-floating-header {
-    @apply flex items-start justify-between gap-3 px-4 py-4;
+    @apply flex items-center justify-between gap-3 py-2.5 pl-4 pr-2.5;
     border-bottom: 1px solid transparent;
     transition:
       border-color 150ms ease-out,
@@ -1795,6 +1865,16 @@
     /* 런처의 원형↔카드 확장 전환도 movement다. 즉시 접히고 즉시 펼쳐진다. */
     .chat-launcher {
       transition: none !important;
+    }
+
+    /* 채팅 카드는 이동 없이 페이드만 한다. none으로 끄면 animationend가 오지 않아
+       닫힌 카드가 언마운트되지 않으므로 opacity 애니메이션은 남긴다. */
+    .chat-floating-card {
+      animation: fadeIn 0.15s ease-out both !important;
+    }
+
+    .chat-floating-card[data-state='closed'] {
+      animation: fadeOut 0.12s ease-out both !important;
     }
 
     /* I4: Figure/Table 카드 press-scale(active:scale-[0.96])도 movement이므로 끈다. */
