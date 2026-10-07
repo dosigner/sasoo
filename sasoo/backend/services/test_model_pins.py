@@ -42,6 +42,10 @@ def test_gpt6_luna_is_the_operational_openai_model():
     assert models.MODEL_GPT6_LUNA == models.MODEL_LUNA == "gpt-6-luna"
 
 
+def test_nano_banana_21_is_the_gemini_image_model():
+    assert models.MODEL_IMAGE == "gemini-nano-banana-2.1"
+
+
 def test_flash_hq_is_the_38_flash_id():
     """FLASH_HQ의 문자열 값 자체를 잠근다.
 

@@ -23,9 +23,8 @@ Model choice rationale (2026-08, Gemini-only stack):
                 (A/B 후 승격 후보). 이미지 설명 플래너(viz/figure_gen.py)는 사용 중.
   LUNA        - gpt-6-luna. Default for OpenAI text roles.
                 Keep each role's current effort until its own evaluation is complete.
-  IMAGE       - Nano Banana 2 as the Gemini-side renderer; gpt-image-2
-                (Arena text-to-image #1) is the default. Provider choice and
-                fallback live in services/viz/figure_gen.py.
+  IMAGE       - Nano Banana 2.1 as the Gemini-side renderer; gpt-image-2.5-flare
+                is the OpenAI renderer. Provider choice follows ai_provider.
 
 thinking_level은 low|medium|high만 쓴다. 3.7과 3.8 Flash는 minimal을 지원하지 않고,
 명시하면 API가 400을 낸다(3.7은 ai.google.dev 2026-08-16 확인, 3.8은 2026-09-05
@@ -46,8 +45,8 @@ MODEL_GPT6_LUNA = "gpt-6-luna"
 MODEL_LUNA = MODEL_GPT6_LUNA
 
 # Image generation
-MODEL_IMAGE = "gemini-3.1-flash-image"   # Nano Banana 2 ($0.067/장)
-MODEL_IMAGE_OPENAI = "gpt-image-2"
+MODEL_IMAGE = "gemini-nano-banana-2.1"
+MODEL_IMAGE_OPENAI = "gpt-image-2.5-flare"
 
 # ---------------------------------------------------------------------------
 # Phase -> model mapping (the analysis pipeline)

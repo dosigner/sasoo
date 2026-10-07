@@ -5,9 +5,8 @@ ai_provider가 텍스트 분석 5단계·채팅·그림 판독·도해 생성의
 api/analysis_routes.py의 /run이 key_env_for()로 사전 점검한다.
 
 레거시 설정
-image_provider는 삭제하지 않고 쓰기 전용 미러로 남긴다 — 이 값을 읽는 기존
-코드(api/analysis_routes.py의 preferred_provider)를 한 번에 걷어내면 회귀
-위험이 크기 때문이다.
+image_provider는 기존 DB와 API 응답의 호환성을 위해 미러로 남긴다.
+도해 생성은 유효 분석 공급사 값을 직접 사용한다.
 
 읽기 권위는 항상 ai_provider에 있다. 레거시 키에 직접 write 하지 말고 반드시
 mirror_legacy_settings()를 거쳐라.

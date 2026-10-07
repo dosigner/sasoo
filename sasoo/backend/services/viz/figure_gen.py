@@ -1,7 +1,7 @@
 """
 Sasoo - 논문 도해 생성 (PaperBanana 패키지 대체)
 
-2단 파이프라인: Planner(Gemini 3.1-pro가 상세 기술서 작성) → Render(ImageProvider).
+Two stages: plan with the selected provider's text model, then render with its image model.
 품질은 렌더 프롬프트가 아니라 Planner 기술서에서 나온다 — 배경 스타일, 색, 선 굵기,
 아이콘 스타일, 라벨 텍스트까지 텍스트로 확정한 뒤 렌더러에는 실행만 시킨다.
 
@@ -32,13 +32,16 @@ from typing import Optional, Protocol
 from services.concurrency import RENDER_SEM, run_pipeline_blocking
 from services.model_registry import resolve as resolve_model
 from services.models import MODEL_IMAGE, MODEL_IMAGE_OPENAI
-from services.pricing import calc_image_cost
+from services.pricing import PricingUsageError, calc_image_cost
 
 logger = logging.getLogger(__name__)
 
 RENDER_TIMEOUT_S = 180.0
 HTTP_TIMEOUT_S = 120.0
 IMAGE_SIZE = "1536x1024"
+GEMINI_IMAGE_SIZE = "1K"
+GEMINI_IMAGE_ASPECT_RATIO = "3:2"
+GEMINI_IMAGE_THINKING = "minimal"
 
 
 @dataclass
@@ -46,7 +49,7 @@ class FigureGenResult:
     path: Optional[str]
     provider: Optional[str]
     duration_s: float
-    cost_usd: float
+    cost_usd: float | None
     error: Optional[str]
 
 
@@ -54,22 +57,33 @@ class FigureGenResult:
 # [1] Planner
 # ---------------------------------------------------------------------------
 
+_TYPOGRAPHY_INSTRUCTION = (
+    "Typography: use a normal-width sans-serif such as Arial or Helvetica, "
+    "with natural character proportions and normal letter spacing. Never use "
+    "condensed, narrow, compressed, or horizontally scaled lettering. "
+    "At 1536x1024, keep labels at least 28 px tall, with generous padding and "
+    "clear separation from arrows and diagram edges. Reserve space for text "
+    "before arranging the graphics. Prefer short labels; preserve all required "
+    "wording, symbols, and units. Wrap long labels at word boundaries onto "
+    "multiple lines or widen their panels. Never squeeze or shrink text to fit. "
+    "Simplify decorative graphics if space is tight."
+)
+_GEMINI_TYPOGRAPHY_INSTRUCTION = _TYPOGRAPHY_INSTRUCTION.replace(
+    "At 1536x1024", "At 1K 3:2 resolution"
+)
+
 _PLANNER_SYSTEM = (
     "You are a scientific illustration planner. Turn the request into ONE "
     "detailed, unambiguous image description in English. Specify: overall "
     "layout, background style, color palette, line weight, icon style, and "
     "the EXACT text of every label (short English labels). Vague wording "
     "makes the figure worse — decide everything yourself. Do NOT include a "
-    "figure title or caption inside the image."
+    "figure title or caption inside the image.\n\n" + _TYPOGRAPHY_INSTRUCTION
 )
 
 
 async def _plan_description(viz_target: dict, *, llm_provider: str = "gemini") -> str:
-    """텍스트 LLM(기본 Gemini 3.1-pro)으로 렌더러에 넘길 상세 기술서를 만든다.
-
-    llm_provider는 이 기술서를 쓰는 텍스트 모델의 provider다 — 아래 render 단계의
-    이미지 provider(preferred_provider, image_provider 설정)와는 다른 축이다.
-    """
+    """Build the image description with the selected provider's text model."""
     from services.llm.interactions_client import call_interaction
 
     prompt = (
@@ -84,7 +98,10 @@ async def _plan_description(viz_target: dict, *, llm_provider: str = "gemini") -
         prompt,
         lane="pipeline",
         model=_choice.model,
-        system_instruction=_PLANNER_SYSTEM,
+        system_instruction=(
+            _PLANNER_SYSTEM.replace(_TYPOGRAPHY_INSTRUCTION, _GEMINI_TYPOGRAPHY_INSTRUCTION)
+            if llm_provider == "gemini" else _PLANNER_SYSTEM
+        ),
         thinking_level=_choice.effort,
         store=False,
     )
@@ -115,6 +132,7 @@ class OpenAIImageProvider:
     def __init__(self, quality: str = "high") -> None:
         self._quality = quality
         self.cost_key = f"{MODEL_IMAGE_OPENAI}:{quality}"
+        self.usage: dict | None = None
 
     def available(self) -> bool:
         return bool(os.environ.get("OPENAI_API_KEY"))
@@ -127,14 +145,17 @@ class OpenAIImageProvider:
             headers={"Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"},
             json={
                 "model": MODEL_IMAGE_OPENAI,
-                "prompt": _RENDER_INSTRUCTION + description,
+                "prompt": _RENDER_INSTRUCTION + description + "\n\n" + _TYPOGRAPHY_INSTRUCTION,
                 "size": IMAGE_SIZE,
                 "quality": self._quality,
+                "output_format": "png",
             },
             timeout=HTTP_TIMEOUT_S,
         )
         resp.raise_for_status()
-        b64 = resp.json()["data"][0]["b64_json"]
+        payload = resp.json()
+        self.usage = payload.get("usage")
+        b64 = payload["data"][0]["b64_json"]
         return base64.b64decode(b64)
 
 
@@ -154,25 +175,32 @@ class GeminiImageProvider:
             api_key=os.environ["GEMINI_API_KEY"],
             http_options=types.HttpOptions(timeout=int(HTTP_TIMEOUT_S * 1000)),
         )
-        response = client.models.generate_content(
+        interaction = client.interactions.create(
             model=MODEL_IMAGE,
-            contents=_RENDER_INSTRUCTION + description,
-            config=types.GenerateContentConfig(
-                response_modalities=["IMAGE", "TEXT"],
-            ),
+            input=_RENDER_INSTRUCTION + description + "\n\n" + _GEMINI_TYPOGRAPHY_INSTRUCTION,
+            response_format={
+                "type": "image",
+                "mime_type": "image/png",
+                "aspect_ratio": GEMINI_IMAGE_ASPECT_RATIO,
+                "image_size": GEMINI_IMAGE_SIZE,
+            },
+            generation_config={"thinking_level": GEMINI_IMAGE_THINKING},
+            store=False,
         )
-        for candidate in response.candidates or []:
-            for part in (candidate.content.parts or []) if candidate.content else []:
-                if part.inline_data and part.inline_data.data:
-                    return part.inline_data.data
-        raise RuntimeError("Gemini returned no image data (text-only response)")
+        self.usage = interaction.usage.model_dump(exclude_none=True) if interaction.usage else None
+        if interaction.status != "completed" or not interaction.output_image or not interaction.output_image.data:
+            raise RuntimeError(f"Gemini image interaction ended without an image ({interaction.status})")
+        png = base64.b64decode(interaction.output_image.data, validate=True)
+        if not png.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise RuntimeError("Gemini image response is not PNG")
+        return png
 
 
 def build_providers(preferred: str, quality: str) -> list:
-    """선호 프로바이더를 앞에 둔 폴백 순서."""
-    openai: ImageProvider = OpenAIImageProvider(quality=quality)
-    gemini: ImageProvider = GeminiImageProvider()
-    return [gemini, openai] if preferred == "gemini" else [openai, gemini]
+    """Use the selected provider for this render request."""
+    if preferred == "gemini":
+        return [GeminiImageProvider()]
+    return [OpenAIImageProvider(quality=quality)]
 
 
 # ---------------------------------------------------------------------------
@@ -191,15 +219,14 @@ async def generate_illustration(
     *,
     preferred_provider: str = "openai",
     quality: str = "high",
-    llm_provider: str = "gemini",
+    llm_provider: str | None = None,
 ) -> FigureGenResult:
-    """도해 1건 생성. 실패해도 예외를 던지지 않고 error가 담긴 결과를 돌려준다.
+    """Generate one figure and return an error result on failure.
 
-    preferred_provider/quality는 렌더(이미지 생성) 단계의 provider·품질이고,
-    llm_provider는 플래너(기술서 작성) 단계의 텍스트 LLM provider다 — 서로
-    독립적으로 결정된다(예: 텍스트는 openai, 이미지는 gemini 조합도 유효).
+    The planner and renderer use the same provider by default.
     """
     start = time.monotonic()
+    llm_provider = llm_provider or preferred_provider
 
     try:
         description = await _plan_description(viz_target, llm_provider=llm_provider)
@@ -233,11 +260,17 @@ async def generate_illustration(
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / f"{_safe_filename(viz_target.get('title', 'illustration'))}.png"
         out_path.write_bytes(png)
+        try:
+            cost = calc_image_cost(provider.cost_key, usage=getattr(provider, "usage", None))
+        except PricingUsageError as exc:
+            # Keep a successful image even when the provider omits billing usage.
+            logger.warning("figure_gen: %s cost unavailable: %s", provider.name, exc)
+            cost = None
         return FigureGenResult(
             path=str(out_path),
             provider=provider.name,
             duration_s=round(time.monotonic() - start, 1),
-            cost_usd=calc_image_cost(provider.cost_key),
+            cost_usd=cost,
             error=None,
         )
 

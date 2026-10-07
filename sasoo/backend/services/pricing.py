@@ -6,8 +6,8 @@ All prices are in USD per 1 million tokens.
 
 Verified against ai.google.dev/gemini-api/docs/pricing on 2026-08-16 (paid tier);
 3.8 Flash 항목은 2026-09-05에 같은 페이지로 확인했다.
-Image models bill their image output separately from text output; IMAGE_PRICING
-below holds the per-image price, since calc_cost's token model cannot express it.
+Image models bill their image output separately from text output. IMAGE_PRICING
+holds legacy per-image estimates; IMAGE_TOKEN_PRICING prices reported usage.
 
 일부 모델은 단가가 날짜로 갈린다. Google이 "$0.75 through December 31, 2026.
 $1.50 starting January 1, 2027." 꼴로 고시하기 때문이다. 스칼라 하나로는 두 기간을
@@ -36,9 +36,10 @@ PRICING: dict[str, dict[str, float]] = {
     "gemini-3-flash-preview": {"input": 0.50, "output": 3.00},
     "gemini-3.1-flash-lite": {"input": 0.25, "output": 1.50},
 
-    # --- Gemini 3.x image (text-token side; per-image cost in IMAGE_PRICING) ---
+    # --- Gemini image models ---
     "gemini-3-pro-image": {"input": 2.00, "output": 12.00},
     "gemini-3.1-flash-image": {"input": 0.50, "output": 3.00},
+    "gemini-nano-banana-2.1": {"input": 1.50, "output": 7.50},
 
     # --- Legacy IDs kept so historical rows in the DB still price correctly ---
     "gemini-3.1-flash-lite-preview": {"input": 0.25, "output": 1.50},
@@ -89,6 +90,13 @@ IMAGE_PRICING: dict[str, float] = {
     "gpt-image-2:low": 0.005,
     "gpt-image-2:medium": 0.041,
     "gpt-image-2:high": 0.165,
+}
+
+# Image generation rates per 1M tokens; no cached-input discount applies.
+# Official OpenAI and Google pricing pages, checked 2026-10-07.
+IMAGE_TOKEN_PRICING: dict[str, dict[str, float]] = {
+    "gpt-image-2.5-flare": {"text_input": 5.0, "image_input": 8.0, "image_output": 30.0},
+    "gemini-nano-banana-2.1": {"input": 1.50, "text_output": 7.50, "image_output": 30.00},
 }
 
 _FALLBACK = "gemini-3-flash-preview"
@@ -209,7 +217,46 @@ def calc_result_cost(result: Mapping[str, object], *, model: str | None = None) 
                      cached_input_tokens=cached_count, cache_write_tokens=write_count)
 
 
-def calc_image_cost(model: str, image_count: int = 1) -> float:
-    """Calculate USD cost for generated images (billed per image, not per token)."""
+def calc_image_cost(model: str, image_count: int = 1, *, usage: Mapping | None = None) -> float:
+    """Price request usage for token-billed images, or a legacy per-image estimate."""
+    base_model = model.split(":", 1)[0]
+    rates = IMAGE_TOKEN_PRICING.get(base_model)
+    if base_model == "gemini-nano-banana-2.1":
+        if not isinstance(usage, Mapping):
+            raise PricingUsageError("Gemini image token usage is missing")
+        tokens_in = _token_count(usage.get("total_input_tokens"), "total_input_tokens")
+        tokens_out = _token_count(usage.get("total_output_tokens"), "total_output_tokens")
+        thoughts = _token_count(usage.get("total_thought_tokens"), "total_thought_tokens")
+        modalities = usage.get("output_tokens_by_modality")
+        if not isinstance(modalities, list):
+            raise PricingUsageError("Gemini image output modality usage is missing")
+        image_out = 0
+        for item in modalities:
+            if not isinstance(item, Mapping):
+                raise PricingUsageError("Invalid Gemini output modality usage")
+            count = _token_count(item.get("tokens"), "modality tokens")
+            if item.get("modality") == "image":
+                image_out += count
+        if image_out == 0 or image_out > tokens_out:
+            raise PricingUsageError("Invalid Gemini image output token count")
+        amount = (
+            Decimal(tokens_in) * Decimal(str(rates["input"]))
+            + Decimal(tokens_out - image_out + thoughts) * Decimal(str(rates["text_output"]))
+            + Decimal(image_out) * Decimal(str(rates["image_output"]))
+        ) / Decimal(1_000_000)
+        return float(amount.quantize(Decimal("0.00000001"), rounding=ROUND_HALF_EVEN))
+    if rates is not None:
+        if not isinstance(usage, Mapping) or not isinstance(usage.get("input_tokens_details"), Mapping):
+            raise PricingUsageError("Image token usage is missing")
+        details = usage["input_tokens_details"]
+        text_in = _token_count(details.get("text_tokens"), "text_tokens")
+        image_in = _token_count(details.get("image_tokens"), "image_tokens")
+        tokens_in = _token_count(usage.get("input_tokens"), "input_tokens")
+        tokens_out = _token_count(usage.get("output_tokens"), "output_tokens")
+        if text_in + image_in != tokens_in:
+            raise PricingUsageError("Image input token details do not match total")
+        # Usage covers the entire request, including every generated image.
+        return round((text_in * rates["text_input"] + image_in * rates["image_input"]
+                      + tokens_out * rates["image_output"]) / 1_000_000, 8)
     price = IMAGE_PRICING.get(model, IMAGE_PRICING["gemini-3.1-flash-image"])
     return round(price * image_count, 8)

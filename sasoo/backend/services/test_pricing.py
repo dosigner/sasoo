@@ -111,7 +111,7 @@ def test_every_model_constant_is_priced():
     보이는 비용이 틀리는데 아무도 모른다. 이 저장소에서 가장 싫어하는 버그다.
     """
     import services.models as _m
-    from services.pricing import IMAGE_PRICING
+    from services.pricing import IMAGE_PRICING, IMAGE_TOKEN_PRICING
 
     ids = sorted({v for k, v in vars(_m).items() if k.startswith("MODEL_") and isinstance(v, str)})
     assert ids, "models.py에서 MODEL_* 상수를 하나도 못 찾았다"
@@ -120,6 +120,7 @@ def test_every_model_constant_is_priced():
         mid for mid in ids
         if mid not in PRICING
         and mid not in IMAGE_PRICING
+        and mid not in IMAGE_TOKEN_PRICING
         and not any(k.split(":", 1)[0] == mid for k in IMAGE_PRICING)
     ]
     assert unpriced == [], f"단가표에 없는 모델 ID: {unpriced}"

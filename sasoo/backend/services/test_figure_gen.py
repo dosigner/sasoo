@@ -1,17 +1,18 @@
 """
 figure_gen 테스트.
 
-지키는 것: (1) 폴백 순서, (2) 타임아웃이 실제로 발화하고 그동안 이벤트 루프가
+지키는 것: (1) 선택한 공급사, (2) 타임아웃이 실제로 발화하고 그동안 이벤트 루프가
 살아있음 — PaperBanana가 루프를 블로킹해 서버 전체가 죽던 2026-07-11 사고의 회귀 방지,
 (3) 프로바이더 전무 시 에러 결과, (4) 파일명 안전성.
 """
 
 import asyncio
+import base64
 import time
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from services.viz import figure_gen
 from services.viz.figure_gen import FigureGenResult, generate_illustration
@@ -76,26 +77,29 @@ class FigureGenTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(Path(r.path).name.endswith(".png"))
         self.assertIn("paperbanana", Path(r.path).parts)
 
-    async def test_fallback_when_first_provider_fails(self):
-        bad = _FakeProvider("openai", ok=False)
-        good = _FakeProvider("gemini")
-        with patch.object(figure_gen, "build_providers", return_value=[bad, good]):
-            r = await generate_illustration(_target(), self.paper_dir)
-        self.assertEqual(r.provider, "gemini")
-        self.assertEqual(bad.calls, 1)
+    async def test_selected_gemini_failure_does_not_call_openai(self):
+        with (
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test", "OPENAI_API_KEY": "test"}),
+            patch.object(figure_gen.GeminiImageProvider, "generate", side_effect=RuntimeError("gemini failed")),
+            patch.object(figure_gen.OpenAIImageProvider, "generate") as openai_generate,
+        ):
+            result = await generate_illustration(_target(), self.paper_dir, preferred_provider="gemini")
+        self.assertIsNone(result.path)
+        self.assertIn("gemini failed", result.error)
+        openai_generate.assert_not_called()
 
     async def test_unavailable_provider_is_skipped_without_calling(self):
         nokey = _FakeProvider("openai", unavailable=True)
-        good = _FakeProvider("gemini")
-        with patch.object(figure_gen, "build_providers", return_value=[nokey, good]):
+        with patch.object(figure_gen, "build_providers", return_value=[nokey]):
             r = await generate_illustration(_target(), self.paper_dir)
-        self.assertEqual(r.provider, "gemini")
+        self.assertIsNone(r.provider)
+        self.assertIn("no image provider configured", r.error)
         self.assertEqual(nokey.calls, 0)
 
-    async def test_all_providers_fail_returns_error_result(self):
+    async def test_selected_provider_failure_returns_error_result(self):
         with patch.object(
             figure_gen, "build_providers",
-            return_value=[_FakeProvider("openai", ok=False), _FakeProvider("gemini", ok=False)],
+            return_value=[_FakeProvider("openai", ok=False)],
         ):
             r = await generate_illustration(_target(), self.paper_dir)
         self.assertIsNone(r.path)
@@ -105,7 +109,6 @@ class FigureGenTests(unittest.IsolatedAsyncioTestCase):
     async def test_timeout_fires_and_loop_stays_alive(self):
         """느린 렌더 중에도 루프가 굴러가고, 타임아웃이 실제로 잘라야 한다."""
         slow = _FakeProvider("openai", delay=3.0)
-        good = _FakeProvider("gemini")
         ticks = 0
 
         async def heartbeat():
@@ -115,14 +118,15 @@ class FigureGenTests(unittest.IsolatedAsyncioTestCase):
                 ticks += 1
 
         with (
-            patch.object(figure_gen, "build_providers", return_value=[slow, good]),
+            patch.object(figure_gen, "build_providers", return_value=[slow]),
             patch.object(figure_gen, "RENDER_TIMEOUT_S", 0.5),
         ):
             hb = asyncio.create_task(heartbeat())
             r = await generate_illustration(_target(), self.paper_dir)
             await hb
 
-        self.assertEqual(r.provider, "gemini")   # 타임아웃 후 폴백
+        self.assertIsNone(r.provider)
+        self.assertIn("timeout", r.error)
         self.assertGreater(ticks, 5, "렌더 중 이벤트 루프가 멈춰 있었다")
 
     async def test_filename_is_sanitized(self):
@@ -137,15 +141,116 @@ class FigureGenTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ProviderOrderTests(unittest.TestCase):
-    def test_preferred_first(self):
+    def test_gemini_selection_stays_on_gemini(self):
         with patch.dict("os.environ", {"OPENAI_API_KEY": "x", "GEMINI_API_KEY": "y"}):
             names = [p.name for p in figure_gen.build_providers("gemini", "high")]
-        self.assertEqual(names, ["gemini", "openai"])
+        self.assertEqual(names, ["gemini"])
 
-    def test_default_openai_first(self):
+    def test_openai_selection_stays_on_openai(self):
         with patch.dict("os.environ", {"OPENAI_API_KEY": "x", "GEMINI_API_KEY": "y"}):
             names = [p.name for p in figure_gen.build_providers("openai", "high")]
-        self.assertEqual(names, ["openai", "gemini"])
+        self.assertEqual(names, ["openai"])
+
+
+class FlareRenderTests(unittest.IsolatedAsyncioTestCase):
+    async def test_planner_and_renderer_keep_readable_labels_and_usage(self):
+        description = "Three panels labeled 'Wavefront measurement and reconstruction'."
+        usage = {"input_tokens": 200, "input_tokens_details": {"text_tokens": 200, "image_tokens": 0},
+                 "output_tokens": 1000}
+        response = Mock()
+        response.json.return_value = {"data": [{"b64_json": base64.b64encode(PNG_1PX).decode()}],
+                                      "usage": usage}
+        planner = AsyncMock(return_value={"text": description})
+        provider = figure_gen.OpenAIImageProvider()
+        with (
+            TemporaryDirectory() as directory,
+            patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}),
+            patch("services.llm.interactions_client.call_interaction", planner),
+            patch("httpx.post", return_value=response) as post,
+            patch.object(figure_gen, "build_providers", return_value=[provider]),
+        ):
+            result = await generate_illustration(_target(), directory, llm_provider="openai")
+            self.assertEqual(Path(result.path).read_bytes(), PNG_1PX)
+        request = post.call_args.kwargs["json"]
+        self.assertEqual(request["model"], "gpt-image-2.5-flare")
+        self.assertEqual(request["size"], "1536x1024")
+        self.assertEqual(request["quality"], "high")
+        self.assertEqual(request["output_format"], "png")
+        for prompt in (request["prompt"], planner.call_args.kwargs["system_instruction"]):
+            self.assertIn("normal-width sans-serif", prompt)
+            self.assertIn("Wrap long labels at word boundaries", prompt)
+            self.assertIn("Never squeeze or shrink text to fit", prompt)
+        self.assertTrue(request["prompt"].endswith(figure_gen._TYPOGRAPHY_INSTRUCTION))
+        self.assertIn(description, request["prompt"])
+        self.assertAlmostEqual(result.cost_usd, 0.031)
+        self.assertIsNone(result.error)
+
+    async def test_missing_usage_keeps_image_without_inventing_cost(self):
+        provider = _FakeProvider("openai")
+        provider.cost_key = "gpt-image-2.5-flare:high"
+        with (
+            TemporaryDirectory() as directory,
+            patch.object(figure_gen, "_plan_description", AsyncMock(return_value="A laser.")),
+            patch.object(figure_gen, "build_providers", return_value=[provider]),
+        ):
+            result = await generate_illustration(_target(), directory)
+            self.assertEqual(Path(result.path).read_bytes(), PNG_1PX)
+        self.assertIsNone(result.error)
+        self.assertIsNone(result.cost_usd)
+
+
+class NanoBananaRenderTests(unittest.IsolatedAsyncioTestCase):
+    def test_gemini_21_uses_low_cost_image_request_and_decodes_png(self):
+        usage = {
+            "total_input_tokens": 100,
+            "total_output_tokens": 1120,
+            "total_thought_tokens": 0,
+            "output_tokens_by_modality": [{"modality": "image", "tokens": 1120}],
+        }
+        interaction = Mock(status="completed")
+        interaction.output_image.data = base64.b64encode(PNG_1PX).decode()
+        interaction.usage.model_dump.return_value = usage
+        client = Mock()
+        client.interactions.create.return_value = interaction
+        with (
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
+            patch("google.genai.Client", return_value=client),
+        ):
+            provider = figure_gen.GeminiImageProvider()
+            self.assertEqual(provider.generate("A labeled diagram."), PNG_1PX)
+        request = client.interactions.create.call_args.kwargs
+        self.assertEqual(request["model"], "gemini-nano-banana-2.1")
+        self.assertEqual(request["response_format"], {
+            "type": "image", "mime_type": "image/png", "aspect_ratio": "3:2", "image_size": "1K",
+        })
+        self.assertEqual(request["generation_config"], {"thinking_level": "minimal"})
+        self.assertIs(request["store"], False)
+        self.assertNotIn("tools", request)
+        self.assertIn("At 1K 3:2 resolution", request["input"])
+        self.assertEqual(provider.usage, usage)
+
+    async def test_gemini_21_result_records_reported_cost(self):
+        interaction = Mock(status="completed")
+        interaction.output_image.data = base64.b64encode(PNG_1PX).decode()
+        interaction.usage.model_dump.return_value = {
+            "total_input_tokens": 100,
+            "total_output_tokens": 1120,
+            "total_thought_tokens": 0,
+            "output_tokens_by_modality": [{"modality": "image", "tokens": 1120}],
+        }
+        client = Mock()
+        client.interactions.create.return_value = interaction
+        with (
+            TemporaryDirectory() as directory,
+            patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
+            patch("google.genai.Client", return_value=client),
+            patch.object(figure_gen, "_plan_description", AsyncMock(return_value="A laser diagram.")),
+        ):
+            result = await generate_illustration(_target(), directory, preferred_provider="gemini")
+            self.assertEqual(Path(result.path).read_bytes(), PNG_1PX)
+        self.assertEqual(result.provider, "gemini")
+        self.assertEqual(result.cost_usd, 0.03375)
+        self.assertIsNone(result.error)
 
 
 if __name__ == "__main__":

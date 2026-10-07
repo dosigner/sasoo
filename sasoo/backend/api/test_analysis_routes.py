@@ -2218,6 +2218,12 @@ class VisualizationCacheKeyTests(unittest.TestCase):
     def test_image_provider_changes_the_key(self):
         self.assertNotEqual(self._key(), self._key(image_provider="gemini"))
 
+    def test_image_model_changes_the_key(self):
+        base = self._key()
+        with patch.object(analysis_execution, "resolve_model",
+                          return_value=analysis_execution.ModelChoice("other-image-model", None)):
+            self.assertNotEqual(base, self._key())
+
     def test_text_inputs_still_change_the_key(self):
         self.assertNotEqual(self._key(), self._key(visualization_input="다른 본문"))
         self.assertNotEqual(self._key(), self._key(recipe_result="다른 레시피"))

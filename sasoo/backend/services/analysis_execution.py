@@ -269,10 +269,8 @@ def _visualization_cache_input(
             "deep_dive_result": deep_dive_result,
             "image_provider": image_provider,
             "image_quality": image_quality,
-            # 이 바깥 캐시는 _phase_cache_key를 거치지 않으므로 모델을 직접 담아야 한다.
-            # 담지 않으면 모델을 갈아도 옛 모델이 만든 계획과 이미지가 그대로 나온다.
-            # 이미지 모델 ID는 담지 않는다(공급사와 품질로 대신한다) — 이미지 모델 자체를
-            # 바꿀 때는 _CHAIN_CACHE_VERSION을 올려라.
+            # This cache reuses the rendered image, so model changes need a new key.
+            "image_model": resolve_model("image", image_provider).model,
             "plan_model": MODEL_VIZ_PLANNING,
             "mermaid_model": MODEL_MERMAID,
         },
@@ -2745,14 +2743,14 @@ async def _generate_single_paperbanana(
     result = await generate_illustration(
         enriched_item,
         str(get_paper_dir(folder_name)),
-        preferred_provider=settings.get("image_provider", "openai"),
+        preferred_provider=llm_provider,
         quality=settings.get("image_quality", "high"),
         llm_provider=llm_provider,
     )
     if result.path:
         url = f"/static/library/{folder_name}/paperbanana/{Path(result.path).name}"
         _logger.info(
-            "figure_gen ok '%s' via %s in %.1fs ($%.3f)",
+            "figure_gen ok '%s' via %s in %.1fs (USD %s)",
             title, result.provider, result.duration_s, result.cost_usd,
         )
         return {
@@ -3144,7 +3142,7 @@ async def _run_visualizations(
         previous_results=previous_results,
         recipe_result=recipe_result,
         deep_dive_result=deep_dive_result,
-        image_provider=_image_settings.get("image_provider", "openai"),
+        image_provider=provider,
         image_quality=_image_settings.get("image_quality", "high"),
     )
     cached = await _get_cached_phase_result(paper_id, "visualization", visualization_cache_input)

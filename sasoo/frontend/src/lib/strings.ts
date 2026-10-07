@@ -531,11 +531,13 @@ export const S = {
     enterNewKey: '새 키를 입력해 주세요...',
     // Image generation
     imageSection: '이미지 생성',
-    imageSectionDesc: 'OpenAI 키와 도해(figure) 생성 옵션을 관리해요.',
+    imageSectionDesc: '선택한 AI 공급사의 도해 모델을 사용해요.',
     imageProvider: '도해 생성 모델',
-    imageProviderOpenai: 'gpt-image-2 (기본)',
-    imageProviderGemini: 'Nano Banana 2 (Gemini)',
+    imageProviderOpenai: 'GPT Image 2.5 Flare',
+    imageProviderGemini: 'Nano Banana 2.1',
+    geminiImageHelp: 'Gemini 도해는 1K 해상도와 최소 사고량으로 요청해요. 비용은 실제 토큰 사용량에 따라 달라져요.',
     imageQuality: '도해 품질',
+    imageQualityHelp: 'OpenAI 도해에 적용돼요. 비용은 요청별 토큰 사용량에 따라 달라져요.',
     // Cost
     usageCosts: '사용량과 비용',
     usageCostsDesc: '최근 분석에서 호출과 비용이 얼마나 발생했는지 확인해요.',

@@ -531,20 +531,31 @@ export default function Settings() {
             </div>
           </SettingRow>
 
-          <SettingRow label={S.settings.imageQuality}>
-            <div className="w-44">
-              <Select
-                value={imageQuality}
-                onValueChange={(value) => setImageQuality(value as 'low' | 'medium' | 'high')}
-                aria-label={S.settings.imageQuality}
-                options={[
-                  { value: 'high', label: 'high ($0.17/장)' },
-                  { value: 'medium', label: 'medium ($0.04/장)' },
-                  { value: 'low', label: 'low ($0.005/장)' },
-                ]}
-              />
-            </div>
+          <SettingRow
+            label={S.settings.imageProvider}
+            description={aiProvider === 'gemini' ? S.settings.geminiImageHelp : undefined}
+          >
+            <span className="text-sm text-fg-secondary">
+              {aiProvider === 'gemini' ? S.settings.imageProviderGemini : S.settings.imageProviderOpenai}
+            </span>
           </SettingRow>
+
+          {aiProvider === 'openai' && (
+            <SettingRow label={S.settings.imageQuality} description={S.settings.imageQualityHelp}>
+              <div className="w-44">
+                <Select
+                  value={imageQuality}
+                  onValueChange={(value) => setImageQuality(value as 'low' | 'medium' | 'high')}
+                  aria-label={S.settings.imageQuality}
+                  options={[
+                    { value: 'high', label: 'high' },
+                    { value: 'medium', label: 'medium' },
+                    { value: 'low', label: 'low' },
+                  ]}
+                />
+              </div>
+            </SettingRow>
+          )}
 
           <SettingRow label={S.settings.autoAnalyze} description={S.settings.autoAnalyzeHelp}>
             <Toggle checked={autoAnalyze} onChange={setAutoAnalyze} ariaLabel={S.settings.autoAnalyze} />
