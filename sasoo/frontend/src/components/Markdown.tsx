@@ -2,6 +2,7 @@ import { Children, useMemo, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
+import remarkCjkFriendly from 'remark-cjk-friendly';
 import rehypeKatex from 'rehype-katex';
 import rehypeHighlight from 'rehype-highlight';
 import 'katex/dist/katex.min.css';
@@ -14,7 +15,9 @@ import { ReadingCodeBlock } from './ReadingCodeBlock';
 
 // 앱 전체의 유일한 마크다운/수식 렌더 경로. figure 해석·보고서 분석·표·
 // 질문도우미가 모두 이 컴포넌트를 쓰므로 수식 렌더 설정이 한 곳에 모인다.
-const REMARK_PLUGINS = [remarkGfm, remarkMath];
+// remark-cjk-friendly: 닫는 ** 안쪽이 괄호·문장부호이고 바깥이 한글이면 CommonMark가 강조를
+// 인식하지 않아 모델 답변의 "**Flow Matching(FM)**이라는"이 별표째 노출된다.
+const REMARK_PLUGINS = [remarkGfm, remarkMath, remarkCjkFriendly];
 const REHYPE_PLUGINS = [rehypeKatex];
 
 // id는 katex가 헤딩 안 수식을 span 더미로 바꾸기 전에 붙여야 한다. 순서를 뒤집으면

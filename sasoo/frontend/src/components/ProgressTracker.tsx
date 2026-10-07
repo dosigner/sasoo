@@ -34,14 +34,14 @@ const PHASE_META: Record<AnalysisPhase, { label: string }> = {
 // 세로 목록과 탭 제목 옆 n/5 표시는 상태부와 같은 정보를 반복해서 없앴다.
 export default function ProgressTracker({ phases, onSelect }: ProgressTrackerProps) {
   return (
-    <ol className="flex flex-wrap gap-x-1 gap-y-1" aria-label={S.workbench.statusRailTitle}>
+    <ol className="flex flex-wrap items-center gap-x-1 gap-y-1" aria-label={S.workbench.statusRailTitle}>
       {phases.map((phase) => {
         const meta = PHASE_META[phase.phase];
         if (!meta) return null;
         const running = phase.status === 'running';
 
         return (
-          <li key={phase.phase}>
+          <li key={phase.phase} className="flex">
             <button
               type="button"
               onClick={() => onSelect?.(phase.phase)}

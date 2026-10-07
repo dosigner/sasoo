@@ -25,6 +25,16 @@ afterEach(() => {
 });
 
 describe('reading Markdown', () => {
+  it('closes Korean emphasis whose inner edge is punctuation and outer edge is Hangul', () => {
+    // CommonMark는 닫는 ** 안쪽이 괄호이고 바깥이 한글이면 강조로 보지 않는다(spec issue 650).
+    // 모델 답변에 흔한 형태라 별표가 그대로 노출됐다.
+    const source = '핵심 기여는 **Flow Matching(FM)**이라는 방법이고, **“경로”**를 바꾼다.';
+    const container = render(<><Markdown>{source}</Markdown><Markdown className="chat-markdown">{source}</Markdown></>);
+    const strong = [...container.querySelectorAll('strong')].map((el) => el.textContent);
+    expect(strong).toEqual(['Flow Matching(FM)', '“경로”', 'Flow Matching(FM)', '“경로”']);
+    expect(container.textContent).not.toContain('**');
+  });
+
   it('groups Korean auxiliary phrases with their trailing punctuation only in reading mode', () => {
     // Given
     const source = '요구할 수 있는지를 묻습니다. 치우칠 수 있고, 알 수 없어요. “쓸 수 있지만!”';
