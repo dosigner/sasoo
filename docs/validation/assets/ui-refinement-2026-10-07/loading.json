@@ -1,0 +1,22 @@
+[
+  {
+    "route": "home",
+    "loading": "2026년 10월 7일 수요일\n안녕하세요\n\n오늘 분석할 논문을 올려주세요.\n\n논문 추가\n논문 PDF를 여기에 놓으세요\n\n첫 논문을 올리면 보관함과 워크벤치가 바로 이어져요.\n\n아카이브에 추가\nPDF를 여기에 놓거나 클릭해서 고르세요\nPDF만 올릴 수 있어요\n최대 50.0 MB\n최근 논문\n보관함을 정리하고 있어요...\n이번 달 비용\n$0.07\n\n논문 1편 분석 · 지난달 대비 -70%\n\n자세히 보기",
+    "falseEmpty": false
+  },
+  {
+    "route": "library",
+    "loading": "ARCHIVE VIEW\n연구 보관함\n\n검색과 필터를 먼저 보고, 목록은 바로 아래에서 시작해요.\n\n보관함을 정리하고 있어요...\n분류 도구\n리스트 보기\n그리드 보기\n보관함을 정리하고 있어요...",
+    "falseEmpty": false
+  },
+  {
+    "route": "settings",
+    "loading": "제어판을 불러오고 있어요...",
+    "falseEmpty": false
+  },
+  {
+    "route": "profile",
+    "loading": "제어판을 불러오고 있어요...",
+    "falseEmpty": false
+  }
+]

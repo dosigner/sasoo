@@ -1,0 +1,13 @@
+{
+  "theme": "dark",
+  "focusReturned": true,
+  "colors": {
+    "bg": "10 10 11",
+    "fg": "244 244 245"
+  },
+  "preferencePreserved": true,
+  "dataComparison": {
+    "apiCompleted": 5,
+    "display": "분석 완료\n완료 5"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "result": "complete",
+  "integrationRounds": 1,
+  "normalAndStressCaptures": 30,
+  "behaviorChecks": 81,
+  "automatedPassed": 80,
+  "resolvedWarnings": [
+    {
+      "name": "zoom-equivalent-library",
+      "resolution": "Intentional horizontal table scroll; focused button becomes visible without document overflow",
+      "evidence": {
+        "scrollLeft": 875,
+        "client": 260,
+        "total": 1135,
+        "documentOverflow": false,
+        "focusedButtonVisible": true
+      }
+    }
+  ],
+  "static": "static-checks.json",
+  "contrast": "contrast.json",
+  "nativeElectron": "electron.json",
+  "nativeElectronDark": "electron-dark.json",
+  "loading": "loading.json",
+  "history": "history-block.json",
+  "paidAnalysisOrImageCalls": 0,
+  "fixtureSha256": "541dc53c420b400fb8a5ca1fe372d843adcdd5344b2076f261e38552c391f323",
+  "notVerified": [
+    "Packaged release binary",
+    "Physical Electron window resized to minimum",
+    "OS-wide screen reader",
+    "App quit/reload draft preservation"
+  ]
+}

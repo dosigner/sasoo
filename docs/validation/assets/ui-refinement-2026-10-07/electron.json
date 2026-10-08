@@ -1,0 +1,18 @@
+{
+  "route": "#/workbench/999006",
+  "viewport": [
+    1400,
+    865
+  ],
+  "outer": [
+    1400,
+    865
+  ],
+  "papers": 29,
+  "display": "분석 완료\n완료 5",
+  "modalFocusReturned": true,
+  "agentFocusReturned": true,
+  "chatFocusReturned": true,
+  "routeRestored": true,
+  "pageErrors": []
+}
