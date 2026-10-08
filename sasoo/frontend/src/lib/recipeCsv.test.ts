@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EvidenceAnchor, Recipe } from '@/lib/api';
 import { RECIPE_CSV_HEADER, generateCsvFromRecipe } from '@/lib/recipeCsv';
+import { stripRecipeStepNumber } from '@/lib/recipeSteps';
 
 // 열 위치를 숫자로 흩뿌리면 열 순서를 바꿀 때 어디가 깨졌는지 못 읽는다.
 const COL = {
@@ -14,6 +15,19 @@ const COL = {
   claimedQuote: 7,
   claimedPage: 8,
 } as const;
+
+it('removes only leading step markers and preserves scientific numbers', () => {
+  for (const [source, expected] of [
+    ['1. CIFAR-10을 준비해.', 'CIFAR-10을 준비해.'],
+    ['  2) [-1,1]로 변환해.', '[-1,1]로 변환해.'],
+    ['10. 식 21의 target을 사용해.', '식 21의 target을 사용해.'],
+    ['1.1 μm 파장을 사용해.', '1.1 μm 파장을 사용해.'],
+    ['1.1. 데이터 준비 절을 참고해.', '1.1. 데이터 준비 절을 참고해.'],
+    ['32×32 해상도로 resize해.', '32×32 해상도로 resize해.'],
+    ['β1=0.9, β2=0.999로 설정해.', 'β1=0.9, β2=0.999로 설정해.'],
+    ['데이터셋을 준비해.', '데이터셋을 준비해.'],
+  ]) expect(stripRecipeStepNumber(source)).toBe(expected);
+});
 
 function anchor(overrides: Partial<EvidenceAnchor>): EvidenceAnchor {
   return {
@@ -77,6 +91,13 @@ function paramRow(csv: string, name: string): string[] {
 }
 
 describe('generateCsvFromRecipe — 열 계약', () => {
+  it('keeps the step number in its key column without duplicating it in the text', () => {
+    const recipe = recipeWith(null);
+    recipe.recipe.steps = ['1. CIFAR-10을 준비해.', '2. [-1,1]로 변환해.'];
+    const csv = generateCsvFromRecipe(recipe);
+    expect(csv).toContain('Step,#1,CIFAR-10을 준비해.,');
+    expect(csv).toContain('Step,#2,"[-1,1]로 변환해.",');
+  });
   it('헤더는 9열이고 이름이 상태 중립 한국어다 (DEC-012)', () => {
     const [header] = rows(generateCsvFromRecipe(recipeWith(null)));
     expect(header).toEqual([

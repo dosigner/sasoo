@@ -16,6 +16,7 @@ import {
   summarizeAnchoredEvidence,
 } from '@/lib/evidence';
 import { generateCsvFromRecipe } from '@/lib/recipeCsv';
+import { stripRecipeStepNumber } from '@/lib/recipeSteps';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -297,7 +298,7 @@ export default function RecipeCard({
             {steps.map((step, i) => (
               <li key={i} className="text-xs text-fg-muted leading-relaxed">
                 <span className="text-accent font-medium mr-1">{i + 1}.</span>
-                {step}
+                {stripRecipeStepNumber(step)}
               </li>
             ))}
           </ol>

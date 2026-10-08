@@ -38,7 +38,7 @@ PDF 원문 옆에서 논문의 흐름을 이해하고, 그림과 표를 확인�
 
 Sasoo는 논문을 읽는 동안 원문을 곁에 둡니다. 요약에서 전체 흐름을 잡고, 섹션별 질문으로 내용을 따라가며, 연결된 Figure와 Table을 눌러 근거를 확인할 수 있습니다. PDF와 분석 결과는 로컬 라이브러리에 보관해 다시 열어 볼 수 있습니다.
 
-> **화면 안내:** 아래는 v1.0.1에 반영된 화면을 개발 앱에서 캡처한 자료입니다(2026-09-25). 저장된 분석을 불러온 한국어 UI 예시이며, 실제 분석 내용은 논문과 모델 설정에 따라 달라집니다. 공개 설치본은 [v1.0.1](https://github.com/dosigner/sasoo/releases/tag/v1.0.1)에서 받을 수 있습니다.
+> **화면 안내:** 이 개발 앱 캡처는 v1.0.1에 포함된 화면을 보여줍니다(2026-09-25). 저장된 분석 결과를 사용한 한국어 UI 예시이며, 논문과 모델 설정에 따라 실제 내용은 달라집니다. 최신 버전은 [v1.0.2 릴리스](https://github.com/dosigner/sasoo/releases/tag/v1.0.2)에서 받을 수 있습니다.
 
 <p align="center">
   <img src="sasoo/docs/assets/readme-2026-09-25/workbench-light.png" alt="왼쪽의 Diffusion Policy 원본 PDF와 오른쪽의 요약을 나란히 보여주는 Sasoo 개발 화면" width="1000" />
@@ -98,14 +98,24 @@ AI 해설과 추출 값은 원문과 대조해 사용하세요. 분석 완료나
 
 ### 설치 파일
 
-2026-09-25 확인한 공개 버전은 **v1.0.1**입니다.
+배포 버전은 **v1.0.2**입니다. [릴리스 노트와 전체 파일](https://github.com/dosigner/sasoo/releases/tag/v1.0.2)에서 변경 내용과 설치 파일을 확인하세요.
 
 | 플랫폼 | 공식 릴리스 파일 | 참고 |
 | --- | --- | --- |
-| macOS Apple Silicon | [DMG](https://github.com/dosigner/sasoo/releases/download/v1.0.1/Sasoo-1.0.1-arm64.dmg) / [ZIP](https://github.com/dosigner/sasoo/releases/download/v1.0.1/Sasoo-1.0.1-arm64-mac.zip) | 미서명, 미공증 |
-| Windows x64 | [설치 EXE](https://github.com/dosigner/sasoo/releases/download/v1.0.1/Sasoo-Setup-1.0.1.exe) | 미서명, SmartScreen 경고 가능 |
+| macOS Apple Silicon | [DMG](https://github.com/dosigner/sasoo/releases/download/v1.0.2/Sasoo-1.0.2-arm64.dmg) / [ZIP](https://github.com/dosigner/sasoo/releases/download/v1.0.2/Sasoo-1.0.2-arm64-mac.zip) | 미서명, 미공증 |
+| Windows x64 | [설치 EXE](https://github.com/dosigner/sasoo/releases/download/v1.0.2/Sasoo-Setup-1.0.2.exe) | 미서명, SmartScreen 경고 가능 |
 
 Linux와 Intel Mac용 공식 설치 파일은 없습니다. Linux 소스 빌드 명령은 있지만, 위 배포 지원 범위에는 포함되지 않습니다.
+
+### v1.0.2 변경 내용
+
+- 목록 조회 실패와 빈 보관함을 구분하고, 홈/보관함/워크벤치에서 다시 시도할 수 있습니다.
+- 설정과 프로필은 현재값을 불러온 뒤 편집할 수 있습니다. 미저장 값이 있으면 내부 페이지 이동 전에 확인합니다.
+- 모달 포커스 복귀, 라디오 방향키, 긴 제목/파일명, 밝은 테마 대비, 질문 패널의 오브와 키보드 조작을 개선했습니다.
+- 실험 단계 번호가 화면, CSV, Markdown에서 겹치지 않도록 맞췄습니다. 소수와 절 번호는 유지합니다.
+- GPT-6 Luna와 Nano Banana 2.1 모델 설정, 그림 설명 스트리밍/요청 캐시, 한국어 강조/분석 단계 표시, 의존성 보안 갱신을 포함합니다.
+
+[상세 릴리스 노트](sasoo/docs/03-release/v1.0.2.md)를 참고하세요. 미저장 이동 확인은 내부 페이지 탐색에 적용되며, 앱 종료/새로고침 시 초안 보존은 포함하지 않습니다.
 
 <details>
 <summary>macOS에서 실행이 차단될 때</summary>
@@ -136,7 +146,7 @@ OpenAI와 Gemini 중 사용할 공급사를 설정에서 선택합니다. 한 �
 | OpenAI | [OpenAI API 키](https://platform.openai.com/api-keys) | 논문 분석, 채팅, 그림 해설, 개념도 생성 |
 | Gemini | [Google AI Studio](https://aistudio.google.com/apikey) | 논문 분석, 채팅, 그림 해설, 개념도 생성 |
 
-개발 소스의 기본 분석 공급사는 OpenAI이며 텍스트 분석 모델은 `gpt-5.6-luna`입니다. 이미지 생성 모델과 단계별 배정은 별도로 관리됩니다. 실제 배정은 [모델 레지스트리](sasoo/backend/services/model_registry.py)와 [모델 ID](sasoo/backend/services/models.py)에서 확인할 수 있습니다.
+v1.0.2의 기본 분석 공급사는 OpenAI이며 텍스트 분석 모델은 `gpt-6-luna`입니다. 개념도 생성에는 공급사에 따라 OpenAI `gpt-image-2.5-flare` 또는 Gemini `gemini-nano-banana-2.1`을 사용합니다. 단계별 모델과 추론 수준은 [모델 레지스트리](sasoo/backend/services/model_registry.py), 정확한 모델 ID는 [모델 ID](sasoo/backend/services/models.py)에서 확인할 수 있습니다.
 
 설정 화면의 비용은 보고된 사용량과 앱에 등록된 단가로 계산한 **추정치**입니다. 공급사의 청구액과 다를 수 있으며, 사용량을 확인하지 못한 요청이 무료라는 뜻은 아닙니다.
 

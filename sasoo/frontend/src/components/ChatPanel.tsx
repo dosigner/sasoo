@@ -1,7 +1,6 @@
 import { Children, useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import {
   ArrowDown,
-  Bot,
   MessageSquare,
   Send,
   Sparkles,
@@ -67,6 +66,18 @@ function processCitationChildren(children: ReactNode, onCitation: CitationHandle
   );
 }
 
+type OrbState = 'pending' | 'ready' | 'busy';
+
+// 사수의 브랜드 표식. 색 그라디언트가 천천히 돌고, 답변 중에는 빨라진다. 의미는 감싼
+// 버튼의 aria-label이 전달하므로 장식으로 숨긴다.
+function DiscussionOrb({ state, className = '' }: { state: OrbState; className?: string }) {
+  return (
+    <span aria-hidden="true" data-state={state} className={`discussion-orb shrink-0 ${className}`}>
+      <span />
+    </span>
+  );
+}
+
 interface ChatPanelProps {
   paperId: string;
   agentName?: string;
@@ -98,13 +109,15 @@ export default function ChatPanel({
   const [atBottom, setAtBottom] = useState(true);
   const stickToBottomRef = useRef(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const launcherRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusRef = useRef(false);
+  const [instantTransition, setInstantTransition] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
   // Aborts the turn currently on the wire; queued turns have not started yet.
   const abortRef = useRef<AbortController | null>(null);
   const runningRef = useRef(false);
 
   const agent = agentName ? getAgentMeta(agentName) : null;
-  const agentColor = agent?.color || '#5e6ad2';
   const hasMessages = messages.length > 0;
   // 닫힘 애니메이션 동안 카드를 유지한다. 런처는 카드가 완전히 빠진 뒤에 나타나야
   // 같은 flex 줄에 둘이 잠깐 나란히 섰다가 튀는 일이 없다.
@@ -117,6 +130,12 @@ export default function ChatPanel({
     setAtBottom(true);
   }, [open]);
   const cardVisible = open || cardMounted;
+  useEffect(() => {
+    if (!cardVisible && restoreFocusRef.current) {
+      launcherRef.current?.focus();
+      restoreFocusRef.current = false;
+    }
+  }, [cardVisible]);
   const busy = messages.some((msg) => msg.status === 'pending' || msg.status === 'streaming');
 
   // 런처는 평소 원형 아이콘 버튼으로 접혀 있다가, ready가 false→true로 바뀌는
@@ -341,12 +360,20 @@ export default function ChatPanel({
 
   // Escape는 포커스가 카드 안에 있을 때만 닫는다. window 전역 리스너는 PDF 검색창이나
   // 모달의 Escape까지 가로챘다.
+  const closeCard = useCallback((instant: boolean) => {
+    if (!open) return;
+    restoreFocusRef.current = true;
+    setInstantTransition(instant);
+    if (instant) setCardMounted(false);
+    onToggleOpen();
+  }, [open, onToggleOpen]);
+
   const handleCardKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape' && !e.nativeEvent.isComposing) {
       e.stopPropagation();
-      onToggleOpen();
+      closeCard(true);
     }
-  }, [onToggleOpen]);
+  }, [closeCard]);
 
   const clearConversation = useCallback(() => {
     abortRef.current?.abort();
@@ -361,8 +388,12 @@ export default function ChatPanel({
       <div className="pointer-events-auto absolute bottom-4 right-4 flex items-end justify-end sm:bottom-5 sm:right-5">
         {!cardVisible && (
           <button
+            ref={launcherRef}
             type="button"
-            onClick={onToggleOpen}
+            onClick={(event) => {
+              setInstantTransition(event.detail === 0);
+              onToggleOpen();
+            }}
             data-expanded={showLauncherIntro || undefined}
             className={`chat-launcher ${ready ? 'chat-launcher-ready' : 'chat-launcher-pending'}`}
             aria-label={
@@ -372,20 +403,9 @@ export default function ChatPanel({
             }
             title={ready ? S.chat.launcherOpen : S.chat.pendingHint}
           >
-            <span
-              className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
-              style={{ backgroundColor: ready ? `${agentColor}20` : 'rgb(var(--fg-muted) / 0.2)' }}
-            >
-              <Bot className="h-5 w-5" style={ready ? { color: agentColor } : undefined} />
-              <span
-                aria-hidden="true"
-                className="absolute right-0 top-0 h-1.5 w-1.5 rounded-full"
-                style={{
-                  backgroundColor: ready ? agentColor : 'rgb(var(--fg-muted))',
-                  boxShadow: '0 0 0 2px rgb(var(--surface))',
-                }}
-              />
-            </span>
+            {/* 런처는 테두리 1px을 포함해 44px이라 안쪽은 42px이다. 오브를 44px로 두면
+                1px씩 밀리고 가장자리가 overflow-hidden에 잘린다. */}
+            <DiscussionOrb state={ready ? 'ready' : 'pending'} className="h-[42px] w-[42px]" />
             {/* 원형 휴지 상태에서는 overflow-hidden에 가려 보이지 않다가, 첫 ready
                 전환 순간에만 data-expanded로 잠깐 드러난다. 접근성 정보는 위 aria-label이
                 항상 담당하므로 이 텍스트는 스크린 리더에서 숨긴다. */}
@@ -409,6 +429,7 @@ export default function ChatPanel({
             className="chat-floating-card"
             data-expanded={hasMessages || undefined}
             data-state={open ? 'open' : 'closed'}
+            data-instant={instantTransition || undefined}
             onKeyDown={handleCardKeyDown}
             onAnimationEnd={(e) => {
               if (e.target === e.currentTarget && !open) setCardMounted(false);
@@ -416,9 +437,9 @@ export default function ChatPanel({
           >
             <div className="chat-floating-header" data-scrolled={scrolled || undefined}>
               <div className="flex min-w-0 items-center gap-2">
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: ready ? agentColor : 'rgb(var(--fg-muted))' }}
+                <DiscussionOrb
+                  state={!ready ? 'pending' : busy ? 'busy' : 'ready'}
+                  className="discussion-orb-sm h-4 w-4"
                 />
                 <span className="truncate text-sm font-semibold text-fg">
                   {agent?.display_name_ko || '질문 도우미'}
@@ -444,7 +465,7 @@ export default function ChatPanel({
                 )}
                 <button
                   type="button"
-                  onClick={onToggleOpen}
+                  onClick={(event) => closeCard(event.detail === 0)}
                   className="btn-icon-subtle"
                   aria-label="질문 도우미 닫기"
                 >

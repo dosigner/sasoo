@@ -1,0 +1,24 @@
+{
+  "cwd": "sasoo/frontend",
+  "checks": [
+    {
+      "command": "pnpm tsc --noEmit",
+      "exitCode": 0
+    },
+    {
+      "command": "pnpm lint",
+      "exitCode": 0
+    },
+    {
+      "command": "pnpm build",
+      "exitCode": 0,
+      "log": "build.log"
+    },
+    {
+      "command": "pnpm test (related tests)",
+      "exitCode": 0,
+      "files": 9,
+      "tests": 88
+    }
+  ]
+}

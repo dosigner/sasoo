@@ -208,12 +208,12 @@ export default function UploadPanel({ paperCount = 0 }: UploadPanelProps) {
       }`}
     >
       <div className="page-header-dense gap-3 border-b border-border/70 pb-4">
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="archive-kicker">{S.upload.surfaceTitle}</div>
           <h2
             className={
               selectedFile
-                ? 'mt-2 truncate text-lg font-semibold tracking-[-0.04em] text-fg'
+                ? 'mt-2 line-clamp-2 wrap-anywhere text-lg font-semibold tracking-[-0.04em] text-fg'
                 : 'mt-2 text-[1.55rem] font-semibold tracking-[-0.04em] text-fg'
             }
             title={selectedFile?.name}
@@ -278,7 +278,7 @@ export default function UploadPanel({ paperCount = 0 }: UploadPanelProps) {
                 <AppIcon name="document" className="h-5 w-5 text-accent" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-fg">{selectedFile.name}</div>
+                <div className="truncate text-sm font-medium text-fg" title={selectedFile.name}>{selectedFile.name}</div>
                 <div className="mt-1 text-xs text-fg-muted">{formatFileSize(selectedFile.size)}</div>
               </div>
               {stage === 'idle' && (

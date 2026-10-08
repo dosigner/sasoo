@@ -717,7 +717,7 @@
     --border: 228 228 231;
     --fg: 24 24 27;
     --fg-secondary: 82 82 91;
-    --fg-muted: 112 112 122;
+    --fg-muted: 104 104 114;
     --accent: 104 61 204;
     --accent-hover: 82 33 182;
     --accent-fg: 255 255 255;
@@ -1570,13 +1570,92 @@
      같은 근접 그림자(0 1px 2px, 0 2px 8px)를 기존 원거리 그림자 위에 겹친다. 다크는
      표면 자체 대비가 충분해 원거리 그림자만 유지한다(그 카드 관례의 dark:shadow-none과 같은 취지). */
   .chat-launcher {
-    @apply relative flex h-11 w-11 shrink-0 items-center justify-center gap-3 overflow-hidden rounded-full border border-border/60 bg-surface/90 p-0 shadow-[0_1px_2px_rgba(0,0,0,.04),0_2px_8px_rgba(0,0,0,.04),0_18px_48px_rgba(0,0,0,0.22)] backdrop-blur-xl transition-[width,height,padding,border-radius,border-color,background-color] duration-200 ease-out hover:border-border/70 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg dark:shadow-[0_18px_48px_rgba(0,0,0,0.22)];
+    @apply relative flex h-11 w-11 shrink-0 items-center justify-center gap-0 overflow-hidden rounded-full border border-border/60 bg-surface/90 p-0 shadow-[0_1px_2px_rgba(0,0,0,.04),0_2px_8px_rgba(0,0,0,.04),0_18px_48px_rgba(0,0,0,0.22)] backdrop-blur-xl transition-[width,height,padding,border-radius,border-color,background-color] duration-200 ease-out hover:border-border/70 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg dark:shadow-[0_18px_48px_rgba(0,0,0,0.22)];
   }
 
+  /* 간격은 펼친 상태에만 준다. 접힌 상태에 gap이 남으면 폭 0으로 줄어든 텍스트 쪽으로
+     12px이 잡혀, 가운데 정렬된 오브가 왼쪽으로 6px 밀린다. */
   .chat-launcher[data-expanded] {
-    @apply w-auto justify-start rounded-surface px-3.5 py-2.5;
+    @apply w-auto justify-start gap-3 rounded-surface px-3.5 py-2.5;
     width: min(20rem, calc(100vw - 1.5rem));
     height: 4rem;
+  }
+
+  /* 사수 오브: 서로 반대로 도는 두 색 층을 blur로 섞고, 위에 유리 하이라이트를 얹는다.
+     색은 앱 accent(보라)를 중심으로 청록과 분홍을 섞는다. */
+  .discussion-orb {
+    @apply relative block overflow-hidden rounded-full;
+    isolation: isolate;
+    background: rgb(var(--surface));
+    transition: transform 200ms var(--ease-out-strong), filter 200ms ease-out;
+  }
+
+  .discussion-orb::before,
+  .discussion-orb > span {
+    content: '';
+    position: absolute;
+    inset: -30%;
+    border-radius: 9999px;
+  }
+
+  .discussion-orb::before {
+    background: conic-gradient(from 0deg, #6d5cff, #38bdf8, #5eead4, #f472d0, #6d5cff);
+    filter: blur(7px);
+    animation: orbSpin 9s linear infinite;
+  }
+
+  .discussion-orb > span {
+    background:
+      radial-gradient(circle at 30% 70%, rgb(255 255 255 / 0.55), transparent 42%),
+      radial-gradient(circle at 72% 32%, rgb(109 92 255 / 0.85), transparent 46%);
+    mix-blend-mode: soft-light;
+    filter: blur(5px);
+    animation: orbSpin 13s linear infinite reverse;
+  }
+
+  .discussion-orb::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background:
+      radial-gradient(circle at 34% 28%, rgb(255 255 255 / 0.8), transparent 30%),
+      radial-gradient(circle at 50% 50%, transparent 52%, rgb(0 0 0 / 0.16) 100%);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.28);
+  }
+
+  .discussion-orb-sm::before,
+  .discussion-orb-sm > span {
+    filter: blur(2.5px);
+  }
+
+  .discussion-orb[data-state='busy']::before {
+    animation-duration: 2.4s;
+  }
+
+  .discussion-orb[data-state='busy'] > span {
+    animation-duration: 3.6s;
+  }
+
+  .discussion-orb[data-state='pending'] {
+    filter: grayscale(1) opacity(0.6);
+  }
+
+  .discussion-orb[data-state='pending']::before,
+  .discussion-orb[data-state='pending'] > span {
+    animation-play-state: paused;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .chat-launcher:hover .discussion-orb {
+      transform: scale(1.06);
+    }
+  }
+
+  @keyframes orbSpin {
+    to {
+      transform: rotate(1turn);
+    }
   }
 
   .chat-launcher-ready {
@@ -1598,7 +1677,11 @@
      그래서 이 상태에는 반드시 animationend가 발생하는 애니메이션이 걸려 있어야 한다. */
   .chat-floating-card[data-state='closed'] {
     pointer-events: none;
-    animation: chatCardOut 0.14s ease-in both;
+    animation: chatCardOut 0.14s ease-out both;
+  }
+
+  .chat-floating-card[data-instant] {
+    animation: none !important;
   }
 
   @keyframes chatCardIn {
@@ -1865,6 +1948,18 @@
     /* 런처의 원형↔카드 확장 전환도 movement다. 즉시 접히고 즉시 펼쳐진다. */
     .chat-launcher {
       transition: none !important;
+    }
+
+    /* 오브 회전과 hover 확대도 movement다. 색은 그대로 두고 멈춘다. */
+    .discussion-orb,
+    .discussion-orb::before,
+    .discussion-orb > span {
+      animation: none !important;
+      transition: none !important;
+    }
+
+    .chat-launcher:hover .discussion-orb {
+      transform: none !important;
     }
 
     /* 채팅 카드는 이동 없이 페이드만 한다. none으로 끄면 animationend가 오지 않아

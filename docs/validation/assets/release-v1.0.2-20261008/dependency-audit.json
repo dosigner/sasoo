@@ -1,0 +1,43 @@
+{
+  "date": "2026-10-08",
+  "originalCiRun": 37712118060,
+  "before": {
+    "root": {
+      "info": 0,
+      "low": 3,
+      "moderate": 10,
+      "high": 14,
+      "critical": 1
+    },
+    "frontend": {
+      "info": 0,
+      "low": 3,
+      "moderate": 1,
+      "high": 4,
+      "critical": 0
+    }
+  },
+  "after": {
+    "root": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0
+    },
+    "frontend": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0
+    }
+  },
+  "pythonAudit": "no known vulnerabilities",
+  "python": "3.12.13",
+  "backendTests": {
+    "passed": 1068,
+    "skipped": 9
+  },
+  "strategy": "Update affected override ranges; remove sprintf-js through global-agent 4.1.3; keep audit gates unchanged."
+}

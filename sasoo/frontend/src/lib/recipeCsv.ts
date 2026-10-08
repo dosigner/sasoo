@@ -9,6 +9,7 @@ import {
   summarizeAnchoredEvidence,
 } from '@/lib/evidence';
 import { S } from '@/lib/strings';
+import { stripRecipeStepNumber } from '@/lib/recipeSteps';
 
 // 열 순서가 이 파일의 계약이고, 이름 자체는 strings.ts가 쥔다(사용자가 읽는 문자열이라서).
 // 이름은 검증 여부를 단정하지 않는다 — (verified) 같은 도장이 이름에 붙어 있으면 미검증 행을
@@ -93,7 +94,7 @@ export function generateCsvFromRecipe(recipe: Recipe): string {
   });
 
   const steps = (data.steps as string[]) || [];
-  steps.forEach((s, i) => rows.push(plainRow('Step', `#${i + 1}`, s)));
+  steps.forEach((s, i) => rows.push(plainRow('Step', `#${i + 1}`, stripRecipeStepNumber(s))));
 
   const notes = (data.critical_notes as string[]) || [];
   notes.forEach((n, i) => rows.push(plainRow('Critical Note', `#${i + 1}`, n)));

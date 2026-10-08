@@ -13,7 +13,7 @@ import { useToast } from '@/components/Toast';
 import { ProviderCards, type Provider } from '@/components/settings/ProviderCards';
 import { SaveBar } from '@/components/settings/SaveBar';
 import { SettingSection, SettingRow, SegmentGroup } from '@/components/settings/SettingPrimitives';
-import { Select, Toggle } from '@/components/ui';
+import { ContentState, Select, Toggle } from '@/components/ui';
 import { S } from '@/lib/strings';
 import { applyTheme, readStoredTheme, type Theme } from '@/lib/theme';
 import { AppIcon } from '@/components/icons';
@@ -52,6 +52,8 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const { toast } = useToast();
   const location = useLocation();
   const costSectionRef = useRef<HTMLDivElement | null>(null);
@@ -112,6 +114,9 @@ export default function Settings() {
   // -----------------------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setLoadFailed(false);
+    setError(null);
 
     async function loadSettings() {
       try {
@@ -130,6 +135,7 @@ export default function Settings() {
         if (!cancelled) {
           if (err instanceof Error) console.warn('[settings] load error:', err.message);
           setError(S.settings.loadFailed);
+          setLoadFailed(true);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -140,7 +146,7 @@ export default function Settings() {
     return () => {
       cancelled = true;
     };
-  }, [applySettingsToForm, clearApiKeyInputs]);
+  }, [applySettingsToForm, clearApiKeyInputs, loadAttempt]);
 
   // -----------------------------------------------------------------------
   // Apply theme
@@ -297,6 +303,16 @@ export default function Settings() {
     return (
       <div className="flex items-center justify-center h-full">
         <span className="text-sm shimmer-label">{S.settings.loadingSettings}</span>
+      </div>
+    );
+  }
+
+  if (loadFailed) {
+    return (
+      <div className="page-container-settings">
+        <ContentState icon={(props) => <AppIcon name="error" {...props} />} title={S.settings.loadFailed}
+          description="현재 설정을 불러온 뒤 편집할 수 있어요. 연결 상태를 확인하고 다시 시도하세요."
+          actionLabel="다시 시도" onAction={() => setLoadAttempt((attempt) => attempt + 1)} tone="error" />
       </div>
     );
   }

@@ -77,6 +77,15 @@ beforeEach(() => {
 });
 afterEach(() => { hooks.reset(); vi.useRealTimers(); });
 
+it('clears a failed status load after a successful read-only refresh', async () => {
+  api.getAnalysisStatus.mockRejectedValueOnce(new Error('offline'));
+  hooks.mount(() => useAnalysis('1'));
+  const failed = await hooks.flush();
+  expect(failed.error).not.toBeNull();
+  await failed.refresh();
+  expect((await hooks.flush()).error).toBeNull();
+});
+
 it('fetches results once while thirty status polls report unchanged completion', async () => {
   hooks.mount(() => useAnalysis('1'));
   await hooks.flush();

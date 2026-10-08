@@ -220,7 +220,7 @@ export default function ExperimentPlanTab({ paperId, recipeAvailable }: Experime
 
   return (
     <div className="space-y-4 py-2">
-      <Modal open={showRegenerateConfirm} onClose={() => setShowRegenerateConfirm(false)}>
+      <Modal open={showRegenerateConfirm} onClose={() => setShowRegenerateConfirm(false)} title={S.experimentPlan.regenerateTitle}>
         <h3 className="mb-2 text-lg font-semibold text-fg">{S.experimentPlan.regenerateTitle}</h3>
         <div className="mb-4 space-y-1 text-sm text-fg-muted">
           <p>{S.experimentPlan.regenerateBody}</p>

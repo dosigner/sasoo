@@ -1,6 +1,6 @@
 {
   "name": "sasoo",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Sasoo - AI-powered academic paper analysis tool",
   "private": true,
   "main": "dist-electron/main.js",
@@ -35,7 +35,7 @@
   "devDependencies": {
     "@types/node": "^26.2.0",
     "concurrently": "^10.0.5",
-    "electron": "^43.4.0",
+    "electron": "^43.5.0",
     "electron-builder": "^26.15.3",
     "typescript": "^6.0.3",
     "vitest": "^4.1.11"

@@ -80,6 +80,7 @@ export default function Workbench() {
     visualizations,
     synthesis,
     refreshSynthesis,
+    refresh,
     isRunning,
     error: analysisError,
     startAnalysis,
@@ -326,7 +327,7 @@ export default function Workbench() {
 
   return (
     <div className="flex h-full flex-col">
-      <Modal open={showAnalysisConfirm} onClose={() => setShowAnalysisConfirm(false)}>
+      <Modal open={showAnalysisConfirm} onClose={() => setShowAnalysisConfirm(false)} title={analysisConfirmCopy.title}>
         <h3 className="mb-2 text-lg font-semibold text-fg">{analysisConfirmCopy.title}</h3>
         <div className="mb-4 space-y-1 text-sm text-fg-muted">
           {analysisConfirmCopy.providerLine && <p>{analysisConfirmCopy.providerLine}</p>}
@@ -363,10 +364,10 @@ export default function Workbench() {
         onSelectAgent={(agent) => void onSelectAgent(agent)}
         pdfCollapsed={pdfCollapsed}
         activeSplitPreset={activePreset}
-        statusLabel={statusSummary.displayStatusLabel}
-        statusTone={statusSummary.statusTone}
+        statusLabel={analysisError && !status ? '상태 확인 실패' : statusSummary.displayStatusLabel}
+        statusTone={analysisError && !status ? 'danger' : statusSummary.statusTone}
         analysisError={analysisError}
-        canStartAnalysis={canStartAnalysis}
+        canStartAnalysis={canStartAnalysis && !(analysisError && !status)}
         isRunning={isRunning && terminalState !== 'cancelled'}
         primaryActionLabel={primaryActionLabel}
         staleModel={statusSummary.staleModel}
@@ -433,7 +434,13 @@ export default function Workbench() {
           style={{ width: pdfCollapsed ? '100%' : `${100 - splitPosition}%` }}
         >
           <div className="min-w-0 flex-1">
-            <Suspense
+            {analysisError && !status ? (
+              <div className="flex h-full items-center justify-center p-6">
+                <ContentState icon={(props) => <AppIcon name="error" {...props} />} title={analysisError}
+                  description="분석 상태를 확인하지 못했어요. PDF는 계속 읽을 수 있어요."
+                  actionLabel="다시 시도" onAction={() => void refresh()} tone="error" />
+              </div>
+            ) : <Suspense
               fallback={
                 <PanelFallback
                   title={S.analysis.loadingResults}
@@ -487,7 +494,7 @@ export default function Workbench() {
                   });
                 }}
               />
-            </Suspense>
+            </Suspense>}
           </div>
         </div>
       </div>

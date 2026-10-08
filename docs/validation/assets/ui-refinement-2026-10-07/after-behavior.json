@@ -1,0 +1,474 @@
+[
+  {
+    "name": "home-failure-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "home-retry-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "library-failure-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "library-retry-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "search-empty-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "search-reset-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "view-selected-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "settings-load-failure-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "settings-load-retry-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "no-writes-settings-light",
+    "passed": true,
+    "evidence": []
+  },
+  {
+    "name": "profile-load-failure-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "profile-load-retry-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "unsaved-block-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "unsaved-escape-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "radio-keyboard-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "unsaved-keep-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "unsaved-leave-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "no-writes-profile-light",
+    "passed": true,
+    "evidence": []
+  },
+  {
+    "name": "modal-bounds-light",
+    "passed": true,
+    "evidence": {
+      "x": 288,
+      "y": 16,
+      "width": 448,
+      "height": 648
+    }
+  },
+  {
+    "name": "modal-named-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "modal-scroll-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "modal-focus-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "workbench-failure-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "workbench-retry-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "status-vs-data-light",
+    "passed": true,
+    "evidence": {
+      "display": "분석 완료\n완료 5",
+      "completed": 5
+    }
+  },
+  {
+    "name": "tab-종합-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "tab-읽기 안내-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "tab-그림-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "tab-표-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "tab-레시피-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "tab-요약-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "reanalyze-focus-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "chat-keyboard-instant-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "chat-escape-focus-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "chat-rapid-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "reduced-motion-light",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "no-writes-workbench-light",
+    "passed": true,
+    "evidence": []
+  },
+  {
+    "name": "no-runtime-errors-light",
+    "passed": true,
+    "evidence": []
+  },
+  {
+    "name": "home-failure-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "home-retry-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "library-failure-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "library-retry-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "search-empty-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "search-reset-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "view-selected-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "settings-load-failure-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "settings-load-retry-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "no-writes-settings-dark",
+    "passed": true,
+    "evidence": []
+  },
+  {
+    "name": "profile-load-failure-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "profile-load-retry-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "unsaved-block-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "unsaved-escape-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "radio-keyboard-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "unsaved-keep-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "unsaved-leave-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "no-writes-profile-dark",
+    "passed": true,
+    "evidence": []
+  },
+  {
+    "name": "modal-bounds-dark",
+    "passed": true,
+    "evidence": {
+      "x": 288,
+      "y": 16,
+      "width": 448,
+      "height": 648
+    }
+  },
+  {
+    "name": "modal-named-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "modal-scroll-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "modal-focus-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "workbench-failure-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "workbench-retry-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "status-vs-data-dark",
+    "passed": true,
+    "evidence": {
+      "display": "분석 완료\n완료 5",
+      "completed": 5
+    }
+  },
+  {
+    "name": "tab-종합-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "tab-읽기 안내-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "tab-그림-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "tab-표-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "tab-레시피-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "tab-요약-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "reanalyze-focus-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "chat-keyboard-instant-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "chat-escape-focus-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "chat-rapid-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "reduced-motion-dark",
+    "passed": true,
+    "evidence": null
+  },
+  {
+    "name": "no-writes-workbench-dark",
+    "passed": true,
+    "evidence": []
+  },
+  {
+    "name": "no-runtime-errors-dark",
+    "passed": true,
+    "evidence": []
+  },
+  {
+    "name": "zoom-equivalent-home",
+    "passed": true,
+    "evidence": []
+  },
+  {
+    "name": "zoom-equivalent-library",
+    "passed": false,
+    "evidence": [
+      {
+        "tag": "BUTTON",
+        "label": "연도",
+        "right": 1141.6875
+      },
+      {
+        "tag": "BUTTON",
+        "label": "최근 활동",
+        "right": 1231.3125
+      },
+      {
+        "tag": "BUTTON",
+        "label": "FLOW MATCHING FOR GENERATIVE MODELING 삭제",
+        "right": 1344.125
+      },
+      {
+        "tag": "BUTTON",
+        "label": "GR00T N1: An Open Foundation Model for Generalist Humanoid Robots 삭제",
+        "right": 1344.125
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Uplink pre-compensation for ground-to-space optical communications using downlink tomographic reconstruction 삭제",
+        "right": 1344.125
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Sample manuscript showing specifications and style 삭제",
+        "right": 1344.125
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Agile perceptive multiskill locomotion for quadrupedal robots in the wild 삭제",
+        "right": 1344.125
+      },
+      {
+        "tag": "BUTTON",
+        "label": "This article has been accepted for publication in a future issue of this journal, but has not been fully edited. Content may change prior to final publication. Citation information: DOI 10.1109/COMST. 삭제",
+        "right": 1344.125
+      },
+      {
+        "tag": "BUTTON",
+        "label": "Network Architectures for Space-Optical 삭제",
+        "right": 1344.125
+      },
+      {
+        "tag": "BUTTON",
+        "label": "PredictionNet: a long short-term memory-based attention network for atmospheric turbulence prediction in adaptive optics 삭제",
+        "right": 1344.125
+      }
+    ]
+  },
+  {
+    "name": "zoom-equivalent-workbench",
+    "passed": true,
+    "evidence": []
+  },
+  {
+    "name": "zoom-equivalent-settings",
+    "passed": true,
+    "evidence": []
+  },
+  {
+    "name": "zoom-equivalent-profile",
+    "passed": true,
+    "evidence": []
+  }
+]
