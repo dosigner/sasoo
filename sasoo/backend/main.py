@@ -187,7 +187,7 @@ app = FastAPI(
         "(Screening -> Visual Verification -> Recipe Extraction -> Deep Dive) "
         "powered by the Gemini API (Interactions)."
     ),
-    version="1.0.1",
+    version="1.0.2",
     lifespan=lifespan,
 )
 
@@ -300,7 +300,7 @@ async def root():
     return {
         "service": "sasoo",
         "status": "running",
-        "version": "1.0.1",
+        "version": "1.0.2",
         "library_path": str(get_library_root()),
     }
 
