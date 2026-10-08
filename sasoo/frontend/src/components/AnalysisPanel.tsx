@@ -33,6 +33,7 @@ import SectionOutline from './SectionOutline';
 import FigureGallery from './FigureGallery';
 import TableGallery from './TableGallery';
 import RecipeCard from './RecipeCard';
+import { stripRecipeStepNumber } from '@/lib/recipeSteps';
 import ExperimentPlanTab from './ExperimentPlanTab';
 import ReadingGuideTab from './ReadingGuideTab';
 import { DeepDiveSummary } from './DeepDiveSummary';
@@ -649,7 +650,7 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
     const steps = data.steps as string[] | undefined;
     if (steps?.length) {
       lines.push(`#### ${md.experimentalSteps}\n`);
-      steps.forEach((s, i) => lines.push(`${i + 1}. ${s}`));
+      steps.forEach((s, i) => lines.push(`${i + 1}. ${stripRecipeStepNumber(s)}`));
       lines.push('');
     }
 
