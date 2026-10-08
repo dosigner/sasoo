@@ -27,7 +27,7 @@ function buildAgentPillStyle(color?: string | null): React.CSSProperties | undef
   if (!color) return undefined;
 
   return {
-    color,
+    color: 'rgb(var(--fg-secondary))',
     borderColor: rgbaFromHex(color, 0.24),
     backgroundColor: rgbaFromHex(color, 0.1),
   };
@@ -138,7 +138,6 @@ function AgentBadgeDropdown({
         aria-expanded={open}
         aria-label={`담당 에이전트: ${agentLabel}. 변경하려면 여세요`}
         className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-2xs font-medium text-fg-secondary transition-colors duration-150 hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
-        style={agentColor ? { color: agentColor } : undefined}
       >
         {changing ? (
           <AppIcon name="spinner" className="h-3 w-3 animate-spin" />
@@ -248,7 +247,7 @@ export default function WorkbenchHeader({
   return (
     <div className="relative z-40 shrink-0 border-b border-border/45 bg-surface/95 px-4 py-3 backdrop-blur-sm">
       <div className="flex items-start justify-between gap-4">
-        <div className="flex min-w-0 items-start gap-2.5">
+        <div className="flex min-w-0 flex-1 items-start gap-2.5">
           <button
             type="button"
             onClick={onBack}
@@ -272,8 +271,8 @@ export default function WorkbenchHeader({
             )}
           </button>
 
-          <div className="min-w-0">
-            <h1 className="truncate text-sm font-semibold text-fg tracking-apple-body">
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-sm font-semibold text-fg tracking-apple-body" title={title}>
               {title}
             </h1>
             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-fg-muted">
@@ -312,13 +311,6 @@ export default function WorkbenchHeader({
 
         <div className="flex shrink-0 items-start gap-2">
           <div className="flex items-center gap-2">
-            {analysisError && (
-              <span className="flex items-center gap-1 text-2xs text-danger">
-                <AppIcon name="error" className="w-3 h-3" />
-                {analysisError}
-              </span>
-            )}
-
             <div className="inline-flex items-center rounded-full border border-border/60 bg-surface p-1">
               {splitPresets.map((preset) => {
                 const isActive = activeSplitPreset === preset.value;
@@ -381,6 +373,12 @@ export default function WorkbenchHeader({
           </div>
         </div>
       </div>
+      {analysisError && (
+        <p role="alert" className="mt-2 flex max-h-20 items-start gap-1 overflow-y-auto wrap-anywhere text-xs text-danger-fg">
+          <AppIcon name="error" className="mt-0.5 h-3 w-3 shrink-0" />
+          {analysisError}
+        </p>
+      )}
     </div>
   );
 }

@@ -97,6 +97,15 @@ export function SegmentGroup({
     <div
       role="radiogroup"
       aria-label={ariaLabel}
+      onKeyDown={(event) => {
+        if (!options.length || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const index = Math.max(0, options.findIndex((option) => option.key === value));
+        const direction = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1;
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1 : (index + direction + options.length) % options.length;
+        onChange(options[next].key);
+        event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')[next]?.focus();
+      }}
       className="inline-flex max-w-full flex-wrap gap-1 rounded-control border border-border/50 bg-bg/60 p-1"
     >
       {options.map((opt) => {
@@ -107,8 +116,9 @@ export function SegmentGroup({
             type="button"
             role="radio"
             aria-checked={active}
+            tabIndex={active ? 0 : -1}
             onClick={() => onChange(opt.key)}
-            className={`inline-flex items-center gap-2 rounded-control px-3.5 py-2 text-sm transition-all duration-150 ease-out motion-safe:active:scale-[0.97] ${
+            className={`inline-flex items-center gap-2 rounded-control px-3.5 py-2 text-sm transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-accent ${
               active
                 ? 'bg-surface font-medium text-fg shadow-xs'
                 : 'text-fg-muted hover:text-fg-secondary'

@@ -11,7 +11,7 @@ import { SettingSection, SettingRow, SegmentGroup } from '@/components/settings/
 import { useToast } from '@/components/Toast';
 import { S } from '@/lib/strings';
 import { AppIcon } from '@/components/icons';
-import { Select } from '@/components/ui';
+import { ContentState, Select } from '@/components/ui';
 
 // ---------------------------------------------------------------------------
 // 연구자 프로필 — 연구 배경과 기본 설명 수준을 관리하는 전용 페이지.
@@ -46,6 +46,8 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   const [baseline, setBaseline] = useState<{
     research_context: string;
@@ -71,6 +73,9 @@ export default function Profile() {
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setLoadFailed(false);
+    setError(null);
     getSettings()
       .then((data) => {
         if (cancelled) return;
@@ -93,6 +98,7 @@ export default function Profile() {
         if (!cancelled) {
           if (err instanceof Error) console.warn('[profile] load error:', err.message);
           setError(S.settings.loadFailed);
+          setLoadFailed(true);
         }
       })
       .finally(() => {
@@ -101,7 +107,7 @@ export default function Profile() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadAttempt]);
 
   // 저장바가 "변경 N개"를 보여주므로 불리언이 아니라 개수를 센다. Settings.tsx와 같은 형태다.
   const changedFields = [
@@ -166,6 +172,16 @@ export default function Profile() {
     return (
       <div className="flex items-center justify-center h-full">
         <span className="text-sm shimmer-label">{S.settings.loadingSettings}</span>
+      </div>
+    );
+  }
+
+  if (loadFailed) {
+    return (
+      <div className="page-container-settings">
+        <ContentState icon={(props) => <AppIcon name="error" {...props} />} title={S.settings.loadFailed}
+          description="프로필을 불러온 뒤 편집할 수 있어요. 연결 상태를 확인하고 다시 시도하세요."
+          actionLabel="다시 시도" onAction={() => setLoadAttempt((attempt) => attempt + 1)} tone="error" />
       </div>
     );
   }

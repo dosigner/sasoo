@@ -14,7 +14,7 @@ import { getAllAgents } from '@/lib/agents';
 import { LEVEL_LABELS, type LevelKey } from '@/components/LevelSlider';
 import { S } from '@/lib/strings';
 import { useToast } from '@/components/Toast';
-import { Modal, Select } from '@/components/ui';
+import { ContentState, Modal, Select } from '@/components/ui';
 import { AppIcon } from '@/components/icons';
 
 type ViewMode = 'grid' | 'list';
@@ -340,7 +340,7 @@ export default function Library() {
   }, [setFilters, setSearch]);
 
   const hasActiveFilters =
-    filters.domain || filters.year || filters.status || (filters.tags && filters.tags.length > 0);
+    filters.search || filters.domain || filters.year || filters.status || (filters.tags && filters.tags.length > 0);
 
   const from = (page - 1) * (filters.page_size || 20) + 1;
   const to = Math.min(page * (filters.page_size || 20), total);
@@ -371,7 +371,7 @@ export default function Library() {
               {S.library.heroBody}
             </p>
             <div className="page-status-strip mt-3">
-              <span>{S.library.paperCount(total)}</span>
+              <span>{loading ? S.library.loading : error ? '논문 수를 확인할 수 없어요' : S.library.paperCount(total)}</span>
               {completedTotal !== null && (
                 <>
                   <span className="h-1 w-1 rounded-full bg-border" />
@@ -393,7 +393,7 @@ export default function Library() {
                 setSearchValue(e.target.value);
                 setSearch(e.target.value);
               }}
-              className="w-full rounded-full border border-border bg-surface px-10 py-3 text-sm text-fg outline-hidden transition-colors placeholder:text-fg-muted focus:border-fg-muted"
+              className="w-full rounded-full border border-border bg-surface px-10 py-3 text-sm text-fg outline-hidden transition-colors placeholder:text-fg-muted focus:border-accent focus-visible:ring-2 focus-visible:ring-accent"
               aria-label="논문 검색"
             />
           </div>
@@ -450,6 +450,7 @@ export default function Library() {
                   : 'text-fg-muted hover:text-fg-secondary'
               }`}
               aria-label={S.library.listView}
+              aria-pressed={viewMode === 'list'}
             >
               {S.library.listView}
             </button>
@@ -461,6 +462,7 @@ export default function Library() {
                   : 'text-fg-muted hover:text-fg-secondary'
               }`}
               aria-label={S.library.gridView}
+              aria-pressed={viewMode === 'grid'}
             >
               {S.library.gridView}
             </button>
@@ -545,10 +547,11 @@ export default function Library() {
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-2 block text-2xs text-fg-muted">
+                <label htmlFor="library-year" className="mb-2 block text-2xs text-fg-muted">
                   {S.library.year}
                 </label>
                 <input
+                  id="library-year"
                   type="number"
                   min={1990}
                   max={new Date().getFullYear()}
@@ -584,10 +587,15 @@ export default function Library() {
       )}
 
       {error && (
-        <div className="mb-5 archive-inline-status archive-inline-status-error">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          {error}
-        </div>
+        <ContentState
+          icon={AlertCircle}
+          title={error}
+          description="연결 상태를 확인하고 목록을 다시 불러오세요."
+          actionLabel="다시 시도"
+          onAction={() => void refresh()}
+          tone="error"
+          className="mb-5"
+        />
       )}
 
       {loading && (
@@ -596,7 +604,7 @@ export default function Library() {
         </div>
       )}
 
-      {!loading && visiblePapers.length === 0 && (
+      {!loading && !error && visiblePapers.length === 0 && (
         <div className="archive-panel px-6 py-16 text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-border bg-bg">
             <AppIcon name="library" className="w-6 h-6 text-fg-muted" />
@@ -628,7 +636,7 @@ export default function Library() {
         </div>
       )}
 
-      {!loading && visiblePapers.length > 0 && viewMode === 'list' && (
+      {!loading && !error && visiblePapers.length > 0 && viewMode === 'list' && (
         <section className="overflow-x-auto rounded-surface border border-border/60 bg-surface/90">
           <table className="library-table min-w-[720px]">
             <thead>
@@ -676,7 +684,7 @@ export default function Library() {
         </section>
       )}
 
-      {!loading && visiblePapers.length > 0 && viewMode === 'grid' && (
+      {!loading && !error && visiblePapers.length > 0 && viewMode === 'grid' && (
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {visiblePapers.map((paper) => (
             <PaperArchiveCard
@@ -689,7 +697,7 @@ export default function Library() {
         </section>
       )}
 
-      {!loading && totalPages > 1 && (
+      {!loading && !error && totalPages > 1 && (
         <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-border/50 pt-5">
           <span className="text-xs text-fg-muted">
             {S.library.showing(from, to, total)}
@@ -744,7 +752,7 @@ export default function Library() {
         </div>
       )}
 
-      <Modal open={deleteModal.show} onClose={cancelDelete}>
+      <Modal open={deleteModal.show} onClose={cancelDelete} title={S.library.deleteTitle}>
         <div className="mb-4 flex items-start gap-3">
           <div
             className="border border-danger/20 bg-danger/10 p-2"

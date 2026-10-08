@@ -219,7 +219,7 @@ export function SynthesisView({
         />
       )}
 
-      <Modal open={confirmOpen} onClose={() => setConfirmOpen(false)}>
+      <Modal open={confirmOpen} onClose={() => setConfirmOpen(false)} title={T.regenerateButton}>
         <h3 className="mb-2 text-lg font-semibold text-fg">{T.regenerateButton}</h3>
         <div className="mb-4 space-y-1 text-sm text-fg-muted">
           <p>{T.regenerateConfirmBody}</p>

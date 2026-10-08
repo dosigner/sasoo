@@ -49,6 +49,8 @@ export default function ContentState({
 
   return (
     <div
+      role={tone === 'error' ? 'alert' : loading ? 'status' : undefined}
+      aria-busy={loading || undefined}
       className={`flex flex-col items-center justify-center border px-5 text-center ${styles.shell} ${
         compact ? 'py-5' : 'py-8'
       } ${className}`}
@@ -72,7 +74,7 @@ export default function ContentState({
         {title}
       </h3>
       {description && (
-        <p className={`mt-1 max-w-sm text-fg-muted ${compact ? 'text-2xs' : 'text-xs'}`}>
+        <p className={`mt-1 max-w-sm wrap-anywhere text-fg-muted ${compact ? 'text-2xs' : 'text-xs'}`}>
           {description}
         </p>
       )}

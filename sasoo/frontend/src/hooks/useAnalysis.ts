@@ -348,6 +348,8 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
           setError(
             errorPhase?.error_message || S.error.occurred
           );
+      } else {
+        setError(null);
       }
       return s;
     } catch (err) {

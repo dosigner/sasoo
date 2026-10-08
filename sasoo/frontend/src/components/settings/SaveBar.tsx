@@ -1,4 +1,6 @@
 import { Loader2 } from 'lucide-react';
+import { useBlocker } from 'react-router';
+import { Modal } from '@/components/ui';
 
 import { S } from '@/lib/strings';
 
@@ -21,9 +23,19 @@ interface Props {
  * 위치가 같아야 한다.
  */
 export function SaveBar({ changeCount, saving, error, onSave, onDiscard }: Props) {
+  const blocker = useBlocker(changeCount > 0);
   if (changeCount === 0) return null;
 
   return (
+    <>
+    <Modal open={blocker.state === 'blocked'} onClose={() => blocker.reset?.()} title="저장하지 않고 이동할까요?">
+      <h3 className="text-lg font-semibold text-fg">저장하지 않고 이동할까요?</h3>
+      <p className="mt-2 text-sm text-fg-secondary">이 화면에서 수정한 내용은 아직 저장되지 않았어요.</p>
+      <div className="mt-5 flex flex-wrap justify-end gap-2">
+        <button type="button" className="btn-primary" onClick={() => blocker.reset?.()}>계속 편집</button>
+        <button type="button" className="btn-secondary" onClick={() => blocker.proceed?.()} disabled={saving}>저장하지 않고 이동</button>
+      </div>
+    </Modal>
     <div className="settings-savebar" role="region" aria-label={S.settings.saveBarLabel}>
       <span
         className={`text-xs ${error ? 'text-danger' : 'text-fg-muted'}`}
@@ -41,6 +53,7 @@ export function SaveBar({ changeCount, saving, error, onSave, onDiscard }: Props
         </button>
       </div>
     </div>
+    </>
   );
 }
 

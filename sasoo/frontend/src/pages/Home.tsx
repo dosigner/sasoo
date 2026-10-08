@@ -5,6 +5,8 @@ import { S } from '@/lib/strings';
 import UploadPanel from '@/components/home/UploadPanel';
 import RecentPaperRow, { formatPaperDate } from '@/components/home/RecentPaperRow';
 import ArcCards from '@/components/amicro/ArcCards';
+import { ContentState } from '@/components/ui';
+import { AppIcon } from '@/components/icons';
 
 function todayLabel(): string {
   return new Date().toLocaleDateString('ko-KR', {
@@ -34,9 +36,14 @@ export default function Home() {
   const [papersTotal, setPapersTotal] = useState<number | null>(null);
   const [cost, setCost] = useState<CostTileData | null>(null);
   const [libraryHovered, setLibraryHovered] = useState(false);
+  const [papersLoading, setPapersLoading] = useState(true);
+  const [papersError, setPapersError] = useState(false);
+  const [papersAttempt, setPapersAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setPapersLoading(true);
+    setPapersError(false);
 
     // 분석했으면 분석 시각, 아니면 추가 시각 — 마지막 활동 기준으로 정렬한다.
     getPapers({ page: 1, page_size: 8, sort_by: 'created_at', sort_order: 'desc' })
@@ -53,8 +60,17 @@ export default function Home() {
         if (cancelled) return;
         setRecentPapers([]);
         setPapersTotal(null);
+        setPapersError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setPapersLoading(false);
       });
 
+    return () => { cancelled = true; };
+  }, [papersAttempt]);
+
+  useEffect(() => {
+    let cancelled = false;
     getCostSummary()
       .then((data) => {
         if (cancelled) return;
@@ -126,7 +142,19 @@ export default function Home() {
               )}
             </div>
             <div className="mt-3 grid gap-3">
-              {recentPapers.length > 0 ? (
+              {papersLoading ? (
+                <ContentState icon={(props) => <AppIcon name="spinner" {...props} />} title={S.library.loading} loading compact tone="muted" />
+              ) : papersError ? (
+                <ContentState
+                  icon={(props) => <AppIcon name="error" {...props} />}
+                  title={S.error.loadPapersFailed}
+                  description="연결 상태를 확인하고 다시 시도하세요."
+                  actionLabel="다시 시도"
+                  onAction={() => setPapersAttempt((attempt) => attempt + 1)}
+                  tone="error"
+                  compact
+                />
+              ) : recentPapers.length > 0 ? (
                 recentPapers.map((paper) => (
                   <RecentPaperRow
                     key={`recent-${paper.id}`}

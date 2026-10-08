@@ -233,7 +233,7 @@ export default function ReadingGuideTab({
 
   const isRegenerate = status === 'ready';
   const confirmModal = (
-    <Modal open={confirmOpen} onClose={() => setConfirmOpen(false)}>
+    <Modal open={confirmOpen} onClose={() => setConfirmOpen(false)} title={isRegenerate ? S.readingGuide.regenerateTitle : S.readingGuide.confirmTitle}>
       <h3 className="mb-2 text-lg font-[650] text-fg">
         {isRegenerate ? S.readingGuide.regenerateTitle : S.readingGuide.confirmTitle}
       </h3>
