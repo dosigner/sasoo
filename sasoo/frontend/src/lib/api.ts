@@ -853,6 +853,55 @@ export interface ChatDoneMeta {
   tokens_in: number;
   tokens_out: number;
   cost_usd: number;
+  /** 토의로 저장된 답의 id(persist일 때만). */
+  message_id?: number;
+  /** 이 답의 실제 입력 토큰. 맥락 막대의 값이다. */
+  context_tokens?: number;
+}
+
+export type DiscussionResetReason = 'manual' | 'reanalysis' | 'budget';
+
+/** discussion_messages 한 행. 맥락 초기화도 kind='reset' 행으로 온다. */
+export interface DiscussionRow {
+  id: number;
+  kind: 'user' | 'sasoo' | 'reset';
+  content: string;
+  status: 'complete' | 'interrupted';
+  reset_reason: DiscussionResetReason | null;
+  cost_usd: number | null;
+  created_at: string;
+}
+
+export interface DiscussionSource {
+  key: string;
+  label: string;
+  chars: number;
+  truncated: boolean;
+  /** 실제 입력 토큰을 글자 수 비율로 나눈 추정값. 첫 답 전에는 null. */
+  estimated_tokens: number | null;
+}
+
+export interface DiscussionContext {
+  budget: number;
+  context_tokens: number | null;
+  sources: DiscussionSource[];
+}
+
+export interface Discussion {
+  messages: DiscussionRow[];
+  context: DiscussionContext;
+}
+
+/** 채팅 스트림의 첫 이벤트. 서버가 질문을 저장한 뒤, 필요하면 맥락을 초기화하고 보낸다. */
+export interface ChatStartMeta {
+  user_message_id: number;
+  reset: DiscussionRow | null;
+}
+
+export interface ChatOptions {
+  /** false면 토의 기록에 남기지 않고 history를 그대로 보낸다(읽기 안내). 기본 true. */
+  persist?: boolean;
+  onMeta?: (meta: ChatStartMeta) => void;
 }
 
 /** Raised when the backend reports a failure through the SSE `error` event. */
@@ -871,6 +920,10 @@ interface StreamEvent {
   tokens_out?: number;
   cost_usd?: number;
   result?: FigureExplanationResponse;
+  message_id?: number;
+  context_tokens?: number;
+  user_message_id?: number;
+  reset?: DiscussionRow | null;
 }
 
 async function readEventStream(response: Response, onEvent: (event: StreamEvent) => boolean): Promise<void> {
@@ -909,6 +962,8 @@ async function readEventStream(response: Response, onEvent: (event: StreamEvent)
 /**
  * `history` must NOT contain `message` — the backend appends it as the final
  * user turn, so including it here would send the question to Gemini twice.
+ * With `persist` (the default) the backend ignores `history` and builds the
+ * context from the saved discussion instead.
  */
 export async function chatWithAgent(
   paperId: string,
@@ -917,6 +972,7 @@ export async function chatWithAgent(
   onToken: (text: string) => void,
   onDone: (meta: ChatDoneMeta) => void,
   signal?: AbortSignal,
+  options: ChatOptions = {},
 ): Promise<void> {
   const url = `${getApiBase()}/analysis/${paperId}/chat`;
 
@@ -930,6 +986,7 @@ export async function chatWithAgent(
     signal,
     body: JSON.stringify({
       message,
+      persist: options.persist ?? true,
       history: history.map((m) => ({
         role: m.role === 'agent' ? 'model' : 'user',
         content: m.content,
@@ -943,13 +1000,17 @@ export async function chatWithAgent(
   }
 
   await readEventStream(response, (data) => {
-    if (data.type === 'token') {
+    if (data.type === 'meta') {
+      options.onMeta?.({ user_message_id: data.user_message_id ?? 0, reset: data.reset ?? null });
+    } else if (data.type === 'token') {
       onToken(data.content ?? '');
     } else if (data.type === 'done') {
       onDone({
         tokens_in: data.tokens_in ?? 0,
         tokens_out: data.tokens_out ?? 0,
         cost_usd: data.cost_usd ?? 0,
+        message_id: data.message_id,
+        context_tokens: data.context_tokens,
       });
       return true;
     } else if (data.type === 'error') {
@@ -957,6 +1018,18 @@ export async function chatWithAgent(
     }
     return false;
   });
+}
+
+export async function getDiscussion(paperId: string): Promise<Discussion> {
+  return request<Discussion>(`/analysis/${paperId}/discussion`);
+}
+
+export async function resetDiscussion(paperId: string): Promise<DiscussionRow> {
+  return request<DiscussionRow>(`/analysis/${paperId}/discussion/reset`, { method: 'POST' });
+}
+
+export async function deleteDiscussion(paperId: string): Promise<void> {
+  return request<void>(`/analysis/${paperId}/discussion`, { method: 'DELETE' });
 }
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,2 @@
+openai gpt-6-luna chars 413664 tokens 231326 latency median 0.65s max 0.72s min 0.60s
+gemini gemini-3.8-flash chars 426312 tokens 231513 latency median 0.85s max 1.01s min 0.65s
