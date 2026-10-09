@@ -123,6 +123,8 @@ export function useReadingGuide(
           setStatus('ready');
         },
         controller.signal,
+        // 읽기 안내는 토의 기록에 섞지 않는다.
+        { persist: false },
       );
     } catch (err) {
       buffer.end();

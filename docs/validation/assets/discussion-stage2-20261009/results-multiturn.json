@@ -1,0 +1,1412 @@
+{
+ "meta": {
+  "date": "2026-10-09",
+  "total_cost_usd": 0.30453
+ },
+ "results": [
+  {
+   "text": "응, 논문은 **실험한 설정에서 OT 경로가 diffusion 경로보다 적은 NFE로 비슷한 샘플링 오차에 도달할 수 있다**고 보고해. ImageNet-32×32의 고정 step 비교에서는 OT 모델이 비슷한 오차 임계값에 도달하는 데 diffusion 모델 NFE의 약 60%가 필요했다고 서술해(표 1 및 샘플링 비교 절).\n\n다만 “항상 NFE가 줄어든다”는 보장은 아니야. 이 결과는 논문에서 비교한 데이터·모델·오차 기준에 한정해서 읽어야 해.",
+   "event": "done",
+   "tokens_in": 7549,
+   "cost_usd": 0.00015409,
+   "first_token_s": 1.54,
+   "citations": 1,
+   "chars": 254,
+   "paper_id": 999006,
+   "provider": "openai",
+   "rep": 1,
+   "turn": 1,
+   "kind": "correct",
+   "message": "OT 경로를 쓰면 diffusion 경로보다 샘플링에 필요한 함수 평가 횟수(NFE)가 줄어든다는 게 이 논문의 주장이지?"
+  },
+  {
+   "text": "논문은 ImageNet 등 논문에서 실험한 설정에서 Flow Matching이 일부 diffusion 기반 방법보다 우수한 우도·샘플 품질을 보였다고 보고해(초록, 표 1). 다만 모든 생성 과제와 조건에서 항상 더 낫다는 주장은 뒷받침하지 않아. 데이터셋과 모델 설정에 따라 비교 결과가 달라질 수 있고, 초해상도 실험에서도 FM w/ OT는 FID·IS는 SR3보다 좋았지만 PSNR·SSIM은 낮았어(표 2).",
+   "event": "done",
+   "tokens_in": 7716,
+   "cost_usd": 0.00016596,
+   "first_token_s": 0.96,
+   "citations": 2,
+   "chars": 232,
+   "paper_id": 999006,
+   "provider": "openai",
+   "rep": 1,
+   "turn": 2,
+   "kind": "overclaim",
+   "message": "Flow Matching은 모든 생성 모델 과제에서 diffusion보다 항상 낫다는 거지?"
+  },
+  {
+   "text": "아니, 논문이 제안한 주 학습 방식은 학습 중 ODE를 풀어 likelihood를 최대화하는 게 아니야. Flow Matching은 **고정된 조건부 확률 경로의 벡터장을 회귀하는 시뮬레이션 없는 목적함수**로 CNF를 학습해(초록, §3).\n\nODE 적분은 학습된 벡터장으로 샘플을 생성할 때 쓰고, likelihood를 평가할 때도 별도의 ODE 계산을 해. 그러니 likelihood 평가 절차와 학습 목적을 혼동하면 안 돼.",
+   "event": "done",
+   "tokens_in": 7869,
+   "cost_usd": 0.00018809,
+   "first_token_s": 1.11,
+   "citations": 1,
+   "chars": 241,
+   "paper_id": 999006,
+   "provider": "openai",
+   "rep": 1,
+   "turn": 3,
+   "kind": "wrong",
+   "message": "이 논문은 학습 중에 ODE를 직접 풀어서 likelihood를 최대화하는 방식이지?"
+  },
+  {
+   "text": "논문은 **실험한 일부 설정에서** FM-OT가 diffusion 경로보다 효율적이고 성능이 좋다고 보고해. 특히 Table 1에서는 CIFAR-10과 ImageNet 32×32·64×64에서 FM w/ OT의 NLL·FID·NFE가 표에 포함된 비교법보다 낮게 제시되고, 샘플링 비교에서는 ImageNet-32×32에서 비슷한 오차 기준에 도달하는 데 diffusion 모델 NFE의 약 60%가 필요했다고 서술해.\n\n다만 이걸 “OT 경로 자체가 diffusion보다 일반적으로 낫다”로 읽으면 근거가 부족해.\n\n- **조건부 경로의 직선성이 일반적인 수송 최적성을 뜻하진 않아.** 논문은 조건부 OT 경로가 직선 궤적을 만든다고 설명하지만, 그 사실만으로 혼합된 주변분포 사이에서도 최적수송 경로가 된다고 보이지는 않아. 따라서 경로의 단순성이 결과 개선의 원인이라는 해석은 그럴듯해도, 원인까지 분리해 입증한 건 아니야.\n- **비교는 여러 설정이 함께 달라질 수 있어.** Table 3의 학습 설정은 해상도별로 다르고, ImageNet-128×128은 모델 크기와 학습 처리량 차이도 언급돼. 모든 조건을 통제한 경로 유형만의 비교로 일반화하기 어렵고, 128×128에서는 IC-GAN이 표에서 제외돼 직접 비교 범위도 제한돼.\n- **NFE 우위는 샘플링 조건에 의존해.** NFE는 solver와 허용 오차, 비교한 오차 기준에 따라 달라질 수 있어. 논문은 정해진 비교 설정에서 이점을 보고했지, 모든 solver·허용 오차·데이터에서 필요한 NFE가 줄어든다고 보장하진 않아. Fig. 7도 경향을 보여주지만 그래프의 판독에는 한계가 있어.\n- **‘더 낫다’는 지표에 따라 달라져.** 초해상도 Table 2에서는 FM w/ OT가 FID·IS는 SR3보다 좋지만 PSNR·SSIM은 낮아. 한 지표에서의 우위를 전반적인 품질 우위로 바꾸면 안 돼.\n- **변동성·유의성 근거가 부족해.** 표와 그래프에서 오차막대나 신뢰구간을 확인할 수 없어. 보고된 차이가 재현 실험에서도 안정적으로 유지되는지, 차이가 얼마나 변동하는지는 이 자료만으로 판단하기 어려워.\n\n그래서 가장 방어적인 결론은 **“논문이 평가한 설정에서는 OT 경로를 쓴 FM이 유망한 효율·성능 이점을 보였지만, 그 우위가 OT 경로의 일반적 우월성이나 모든 과제에서의 우위까지 입증한 건 아니다”**야.",
+   "event": "done",
+   "tokens_in": 8030,
+   "cost_usd": 0.00052872,
+   "first_token_s": 2.25,
+   "citations": 4,
+   "chars": 1171,
+   "paper_id": 999006,
+   "provider": "openai",
+   "rep": 1,
+   "turn": 4,
+   "kind": "critique",
+   "message": "OT 경로가 diffusion 경로보다 낫다는 이 논문의 해석을 비판적으로 따져 줘."
+  },
+  {
+   "text": "첫 번째 근거는 **논문 본문 2쪽의 Introduction**에 있어. 저자들은 조건부 OT 경로가 직선 궤적을 만든다고 설명하지만, 그 설명만으로 주변분포 사이의 경로가 최적수송이라고 주장하는 대목은 현재 제공된 본문 발췌에서는 확인할 수 없어.\n\n다만 내가 앞서 쓴 “그 사실만으로 … 최적수송 경로가 된다고 보이지는 않아”는 **논문 문장을 직접 인용한 게 아니라, 조건부 경로의 직선성과 주변분포 간 최적수송을 구분한 해석**이야. 정확한 페이지나 절을 근거로 저자들이 그 한계를 명시했다고 말할 수는 없어.",
+   "event": "done",
+   "tokens_in": 8711,
+   "cost_usd": 0.00031134,
+   "first_token_s": 0.82,
+   "citations": 1,
+   "chars": 289,
+   "paper_id": 999006,
+   "provider": "openai",
+   "rep": 1,
+   "turn": 5,
+   "kind": "followup",
+   "message": "방금 비판한 내용 중 첫 번째 근거는 논문 어디에 있어?",
+   "saved_rows": [
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ]
+   ]
+  },
+  {
+   "text": "응, 맞아. 여러 lookback frame의 다운링크 WFS 측정값을 모아 대기층의 겉보기 풍속 방향으로 누적하고, 그걸 이용해 등가 대기층별 위상을 분해해(PDF 2–3쪽, Fig. 1). 다만 이건 대기가 frozen-flow를 따른다는 가정에 기대는 시뮬레이션 방법이야.",
+   "event": "done",
+   "tokens_in": 7048,
+   "cost_usd": 0.00092792,
+   "first_token_s": 1.71,
+   "citations": 2,
+   "chars": 155,
+   "paper_id": 999004,
+   "provider": "openai",
+   "rep": 1,
+   "turn": 1,
+   "kind": "correct",
+   "message": "다운링크 WFS 측정을 여러 lookback frame에 걸쳐 모아서 대기층별 위상을 분해하는 방식이지?"
+  },
+  {
+   "text": "논문에선 LITEUP이 시험한 모든 설정에서 직접 다운링크 보정(DL)보다 낮은 위상 오차를 보였어(Fig. 3, 4절). 하지만 PAA 조건과 상관없이 이상적인 업링크 보정(UL)과 같은 성능을 낸다는 뜻은 아니야. UL은 비교용 이상적 기준이고, LITEUP은 추정 오차가 남아 UL보다 성능이 낮을 수 있어. 실제로 성능은 PAA 조건과 바람 방향 등에 따라 달라졌고, 논문이 제시한 최대 개선량도 UL과의 동등성을 뜻하진 않아(Fig. 3–4, 결론).",
+   "event": "done",
+   "tokens_in": 7177,
+   "cost_usd": 0.0002019,
+   "first_token_s": 1.96,
+   "citations": 3,
+   "chars": 257,
+   "paper_id": 999004,
+   "provider": "openai",
+   "rep": 1,
+   "turn": 2,
+   "kind": "overclaim",
+   "message": "LITEUP을 쓰면 PAA 조건과 상관없이 항상 이상적인 uplink 보정(UL)만큼 성능이 나온다는 거지?"
+  },
+  {
+   "text": "아니, beacon을 따로 측정하는 방법은 아니야. LITEUP은 다운링크 WFS의 연속 측정과 대기층의 겉보기 풍속 정보를 이용해 대기층별 위상을 추정한 뒤, PAA 방향의 uplink 위상을 계산해(논문 2–3쪽, Fig. 1). 위성 beacon을 이용한 측정은 서론에서 대안으로 언급될 뿐, LITEUP의 입력은 아니야.",
+   "event": "done",
+   "tokens_in": 7360,
+   "cost_usd": 0.00016878,
+   "first_token_s": 0.99,
+   "citations": 2,
+   "chars": 183,
+   "paper_id": 999004,
+   "provider": "openai",
+   "rep": 1,
+   "turn": 3,
+   "kind": "wrong",
+   "message": "이 방법은 위성이 보내는 beacon을 따로 측정해서 uplink 위상을 구하는 거지?"
+  },
+  {
+   "text": "논문이 직접 뒷받침하는 건 **시뮬레이션한 조건에서 LITEUP의 위상 오차 지표가 직접 다운링크 보정(DL)보다 낮았다**는 거야(Fig. 3, 4절). 이걸 “기존 방식보다 전반적으로 낫다”거나 실제 링크에서도 성능이 입증됐다고 넓히면 과장이야.\n\n비판적으로 보면 한계가 꽤 분명해.\n\n- **비교 대상이 제한돼 있어.** 핵심 비교는 DL, 이상적인 업링크 보정(UL), 무보정(NC)이야. LITEUP이 DL보다 나은 결과는 보이지만, 논문이 모든 실용적인 보정 기법보다 우수함을 보인 건 아니야(Fig. 3).\n- **검증은 시뮬레이션뿐이야.** 대기는 두 개 등가층으로 모델링했고, 대기 위상이 frozen-flow를 따른다는 가정에 기대. 논문도 frozen-flow로 설명되지 않는 위상 변화가 크면 방법이 어려움을 겪거나 실패할 수 있다고 밝혀(Section 2, 4절).\n- **성능은 조건에 따라 달라져.** lookback frame 수와 등가층의 바람 속도·방향에 따라 결과가 변하고, 바람 방향이 PAA 방향에서 벗어나면 MSE가 커지는 경향이 있어(Fig. 4). 따라서 PAA와 무관하게 일정한 성능을 낸다고 볼 수 없어.\n- **강건성 근거도 제한적이야.** 입력 오차 분석은 대표 구성 하나를 중심으로 했어(Section 4.2, Fig. 5). 이를 다양한 대기 상태와 실제 운용 조건에 대한 강건성으로 일반화하긴 어려워. 시각 분석 결과에는 본문에서 언급한 층 높이 오차와 Table 3 표기 사이의 불일치도 지적돼 있어.\n- **‘최대 8.6배·15배 개선’은 최대치야.** 결론의 수치는 시험한 표본 공간에서 얻은 최대 개선량이지, 평균적인 개선이나 모든 조건에서 보장되는 값은 아니야(Conclusion, Fig. 3).\n\n그래서 정확한 평가는 이 정도야: **LITEUP은 논문이 설정한 시뮬레이션 범위에서 DL 직접 보정보다 유망한 결과를 보였지만, 실제 시스템에서 기존 방법보다 우수하다는 결론은 아직 검증되지 않았어.** 특히 추정·계산·보상을 필요한 시간 안에 수행할 수 있는지와 실제 대기에서 성립하는지는 논문도 후속 과제로 남겨 둬.",
+   "event": "done",
+   "tokens_in": 7495,
+   "cost_usd": 0.00048615,
+   "first_token_s": 1.9,
+   "citations": 10,
+   "chars": 1056,
+   "paper_id": 999004,
+   "provider": "openai",
+   "rep": 1,
+   "turn": 4,
+   "kind": "critique",
+   "message": "LITEUP이 기존 방식보다 낫다는 이 논문의 해석을 비판적으로 따져 줘."
+  },
+  {
+   "text": "첫 번째 근거는 **Fig. 3**이야. 거기서 비교하는 방식은 LITEUP, 직접 다운링크 보정(DL), 이상적인 업링크 보정(UL), 무보정(NC)이야. 그래서 논문이 보여 준 건 이 비교군 안에서의 성능이지, 가능한 모든 실용 보정 기법과의 우열은 아니야. 본문에서도 시뮬레이션 성능을 이 기준들과 비교해 평가해(Section 4).",
+   "event": "done",
+   "tokens_in": 8120,
+   "cost_usd": 0.00033828,
+   "first_token_s": 5.56,
+   "citations": 2,
+   "chars": 189,
+   "paper_id": 999004,
+   "provider": "openai",
+   "rep": 1,
+   "turn": 5,
+   "kind": "followup",
+   "message": "방금 비판한 내용 중 첫 번째 근거는 논문 어디에 있어?",
+   "saved_rows": [
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ]
+   ]
+  },
+  {
+   "text": "응, 논문은 **OT 경로가 diffusion 경로보다 적은 NFE로 비슷한 샘플링 오차에 도달할 수 있다**고 보고해. 다만 모든 조건에서 NFE가 줄어든다는 뜻은 아니야. ImageNet-32×32의 고정 step 비교에서 해당 결과를 보고하고, Table 1에도 데이터셋별 NFE를 제시해.",
+   "event": "done",
+   "tokens_in": 7549,
+   "cost_usd": 0.00012226,
+   "first_token_s": 0.94,
+   "citations": 1,
+   "chars": 165,
+   "paper_id": 999006,
+   "provider": "openai",
+   "rep": 2,
+   "turn": 1,
+   "kind": "correct",
+   "message": "OT 경로를 쓰면 diffusion 경로보다 샘플링에 필요한 함수 평가 횟수(NFE)가 줄어든다는 게 이 논문의 주장이지?"
+  },
+  {
+   "text": "논문은 **일부 이미지 생성 실험에서** Flow Matching, 특히 OT 경로가 비교 방법보다 좋은 결과를 냈다고 보고해. 하지만 그걸 모든 생성 과제에서 diffusion보다 항상 낫다는 주장으로 넓히면 안 돼. 실험은 CIFAR-10·ImageNet과 초해상도에 한정되고, 초해상도에서는 FID·IS는 FM w/ OT가 유리했지만 PSNR·SSIM은 SR3가 더 높았어(표 1–2).",
+   "event": "done",
+   "tokens_in": 7662,
+   "cost_usd": 0.00015422,
+   "first_token_s": 0.78,
+   "citations": 1,
+   "chars": 219,
+   "paper_id": 999006,
+   "provider": "openai",
+   "rep": 2,
+   "turn": 2,
+   "kind": "overclaim",
+   "message": "Flow Matching은 모든 생성 모델 과제에서 diffusion보다 항상 낫다는 거지?"
+  },
+  {
+   "text": "아니, 논문이 제안한 주된 학습은 학습 중 ODE를 풀어 likelihood를 최대화하는 방식이 아니야. **Flow Matching은 고정된 조건부 확률 경로의 벡터장을 회귀하는 simulation-free 학습법**이고, Conditional Flow Matching을 이용하면 주변 벡터장을 직접 계산하지 않고 학습할 수 있어(초록, 3절).\n\n다만 CNF에서 샘플을 생성할 때는 학습된 벡터장의 ODE를 적분하고, 논문은 likelihood 평가에도 ODE 계산을 사용해. 그러니까 **학습은 ODE 시뮬레이션 없이 할 수 있지만, 샘플링이나 likelihood 계산에는 ODE 적분이 쓰여**.",
+   "event": "done",
+   "tokens_in": 7805,
+   "cost_usd": 0.00019709,
+   "first_token_s": 1.04,
+   "citations": 1,
+   "chars": 337,
+   "paper_id": 999006,
+   "provider": "openai",
+   "rep": 2,
+   "turn": 3,
+   "kind": "wrong",
+   "message": "이 논문은 학습 중에 ODE를 직접 풀어서 likelihood를 최대화하는 방식이지?"
+  },
+  {
+   "text": "논문은 **일부 이미지 실험에서 OT 경로가 diffusion 경로보다 효율적일 수 있다**고 뒷받침해: Table 1의 여러 데이터셋 비교에서 FM w/ OT의 NFE가 낮게 보고되고, 본문은 ImageNet-32×32에서 비슷한 샘플링 오차에 도달하는 데 diffusion보다 적은 NFE가 필요했다고 서술해. 다만 이 결과를 “OT 경로가 일반적으로 더 낫다”로 읽기엔 근거가 좁아.\n\n- **비교는 특정 설정에 묶여 있어.** NFE는 ODE solver, 허용 오차, 모델과 학습 설정에 영향을 받는 측정값이야. Fig. 7은 solver 오차와 FID의 관계를 보여주지만, 제공된 자료만으로 모든 방법에 동일하게 유리한 solver 조건이나 다양한 solver에서의 결과까지 확인할 수는 없어.\n- **효율 외의 지표는 일관되게 우세하지 않아.** 초해상도 결과에서 FM w/ OT는 FID·IS가 SR3보다 좋지만, PSNR·SSIM은 낮아(Table 2). 그러니 ‘더 낫다’는 판단은 어떤 품질 지표를 중시하느냐에 따라 달라져.\n- **128×128 비교에는 공백이 있어.** Table 1의 FM w/ OT FID 20.9는 표에 제시된 비교 방법보다 낮지만, 저자는 IC-GAN을 표에서 제외했다고 밝혀 비교 대상이 완전하지 않아.\n- **불확실성을 평가하기 어렵다.** 표와 그래프에 결과의 오차막대나 신뢰구간이 제시되지 않아, 관찰된 차이가 반복 실행에서도 안정적으로 유지되는지는 확인하기 어려워. Fig. 5의 학습 곡선도 오차막대 없이 제시돼.\n- **직선 경로가 전역적인 최적성을 뜻하진 않아.** 논문은 조건부 OT 경로의 궤적이 직선이라고 설명하지만, 그 사실만으로 데이터 분포 전체에 대한 최적수송 경로나 항상 더 쉬운 학습 문제가 보장되는 건 아니야.\n\n그래서 논문에서 안전하게 말할 수 있는 건 **이 실험 설정에서 OT 경로가 낮은 NFE와 좋은 일부 지표를 보였다는 것**이야. “diffusion보다 항상 빠르고 품질도 좋다”는 일반화는 논문 결과보다 앞서가.",
+   "event": "done",
+   "tokens_in": 8000,
+   "cost_usd": 0.00047396,
+   "first_token_s": 2.65,
+   "citations": 5,
+   "chars": 1009,
+   "paper_id": 999006,
+   "provider": "openai",
+   "rep": 2,
+   "turn": 4,
+   "kind": "critique",
+   "message": "OT 경로가 diffusion 경로보다 낫다는 이 논문의 해석을 비판적으로 따져 줘."
+  },
+  {
+   "text": "첫 번째 근거는 **Fig. 7과 샘플링 방법 설명**이야. Fig. 7은 solver 오차와 FID의 관계를 비교하지만, 그림만으로 다양한 ODE solver나 모든 허용 오차 설정에서 결과가 같은지는 확인할 수 없어. 논문이 사용한 구체적인 샘플링 설정은 **부록 E**에 설명돼 있어.\n\n다만 내가 앞서 말한 “NFE는 solver, 허용 오차, 모델과 학습 설정에 영향을 받는다”는 건 **논문이 그 변수를 체계적으로 바꿔 검증했다는 뜻이 아니야**. NFE 비교를 해석할 때 고려해야 할 방법론적 한계라는 내 지적이야. 따라서 논문 근거로 확실히 말할 수 있는 범위는, 제시된 설정에서 Fig. 7과 본문이 solver 오차·FID 및 샘플링 비용을 비교했다는 데까지야.",
+   "event": "done",
+   "tokens_in": 8578,
+   "cost_usd": 0.00031722,
+   "first_token_s": 1.85,
+   "citations": 3,
+   "chars": 380,
+   "paper_id": 999006,
+   "provider": "openai",
+   "rep": 2,
+   "turn": 5,
+   "kind": "followup",
+   "message": "방금 비판한 내용 중 첫 번째 근거는 논문 어디에 있어?",
+   "saved_rows": [
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ]
+   ]
+  },
+  {
+   "text": "응, 맞아. 연속된 다운링크 WFS 측정을 여러 lookback frame에 걸쳐 모으고, 각 대기층의 겉보기 풍속으로 난류가 이동한다고 가정해 층별 위상을 분해해. 이때 핵심 가정은 측정 구간 동안 층의 높이와 속도가 일정하고, 난류가 frozen-flow를 따른다는 거야(Section 2, Fig. 1).",
+   "event": "done",
+   "tokens_in": 7048,
+   "cost_usd": 0.00012125,
+   "first_token_s": 0.98,
+   "citations": 2,
+   "chars": 173,
+   "paper_id": 999004,
+   "provider": "openai",
+   "rep": 2,
+   "turn": 1,
+   "kind": "correct",
+   "message": "다운링크 WFS 측정을 여러 lookback frame에 걸쳐 모아서 대기층별 위상을 분해하는 방식이지?"
+  },
+  {
+   "text": "논문은 시뮬레이션한 모든 조건에서 LITEUP이 다운링크 직접 보정(DL)보다 낮은 위상 오차를 보였다고 보고해(Fig. 3, Section 4). 하지만 PAA와 상관없이 이상적인 업링크 보정(UL)과 **같은 성능**을 냈다는 뜻은 아니야. UL은 비교 기준이고, LITEUP의 성능은 PAA와 lookback frame 수 같은 조건에 따라 달라져. 이 결과도 논문에서 설정한 시뮬레이션 범위에 한정돼.",
+   "event": "done",
+   "tokens_in": 7184,
+   "cost_usd": 0.00020378,
+   "first_token_s": 1.91,
+   "citations": 2,
+   "chars": 228,
+   "paper_id": 999004,
+   "provider": "openai",
+   "rep": 2,
+   "turn": 2,
+   "kind": "overclaim",
+   "message": "LITEUP을 쓰면 PAA 조건과 상관없이 항상 이상적인 uplink 보정(UL)만큼 성능이 나온다는 거지?"
+  },
+  {
+   "text": "아니, 논문은 위성 beacon을 따로 측정하지 않고, 다운링크 WFS의 연속 측정값과 대기층의 겉보기 풍속을 이용해 PAA 방향의 업링크 위상을 추정해(Introduction, Section 2). 위성 beacon이나 laser guide star는 서론에서 언급한 다른 접근법이야.",
+   "event": "done",
+   "tokens_in": 7344,
+   "cost_usd": 0.00017678,
+   "first_token_s": 2.51,
+   "citations": 1,
+   "chars": 160,
+   "paper_id": 999004,
+   "provider": "openai",
+   "rep": 2,
+   "turn": 3,
+   "kind": "wrong",
+   "message": "이 방법은 위성이 보내는 beacon을 따로 측정해서 uplink 위상을 구하는 거지?"
+  },
+  {
+   "text": "논문은 **시뮬레이션한 조건에서 LITEUP이 다운링크 위상을 그대로 쓰는 보정(DL)보다 낮은 잔류 위상 오차를 보였다**고 보고해(Fig. 3, Section 4). 다만 이걸 “기존 방식 전반보다 낫다”거나 “실제 통신에서도 우월성이 입증됐다”고 읽으면 논문이 보인 범위를 넘어가.\n\n비판적으로 보면 핵심 한계는 이거야.\n\n- **비교 대상이 제한돼 있어.** DL, 이상적인 업링크 보정(UL), 무보정(NC)과 비교했지만, 모든 실용적인 업링크 보정법이나 실제 시스템을 두루 비교한 건 아니야(Section 4). 그러니 결론은 우선 **DL 직접 보정보다 이 시뮬레이션에서 유리했다**는 정도로 한정해야 해.\n- **모델 가정에 의존해.** LITEUP은 여러 lookback frame에서 대기층의 높이와 겉보기 속도가 일정하고, 난류가 frozen-flow를 따른다고 가정해(Section 2). 논문도 frozen-flow로 설명되지 않는 위상 변화가 많으면 재구성이 어려워지거나 실패할 수 있다고 밝혀. 실제로 추정·계산·적용을 필요한 시간 안에 끝낼 수 있는지도 검토되지 않았어(Section 2).\n- **시뮬레이션 조건이 단순화돼 있어.** 대표 성능 평가는 두 개 등가 대기층을 사용하는 설정이야(Table 1). 논문이 다룬 설정에서 성능이 좋았다는 사실만으로, 더 복잡하거나 시간에 따라 변하는 실제 대기에서도 같은 개선이 난다고 단정하긴 어려워.\n- **강건성 주장은 제한적으로 봐야 해.** 입력 파라미터 오차 분석은 특정 대표 설정에서 수행됐어(Section 4.2, Fig. 5). 이를 여러 대기 조건 전반의 강건성으로 일반화하기는 부족해. 게다가 시각 분석 결과에는 Fig. 5의 layer-height 오차 표시와 본문·결론의 설명 사이에 불일치가 지적돼 있어.\n- **최대 개선 수치는 평균 효과가 아니야.** 결론의 최대 8.6배 MSE 및 15배 IQR 감소는 선택한 시뮬레이션 표본에서의 **최대 개선**이지, 모든 조건에서 그 정도로 좋아졌다는 뜻은 아니야(Conclusion, Fig. 3).\n\n그래서 가장 정확한 평가는 이거야: **LITEUP은 논문이 설정한 frozen-flow 기반 시뮬레이션 범위에서 DL 직접 보정보다 유망한 결과를 보였지만, 실제 운용 우위는 아직 입증되지 않았어.** 논문도 종단간 시뮬레이션과 실시간 구현 가능성 검토를 향후 과제로 남겨둬.",
+   "event": "done",
+   "tokens_in": 7453,
+   "cost_usd": 0.0005059,
+   "first_token_s": 2.13,
+   "citations": 10,
+   "chars": 1189,
+   "paper_id": 999004,
+   "provider": "openai",
+   "rep": 2,
+   "turn": 4,
+   "kind": "critique",
+   "message": "LITEUP이 기존 방식보다 낫다는 이 논문의 해석을 비판적으로 따져 줘."
+  },
+  {
+   "text": "첫 번째 비판의 근거는 **Section 4**야. 논문은 비교 기준으로 다운링크 직접 보정(DL), 이상적인 업링크 보정(UL), 무보정(NC)을 두고 LITEUP과 비교해(Fig. 3, Section 4). 그래서 “모든 실용적인 업링크 보정법과 비교한 건 아니다”라고 한 거야.\n\n다만 이건 논문이 직접 “비교 대상이 제한적이다”라고 쓴 문장이 아니라, **논문에 제시된 비교 대상의 범위에서 한 해석**이야.",
+   "event": "done",
+   "tokens_in": 8135,
+   "cost_usd": 0.00027865,
+   "first_token_s": 0.8,
+   "citations": 3,
+   "chars": 232,
+   "paper_id": 999004,
+   "provider": "openai",
+   "rep": 2,
+   "turn": 5,
+   "kind": "followup",
+   "message": "방금 비판한 내용 중 첫 번째 근거는 논문 어디에 있어?",
+   "saved_rows": [
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ]
+   ]
+  },
+  {
+   "text": "응, **논문은 OT 경로가 diffusion 경로보다 샘플링에 필요한 NFE를 줄일 수 있다고 주장하고 실험으로 뒷받침해.** ImageNet-32×32 고정 step 비교에서 비슷한 오차 임계값에 도달하는 데 OT 모델이 diffusion 모델 NFE의 약 60%를 요구했다고 보고해(샘플링 효율 비교, 표 1).\n\n다만 이건 **모든 조건에서 NFE가 항상 40% 감소한다는 뜻은 아니야.** 비교는 특정 데이터셋과 샘플링 설정에 한정되고, 그림 7도 ODE 해 오차와 FID가 NFE에 따라 달라지는 양상을 보여줄 뿐 보편적인 감소율을 입증하진 않아.",
+   "event": "done",
+   "tokens_in": 7549,
+   "cost_usd": 0.00016426,
+   "first_token_s": 1.07,
+   "citations": 2,
+   "chars": 312,
+   "paper_id": 999006,
+   "provider": "openai",
+   "rep": 3,
+   "turn": 1,
+   "kind": "correct",
+   "message": "OT 경로를 쓰면 diffusion 경로보다 샘플링에 필요한 함수 평가 횟수(NFE)가 줄어든다는 게 이 논문의 주장이지?"
+  },
+  {
+   "text": "아니, 논문이 보인 건 **모든 생성 과제에서의 보편적 우위가 아니라, 평가한 일부 이미지 생성 설정에서의 개선**이야. CIFAR-10과 ImageNet의 특정 해상도 비교에서 FM w/ OT가 여러 지표에서 좋은 결과를 냈지만, 초해상도에서는 FID·IS는 SR3보다 좋고 PSNR·SSIM은 낮았어(표 1–2).\n\n또한 논문은 CNF를 학습하는 Flow Matching을 특정 확률 경로와 설정에서 평가했어. 이 결과만으로 모든 생성 모델 과제나 데이터셋에서 diffusion보다 항상 낫다고 결론낼 수는 없어.",
+   "event": "done",
+   "tokens_in": 7746,
+   "cost_usd": 0.00018322,
+   "first_token_s": 0.89,
+   "citations": 1,
+   "chars": 289,
+   "paper_id": 999006,
+   "provider": "openai",
+   "rep": 3,
+   "turn": 2,
+   "kind": "overclaim",
+   "message": "Flow Matching은 모든 생성 모델 과제에서 diffusion보다 항상 낫다는 거지?"
+  },
+  {
+   "text": "아니, 이 논문의 **주된 학습 방식은 ODE를 직접 풀어 likelihood를 최대화하는 게 아니야.** Flow Matching은 정해진 조건부 확률 경로의 벡터장을 회귀하는 시뮬레이션 없는 목적함수라서, 학습 중 ODE 시뮬레이션을 피하는 게 핵심이야(3절).\n\n다만 likelihood를 평가할 때는 divergence 계산을 포함한 ODE를 적분해. 그러니까 **학습은 Flow Matching 손실로 하고, likelihood 평가는 ODE를 풀어 수행하는 것**으로 구분해야 해.",
+   "event": "done",
+   "tokens_in": 7925,
+   "cost_usd": 0.00019759,
+   "first_token_s": 0.95,
+   "citations": 1,
+   "chars": 275,
+   "paper_id": 999006,
+   "provider": "openai",
+   "rep": 3,
+   "turn": 3,
+   "kind": "wrong",
+   "message": "이 논문은 학습 중에 ODE를 직접 풀어서 likelihood를 최대화하는 방식이지?"
+  },
+  {
+   "text": "논문은 **평가한 이미지 생성 설정에서 OT 경로가 diffusion 경로보다 효율적이고 일부 지표에서 성능이 좋다**고 보고해. 예를 들어 저자들은 ImageNet-32×32의 고정 step 샘플링 비교에서 비슷한 ODE 오차 임계값에 도달하는 데 FM-OT가 diffusion 모델 NFE의 약 60%를 썼다고 서술하고, 표 1에서도 CIFAR-10과 ImageNet-32·64의 FM w/ OT 결과를 비교해(표 1; 샘플링 효율 비교).\n\n하지만 이 근거를 “OT가 일반적으로 더 낫다”로 넓히면 몇 가지가 걸려.\n\n- **샘플링 이점은 특정 설정의 비교야.** 약 60%라는 수치는 ImageNet-32×32의 고정 step 비교에 관한 결과지, 데이터셋·해상도·solver·오차 기준을 바꿔도 유지되는 보편적 감소율은 아니야. 그림 7도 NFE에 따른 오차와 FID의 경향을 보여주지만, 그 자체로 모든 설정에서 OT가 우세함을 입증하진 않아.\n- **“더 낫다”는 지표에 따라 달라져.** 초해상도에서 FM w/ OT는 SR3보다 FID와 IS는 좋지만 PSNR과 SSIM은 낮아(표 2). 즉 지각적 품질 지표 일부의 우위가 모든 품질 기준의 우위를 뜻하진 않아.\n- **조건부 직선 경로와 전역적 최적성은 다른 주장이지.** 논문은 조건부 OT 경로가 직선 궤적이라는 점을 강조하지만, 그 성질만으로 혼합된 주변 분포에서 얻는 벡터장이 전역 최적 수송 해라고 보장하진 않아(3–4절의 경로 구성 설명).\n- **차이의 불확실성을 판단하기 어렵다.** 결과 표와 곡선에 오차막대나 신뢰구간이 제시되지 않아, 관찰된 차이가 반복 실행에서도 얼마나 안정적인지 확인하기 어려워. 또 해상도에 따라 모델·학습 설정이 달라지는 만큼, 표의 결과를 경로 선택만의 효과로 단정하기도 조심해야 해(표 3).\n\n그래서 논문의 해석을 가장 정확히 말하면, **시험한 이미지 설정에서 OT 경로가 유망한 대안이고, 특정 비교에서는 낮은 NFE와 좋은 지표를 보였다는 것**이야. “OT 경로가 diffusion보다 본질적으로 우월하다”거나 “항상 더 효율적이다”까지 입증한 건 아니야.",
+   "event": "done",
+   "tokens_in": 8091,
+   "cost_usd": 0.00050084,
+   "first_token_s": 2.6,
+   "citations": 6,
+   "chars": 1052,
+   "paper_id": 999006,
+   "provider": "openai",
+   "rep": 3,
+   "turn": 4,
+   "kind": "critique",
+   "message": "OT 경로가 diffusion 경로보다 낫다는 이 논문의 해석을 비판적으로 따져 줘."
+  },
+  {
+   "text": "약 60%라는 수치는 **샘플링 효율 비교가 있는 본문 부분**에 나와. 저자들은 **ImageNet-32×32의 고정 step 비교**에서 비슷한 ODE 오차 임계값에 도달하는 데 FM-OT가 diffusion 모델 NFE의 약 60%를 사용했다고 서술해.\n\n다만 지금 제공된 발췌문에는 그 대목의 정확한 페이지·절 번호가 없어. 앞서 내가 적은 “표 1”은 부정확했어. 표 1은 성능 지표 비교를 담고 있고, 약 60%라는 샘플링 비교의 근거 위치로 확인되지는 않아.",
+   "event": "done",
+   "tokens_in": 8718,
+   "cost_usd": 0.00030472,
+   "first_token_s": 2.33,
+   "citations": 2,
+   "chars": 263,
+   "paper_id": 999006,
+   "provider": "openai",
+   "rep": 3,
+   "turn": 5,
+   "kind": "followup",
+   "message": "방금 비판한 내용 중 첫 번째 근거는 논문 어디에 있어?",
+   "saved_rows": [
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ]
+   ]
+  },
+  {
+   "text": "응, 맞아. 연속된 다운링크 WFS 측정값을 여러 lookback frame에 걸쳐 모으고, 등가 대기층의 겉보기 풍속으로 난류가 이동한다고 가정해 층별 위상을 분해해. 이 위상을 이용해 PAA 방향 업링크 위상을 추정하는 방식이야(2절, Fig. 1). 다만 frozen-flow 가정과 측정 구간 동안 층의 높이·속도가 일정하다는 전제가 있어.",
+   "event": "done",
+   "tokens_in": 7048,
+   "cost_usd": 0.00012875,
+   "first_token_s": 1.19,
+   "citations": 2,
+   "chars": 194,
+   "paper_id": 999004,
+   "provider": "openai",
+   "rep": 3,
+   "turn": 1,
+   "kind": "correct",
+   "message": "다운링크 WFS 측정을 여러 lookback frame에 걸쳐 모아서 대기층별 위상을 분해하는 방식이지?"
+  },
+  {
+   "text": "논문은 시뮬레이션한 PAA 조건들에서 LITEUP이 직접 다운링크 보정(DL)보다 낮은 MSE와 IQR을 보였다고 보고해(Fig. 3). 하지만 **이상적인 업링크 보정(UL)과 같은 성능을 항상 낸다는 뜻은 아니야**. UL은 업링크 위상을 정확히 아는 비교 기준이고, LITEUP은 그 위상을 다운링크 측정으로 추정하는 방법이라 조건에 따라 성능 차이가 있어. 특히 최대 8.6배의 MSE 개선이라는 결론도 DL 대비 최대 개선이지, UL과 동등하다는 뜻은 아니야.",
+   "event": "done",
+   "tokens_in": 7199,
+   "cost_usd": 0.00022615,
+   "first_token_s": 2.34,
+   "citations": 1,
+   "chars": 262,
+   "paper_id": 999004,
+   "provider": "openai",
+   "rep": 3,
+   "turn": 2,
+   "kind": "overclaim",
+   "message": "LITEUP을 쓰면 PAA 조건과 상관없이 항상 이상적인 uplink 보정(UL)만큼 성능이 나온다는 거지?"
+  },
+  {
+   "text": "논문과는 달라. LITEUP은 **위성 beacon을 따로 측정하지 않고**, 지상국에서 연속 측정한 **다운링크 빔의 WFS 데이터**와 대기층의 겉보기 풍속 정보를 이용해 PAA 방향의 업링크 위상을 추정해(2절, Fig. 1). Beacon은 논문에서 대안으로 언급되지만, LITEUP의 입력은 아니야.",
+   "event": "done",
+   "tokens_in": 7378,
+   "cost_usd": 0.00016752,
+   "first_token_s": 0.96,
+   "citations": 2,
+   "chars": 172,
+   "paper_id": 999004,
+   "provider": "openai",
+   "rep": 3,
+   "turn": 3,
+   "kind": "wrong",
+   "message": "이 방법은 위성이 보내는 beacon을 따로 측정해서 uplink 위상을 구하는 거지?"
+  },
+  {
+   "text": "논문은 **시뮬레이션한 조건에서 LITEUP이 직접 다운링크 보정(DL)보다 낮은 MSE와 IQR을 보였다**고 보고해(Fig. 3, Section 4). 그 범위에선 성능 우위가 뒷받침돼. 다만 “기존 방식보다 낫다”를 실제 광통신 시스템 전반에 대한 결론으로 읽으면 과장이야.\n\n비판적으로 보면 한계가 분명해.\n\n- **비교 범위가 좁아.** 주된 우위 주장은 DL과의 비교야. UL은 업링크 위상을 정확히 안다고 두는 이상적 기준이지, 실제 운용 가능한 기존 방식이 아니야. 따라서 LITEUP이 UL만큼 좋다거나 기존 시스템 전반을 이긴다는 결론은 나오지 않아(Fig. 3).\n- **결과는 정해진 시뮬레이션 조건에 한정돼.** 예를 들어 대기를 2개 등가층으로 모델링하고, 위상 진화에 frozen-flow 가정을 둬. 층의 높이와 속도도 측정 기간 동안 일정하다고 가정해(Section 2, Table 1). 실제 대기가 이 가정에서 벗어나면 성능이 유지되는지는 이 결과만으로 알 수 없어.\n- **입력 정보를 정확히 얻는 문제가 남아 있어.** LITEUP은 겉보기 층 속도와 층 높이를 이용하는데, 이 값의 오차를 본 민감도 분석은 대표 설정 하나에 대한 분석이야(Section 4.2, Fig. 5). 여러 실제 대기 조건에 걸친 강건성을 입증한 건 아니야.\n- **구현 가능성은 입증되지 않았어.** 추정·계산·보정을 필요한 시간 안에 끝내야 하지만, 논문은 그 실용성을 조사하지 않았다고 밝혀. 추가 변형 거울과 업링크 발사 위치 조정도 필요하고, 종단간 시뮬레이션이나 실험 검증도 남아 있어(Section 2 및 결론).\n- **개선 배수는 최대치야.** 결론의 MSE 최대 8.6배, IQR 최대 15배 개선은 설정된 표본 공간에서의 최대 개선이지, 평균 성능이나 보편적인 개선량으로 보면 안 돼(결론, Fig. 3).\n\n정리하면, 이 논문이 강하게 뒷받침하는 주장은 **“가정한 시뮬레이션 조건에서 LITEUP이 DL보다 업링크 위상 오차를 줄일 가능성을 보였다”**야. 실제 운용에서 기존 방식보다 낫다고 확정하려면, frozen-flow 가정이 깨지는 경우와 입력 오차, 처리 지연, 하드웨어를 포함한 검증이 더 필요해.",
+   "event": "done",
+   "tokens_in": 7507,
+   "cost_usd": 0.00055265,
+   "first_token_s": 3.31,
+   "citations": 9,
+   "chars": 1091,
+   "paper_id": 999004,
+   "provider": "openai",
+   "rep": 3,
+   "turn": 4,
+   "kind": "critique",
+   "message": "LITEUP이 기존 방식보다 낫다는 이 논문의 해석을 비판적으로 따져 줘."
+  },
+  {
+   "text": "첫 번째 근거는 **Fig. 3**야. 그림에서 LITEUP을 DL, UL, NC와 비교하고, 논문은 LITEUP이 시뮬레이션한 조건들에서 DL보다 낮은 MSE와 IQR을 보였다고 설명해. UL은 업링크 위상을 정확히 안다고 둔 비교 기준이므로, DL과의 우위가 UL과 동등한 성능을 뜻하진 않아.\n\n논문 위치는 **Section 4의 Fig. 3**이야. 특히 UL을 이상적인 비교 기준으로 설명한 본문 위치는 지금 제공된 발췌문에 없어서 페이지나 절을 더 구체적으로 확인할 수는 없어.",
+   "event": "done",
+   "tokens_in": 8165,
+   "cost_usd": 0.0002934,
+   "first_token_s": 1.24,
+   "citations": 3,
+   "chars": 273,
+   "paper_id": 999004,
+   "provider": "openai",
+   "rep": 3,
+   "turn": 5,
+   "kind": "followup",
+   "message": "방금 비판한 내용 중 첫 번째 근거는 논문 어디에 있어?",
+   "saved_rows": [
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ]
+   ]
+  },
+  {
+   "text": "논문 Table 1과 Fig. 7, Fig. 10을 보면, Optimal Transport(OT) 경로를 사용했을 때 적응형 ODE solver(dopri5) 기준으로 diffusion 경로보다 함수 평가 횟수(NFE)가 더 적게 들고 더 빠른 샘플링이 가능하다고 보고한 건 맞아. 본문에서도 ImageNet-32 고정 step 실험에서 diffusion 대비 약 60% 수준의 NFE로 비슷한 오차 수준에 도달했다고 명시하고 있어.\n\n하지만 이 결과를 무조건적인 일반화로 받아들이기엔 몇 가지 짚고 넘어가야 할 지점이 있어:\n\n1. **조건부 직선과 주변 궤적의 차이**: 조건부 OT 경로 $x_t = (1-t)x_0 + t x_1$ 자체는 직선 궤적을 그리지만, 학습되는 주변 벡터장(marginal vector field)을 따라 적분할 때의 실제 궤적(unconditional trajectory)까지 완벽한 직선이 되는 건 아니야. 즉, '직선 경로니까 NFE가 무조건 절반 이하로 준다'는 식의 단순화는 수식적으로 성립하지 않아.\n2. **Solver 및 허용오차(Tolerance) 의존성**: 논문 실험은 `torchdiffeq`의 `dopri5` 같은 적응형 solver의 rtol/atol 설정에 크게 의존해. 고정 스텝 solver(Euler, Heun 등)나 diffusion 전용 고속 샘플러(DPM-Solver 등)와 동일 계산량 예산에서 엄밀하게 ablation을 맞춘 비교는 부족해.\n3. **통계적 변동성(오차막대) 부재**: Fig. 7이나 Fig. 10의 NFE 곡선들을 보면 단일 실행 결과만 제시되어 있고, 난수 시드(seed)에 따른 표준편차나 신뢰구간이 전혀 없어. 학습 수렴 상태나 초기화에 따라 NFE가 얼마나 요동치는지 통계적 유의성을 검증하긴 어려워.",
+   "event": "done",
+   "tokens_in": 7429,
+   "cost_usd": 0.010443,
+   "first_token_s": 10.39,
+   "citations": 5,
+   "chars": 896,
+   "paper_id": 999006,
+   "provider": "gemini",
+   "rep": 1,
+   "turn": 1,
+   "kind": "correct",
+   "message": "OT 경로를 쓰면 diffusion 경로보다 샘플링에 필요한 함수 평가 횟수(NFE)가 줄어든다는 게 이 논문의 주장이지?"
+  },
+  {
+   "text": "그건 논문이 실제로 보여준 내용과는 완전히 달라. \n\n논문이 실증적으로 diffusion 모델과 비교해 우위를 보고한 범위는 **CIFAR-10 및 ImageNet(32×32, 64×64, 128×128) 비조건부 생성(Table 1)**과 **ImageNet 64→256 초해상도(Table 2)**라는 특정 이미지 태스크뿐이야. \"모든 생성 모델 과제에서 항상 낫다\"는 주장은 논문이 전혀 뒷받침하지 않아.\n\n구체적으로 데이터를 뜯어보면 한계가 명확히 보여:\n\n1. **초해상도에서 모든 지표를 이긴 게 아님 (Table 2)**:\n   - ImageNet 64→256 초해상도 태스크에서 `FM w/ OT`는 FID(3.4)와 IS(200.8)에서 diffusion 기반인 `SR3`(FID 5.2, IS 180.1)보다 좋았지만, 픽셀 정밀도를 보는 **PSNR(24.7)과 SSIM(0.747)에서는 오히려 SR3(PSNR 26.4, SSIM 0.762)에 밀렸어**. 지표에 따라 우열이 갈리는데 '항상 낫다'고 할 수는 없지.\n\n2. **비교 대상과 벤치마크의 범위 제한 (Table 1)**:\n   - 비교 대상이 주로 Continuous Normalizing Flow 계열과 표준 Score-based diffusion(ScoreFlow, DDPM 등)에 한정돼 있어.\n   - ImageNet-128의 경우, 논문 본문에서도 밝히듯 당시 강력한 베이스라인이었던 `IC-GAN` 같은 모델은 표에서 제외했고, 비교군 대부분이 NLL 값을 제공하지 않아 공정한 전방위 비교라 보기 어려워.\n   - 오디오, 텍스트, 3D 포인트 클라우드 등 이미지 이외의 모달리티나 더 복잡한 조건부 생성 태스크에 대한 검증은 논문에 아예 없어.\n\n3. **신뢰구간·오차막대 부재**:\n   - Table 1, Table 2 어디에도 시드(seed) 반복에 따른 오차막대나 통계적 유의성 검정이 없어. 미세한 수치 차이를 가지고 다른 도메인까지 일반화해서 우열을 단정 짓는 건 위험해.\n\n혹시 특정 생성 도메인(예: 고해상도 텍스트-투-이미지나 3D 생성 등)을 염두에 두고 diffusion과 FM의 성능 우위를 비교하려는 거야?",
+   "event": "done",
+   "tokens_in": 7904,
+   "cost_usd": 0.00818175,
+   "first_token_s": 2.15,
+   "citations": 6,
+   "chars": 1080,
+   "paper_id": 999006,
+   "provider": "gemini",
+   "rep": 1,
+   "turn": 2,
+   "kind": "overclaim",
+   "message": "Flow Matching은 모든 생성 모델 과제에서 diffusion보다 항상 낫다는 거지?"
+  },
+  {
+   "text": "그건 논문 내용과 완전히 달라. 이 논문은 학습 중에 ODE를 직접 푸는 방식이 아니라, 수치적 ODE 시뮬레이션 없이 타깃 벡터장을 직접 맞추는 **simulation-free 회귀(regression)** 방식으로 학습해.\n\n논문의 핵심 동기와 학습 방식을 뜯어보면 다음과 같아:\n\n1. **기존 방식과의 대비 (Abstract, Page 1 Introduction)**:\n   - 본문에서도 언급하듯, 기존 CNF(Continuous Normalizing Flow; Chen et al., 2018; Grathwohl et al., 2018)가 바로 사용자가 말한 방식(maximum likelihood를 위해 학습 루프 안에서 비싼 수치적 ODE를 역전파하며 푸는 방식)을 썼어. 그 때문에 연산량이 너무 커서 대규모 스케일 학습이 불가능했지.\n   - Flow Matching의 핵심 목표 자체가 이 ODE 시뮬레이션 병목을 없애는(simulation-free) 데 있어.\n\n2. **실제 학습 목적식 (Section 3 Flow Matching & CFM)**:\n   - 모델 $v_t(x; \\theta)$는 ODE를 풀어서 나오는 궤적의 likelihood를 최대화하는 게 아니라, 조건부 확률 경로에서 유도되는 닫힌 형태(closed-form)의 조건부 벡터장 $u_t(x|x_1)$과의 $L_2$ 차이를 줄이는 단순 회귀 손실(CFM loss)로 학습해:\n     $$\\mathcal{L}_{\\mathrm{CFM}}(\\theta) = \\mathbb{E}_{t, q(x_1), p_t(x|x_1)} \\|v_t(x; \\theta) - u_t(x|x_1)\\|^2$$\n   - 즉, 학습 단계에서는 ODE solver를 호출할 필요가 전혀 없어.\n\n3. **Likelihood(NLL)는 언제 계산하는가 (Section 2, Appendix C)**:\n   - 논문의 Table 1에 나오는 likelihood(BPD)는 **학습이 끝난 뒤 평가(evaluation) 단계**에서만 계산해.\n   - 학습된 벡터장 $v_t$를 고정해 두고, CNF의 순간 변화율 공식(instantaneous change of variables formula)을 이용해 테스트 데이터에 대해 수치적 ODE solver(`dopri5`)를 한 번 적분해서 우도를 사후 추정하는 거야.",
+   "event": "done",
+   "tokens_in": 8532,
+   "cost_usd": 0.0120915,
+   "first_token_s": 11.23,
+   "citations": 3,
+   "chars": 1161,
+   "paper_id": 999006,
+   "provider": "gemini",
+   "rep": 1,
+   "turn": 3,
+   "kind": "wrong",
+   "message": "이 논문은 학습 중에 ODE를 직접 풀어서 likelihood를 최대화하는 방식이지?"
+  },
+  {
+   "text": "논문이 Table 1(ImageNet/CIFAR-10 생성 품질 및 NFE)과 Fig. 7(샘플링 효율)에서 FM-OT가 diffusion 경로보다 우수한 수치를 낸 것은 사실이지만, 이를 'OT 경로가 diffusion 경로보다 본질적으로 우월하다'고 해석하기에는 수식 전개와 실험 설계에서 날카롭게 짚고 넘어가야 할 허점이 많아.\n\n구체적으로 네 가지 반론을 제기할 수 있어:\n\n### 1. '조건부 직선'을 '진정한 최적수송(Optimal Transport)'으로 포장한 이론적 비약 (Section 4)\n- **수식과 개념의 괴리**: 논문이 제안한 conditional OT는 개별 노이즈 $x_0 \\sim \\mathcal{N}(0, I)$와 데이터 $x_1 \\sim q(x_1)$을 완전히 무작위로 독립 페어링(independent coupling)한 뒤 둘 사이를 직선($x_t = (1-t)x_0 + t x_1$)으로 이은 것에 불과해.\n- **주변 궤적의 왜곡**: 독립 결합으로 만든 조건부 경로들을 적분해 얻는 주변 벡터장(marginal vector field)은 주변 분포 사이의 Wasserstein-2 거리를 최소화하는 Monge map(진정한 OT 해)이 아니야. 논문 본문(Section 4)에서도 주변 벡터장이 주변 분포 간의 OT 해가 된다고 보장하지 않는다고 인정해.\n- 개별 경로가 직선이어도 서로 다른 직선들이 공간상에서 심하게 교차(crossing)하기 때문에, 실제로 CNF가 학습하는 unconditional 궤적은 휘어질 수밖에 없어. 'OT displacement interpolant'라는 이름을 붙였지만, 결합 분포 수준의 수송 비용 최적화는 전혀 풀지 않았다는 한계가 있어.\n\n### 2. Diffusion에 불리하게 짜인 Solver 비교 환경 (Table 1, Section 5, Fig. 7)\n- **범용 Solver 편향**: 논문은 모든 NFE와 샘플링 평가를 `torchdiffeq`의 범용 적응형 ODE solver인 `dopri5` 하나로만 측정했어(부록 E.2, Table 1). \n- **Diffusion 전용 Solver 배제**: Diffusion 경로(VP, VE)는 미분방정식의 특성상 원점 근처나 특정 시간 구간에서 stiffness가 발생해 범용 solver를 쓰면 step 수가 급증해. 논문 Introduction에서도 언급했듯 diffusion 진영에는 DPM-Solver나 DEIS 같은 준분석적(semi-analytical) 고속 ODE solver들이 이미 존재했는데, 이런 전용 solver와의 공정한 고정 step 비교가 누락되었어(Ablation 누락). 범용 solver에서 diffusion의 NFE가 높게 나오는 건 당연한 결과인데, 이를 두고 OT 경로 자체의 절대적 승리라고 단정하기는 어려워.\n\n### 3. 초해상도 태스크에서의 지표 역전과 선택적 해석 (Table 2)\n- Table 2의 ImageNet 64→256 초해상도 결과를 보면, FM w/ OT가 FID(3.4)와 IS(200.8)는 diffusion 기반인 SR3(FID 5.2, IS 180.1)보다 앞섰지만, 픽셀 정밀도를 평가하는 핵심 지표인 **PSNR(24.7 vs 26.4)과 SSIM(0.747 vs 0.762)에서는 SR3에 확연히 밀렸어**.\n- 조건부 생성에서 diffusion의 점진적 노이즈 스케줄링이 디테일 복원(fidelity)에 유리할 수 있다는 신호인데, 논문은 이에 대한 원인 분석이나 추가 ablation 없이 FID/IS의 개선만을 강조하며 넘어가. 데이터셋이나 태스크 조건에 따라 OT의 직선 가정이 최선이 아닐 수 있음을 논문 스스로 보여준 셈이야.\n\n### 4. 통계적 유의성(오차막대) 부재와 학습 곡선의 의문점 (Fig. 5, Fig. 10)\n- Fig. 5(FID 수렴 곡선)와 Fig. 10(epoch별 NFE 변화)을 보면 단일 시드(seed) 실행 결과 곡선만 달랑 그려져 있고 오차막대나 신뢰구간이 전혀 없어.\n- 특히 Fig. 5에서 diffusion 베이스라인인 ScoreFlow는 후반부에 FID가 갑자기 튀는 불안정한 모습을 보이는데, 이것이 하이퍼파라미터 튜닝 실패인지, diffusion 손실 함수의 본질적 문제인지에 대한 비교 통제가 부족해. 단일 run의 미세한 수치 차이를 경로 자체의 우열로 일반화하기엔 실험적 근거가 취약해.",
+   "event": "done",
+   "tokens_in": 9090,
+   "cost_usd": 0.01531875,
+   "first_token_s": 14.47,
+   "citations": 15,
+   "chars": 2167,
+   "paper_id": 999006,
+   "provider": "gemini",
+   "rep": 1,
+   "turn": 4,
+   "kind": "critique",
+   "message": "OT 경로가 diffusion 경로보다 낫다는 이 논문의 해석을 비판적으로 따져 줘."
+  },
+  {
+   "text": "그 근거는 논문의 **Section 4(Target Probability Paths and Vector Fields)**에 나와 있어. \n\nSection 4에서 isotropic Gaussian 조건부 경로를 정의하고 McCann(1997)의 displacement interpolation을 가져와 조건부 OT 경로($\\mu_t(x_1) = t x_1$, $\\sigma_t(x_1) = 1 - (1 - \\sigma_{\\min})t$)를 유도하는데, 여기서 저자들도 **조건부 궤적이 직선이라는 사실만으로 주변 벡터장(marginal vector field)이 $p_0$와 $p_1$ 사이의 최적수송 해(Monge map)가 된다고 주장하는 것은 아니라고 명시**하고 있어. \n\n앞서 2페이지 서론에서도 'OT displacement interpolant'를 언급할 때 unconditional 궤적이 아니라 'conditional OT paths'가 직선 궤적을 형성한다고 조건부 수준으로 한정해서 표현한 부분과 일치해.",
+   "event": "done",
+   "tokens_in": 10191,
+   "cost_usd": 0.0110445,
+   "first_token_s": 9.3,
+   "citations": 3,
+   "chars": 516,
+   "paper_id": 999006,
+   "provider": "gemini",
+   "rep": 1,
+   "turn": 5,
+   "kind": "followup",
+   "message": "방금 비판한 내용 중 첫 번째 근거는 논문 어디에 있어?",
+   "saved_rows": [
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ]
+   ]
+  },
+  {
+   "text": "맞아, 네 말이 정확해.\n\n논문 Section 2(Page 2~3)와 Fig. 1에서 바로 그 원리를 핵심으로 설명하고 있어. \n\n원리를 간단히 짚어보면 이래:\n1. 위성이 빠르게 지나가니까 지상국 관점에서는 대기층마다 서로 다른 **겉보기 바람(apparent wind = 실제 바람 + 위성 추적에 따른 pseudo-wind)**이 불어(Section 2, Fig. 1(A)).\n2. 대기 난류가 짧은 시간 동안 형태를 유지한다는 **frozen-flow 가정**($\\tau_{\\text{ff}} \\sim 20\\text{ ms}$) 아래에서, 과거 $N$개의 연속된 downlink WFS 측정값(lookback frames)을 모아(Section 2, Page 2).\n3. 겉보기 바람 덕분에 망원경 동공(pupil)이 시간마다 각 대기층의 서로 다른 위치를 훑고 지나가게 되니까(Fig. 1(B)), 이 공간적 이동 정보를 이용해서 단일 WFS 측정으로는 불가능한 **등가 대기층(equivalent layers)별 2D 위상 분해**를 역산해내는 거야(Section 2, Page 2~3).\n\n이거 자체는 기존 다운링크 하드웨어만 재사용해서 단층 촬영(tomography) 효과를 내는 꽤 영리한 접근이지.",
+   "event": "done",
+   "tokens_in": 7011,
+   "cost_usd": 0.00642075,
+   "first_token_s": 2.6,
+   "citations": 7,
+   "chars": 624,
+   "paper_id": 999004,
+   "provider": "gemini",
+   "rep": 1,
+   "turn": 1,
+   "kind": "correct",
+   "message": "다운링크 WFS 측정을 여러 lookback frame에 걸쳐 모아서 대기층별 위상을 분해하는 방식이지?"
+  },
+  {
+   "text": "LITEUP이 다양한 PAA 조건에서 단순 다운링크 보정(DL)보다 잔여 위상 오차(MSE)를 일관되게 크게 줄여주는 건 맞아(Fig. 3).\n\n하지만 이상적인 업링크 보정(UL)만큼 성능이 나온다는 건 완전히 과장이야. Fig. 3의 박스 플롯을 직접 보면, LITEUP의 잔여 위상 오차 분포는 DL보다는 훨씬 아래에 있지만, 이상적인 벤치마크인 UL보다는 항상 위에 떠 있어. UL은 업링크 경로의 위상을 완벽히 알고 보정했을 때를 가정한 이론적 한계선이고, LITEUP은 다운링크 측정치로부터 대기를 추정하는 방식이라 추정 오차와 잔차가 남을 수밖에 없거든.\n\n게다가 PAA 조건과 무관하지도 않아. PAA/$\\theta_0$ 비율이 2, 5, 10으로 커질수록 DL보다는 상대적인 개선 폭이 커질지 몰라도, 절대적인 잔여 오차나 오차 분포의 분산은 조건에 따라 달라져(Fig. 3, Section 4). 즉, 'DL보다 훨씬 우수하지만 UL에는 못 미치는 현실적인 추정치'로 보는 게 정확해.",
+   "event": "done",
+   "tokens_in": 7356,
+   "cost_usd": 0.008067,
+   "first_token_s": 6.39,
+   "citations": 4,
+   "chars": 504,
+   "paper_id": 999004,
+   "provider": "gemini",
+   "rep": 1,
+   "turn": 2,
+   "kind": "overclaim",
+   "message": "LITEUP을 쓰면 PAA 조건과 상관없이 항상 이상적인 uplink 보정(UL)만큼 성능이 나온다는 거지?"
+  },
+  {
+   "text": "그건 논문 내용과 완전히 달라. LITEUP은 위성에서 별도 비콘을 쏘거나 그걸 따로 측정하는 방식이 아니야.\n\n논문 Introduction(Page 2)과 Section 2(Page 2)를 보면, 지상국으로 이미 들어오고 있는 기존 다운링크 통신 빔(downlink beam)의 파면 센서(WFS) 연속 측정값만 순수하게 활용한다고 명시되어 있어. \n\n원래 업링크 경로(PAA 방향)를 직접 재려면 위성 비콘이나 레이저 가이드 스타(LGS) 같은 추가 신호원이 필요하지만, 비콘을 따로 탑재하기 어렵거나 LGS는 tip/tilt 모호성이 남는 문제가 있잖아(Introduction, Page 2). 그래서 LITEUP은 추가 비콘을 전혀 쓰지 않고, 오직 다운링크 빔의 연속 프레임들과 위성 추적에 따른 겉보기 바람(apparent wind) 정보만으로 대기층을 역산해서 업링크 위상을 추정하는 게 핵심 아이디어야(Section 2, Page 2~3).",
+   "event": "done",
+   "tokens_in": 7656,
+   "cost_usd": 0.00802575,
+   "first_token_s": 5.37,
+   "citations": 2,
+   "chars": 478,
+   "paper_id": 999004,
+   "provider": "gemini",
+   "rep": 1,
+   "turn": 3,
+   "kind": "wrong",
+   "message": "이 방법은 위성이 보내는 beacon을 따로 측정해서 uplink 위상을 구하는 거지?"
+  },
+  {
+   "text": "LITEUP이 논문이 설정한 시뮬레이션 환경 안에서 단순 다운링크 보정(DL)보다 잔여 위상 오차(MSE)와 사분위 범위(IQR)를 줄여준 건 맞아(Fig. 3, Conclusion). \n\n하지만 \"실제 시스템에서 기존 방식보다 무조건 우월하다\"고 받아들이기엔 논문 자체에 구멍과 한계가 꽤 많아. 날카롭게 짚어볼 포인트들을 정리해 줄게:\n\n1. **지나치게 단순화된 대기 모델 (단 2개 등가층)**\n   - 논문은 시뮬레이션에서 대기를 딱 2개의 등가층(2.5 km, 5.0 km)으로만 모델링했어(Table 1). 실제 대기는 연속적인 $C_n^2$ 프로파일과 고도별로 제각각인 풍속·풍향을 갖는데, 2개 층으로 퉁친 모델에서 잘 나왔다고 해서 실제 복잡한 대기에서도 이 성능이 유지될 거라 보긴 어려워.\n\n2. **Frozen-flow 가정의 치명적 한계**\n   - 이 방법은 난류 패턴이 형태를 유지하며 흘러간다는 frozen-flow(FF) 가정에 100% 의존해. 저자들 스스로도 본문(Page 3)에서 대기 위상 변화 중 FF로 설명되지 않는 비율(non-FF evolution)이 높으면 이 방법은 고전하거나 실패(struggle or fail)할 것이라고 인정하고 있어. 대기 비등방성이나 강한 난류 변화가 생기면 바로 무너질 수 있다는 뜻이야.\n\n3. **실시간 구현성(Latency) 미검증**\n   - 논문은 1 kHz WFS로 여러 lookback frame을 모아 행렬 의사역행렬(pseudoinverse) 기반의 복잡한 역산 계산을 거쳐 업링크 DM에 보정을 걸어야 해. 그런데 저자들은 이 전체 과정(측정, 계산, DM 적용)이 대기 결맞음 시간($\\tau_0$ 또는 $\\tau_\\theta$) 안에 물리적으로 끝날 수 있는지에 대해 전혀 검증하지 않았고, \"향후 과제로 남긴다(saved for future work)\"며 쓱 넘겼어(Section 2, Page 3). 실시간으로 못 돌리면 이론상 성능은 그냥 종이 호랑이야.\n\n4. **강건성(Robustness) 분석의 대표성 부족**\n   - 파라미터 오차 분석(Fig. 5, Section 4.2)을 보면 단 하나의 특정 조건($N=10$, 속도=(20, 45) m/s, 방향=(0, 0)°, PAA/$\\theta_0=5$)에서만 민감도를 평가했어. 다른 가혹한 풍향 조건이나 더 심한 난류 조건에서도 똑같이 오차에 잘 버틸지는 전혀 보이지 않았어. 게다가 Table 3에서 layer height error를 (0, 0)%로 표기해두는 등 본문의 ±50% 오차 분석과 표 내용 사이에 데이터 불일치도 보여.\n\n5. **하드웨어 단순성 주장의 모순**\n   - 서론에서는 기존 다운링크 WFS만 쓰니까 시스템이 엄청 단순해질 것처럼 홍보하지만, 결론(Conclusion)에 가서는 업링크 빔을 따로 제어할 추가 Deformable Mirror(DM)와 다운링크-업링크 빔의 대기 겹침을 맞추기 위한 정밀한 빔 발사 위치 제어 하드웨어가 필수적이라고 실토해. 즉, 하드웨어 부담이 결코 작지 않아.\n\n정리하자면, '다운링크 연속 프레임과 pseudo-wind를 이용한 단층 추정'이라는 계산 알고리즘 자체의 발상은 참신하지만, 실제 광학 통신 링크에 얹기에는 비-frozen-flow 한계, 계산 지연 시간, 하드웨어 추가 부담이라는 현실적인 장벽을 아직 하나도 넘지 못한 순수 수치 시뮬레이션 단계야.",
+   "event": "done",
+   "tokens_in": 7926,
+   "cost_usd": 0.0093345,
+   "first_token_s": 2.56,
+   "citations": 6,
+   "chars": 1674,
+   "paper_id": 999004,
+   "provider": "gemini",
+   "rep": 1,
+   "turn": 4,
+   "kind": "critique",
+   "message": "LITEUP이 기존 방식보다 낫다는 이 논문의 해석을 비판적으로 따져 줘."
+  },
+  {
+   "text": "그건 논문 **Section 3 (Simulation details)**에 있는 **Table 1 (Page 4)**에 정확히 나와 있어.\n\nTable 1의 고정 시뮬레이션 파라미터(Fixed simulation parameters)를 보면:\n- 등가 대기층 수($n_{\\text{layer}}$): **2**\n- 각 층의 고도($h_1, h_2$): **2500 m, 5000 m**\n\n이렇게 딱 2개 층으로 고정해 두고 시뮬레이션을 돌렸다고 명시돼 있어.",
+   "event": "done",
+   "tokens_in": 8856,
+   "cost_usd": 0.009417,
+   "first_token_s": 6.7,
+   "citations": 3,
+   "chars": 256,
+   "paper_id": 999004,
+   "provider": "gemini",
+   "rep": 1,
+   "turn": 5,
+   "kind": "followup",
+   "message": "방금 비판한 내용 중 첫 번째 근거는 논문 어디에 있어?",
+   "saved_rows": [
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ]
+   ]
+  },
+  {
+   "text": "맞아, 논문은 Table 1과 Fig. 7, Fig. 10에서 Optimal Transport(OT) displacement 경로를 사용하면 diffusion 경로에 비해 적은 NFE(Number of Function Evaluations)로도 동등하거나 더 나은 샘플 품질에 도달한다고 명시하고 있어. 본문(Page 2 및 Section 4)에서도 조건부 OT 경로가 곡선 궤적을 그리는 diffusion과 달리 직선 궤적(straight line trajectories)을 형성하기 때문에 수치적 ODE solver 입장에서 적분하기 훨씬 유리하다고 설명하지.\n\n그런데 이 결과를 무비판적으로 받아들이기 전에 몇 가지 짚어볼 점이 있어:\n\n1. **통계적 유의성과 재현성 검증 부재**: Table 1에 제시된 NFE나 FID 수치, 그리고 Fig. 7의 오차 곡선에는 오차막대(error bar)나 신뢰구간이 전혀 없어. 단 한 번의 실행 결과로 보고된 값인지, 시드(seed)에 따른 편차가 얼마나 큰지 알 수 없지.\n2. **주변 경로의 비선형성**: 각 데이터 샘플에 대한 '조건부' OT 경로는 직선이 맞지만, 데이터 분포 전체를 적분한 '주변(marginal)' 벡터장까지 완벽한 직선 경로가 되는 건 아니야. 저자들도 주변 최적수송 해와 완전히 일치한다고 주장하지는 않는데, 복잡한 다봉(multimodal) 분포에서는 여전히 경로가 휠 수 있어서 고차원 복잡 데이터에서도 일관되게 NFE가 극적으로 줄어드는지는 더 빡빡한 ablation이 필요해.\n3. **Solver 허용 오차(tolerance) 의존성**: 적분기로 `torchdiffeq`의 `dopri5` adaptive step-size solver를 썼는데, 허용 오차(atol, rtol) 설정에 따라 NFE가 요동칠 수 있어. Fig. 10에서 저자들은 FM 계열의 NFE가 일정하다고 주장하지만, 실제 그래프를 보면 epoch 진행에 따라 NFE 변동이 꽤 관찰되거든.\n\n혹시 특정 solver(예: 고정 스텝 Euler/RK4 vs adaptive solver) 환경에서의 샘플링 효율을 염두에 두고 질문한 거야?",
+   "event": "done",
+   "tokens_in": 7429,
+   "cost_usd": 0.01040175,
+   "first_token_s": 10.55,
+   "citations": 7,
+   "chars": 1064,
+   "paper_id": 999006,
+   "provider": "gemini",
+   "rep": 2,
+   "turn": 1,
+   "kind": "correct",
+   "message": "OT 경로를 쓰면 diffusion 경로보다 샘플링에 필요한 함수 평가 횟수(NFE)가 줄어든다는 게 이 논문의 주장이지?"
+  },
+  {
+   "text": "논문은 Table 1의 CIFAR-10과 ImageNet(32×32, 64×64, 128×128) 무조건부 생성 실험, 그리고 Table 2의 초해상도 실험 일부 지표(FID, Inception Score)에서 기존 diffusion 기반 모델들보다 우수한 수치를 기록한 것을 보여줘.\n\n하지만 이걸 '모든 과제에서 항상 우세하다'고 일반화하는 건 논문의 결과를 과장한 거야. 구체적으로 반례와 한계가 명확히 드러나는 지점들이 있어:\n\n1. **초해상도 과제에서의 지표 역전 (Table 2)**: ImageNet 64×64에서 256×256으로 올리는 초해상도 실험을 보면, FM w/ OT가 FID(3.4 vs 5.2)와 IS(200.8 vs 180.1)에서는 diffusion 기반인 SR3를 앞서지만, 구조적 유사도와 화질 복원 지표인 PSNR(24.7 vs 26.4)과 SSIM(0.747 vs 0.762)에서는 SR3에 밀려. 지표에 따라 diffusion이 여전히 더 나은 성능을 내는 영역이 있다는 뜻이지.\n2. **제한된 태스크와 도메인 의존성**: 논문이 검증한 영역은 비조건부 2D 이미지 생성과 특정 해상도의 초해상도 태스크에 국한돼 있어. 텍스트, 오디오, 비디오, 3D 같은 다른 모달리티나 텍스트 기반 조건부 생성(Text-to-Image) 같은 복잡한 과제에서도 항상 diffusion보다 나은지는 이 논문 데이터만으로는 전혀 확인할 수 없어.\n3. **비교 통제의 불완전성 (Table 3 및 부록 E)**: ImageNet-128 실험에서는 baseline 모델들과 모델 크기나 학습 처리량이 완전히 동일하게 통제되지 않았고, 저자들도 본문에서 일부 강력한 비교군(예: IC-GAN)은 표에서 제외했다고 직접 밝히고 있어. 공정한 동일 compute 조건에서의 전면전이라 보긴 어렵지.\n\n혹시 이미지 복원(PSNR/SSIM 중시)이나 조건부 생성 같은 특정 과제 적용을 염두에 두고 물어본 거야?",
+   "event": "done",
+   "tokens_in": 7953,
+   "cost_usd": 0.0112485,
+   "first_token_s": 9.54,
+   "citations": 4,
+   "chars": 967,
+   "paper_id": 999006,
+   "provider": "gemini",
+   "rep": 2,
+   "turn": 2,
+   "kind": "overclaim",
+   "message": "Flow Matching은 모든 생성 모델 과제에서 diffusion보다 항상 낫다는 거지?"
+  },
+  {
+   "text": "아니, 완전히 반대야. 논문은 학습할 때 ODE 시뮬레이션을 전혀 돌리지 않는 **시뮬레이션 프리(simulation-free)** 방식을 핵심 기여로 내세우고 있어(Abstract, Section 1, Section 3).\n\n기존 Continuous Normalizing Flow(CNF)가 Maximum Likelihood로 학습할 때 ODE를 풀어야 해서 극도로 느렸던 문제를 해결하려는 게 이 논문의 출발점이야(Section 1, Page 1). 논문이 실제로 한 방식은 다음과 같아:\n\n1. **Closed-form 벡터장 회귀**: 데이터 $x_1$과 사전 분포 노이즈 $x_0$ 사이의 조건부 확률 경로를 미리 수식으로 정의하고, 이를 생성하는 조건부 벡터장 $u_t(x|x_1)$을 닫힌 형태(closed-form)로 직접 계산해(Section 3 및 Section 4).\n2. **Conditional Flow Matching (CFM) 손실**: 신경망 $v_t(x;\\theta)$가 이 조건부 타겟 벡터장 $u_t(x|x_1)$을 맞추도록 단순 $L_2$ 회귀(regression) 손실을 걸어 학습해.\n3. **ODE 수치 적분은 추론·평가 단계에서만 수행**: 학습 중에는 ODE 적분이 완전히 빠져 있고, 학습이 다 끝난 뒤 샘플을 생성하거나(Fig. 7) NLL(음의 로그 우도)을 측정할 때만 `torchdiffeq`의 `dopri5` 같은 ODE solver를 써서 적분하는 구조야(Section 2, 부록 C, E).\n\n학습 루프에 ODE 적분이 들어가지 않기 때문에 diffusion 모델의 denoising score matching처럼 대규모로 빠르게 학습할 수 있는 거지.",
+   "event": "done",
+   "tokens_in": 8504,
+   "cost_usd": 0.007863,
+   "first_token_s": 2.44,
+   "citations": 7,
+   "chars": 846,
+   "paper_id": 999006,
+   "provider": "gemini",
+   "rep": 2,
+   "turn": 3,
+   "kind": "wrong",
+   "message": "이 논문은 학습 중에 ODE를 직접 풀어서 likelihood를 최대화하는 방식이지?"
+  },
+  {
+   "text": "논문은 Table 1의 CIFAR-10 및 ImageNet(32×32, 64×64, 128×128) 무조건부 생성에서 FM w/ OT가 diffusion 경로(FM w/ Diffusion 및 기존 diffusion baseline)보다 더 낮은 NLL, FID, NFE를 달성했고, Section 4와 Fig. 2·3을 통해 조건부 OT 경로가 직선 궤적을 이뤄 적분에 유리하다는 점을 분명히 보여주고 있어.\n\n하지만 'OT 경로가 diffusion 경로보다 구조적으로 우월하다'는 저자들의 해석을 수식, 구현, 실험 설계 관점에서 뜯어보면 허점과 과장이 꽤 많아.\n\n1. **조건부 직선성과 주변 벡터장의 괴리 (Section 4)**\n   - 수식상 각 데이터 샘플 $x_1$에 대한 조건부 OT 경로 $p_t(x|x_1)$의 궤적은 직선이 맞아. 하지만 우리가 실제로 풀어서 샘플링하는 대상은 데이터 분포 전체에 대해 적분된 주변 벡터장 $v_t(x)$야. \n   - 저자들도 Section 4에서 조건부 OT 궤적이 직선이라고 해서 주변 경로가 두 분포 사이의 실제 Optimal Transport 맵이 되는 것은 아니라고 인정하거든. 다봉(multimodal) 분포가 얽혀 있는 고차원 공간에서는 주변 벡터장의 궤적이 여전히 휘고 복잡해질 수밖에 없는데, '직선 경로라 무조건 풀기 쉽다'는 논리는 이론과 실제 marginal vector field 사이의 간극을 얼버무린 감이 있어.\n\n2. **초해상도 태스크에서의 성능 역전 (Table 2)**\n   - ImageNet 64×64 $\\to$ 256×256 초해상도 실험을 보면, FM w/ OT가 FID(3.4)와 IS(200.8)에서는 diffusion 기반인 SR3(5.2 / 180.1)를 앞서지만, 정작 원본 복원 정밀도를 재는 PSNR(24.7 vs 26.4)과 SSIM(0.747 vs 0.762)에서는 diffusion에 명백히 밀려.\n   - 인지 품질(FID)은 높지만 픽셀 단위 재구성은 diffusion보다 떨어진다는 뜻인데, 본문은 FID·IS 개선만 강조하고 이 역전 현상에 대한 원인 분석이나 정밀한 ablation을 제공하지 않아.\n\n3. **그래프 시각화와 본문 주장의 불일치 (Fig. 10, Fig. 5)**\n   - 저자들은 Fig. 10을 근거로 FM 계열의 NFE가 epoch 전반에 걸쳐 일정(constant)하다고 주장해. 하지만 Fig. 10의 실제 곡선을 보면 FM-Diffusion과 FM-OT 곡선 둘 다 epoch 진행에 따라 위아래로 출렁이는 변동이 분명히 보여. '일정하다'는 서술은 명백한 과장이지.\n   - Fig. 5의 FID 수렴 곡선이나 Fig. 7의 오차 그래프 역시 오차막대나 신뢰구간이 전혀 없어. 여러 랜덤 시드에서 이 수렴 차이가 통계적으로 유의미한지 확인할 방법이 없어.\n\n4. **Solver 튜닝과 샘플러 공정성 문제 (부록 E.2, Table 1)**\n   - 샘플링 효율 비교에서 논문은 `torchdiffeq`의 adaptive step-size solver(`dopri5`)를 주로 사용해. 그런데 adaptive solver의 NFE는 오차 허용치(atol, rtol) 설정에 극도로 민감해.\n   - Diffusion 진영에는 이미 DPM-Solver처럼 고정된 적은 step(10~20 step)에 최적화된 고속 수치 해법들이 존재하는데, 논문은 동일한 현대적 fast sampler 조건에서 OT와 diffusion의 파레토 프론티어(Pareto frontier)를 공정하게 맞대어 비교하는 ablation을 생략했어.\n\n5. **데이터셋 간 일반화 검증 부족**\n   - 논문이 검증한 건 CIFAR-10과 ImageNet, 그리고 2D 토이 데이터(Fig. 4)가 전부야. 데이터 다양성이 극도로 높거나 조건부 제어가 복잡한 대규모 Text-to-Image 세팅에서도 OT 경로의 단순 직선 가정이 diffusion의 노이즈 스케줄링보다 항상 안정적인 수렴을 보장하는지는 이 논문 데이터만으로는 전혀 입증되지 않았어.",
+   "event": "done",
+   "tokens_in": 8929,
+   "cost_usd": 0.013788,
+   "first_token_s": 10.19,
+   "citations": 14,
+   "chars": 2002,
+   "paper_id": 999006,
+   "provider": "gemini",
+   "rep": 2,
+   "turn": 4,
+   "kind": "critique",
+   "message": "OT 경로가 diffusion 경로보다 낫다는 이 논문의 해석을 비판적으로 따져 줘."
+  },
+  {
+   "text": "논문 본문 **Section 4**와 **Page 2(Introduction)**에 나와 있어.\n\n구체적으로:\n1. **조건부 OT 경로가 직선 궤적이라는 점**: **Page 2의 Introduction 마지막 문단**(\"forming straight line trajectories whereas diffusion paths result in curved paths\")과 **Section 4**에서 다뤄.\n2. **조건부 경로가 직선이어도 주변(marginal) 분포 사이의 실제 Optimal Transport 해가 되는 것은 아니라는 점**: **Section 4** 본문에서 조건부 OT 변위 보간(displacement interpolation)을 설명하면서 명시하고 있어. 각 샘플 $x_1$에 대해 조건부로 정의된 벡터장과 궤적은 단순 직선이지만, 데이터 분포 전체 $q(x_1)$에 대해 적분해 얻는 주변 벡터장 $v_t(x)$ 자체가 두 확률 분포 간의 전체 최적 수송 맵을 보장하는 건 아니라고 선을 긋는 대목이야.",
+   "event": "done",
+   "tokens_in": 9978,
+   "cost_usd": 0.010221,
+   "first_token_s": 6.21,
+   "citations": 3,
+   "chars": 524,
+   "paper_id": 999006,
+   "provider": "gemini",
+   "rep": 2,
+   "turn": 5,
+   "kind": "followup",
+   "message": "방금 비판한 내용 중 첫 번째 근거는 논문 어디에 있어?",
+   "saved_rows": [
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ]
+   ]
+  },
+  {
+   "text": "맞아, 논문 Section 2(Method, 2~3쪽)와 Fig. 1에서 정확히 그렇게 설명하고 있어.\n\n동작 방식은 이래:\n1. 대기 난류가 얼어붙은 채로 바람을 따라 움직인다는 Frozen Flow(FF) 가설을 전제로 둬. 위성을 추적하면서 생기는 겉보기 바람(apparent wind) 때문에 각 층의 난류 패턴이 망원경 구경 위를 지나가게 되지.\n2. 다운링크 WFS의 연속된 $N$개의 연속 측정값('lookback frames')을 모으면, 서로 다른 시점에 각 층의 phase를 다른 위치에서 샘플링한 효과가 나(Fig. 1(B)).\n3. 이걸 미리 Kolmogorov 난류 PCA로 만들어둔 각 층의 모드 기저(swept modes)와 influence matrix로 엮어서, pseudoinverse를 통해 등가 대기층(equivalent layers)별 phase로 분해해 내는 구조야.\n\n단, 논문에서도 짚고 넘어가듯 이 방식은 난류가 FF 시간 스케일(~20 ms) 안에서만 성립하고, 비(非)-Frozen Flow 성분이 많으면 제대로 작동하기 어렵다는 한계가 명확히 있어.",
+   "event": "done",
+   "tokens_in": 7011,
+   "cost_usd": 0.006297,
+   "first_token_s": 2.4,
+   "citations": 4,
+   "chars": 559,
+   "paper_id": 999004,
+   "provider": "gemini",
+   "rep": 2,
+   "turn": 1,
+   "kind": "correct",
+   "message": "다운링크 WFS 측정을 여러 lookback frame에 걸쳐 모아서 대기층별 위상을 분해하는 방식이지?"
+  },
+  {
+   "text": "그건 논문 내용과 달라. LITEUP이 이상적인 uplink 보정(UL) 수준에 완전히 도달한다는 주장은 논문 어디에도 없어.\n\nFig. 3(Phase error comparison)을 보면 명확히 나오는데:\n1. **성능 순서:** 모든 PAA/$\\theta_0$ 조건(2, 5, 10)에서 residual phase error(MSE) 분포는 항상 `UL < LITEUP < DL` 순서야. 즉, LITEUP이 DL(다운링크 직접 보정)보다는 훨씬 낫지만, UL(이상적인 업링크 직접 보정)보다는 분명히 잔여 오차가 커.\n2. **PAA 조건에 따른 격차:** PAA/$\\theta_0$가 2에서 5, 10으로 커질수록 LITEUP의 오차 분포 상자(box)와 UL의 기준선 사이 격차는 엄연히 존재하고, 이상적인 수준(UL)으로 수렴하지 않아.\n\n논문이 실제로 입증한 건 **\"PAA가 커져서 DL 방식이 무보정(NC)보다도 나빠지거나 효과가 떨어지는 극단적인 조건(PAA/$\\theta_0 \\le 10$)에서도 LITEUP은 DL 대비 잔여 오차를 크게 줄여준다(최대 8.6배)\"**이지, UL과 동등해진다는 게 아니야.",
+   "event": "done",
+   "tokens_in": 7323,
+   "cost_usd": 0.006651,
+   "first_token_s": 2.89,
+   "citations": 1,
+   "chars": 575,
+   "paper_id": 999004,
+   "provider": "gemini",
+   "rep": 2,
+   "turn": 2,
+   "kind": "overclaim",
+   "message": "LITEUP을 쓰면 PAA 조건과 상관없이 항상 이상적인 uplink 보정(UL)만큼 성능이 나온다는 거지?"
+  },
+  {
+   "text": "그건 논문 내용과 완전히 달라. LITEUP은 별도의 위성 beacon을 쏘거나 측정하지 않고, 지상국에 이미 들어오는 **다운링크 통신 빔(downlink beam)** 하나만 가지고 업링크 위상을 추정하는 기법이야.\n\n논문 Introduction(2쪽)과 Section 2(Method, 2~3쪽)를 보면 명확하게 나와 있어:\n\n1. **별도 센서/비콘 배제:** 논문은 PAA 방향의 위상을 얻기 위해 레이저 가이드 스타(LGS)나 별도 신호를 쓰는 방식의 한계(tip/tilt 미측정 등)를 지적하면서, 그 대안으로 이미 들어오고 있는 다운링크 빔을 활용하는 LITEUP을 제안했어(Introduction, 2쪽).\n2. **동작 방식:** 위성에서 보내는 통신 다운링크 빔을 지상국 WFS로 연속 측정(lookback frames)하고, 위성 궤도 운동으로 생기는 겉보기 바람(apparent wind)과 결합해 대기를 단층 재구성(tomography)한 뒤 PAA 방향의 위상을 수치적으로 계산해 내(Section 2, Fig. 1).\n3. **하드웨어 단순성:** 4쪽에서도 강조하듯, 등가층 높이나 겉보기 풍속 같은 필요한 모든 입력값을 기존 다운링크 지상국 WFS에서 뽑아 쓸 수 있기 때문에 지상국에 추가적인 대기 프로파일 센서나 위성의 추가 비콘이 필요 없다는 게 이 방법의 핵심 장점이야.",
+   "event": "done",
+   "tokens_in": 7659,
+   "cost_usd": 0.0088455,
+   "first_token_s": 6.49,
+   "citations": 7,
+   "chars": 677,
+   "paper_id": 999004,
+   "provider": "gemini",
+   "rep": 2,
+   "turn": 3,
+   "kind": "wrong",
+   "message": "이 방법은 위성이 보내는 beacon을 따로 측정해서 uplink 위상을 구하는 거지?"
+  },
+  {
+   "text": "LITEUP이 논문이 설정한 시뮬레이션 환경 안에서는 모든 PAA/$\\theta_0$ 조건(2, 5, 10)에서 DL(다운링크 직접 보정)보다 잔여 위상 오차(MSE)와 분포 폭(IQR)을 일관되게 줄였고, 극단적 조건에서 DL 대비 최대 8.6배 개선을 보인 건 Fig. 3과 결론(Section 5)으로 명확히 보여준 게 맞아.\n\n하지만 '기존 방식보다 실질적으로 낫다'고 완전히 받아들이기엔 몇 가지 짚고 넘어가야 할 맹점들이 있어. 이거 하나씩 따져보자:\n\n1. **지나치게 단순화된 대기 모델 (Table 1, Section 3)**\n   - 논문은 시뮬레이션에서 대기를 딱 2개의 이산 등가층(2.5 km, 5.0 km)으로만 가정했어. \n   - 실제 대기는 고도에 따라 연속적인 난류 강도($C_n^2$)와 풍속 벡터를 가지는데, 고작 2개 층으로 가정한 환경에서 층 분리가 잘 됐다고 해서 실제 연속 대기에서도 동일하게 분해될 거라 보긴 어려워.\n\n2. **Frozen Flow(FF) 가설 의존성과 비현실적인 시간 제약 (Section 2, 4쪽)**\n   - LITEUP의 핵심은 난류가 얼어붙어 바람을 타고 흐른다는 FF 가설(~20 ms)이야. \n   - 그런데 논문 스스로도 인정하듯(Section 2, 4쪽), FF로 설명되지 않는 난류 진화(boiling effect 등)가 섞이면 이 알고리즘은 성능이 급격히 떨어지거나 아예 실패해.\n   - 게다가 $N$개의 룩백 프레임을 모으고, 행렬 역연산으로 위상을 푼 뒤, 업링크 DM에 인가하는 전 과정을 대기 상관시간 내에 끝내야 해. 그런데 저자들도 **\"이게 현실적으로 가능한지는 조사하지 않았고 향후 과제로 남긴다\"**고 적어뒀어. 계산 지연(latency)이 생기면 보정 성능이 와르르 무너질 수 있다는 소리야.\n\n3. **민감도 분석의 한계와 표 표기 오류 (Section 4.2, Fig. 5, Table 3)**\n   - 입력 파라미터(풍속, 풍향, 층 높이) 오차에 강건하다고 주장하는데, 이건 전체 조건이 아니라 딱 하나의 대표 세팅($N=10$, PAA/$\\theta_0=5$, 풍속 20/45 m/s 등)에서만 테스트한 거야.\n   - 게다가 Table 3을 보면 layer height error가 `(0, 0)%`로 적혀 있어서, 본문과 결론에서 말하는 $\\pm 50\\%$ 높이 오차 분석과 데이터 표기가 불일치하는 결함도 보여.\n\n4. **실제 통신 지표(End-to-End) 검증의 부재**\n   - 논문은 잔여 위상 오차(residual phase variance)만 확인했어.\n   - 업링크 빔이 대기를 지나 500 km 이상 전파(Introduction, 1쪽)되었을 때 위성 수신 구경에 들어오는 결합 효율, 신호 페이딩(fade), 수신 강도 통계 같은 최종 통신 성능은 시뮬레이션하지 않았어. 위상 오차가 줄었다고 해서 실제 신틸레이션 문제가 완벽히 해결되었는지는 미지수야.\n\n5. **하드웨어 단순성 주장의 모순**\n   - 다운링크 WFS 하나만 쓰니까 하드웨어가 단순하다고 자랑하지만, 결국 업링크 빔을 따로 쏘고 사전 보상하려면 고속의 업링크 전용 변형 거울(DM)과 빔 중첩을 위한 발사 위치 조절 장치가 지상국에 추가로 들어가야 해(Section 2, Section 5). \n\n요약하자면, **\"2개 층으로 단순화된 FF 시뮬레이션 환경에서 다운링크 직접 보정보다 위상 오차를 줄인 알고리즘적 가능성\"**은 확실히 증명했지만, 실제 연속 대기와 지연 시간, 광학 통신 엔드투엔드 환경에서도 기존보다 우월할지는 아직 입증되지 않았어.",
+   "event": "done",
+   "tokens_in": 8037,
+   "cost_usd": 0.01334025,
+   "first_token_s": 10.55,
+   "citations": 15,
+   "chars": 1768,
+   "paper_id": 999004,
+   "provider": "gemini",
+   "rep": 2,
+   "turn": 4,
+   "kind": "critique",
+   "message": "LITEUP이 기존 방식보다 낫다는 이 논문의 해석을 비판적으로 따져 줘."
+  },
+  {
+   "text": "논문 Section 3(Simulation details, 4쪽)의 본문 설명과 Table 1에 정확히 나와 있어.\n\nTable 1의 파라미터 표를 보면 이렇게 명시돼 있어:\n- `Number of equivalent layers` ($n_{\\text{layer}}$): **2**\n- `Layer heights (m)` ($h_1, h_2$): **2500, 5000**\n- `Fried parameters (mm)` ($r_{0,1}, r_{0,2}$): **100, 100** (1550 nm 기준)\n\n즉, 시뮬레이션 전체가 대기 난류를 연속 프로파일이 아니라 2.5 km와 5.0 km에 위치한 단 2개의 이산 등가층으로 모델링해서 진행됐다는 근거는 바로 이 Table 1과 4쪽 본문에서 확인할 수 있어.",
+   "event": "done",
+   "tokens_in": 9059,
+   "cost_usd": 0.00755175,
+   "first_token_s": 2.33,
+   "citations": 6,
+   "chars": 399,
+   "paper_id": 999004,
+   "provider": "gemini",
+   "rep": 2,
+   "turn": 5,
+   "kind": "followup",
+   "message": "방금 비판한 내용 중 첫 번째 근거는 논문 어디에 있어?",
+   "saved_rows": [
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ]
+   ]
+  },
+  {
+   "text": "맞아, 논문은 Optimal Transport(OT) 변위 보간 경로를 쓰면 궤적이 직선에 가까워져서 diffusion 경로보다 적은 NFE(Number of Function Evaluations)로 더 빠르고 안정적인 샘플링이 가능하다고 주장하고 있어(Page 2, Abstract 및 Section 4).\n\n실제로 Table 1(Page 8)을 보면 dopri5 ODE solver 기준으로 CIFAR-10, ImageNet-32, ImageNet-64 등에서 `FM w/ OT`의 NFE(각각 142, 122, 138)가 `FM w/ Diffusion`이나 기존 ScoreFlow 같은 diffusion 기반 경로들보다 일관되게 낮게 보고되어 있어. ImageNet-32 샘플링 오차 비교(Section 5.2, Figure 7)에서도 OT 모델이 diffusion 모델의 약 60% 수준 NFE만으로 비슷한 오차 임계값에 도달했다고 적시하지.\n\n그런데 이 결과를 그대로 받아들이기 전에 신경망 분석 관점에서 짚고 넘어가야 할 구멍들이 있어:\n\n1. **오차막대(Error bar)와 통계적 검증 부재**: Figure 7이나 Figure 10, Table 1 어디에도 여러 번 시드(seed)를 돌린 분산이나 신뢰구간이 없어. 수치적 ODE solver의 step 수는 tolerance(atol, rtol) 설정에 극도로 민감한데, 허용 오차 스케줄링에 따른 분산 보고가 누락되어 있어.\n2. **'일정한 샘플링 비용' 주장의 불일치**: 저자들은 학습 과정 전반에 걸쳐 FM의 샘플링 비용이 안정적이라고 서술하지만, 부록 Figure 10을 자세히 보면 FM-OT의 NFE 곡선도 학습 epoch에 따라 완전히 평탄하지 않고 요동치는 구간이 분명히 보여.\n3. **고정 스텝 솔버(Fixed-step solver)와의 비교 한계**: 논문의 주된 NFE 절감 주장은 적응형(adaptive step size) solver인 `dopri5`를 썼을 때의 수치야. DDIM이나 DPM-Solver 같은 diffusion 전용 고속 고정 스텝 샘플러들과 동일 NFE(예: 10~20 step)에서 FID 곡선 트레이드오프를 엄밀하게 1:1로 ablation했는지는 이 실험만으로 확인하기 어려워.\n\n결론적으로 조건부 OT 경로의 직선성 덕분에 적응형 solver 기준 NFE가 줄어든다는 정량 수치는 논문에 명시돼 있지만, 고정 스텝 수치해석기나 다양한 solver 하이퍼파라미터 하에서도 동일한 격차가 유지되는지는 논문 제공 데이터만으로는 완전히 검증하기 힘들어.",
+   "event": "done",
+   "tokens_in": 7429,
+   "cost_usd": 0.0088305,
+   "first_token_s": 5.13,
+   "citations": 8,
+   "chars": 1271,
+   "paper_id": 999006,
+   "provider": "gemini",
+   "rep": 3,
+   "turn": 1,
+   "kind": "correct",
+   "message": "OT 경로를 쓰면 diffusion 경로보다 샘플링에 필요한 함수 평가 횟수(NFE)가 줄어든다는 게 이 논문의 주장이지?"
+  },
+  {
+   "text": "논문이 실제로 우위를 보인 범위는 CIFAR-10과 특정 해상도의 ImageNet(32×32, 64×64, 128×128) 비조건부 이미지 생성에서 NLL, FID, 그리고 dopri5 기준 NFE 지표에 한정돼(Table 1, Section 5.1).\n\n그렇기 때문에 '모든 생성 모델 과제에서 항상 낫다'고 단정하는 건 논문 결과를 지나치게 과장한 해석이야. 당장 논문에 수록된 실험 결과들만 뜯어봐도 반례와 한계가 명확히 보여:\n\n1. **초해상도 태스크에서의 지표 열세**: Table 2(Page 8)의 64×64 $\\to$ 256×256 초해상도 실험을 보면, `FM w/ OT`가 FID(3.4)와 IS(200.8)는 diffusion 기반인 SR3보다 좋지만, 원본 복원 정밀도를 뜻하는 PSNR(24.7 vs 26.4)과 SSIM(0.747 vs 0.762)에서는 SR3에 명백히 밀려. 즉, 과제나 평가 지표에 따라 우열이 갈려.\n2. **제한적인 태스크와 도메인**: 논문에서 다룬 과제는 2D toy 데이터, 저해상도 비조건부 이미지 생성, 초해상도가 전부야. 텍스트-이미지(Text-to-Image), 오디오, 비디오, 3D 메쉬 생성이나 Classifier-Free Guidance(CFG)가 필수적인 대규모 조건부 생성 환경 등 실제 생성 모델의 핵심 과제들은 ablation이나 벤치마크가 전혀 이뤄지지 않았어.\n3. **불완전한 비교군**: ImageNet-128의 경우 Table 1 본문 주석에서 저자 스스로 IC-GAN 같은 강력한 기존 모델은 표에서 제외했다고 밝히고 있고, 모델 크기와 처리량 조건도 완전히 동일하게 통제된 비교가 아니야.\n\n결국 Flow Matching, 특히 OT 경로는 '직선 궤적 설정을 통해 우도 추정과 특정 적응형 solver 환경의 샘플링 속도·FID에서 이점을 보인 것'이지, 모든 생성 도메인과 지표에서 diffusion을 완전히 대체했다고 볼 수는 없어.",
+   "event": "done",
+   "tokens_in": 8069,
+   "cost_usd": 0.01192425,
+   "first_token_s": 12.1,
+   "citations": 4,
+   "chars": 967,
+   "paper_id": 999006,
+   "provider": "gemini",
+   "rep": 3,
+   "turn": 2,
+   "kind": "overclaim",
+   "message": "Flow Matching은 모든 생성 모델 과제에서 diffusion보다 항상 낫다는 거지?"
+  },
+  {
+   "text": "논문이 실제로 제안한 학습 방식과는 정반대야. 이 논문은 학습 중에 ODE를 전혀 풀지 않는 simulation-free 회귀(regression) 방식을 쓰고 있어(Abstract 및 Section 3, Page 1–2).\n\n기존 CNF 모델들이 우도(likelihood)를 최대화하려고 학습 스텝마다 수치적 ODE solver를 돌리느라 엄청난 계산 비용이 들었던 건데(Section 1), 이 논문의 핵심 기여는 바로 그 시뮬레이션을 완전히 없앤 거야. \n\n구체적으로 논문이 어떻게 학습하는지 뜯어보면:\n\n1. **Conditional Flow Matching (CFM) 목적함수**: 데이터 포인트 $x_1$이 주어졌을 때 미리 닫힌 형태(closed-form)로 정의해 둔 조건부 벡터장 $u_t(x|x_1)$을 신경망 $v_t(x;\\theta)$가 직접 근사하도록 $L_2$ 회귀 손실(regression loss)을 걸어(Section 3, Equation 8~10). 즉, 그냥 지도학습 회귀 문제로 풀어버리기 때문에 학습 루프 안에는 수치해석적 ODE 적분이 전혀 안 들어가.\n2. **ODE 적분이 쓰이는 시점**: 학습이 다 끝난 뒤에 샘플을 생성할 때(Inference) 벡터장 $v_t$를 따라 노이즈 $x_0$에서 데이터 $x_1$로 갈 때, 또는 모델 평가를 위해 likelihood(NLL/BPD)를 측정할 때 instantaneous change of variables 공식을 계산하려고 비로소 ODE solver(dopri5)를 돌리는 거야(Section 2 Equation 1, Appendix C).\n\n여기서 뉴럴 네트워크 관점으로 구현을 비판적으로 짚자면:\n저자들은 CFM의 기대 기울기(gradient)가 다루기 힘든 전체 주변 벡터장을 회귀하는 FM의 기울기와 엄밀히 같다고 정리(Theorem 1, 2)를 폈어. 하지만 학습할 때는 시간 $t \\sim U[0, 1]$와 미니배치 데이터 $x_1 \\sim q(x_1)$, 그리고 노이즈 $x_0$를 몬테카를로(Monte Carlo) 샘플링으로 뽑아서 추정하잖아? 이론상 gradient가 비편향(unbiased)이라고 해도, 고차원 이미지 공간에서 $t$와 샘플 조합에 따른 미니배치 gradient의 분산(variance)이 최적화 안정성에 어떤 영향을 주는지에 대한 이론적 바운드나 분산 ablation 분석은 쏙 빠져 있어.",
+   "event": "done",
+   "tokens_in": 8628,
+   "cost_usd": 0.009486,
+   "first_token_s": 4.82,
+   "citations": 4,
+   "chars": 1187,
+   "paper_id": 999006,
+   "provider": "gemini",
+   "rep": 3,
+   "turn": 3,
+   "kind": "wrong",
+   "message": "이 논문은 학습 중에 ODE를 직접 풀어서 likelihood를 최대화하는 방식이지?"
+  },
+  {
+   "text": "논문이 실제로 입증한 범위는 Gaussian 조건부 확률 경로족 중에서 평균과 분산을 선형 보간하는 OT 경로를 썼을 때, CIFAR-10과 저해상도 ImageNet 비조건부 생성에서 diffusion 경로 대비 더 낮은 NLL과 FID를 기록하고 `dopri5` 적응형 ODE solver 기준 NFE를 줄였다는 점이야(Section 4, Section 5.1 및 Table 1).\n\n하지만 저자들이 'OT 경로가 diffusion 경로보다 본질적으로 우월하다'고 일반화하는 논리에는 수식, 최적화 이론, 실험 설계 전반에서 날카롭게 짚고 넘어가야 할 허점들이 꽤 많아:\n\n1. **'조건부 OT 직선'과 '전체 최적 수송(Global OT)'의 개념 혼동**:\n   수식(Section 4)을 뜯어보면, 각 데이터 쌍 $(x_0, x_1)$에 대한 *조건부* 궤적은 직선 변위 보간(displacement interpolation)이 맞아. 하지만 학습 시 노이즈 $x_0 \\sim p_0$와 데이터 $x_1 \\sim q$는 독립적으로 무작위 샘플링되는 독립 커플링(independent coupling)이야. 즉, 서로 다른 샘플을 잇는 직선 궤적들이 고차원 공간에서 필연적으로 마구 얽히고 교차(trajectory crossing)하게 돼. 이 조건부 벡터장들을 주변화(marginalization)한 실제 속도장 $v_t(x)$는 결국 곡선이 되고 복잡해지기 때문에, 저자들의 수식 유도만으로는 전체 생성 과정이 진짜 2-Wasserstein 최적 수송 맵(Monge map)을 근사한다고 볼 수학적 근거가 부족해. 저자들도 부록이나 본문 말미에 이를 슬그머니 한계로 인정하고 넘어가지.\n\n2. **특정 적응형 Solver(`dopri5`)에 편향된 NFE 평가**:\n   OT 경로의 샘플링 속도 이점(Section 5.2, Figure 7)은 허용 오차(tolerance) 기반의 적응형 솔버인 `dopri5`로 적분했을 때 나타난 결과야. 당시에도 diffusion 진영에서는 DPM-Solver, DDIM, Heun 2nd-order 같은 고정 스텝(fixed-step) 고속 솔버로 10~20 step 수준에서 고품질 샘플링을 해내고 있었어. 고정된 극저 스텝(예: NFE 10, 15, 20) 조건에서 두 경로의 FID-NFE Pareto frontier를 1:1로 맞붙이는 ablation이 완전히 누락되어 있어. 적응형 솔버의 국소 오차 추정치 하나만 가지고 \"OT가 diffusion보다 샘플링이 빠르다\"고 단정하는 건 불공정한 벤치마크야.\n\n3. **초해상도 태스크의 지표 왜곡 (Table 2)**:\n   OT 경로가 diffusion보다 낫다는 주장은 태스크를 조금만 바꿔도 깨져. ImageNet 64 $\\to$ 256 초해상도 실험인 Table 2(Page 8)를 보면, `FM w/ OT`는 perceptual 지표인 FID(3.4)와 IS(200.8)에서 diffusion 기반인 SR3(FID 5.2, IS 180.1)를 앞서지만, 원본 재구성 정확도를 나타내는 정밀 복원 지표인 PSNR(24.7 vs 26.4)과 SSIM(0.747 vs 0.762)에서는 명백하게 SR3에 밀려. 그런데도 본문에서는 FID와 IS 개선만 집중 조명하고 PSNR/SSIM 열세에 대한 면밀한 원인 분석은 얼렁뚱땅 넘어가고 있어.\n\n4. **학습 곡선과 NFE 안정성 주장의 시각적 불일치 (Figure 5, Figure 10)**:\n   저자들은 FM-OT가 학습 전반에 걸쳐 NFE가 일정하고 수렴이 극도로 안정적이라고 서술해. 하지만 부록 Figure 10을 확대해 보면 FM-OT의 NFE 곡선 역시 epoch 진행에 따라 위아래로 요동치며, Figure 5의 FID 곡선은 측정 지점(epoch)이 지나치게 드문드문 찍혀 있어서 실제 수렴 안정성을 통계적으로 보장할 수 없어. 무엇보다 다중 시드(multi-seed) 반복 실험에 따른 오차막대(error bar)나 분산 값이 표와 그래프 어디에도 없어. \n\n결국 \"조건부 직선 경로를 도입해 특정 적응형 solver 환경과 몇몇 비조건부 지표에서 수치적 우위를 점했다\"는 실험적 관측일 뿐, diffusion 경로에 비해 본질적·수학적으로 모든 면에서 우월하다는 해석은 데이터와 지표를 취사선택한 과장된 결론에 가까워.",
+   "event": "done",
+   "tokens_in": 9230,
+   "cost_usd": 0.0140175,
+   "first_token_s": 9.63,
+   "citations": 12,
+   "chars": 2129,
+   "paper_id": 999006,
+   "provider": "gemini",
+   "rep": 3,
+   "turn": 4,
+   "kind": "critique",
+   "message": "OT 경로가 diffusion 경로보다 낫다는 이 논문의 해석을 비판적으로 따져 줘."
+  },
+  {
+   "text": "그 내용은 논문의 **Page 2(Introduction)**와 **Section 4**에 나와 있어.\n\n구체적으로 짚어줄게:\n\n1. **조건부 OT 경로의 직선성 정의**: \n   Page 2 우측 단락과 Section 4에서 저자들은 McCann(1997)의 변위 보간(displacement interpolant)을 빌려와 각 조건부 경로 $p_t(x|x_1)$가 직선 궤적(straight line trajectories)을 만든다고 설명해.\n2. **주변 벡터장이 전체 최적 수송 해가 아니라는 점**: \n   Section 4에서 가우시안 조건부 확률 경로족을 다루면서, 조건부 궤적이 직선이라는 사실이 주변화된 전체 벡터장 $v_t$까지 데이터 분포 간의 최적 수송(OT) 맵이 됨을 의미하는 것은 아니라고 명시적으로 선을 긋고 있어. \n\n즉, 저자들도 수식적으로 조건부(per-example) 경로가 직선이라는 점만 유도했을 뿐, 전체 결합 분포 차원의 Monge map을 푼 게 아니라는 점은 Section 4에서 스스로 밝혀둔 부분이야.",
+   "event": "done",
+   "tokens_in": 10375,
+   "cost_usd": 0.01206375,
+   "first_token_s": 12.85,
+   "citations": 4,
+   "chars": 534,
+   "paper_id": 999006,
+   "provider": "gemini",
+   "rep": 3,
+   "turn": 5,
+   "kind": "followup",
+   "message": "방금 비판한 내용 중 첫 번째 근거는 논문 어디에 있어?",
+   "saved_rows": [
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ]
+   ]
+  },
+  {
+   "text": "맞아, 논문 Section 2(Method)와 Fig. 1에서 설명하는 LITEUP의 핵심 원리가 바로 그거야.\n\n대기 난류가 시간 동안 형태를 유지하며 흘러간다는 frozen-flow 가설($\\tau_{\\text{ff}} \\sim 20\\text{ ms}$)을 전제로 깔고 있어. 위성 궤도 운동에 따른 겉보기 바람(apparent wind) 벡터를 알면 각 층이 시간마다 망원경 구경 위를 어떻게 지나갔는지 알 수 있으니까, 연속된 WFS 측정 프레임(lookback frames)들을 모아서 PCA 기반의 swept mode 기저로 등가 대기층(equivalent layers)별 위상을 분해해내는 구조야(Section 2, Fig. 1).",
+   "event": "done",
+   "tokens_in": 7011,
+   "cost_usd": 0.0074595,
+   "first_token_s": 6.55,
+   "citations": 4,
+   "chars": 360,
+   "paper_id": 999004,
+   "provider": "gemini",
+   "rep": 3,
+   "turn": 1,
+   "kind": "correct",
+   "message": "다운링크 WFS 측정을 여러 lookback frame에 걸쳐 모아서 대기층별 위상을 분해하는 방식이지?"
+  },
+  {
+   "text": "논문이 실제로 보여준 건 LITEUP이 모든 테스트 조건에서 직접 다운링크(DL) 보정보다는 우수하고 이상적인 업링크(UL) 방향으로 성능을 끌어올린다는 것이지, UL과 동일한 수준에 도달한다는 건 전혀 아니야(Fig. 3, Section 4).\n\nFig. 3의 박스 플롯을 보면 바로 드러나. 이상적인 업링크 보정(UL)은 보정 오차(MSE)가 가장 낮게 바닥에 깔려 있는 벤치마크 기준선이고, LITEUP은 무보정(NC)이나 DL보다는 훨씬 낫지만 항상 UL보다 위에 떠 있어. 즉, 잔여 위상 오차(residual phase variance)가 UL보다 확실히 크게 남아.\n\n게다가 PAA 조건과 '상관없는' 것도 아니야. PAA/$\\theta_0$ 비율이 2에서 5, 10으로 커질수록 DL보다는 상대적인 개선 폭이 두드러지지만, LITEUP 자체의 절대적인 복원 정밀도나 분산도 조건(바람 방향, 프레임 수 등)에 따라 영향을 받아(Fig. 3, Fig. 4).\n\n결론적으로 LITEUP은 DL의 한계를 극복해서 UL의 성능에 '접근'하게 해주는 방법이지, 이상적인 UL 성능을 100% 그대로 뽑아내는 기법은 아니야.",
+   "event": "done",
+   "tokens_in": 7216,
+   "cost_usd": 0.0065745,
+   "first_token_s": 2.27,
+   "citations": 5,
+   "chars": 575,
+   "paper_id": 999004,
+   "provider": "gemini",
+   "rep": 3,
+   "turn": 2,
+   "kind": "overclaim",
+   "message": "LITEUP을 쓰면 PAA 조건과 상관없이 항상 이상적인 uplink 보정(UL)만큼 성능이 나온다는 거지?"
+  },
+  {
+   "text": "그건 논문 내용과 정반대야. LITEUP은 위성이 쏘는 별도의 비콘(beacon)이나 레이저 가이드 스타(LGS)를 전혀 쓰지 않고, 이미 지상국으로 들어오고 있는 다운링크(downlink) 레이저 빔의 WFS 측정값만 재사용해서 업링크 위상을 추정해(Introduction 2페이지, Section 2).\n\nIntroduction(2페이지)을 보면, 업링크 방향(PAA)의 위상을 알기 위해 별도 신호나 가이드 스타를 쓰는 방식은 tip/tilt 측정 불가 같은 한계가 있다고 짚으면서, 대신 쉽게 얻을 수 있는 다운링크 빔을 활용하는 방법을 제안한다고 명시하고 있어. \n\nSection 2(2~3페이지)에서도 기존 광 지상국(OGS)에 이미 설치된 다운링크 WFS 측정값과 위성 추적에 따른 겉보기 바람(apparent wind) 벡터만 가지고 대기를 층별로 분해해 PAA 방향 위상을 역산해내기 때문에, 추가적인 광학 비콘 하드웨어 없이 구현할 수 있는 게 이 방법의 핵심 장점이야.",
+   "event": "done",
+   "tokens_in": 7553,
+   "cost_usd": 0.0085335,
+   "first_token_s": 6.74,
+   "citations": 5,
+   "chars": 497,
+   "paper_id": 999004,
+   "provider": "gemini",
+   "rep": 3,
+   "turn": 3,
+   "kind": "wrong",
+   "message": "이 방법은 위성이 보내는 beacon을 따로 측정해서 uplink 위상을 구하는 거지?"
+  },
+  {
+   "text": "논문이 시뮬레이션 환경에서 LITEUP을 통해 다운링크(DL) 직접 보정보다 잔여 위상 오차(MSE)를 줄이고 성능을 개선할 수 있음을 명확히 보여준 것은 맞아(Section 4, Fig. 3).\n\n하지만 이 결과를 그대로 현실에 적용할 수 있다고 보기엔 논문 자체에 구멍과 한계가 꽤 많아. 날카롭게 짚어볼 포인트들을 정리해 줄게.\n\n**1. 수치 시뮬레이션일 뿐, 실험적 검증이 전혀 없어**\n이 논문은 모든 결과가 컴퓨터 시뮬레이션 기반이야(Section 3). 실제 대기 채널이나 야외 광통신 링크에서 빔을 쏴서 전력 변동(fade)이나 결합 효율을 측정한 데이터는 단 하나도 없어.\n\n**2. 대기 모델을 딱 '2개 층'으로 너무 단순화했어**\nTable 1(4페이지)을 보면 등가 대기층을 단 2개($n_{\\text{layer}} = 2$, 고도 2.5 km, 5.0 km)로 고정하고 돌렸어. 실제 지구 대기는 $C_n^2$와 풍속이 고도에 따라 연속적으로 변하는데, 과연 이 단순한 2층 모델 기반의 swept mode가 복잡한 연속 난류 프로파일에서도 동일하게 층별 분해를 해낼 수 있을지는 회의적이야.\n\n**3. Frozen-Flow(FF) 가설에 절대적으로 의존해**\n논문 스스로도 인정했듯이(Section 2, 45145페이지), LITEUP은 대기가 변형 없이 그대로 바람을 타고 흘러간다는 FF 가설($\\tau_{\\text{ff}} \\sim 20\\text{ ms}$)이 깨지면 알고리즘이 헤매거나 완전히 실패해(struggle or fail). 난류 자체의 dynamic turnover가 빠른 고난류 조건에서는 치명적일 수 있어.\n\n**4. 실시간 지연(latency) 문제를 아예 다루지 않았어**\nSection 2(45145페이지)에서 이 방식이 성립하려면 측정, 행렬 역산 계산, 그리고 업링크 deformable mirror(DM) 적용까지 대기 상관 시간 내에 끝내야 한다고 적어두고는, \"이 실용성은 조사하지 않았으며 추후 과제로 남긴다\"고 쏙 빠졌어. 1 kHz WFS로 여러 프레임을 모으고 계산해서 DM을 구동하는 지연 시간을 고려하면 실제 이득이 급격히 깎일 가능성이 높아.\n\n**5. '최대 8.6배 개선'이라는 수치의 함정**\nConclusion에서 자랑하는 \"MSE 최대 8.6배, IQR 최대 15배 감소\"는 모든 조건의 평균값이 아니야. $\\text{PAA}/\\theta_0 = 10$이라는 극단적으로 조건이 나빠서 DL 직접 보정이 사실상 무보정(NC)보다도 망가지는 구간(Fig. 3)에서 뽑아낸 '최댓값'이야. 일반적인 조건에서의 평균적인 개선폭은 이보다 훨씬 낮아.\n\n**6. 민감도 분석이 단 하나의 조건에 편향돼 있어**\nFig. 5에서 바람 오차에 강건하다고 주장하지만, Section 4.2를 보면 이 분석은 전체 파라미터 공간이 아니라 특정 조건($N=10$, 속도 (20,45) m/s, 방향 (0,0)°, $\\text{PAA}/\\theta_0 = 5$) 단 하나만 떼어내서 테스트한 거야. 게다가 Table 3(입력 오차 파라미터)을 보면 layer height error가 `(0, 0)%`로 잘못 표기되어 있는 등 데이터 정리에서도 허점이 보여.\n\n여기서 가장 걸리는 게 실시간 연산 지연(latency) 문제인데, 네가 생각하기에 지상국 하드웨어에서 프레임 누적과 역산 처리에 허용되는 시간 마진을 논문 조건 기준으로 더 따져볼까?",
+   "event": "done",
+   "tokens_in": 7836,
+   "cost_usd": 0.012522,
+   "first_token_s": 9.4,
+   "citations": 13,
+   "chars": 1685,
+   "paper_id": 999004,
+   "provider": "gemini",
+   "rep": 3,
+   "turn": 4,
+   "kind": "critique",
+   "message": "LITEUP이 기존 방식보다 낫다는 이 논문의 해석을 비판적으로 따져 줘."
+  },
+  {
+   "text": "이거 봐봐. 논문이 실험 없이 순수 시뮬레이션으로만 진행됐다는 근거는 아래 위치들에서 바로 확인할 수 있어.\n\n1. **Introduction 끝부분 (2페이지 / 45143페이지)**: 저자들이 연구 범위를 밝히면서 \"We present simulation results of this method, showing the reconstruction accuracy of the uplink path for a variety of different ground-to-space FSO link configurations.\"라고 시뮬레이션 결과임을 명시해 뒀어.\n2. **Section 3 제목 및 본문 (4페이지 / 45145페이지)**: 절 제목 자체가 **\"3. Simulation details\"**이고, 본문 첫 문장도 \"To evaluate the performance of LITEUP, we prepare a sample space with fixed parameters listed in Table 1 and analyse the reconstruction accuracy... We simulate at a wavelength of 1550 nm...\"로 시작해.\n3. **Table 1 (4페이지 / 45145페이지)**: 표 제목도 \"Fixed simulation parameters\"로, 하드웨어 측정값이 아닌 수치 시뮬레이션용 설정값들만 나열되어 있어.\n\n논문 전체 어디를 봐도 실제 야외 광통신 링크나 지상국 하드웨어로 측정한 실험 데이터 섹션은 아예 없어.",
+   "event": "done",
+   "tokens_in": 8769,
+   "cost_usd": 0.009828,
+   "first_token_s": 7.07,
+   "citations": 9,
+   "chars": 774,
+   "paper_id": 999004,
+   "provider": "gemini",
+   "rep": 3,
+   "turn": 5,
+   "kind": "followup",
+   "message": "방금 비판한 내용 중 첫 번째 근거는 논문 어디에 있어?",
+   "saved_rows": [
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ],
+    [
+     "user",
+     "complete"
+    ],
+    [
+     "sasoo",
+     "complete"
+    ]
+   ]
+  }
+ ]
+}
