@@ -231,6 +231,21 @@ async def call_interaction(
     raise RuntimeError(f"Interactions API call failed after retries: {last_err}")
 
 
+async def count_input_tokens(prompt: str, *, model: str = MODEL_FLASH_HQ, system_instruction: str | None = None, **_ignored) -> int:
+    """요청 전 입력 토큰 수(무과금 countTokens). 토의 맥락 예산 판정에만 쓴다.
+
+    Interactions에는 계산 엔드포인트가 없어 같은 텍스트를 models.count_tokens로 센다.
+    system_instruction은 본문 앞에 붙여 센다. 실제 과금 값과 조금 다를 수 있으며,
+    답을 받은 뒤에는 응답 usage로 갱신한다.
+    """
+    text = f"{system_instruction or _SYSTEM_INSTRUCTION_KO}\n\n{prompt}"
+
+    def _count() -> int:
+        return int(_get_client().models.count_tokens(model=model, contents=text).total_tokens)
+
+    return await _run_on_lane("chat", _count)
+
+
 async def stream_interaction(
     prompt,
     *,

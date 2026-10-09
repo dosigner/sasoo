@@ -1518,7 +1518,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         ):
             response = await analysis_routes._chat_with_agent_impl(
                 7,
-                _FakeRequest({"message": "질문", "history": [{"role": "user", "content": "이전질문"}]}),
+                _FakeRequest({"message": "질문", "history": [{"role": "user", "content": "이전질문"}], "persist": False}),
             )
             chunks = []
             async for chunk in response.body_iterator:
@@ -1565,7 +1565,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         ):
             response = await analysis_routes._chat_with_agent_impl(
                 7,
-                _FakeRequest({"message": "질문", "history": []}),
+                _FakeRequest({"message": "질문", "history": [], "persist": False}),
             )
             chunks = []
             async for chunk in response.body_iterator:
@@ -1609,7 +1609,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             patch("api.analysis_routes.stream_interaction", new=fake_stream),
         ):
             response = await analysis_routes._chat_with_agent_impl(
-                7, _FakeRequest({"message": "이번 질문", "history": history})
+                7, _FakeRequest({"message": "이번 질문", "history": history, "persist": False})
             )
             async for _ in response.body_iterator:
                 pass
@@ -4007,7 +4007,7 @@ class NativePdfValidationTests(unittest.IsolatedAsyncioTestCase):
             ), patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value={})), patch(
                 "api.analysis_routes.stream_interaction", new=stream
             ), patch("api.analysis_routes.active_provider", new=AsyncMock(return_value="openai")):
-                response = await analysis_routes._chat_with_agent_impl(7, _FakeRequest({"message": "question"}))
+                response = await analysis_routes._chat_with_agent_impl(7, _FakeRequest({"message": "question", "persist": False}))
                 body = "".join([chunk async for chunk in response.body_iterator])
             self.assertEqual(len(calls), 1)
             self.assertIn('"type": "error"', body)

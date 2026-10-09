@@ -31,3 +31,7 @@ async def call_interaction(prompt, *, model, strict_schema: bool = False, **kwar
 async def stream_interaction(prompt, *, model, **kwargs):
     async for event in _client_for(model).stream_interaction(prompt, model=model, **kwargs):
         yield event
+
+
+async def count_input_tokens(prompt, *, model, **kwargs) -> int:
+    return await _client_for(model).count_input_tokens(prompt, model=model, **kwargs)

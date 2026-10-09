@@ -342,6 +342,23 @@ CREATE TABLE IF NOT EXISTS experiment_plans (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_experiment_plans_paper_id ON experiment_plans(paper_id);
+
+-- 토의 기록(docs/superpowers/specs/2026-10-07-discussion-design.md 6장). 논문당 하나이며
+-- 맥락 초기화는 kind='reset' 행이다. 그 행 이후의 user와 complete sasoo만 맥락으로 보낸다.
+CREATE TABLE IF NOT EXISTS discussion_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    paper_id INTEGER NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'complete',
+    reset_reason TEXT,
+    model_used TEXT,
+    tokens_in INTEGER,
+    tokens_out INTEGER,
+    cost_usd REAL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_discussion_messages_paper ON discussion_messages(paper_id, id);
 """
 
 # ---------------------------------------------------------------------------
