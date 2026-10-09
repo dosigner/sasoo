@@ -54,6 +54,7 @@ recipe_parameters:
   - augmentation_strategy
 model: gemini-pro
 enabled: true
+openalex_subfields: [1702, 1707]
 ---
 
 # Screening

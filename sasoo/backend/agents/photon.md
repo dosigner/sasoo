@@ -57,6 +57,7 @@ recipe_parameters:
   - growth_time
 model: gemini-pro
 enabled: true
+openalex_subfields: [3107]
 ---
 
 # Screening

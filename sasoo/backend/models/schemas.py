@@ -100,6 +100,9 @@ class PaperResponse(BaseModel):
     analysis_focus: Optional[str] = None
     pdf_file_uri: Optional[str] = None
     pdf_file_expires_at: Optional[str] = None
+    openalex_subfield_id: Optional[int] = None
+    # 소분야의 영문 대분야명(예: "Materials Science"). 일반 에이전트의 분야 표시에 쓴다.
+    openalex_field: Optional[str] = None
 
 
 class PaperListResponse(BaseModel):

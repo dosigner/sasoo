@@ -25,7 +25,6 @@ from models.database import (
 )
 from models.schemas import (
     DomainType,
-    AgentType,
     PaperListResponse,
     PaperResponse,
     PaperUpdate,
@@ -40,6 +39,7 @@ from services.odl_parser import (
 )
 from services.artifact_status import get_visual_row_counts, resolve_artifact_status_contract
 from services.concurrency import run_pipeline_blocking
+from services.openalex import field_name, lookup_subfield
 from models.analysis_runs import request_cancel
 
 router = APIRouter(prefix="/api/papers", tags=["papers"])
@@ -76,6 +76,7 @@ async def _paper_payload(
 
     figure_count, table_count = visual_counts if visual_counts is not None else await get_visual_row_counts(paper_id)
     payload = dict(row)
+    payload["openalex_field"] = field_name(payload.get("openalex_subfield_id"))
     try:
         artifact_status = await resolve_artifact_status_contract(
             paper_id=paper_id,
@@ -120,28 +121,45 @@ def _missing_pdf_payload() -> dict[str, object]:
     }
 
 
-def classify_domain(text: str) -> tuple[str, str]:
+GENERAL_AGENT: Final = "general"
+
+
+def _keyword_score(profile, text_lower: str) -> int:
+    score = sum(1 for kw in profile.keywords if kw.lower() in text_lower)
+    return score + 2 * sum(1 for kw in profile.weighted_keywords if kw.lower() in text_lower)
+
+
+def classify_domain(text: str, subfield_id: Optional[int] = None) -> tuple[str, str]:
     """
-    키워드 기반 도메인 분류. 에이전트 .md 레지스트리(단일 소스)의
-    keywords/weighted_keywords로 점수를 매겨 (domain, agent_name)을 돌려준다.
-    일치하는 키워드가 없으면 기본값(optics / photon)으로 떨어진다.
+    (domain, agent_name)을 고른다. 에이전트 .md 레지스트리(단일 소스)가 기준이다.
+
+    1. OpenAlex 소분야가 있으면 그 소분야를 `openalex_subfields`로 선언한 에이전트에
+       배정한다. 여럿이면 키워드 점수로 고르고, 동점이면 사용자 정의 에이전트가 번들보다
+       우선한다. 선언한 에이전트가 없으면 일반 에이전트로 보낸다.
+    2. 소분야가 없으면(DOI 없음, 범위 밖, 조회 실패) keywords/weighted_keywords 점수로 고른다.
+    3. 어느 쪽에도 맞지 않으면 일반 에이전트로 보낸다(예전에는 optics/photon이었다).
     """
     from services.agents import list_all_agents
 
     text_lower = text.lower()
+    enabled = [profile for profile in list_all_agents() if profile.enabled]
+    if subfield_id is not None:
+        claims = [profile for profile in enabled if subfield_id in profile.openalex_subfields]
+        if not claims:
+            return DomainType.GENERAL.value, GENERAL_AGENT
+        best = max(claims, key=lambda profile: (_keyword_score(profile, text_lower), not profile.builtin))
+        return best.domain, best.agent_name
+
     best_profile = None
     best_score = 0
-    for profile in list_all_agents():
-        if not profile.enabled:
-            continue
-        score = sum(1 for kw in profile.keywords if kw.lower() in text_lower)
-        score += 2 * sum(1 for kw in profile.weighted_keywords if kw.lower() in text_lower)
+    for profile in enabled:
+        score = _keyword_score(profile, text_lower)
         if score > best_score:
             best_score = score
             best_profile = profile
 
     if best_profile is None:
-        return DomainType.OPTICS.value, AgentType.PHOTON.value
+        return DomainType.GENERAL.value, GENERAL_AGENT
     return best_profile.domain, best_profile.agent_name
 
 
@@ -207,7 +225,8 @@ async def upload_paper(file: UploadFile = File(...)):
 
     metadata = dict(manifest.get("metadata", {}))
     full_text = str(manifest.get("full_text", ""))
-    domain, agent = classify_domain(_clean_domain_classification_text(full_text)[:3000])
+    subfield_id = await lookup_subfield(metadata.get("doi"))
+    domain, agent = classify_domain(_clean_domain_classification_text(full_text)[:3000], subfield_id)
     metadata["domain"] = domain
     metadata["agent_used"] = agent
 
@@ -239,8 +258,8 @@ async def upload_paper(file: UploadFile = File(...)):
     paper_id = await execute_insert(
         """
         INSERT INTO papers (title, authors, year, journal, doi, domain, agent_used,
-                            folder_name, tags, status, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            folder_name, tags, status, notes, openalex_subfield_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             metadata["title"],
@@ -254,6 +273,7 @@ async def upload_paper(file: UploadFile = File(...)):
             None,  # tags
             "pending",
             None,  # notes
+            subfield_id,
         ),
     )
 
