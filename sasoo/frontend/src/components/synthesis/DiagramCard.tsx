@@ -3,6 +3,7 @@ import { AlertCircle, Maximize2, RefreshCw } from 'lucide-react';
 import type { VisualizationItem } from '@/lib/api';
 import { S } from '@/lib/strings';
 import { PaperBananaViewer } from '../VisualizationGallery';
+import { HtmlVisualization } from '../HtmlVisualization';
 
 const MermaidRenderer = lazy(() => import('../MermaidRenderer'));
 const T = S.synthesis;
@@ -57,7 +58,8 @@ export function DiagramCard({
 }: DiagramCardProps) {
   const [descOpen, setDescOpen] = useState(false);
   const isConcept = item.tool === 'paperbanana';
-  const ready = isConcept ? !!item.image_url : !!item.mermaid_code;
+  const imageModel = item.model_used || item.image_model;
+  const ready = isConcept ? !!item.image_url : item.tool === 'html' ? !!item.html_code : !!item.mermaid_code;
   const failed = item.status === 'error' && !ready;
   const generating = !ready && !failed;
 
@@ -85,6 +87,15 @@ export function DiagramCard({
         </div>
       </header>
       {regenerateError && <p className="px-4 pb-2 text-2xs text-danger">{regenerateError}</p>}
+      {(item.image_quality || item.importance != null) && (
+        <p className="px-4 pb-2 text-2xs text-fg-muted">
+          {item.tool === 'paperbanana' && imageModel && `${imageModel === 'gpt-image-2.5-sunburst' ? 'Sunburst' : imageModel === 'gpt-image-2.5-flare' ? 'Flare' : imageModel} / `}
+          {item.image_quality && `이미지 품질 ${item.image_quality}`}
+          {item.image_quality && item.importance != null && ' / '}
+          {item.importance != null && `기획 중요도 ${item.importance}/100`}
+          {item.difficulty != null && ` / 난도 ${item.difficulty}/100`}
+        </p>
+      )}
 
       {generating ? (
         <Skeleton />
@@ -94,6 +105,8 @@ export function DiagramCard({
           onRegenerate={onRegenerate}
           regenerating={regenerating}
         />
+      ) : item.tool === 'html' ? (
+        <div className="px-4 pb-2"><HtmlVisualization item={item} /></div>
       ) : (
         <div
           className="cursor-zoom-in [&_svg]:max-h-[58vh]"

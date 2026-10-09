@@ -27,6 +27,14 @@ class ImagePricingTests(unittest.TestCase):
             with self.subTest(usage=invalid), self.assertRaises(PricingUsageError):
                 calc_image_cost("gpt-image-2.5-flare:high", usage=invalid)
 
+    def test_sunburst_uses_the_same_token_rates_and_requires_usage(self):
+        usage = {"input_tokens": 300, "input_tokens_details": {"text_tokens": 100, "image_tokens": 200},
+                 "output_tokens": 1000}
+        self.assertEqual(calc_image_cost("gpt-image-2.5-sunburst:high", usage=usage), 0.0321)
+        for invalid in (None, {}, {**usage, "input_tokens": 301}):
+            with self.subTest(usage=invalid), self.assertRaises(PricingUsageError):
+                calc_image_cost("gpt-image-2.5-sunburst:high", usage=invalid)
+
     def test_nano_banana_21_prices_image_and_thought_tokens(self):
         usage = {
             "total_input_tokens": 100,

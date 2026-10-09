@@ -5,6 +5,7 @@ import type { VisualizationItem, VisualizationPlan, MermaidDiagram } from '@/lib
 import { S } from '@/lib/strings';
 import { assetExtension, downloadBlob, safeAssetFilename } from '@/lib/download';
 import { AppIcon } from '@/components/icons';
+import { HtmlVisualization } from './HtmlVisualization';
 
 const MermaidRenderer = lazy(() => import('./MermaidRenderer'));
 
@@ -230,9 +231,9 @@ export function VisualizationGallery({
                   ? 'bg-accent/10 text-accent'
                   : 'bg-warning/10 text-warning-fg'
               }`}>
-                {item.tool === 'mermaid' ? 'Mermaid' : 'PaperBanana'}
+                {item.tool === 'mermaid' ? 'Mermaid' : item.tool === 'html' ? 'HTML' : 'PaperBanana'}
               </span>
-              {item.tool === 'mermaid' && (
+              {(
                 <button
                   onClick={() => handleRegenerate(visualizations.paper_id, item.id)}
                   disabled={isRegenerating}
@@ -268,6 +269,8 @@ export function VisualizationGallery({
                   onRepair={makeRepairHandler(visualizations.paper_id, item.id)}
                 />
               </Suspense>
+            ) : item.tool === 'html' && item.html_code ? (
+              <HtmlVisualization item={item} />
             ) : item.tool === 'paperbanana' ? (
               <PaperBananaViewer item={item} />
             ) : item.status === 'error' ? (

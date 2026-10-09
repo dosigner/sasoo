@@ -531,13 +531,13 @@ export const S = {
     enterNewKey: '새 키를 입력해 주세요...',
     // Image generation
     imageSection: '이미지 생성',
-    imageSectionDesc: '선택한 AI 공급사의 도해 모델을 사용해요.',
+    imageSectionDesc: '새 논문에서 중요도 60점 이상, 난도 70점 이상인 핵심 도해 중 가장 어려운 한 장은 Sunburst, 나머지는 Flare로 생성해요. OpenAI API 키가 필요해요.',
     imageProvider: '도해 생성 모델',
-    imageProviderOpenai: 'GPT Image 2.5 Flare',
+    imageProviderOpenai: 'GPT Image 2.5 Flare / Sunburst',
     imageProviderGemini: 'Nano Banana 2.1',
     geminiImageHelp: 'Gemini 도해는 1K 해상도와 최소 사고량으로 요청해요. 비용은 실제 토큰 사용량에 따라 달라져요.',
     imageQuality: '도해 품질',
-    imageQualityHelp: 'OpenAI 도해에 적용돼요. 비용은 요청별 토큰 사용량에 따라 달라져요.',
+    imageQualityHelp: '선택한 품질을 상한으로 적용해요. high일 때 Sunburst 도해와 단계/비교는 high, 나머지 구조/추가 그림은 medium이에요. 두 모델의 토큰 단가는 같고 실제 비용은 사용량에 따라 달라져요.',
     // Cost
     usageCosts: '사용량과 비용',
     usageCostsDesc: '최근 분석에서 호출과 비용이 얼마나 발생했는지 확인해요.',

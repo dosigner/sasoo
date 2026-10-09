@@ -38,7 +38,7 @@ An AI research workbench for understanding a paper, checking its figures and tab
 
 Sasoo keeps the original paper within reach while you read. Start with the summary, follow questions through each section, and open linked figures and tables to check the evidence. PDFs and analysis results stay in a local library so you can return to them later.
 
-> **About the screenshots:** These development-app captures show the interface included in v1.0.1 (September 25, 2026). They use the Korean UI with saved analysis results; actual content depends on the paper and model settings. Download the latest [v1.1.0 release](https://github.com/dosigner/sasoo/releases/tag/v1.1.0).
+> **About the screenshots:** These development-app captures show the interface included in v1.0.1 (September 25, 2026). They use the Korean UI with saved analysis results; actual content depends on the paper and model settings. Download the latest [v1.2.0 release](https://github.com/dosigner/sasoo/releases/tag/v1.2.0).
 
 <p align="center">
   <img src="sasoo/docs/assets/readme-2026-09-25/workbench-light.png" alt="Sasoo development screen with the original Diffusion Policy PDF on the left and its summary on the right" width="1000" />
@@ -98,24 +98,23 @@ Check AI explanations and extracted values against the paper. A completed analys
 
 ### Downloads
 
-The distribution version is **v1.1.0**. See the [release notes and all files](https://github.com/dosigner/sasoo/releases/tag/v1.1.0) for changes and installers.
+The distribution version is **v1.2.0**. See the [release notes and all files](https://github.com/dosigner/sasoo/releases/tag/v1.2.0) for changes and installers.
 
 | Platform | Official release file | Notes |
 | --- | --- | --- |
-| macOS Apple Silicon | [DMG](https://github.com/dosigner/sasoo/releases/download/v1.1.0/Sasoo-1.1.0-arm64.dmg) / [ZIP](https://github.com/dosigner/sasoo/releases/download/v1.1.0/Sasoo-1.1.0-arm64-mac.zip) | Unsigned and unnotarized |
-| Windows x64 | [Installer EXE](https://github.com/dosigner/sasoo/releases/download/v1.1.0/Sasoo-Setup-1.1.0.exe) | Unsigned; SmartScreen may warn |
+| macOS Apple Silicon | [DMG](https://github.com/dosigner/sasoo/releases/download/v1.2.0/Sasoo-1.2.0-arm64.dmg) / [ZIP](https://github.com/dosigner/sasoo/releases/download/v1.2.0/Sasoo-1.2.0-arm64-mac.zip) | Unsigned and unnotarized |
+| Windows x64 | [Installer EXE](https://github.com/dosigner/sasoo/releases/download/v1.2.0/Sasoo-Setup-1.2.0.exe) | Unsigned; SmartScreen may warn |
 
 Official Linux and Intel Mac binaries are not available. A Linux source build command exists, but Linux is outside the distribution support listed above.
 
-### Changes in v1.1.0
+### Changes in v1.2.0
 
-- The question panel becomes "Discuss with Sasoo". Sasoo first acknowledges what the paper actually supports in your interpretation, then points out what goes beyond it, with the cited location.
-- Discussions are saved per paper and continue after an app restart. A bar above the input shows the context Sasoo sees (tokens / 260K) and its sources.
-- "New context" starts fresh while keeping the record. After a re-analysis or when the context budget is exceeded, a new context starts automatically and earlier messages are collapsed.
-- Stopped answers stay marked "Interrupted", and deleting a discussion asks for confirmation.
-- New papers with a DOI are assigned an agent by OpenAlex field. Papers with no matching specialist go to the general agent.
+- Images explain structures, processes, and baseline versus proposed methods. Mermaid sequences show roles and timing, while interactive HTML explains parameter and output relationships.
+- Flare generates ordinary images. Sunburst handles at most one core image per paper: the hardest candidate with importance at least 60 and difficulty at least 70.
+- Up to two additional images and two additional Mermaid diagrams can be generated when importance is at least 60. Cards show the model, quality, importance, and difficulty.
+- HTML explanations run in an isolated frame without app or network access and are included in ZIP exports.
 
-See the [detailed release notes](sasoo/docs/03-release/v1.1.0.md). On startup the app adds a discussion table and an OpenAlex field column to the database automatically.
+See the [detailed release notes](sasoo/docs/03-release/v1.2.0.md). Existing results remain available; re-analysis applies the new visualization allocation.
 
 <details>
 <summary>If macOS blocks the app</summary>
@@ -144,15 +143,15 @@ Choose OpenAI or Gemini in Settings. If only one provider has a saved key, the a
 | Provider | Get an API key | Features |
 | --- | --- | --- |
 | OpenAI | [OpenAI API keys](https://platform.openai.com/api-keys) | Paper analysis, chat, figure explanations, concept illustrations |
-| Gemini | [Google AI Studio](https://aistudio.google.com/apikey) | Paper analysis, chat, figure explanations, concept illustrations |
+| Gemini | [Google AI Studio](https://aistudio.google.com/apikey) | Paper analysis, chat, figure explanations |
 
-v1.1.0 defaults to OpenAI with `gpt-6-luna` for text analysis. Concept illustrations use OpenAI `gpt-image-2.5-flare` or Gemini `gemini-nano-banana-2.1`, depending on the provider. See the [model registry](sasoo/backend/services/model_registry.py) for stage assignments and reasoning levels, and [model IDs](sasoo/backend/services/models.py) for the exact configuration.
+v1.2.0 defaults to OpenAI with `gpt-6-luna` for text analysis. Images in mixed visualizations use OpenAI `gpt-image-2.5-flare` and `gpt-image-2.5-sunburst` regardless of the analysis provider, so an OpenAI API key is required. See the [model registry](sasoo/backend/services/model_registry.py) for stage assignments and reasoning levels, and [model IDs](sasoo/backend/services/models.py) for the exact configuration.
 
 Costs shown in Settings are **estimates** based on reported usage and the rates registered in the app. They may differ from provider invoices. Missing usage does not mean a request was free.
 
 ## Data and privacy
 
-**Files are stored locally; AI processing uses external APIs.** PDFs and analysis results are saved in your local library. Analysis, chat, and image generation send the material needed for the feature to the selected provider.
+**Files are stored locally; AI processing uses external APIs.** PDFs and analysis results are saved in your local library. Analysis and chat send the required material to the selected provider; image generation for mixed visualizations sends its material to OpenAI.
 
 | Task | Material that may be sent to external APIs |
 | --- | --- |

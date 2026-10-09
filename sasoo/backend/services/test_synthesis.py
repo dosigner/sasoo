@@ -7,6 +7,7 @@
 - 두 스키마의 마지막 속성은 정수다(DEC-014: 마지막 자유서술 필드가 폭주의 자리였다).
 """
 
+import json
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -149,6 +150,123 @@ class NormalizeVizPlanTests(unittest.TestCase):
         ]))
         self.assertEqual(len([it for it in items if it["block"] == "method"]), 3)
         self.assertEqual(len(items), 4)  # 개념도 1 + method 3
+
+
+class MixedVisualizationTests(unittest.IsolatedAsyncioTestCase):
+    def test_sunburst_goes_to_one_difficult_core_image(self):
+        images = [
+            {"title": "structure", "purpose": "structure", "importance": 95, "difficulty": 80},
+            {"title": "process", "purpose": "process", "importance": 60, "difficulty": 95},
+            {"title": "comparison", "purpose": "comparison", "importance": 59, "difficulty": 100},
+            {"title": "extra", "purpose": "additional", "importance": 100, "difficulty": 100},
+        ]
+        items = ae._normalize_viz_plan({"illustrations": images, "diagrams": []})
+        self.assertEqual([it["title"] for it in items if it["image_model"] == ae.MODEL_IMAGE_SUNBURST], ["process"])
+        self.assertEqual(items[-1]["image_model"], ae.MODEL_IMAGE_OPENAI)
+        images[2].update(importance=90, difficulty=95)
+        items = ae._normalize_viz_plan({"illustrations": images, "diagrams": []})
+        self.assertEqual([it["title"] for it in items if it["image_model"] == ae.MODEL_IMAGE_SUNBURST], ["comparison"])
+
+    def test_simple_and_invalid_difficulty_scores_keep_flare(self):
+        for score in (None, 69, True, "90", 101):
+            with self.subTest(score=score):
+                items = ae._normalize_viz_plan({"illustrations": [{"title": "core", "purpose": "structure",
+                                              "importance": 100, "difficulty": score,
+                                              "image_model": ae.MODEL_IMAGE_SUNBURST}], "diagrams": []})
+                self.assertEqual(items[0]["image_model"], ae.MODEL_IMAGE_OPENAI)
+
+    async def test_selected_sunburst_model_survives_regeneration_and_quality_cap(self):
+        from services.viz.figure_gen import FigureGenResult
+        generate = AsyncMock(return_value=FigureGenResult("/tmp/image.png", "openai", 1, 0.03, None))
+        item = {"id": 1, "title": "structure", "diagram_type": "structure", "image_model": ae.MODEL_IMAGE_SUNBURST}
+        for ceiling in ("high", "medium", "low"):
+            with self.subTest(ceiling=ceiling), patch("api.settings._get_all_settings", new=AsyncMock(return_value={"image_quality": ceiling})), patch(
+                "services.viz.figure_gen.generate_illustration", new=generate
+            ):
+                result = await ae._generate_single_paperbanana(7, item, "source", "folder", "", "", llm_provider="gemini")
+                self.assertEqual(generate.await_args.kwargs["image_model"], ae.MODEL_IMAGE_SUNBURST)
+                self.assertEqual(generate.await_args.kwargs["quality"], ceiling)
+                self.assertEqual(result["model_used"], ae.MODEL_IMAGE_SUNBURST)
+
+    def test_extra_gate_limits_and_purpose_assignment(self):
+        images = [{"title": purpose, "purpose": purpose, "importance": 50}
+                  for purpose in ("structure", "process", "comparison", "structure")]
+        images += [{"title": f"extra-{score}", "purpose": "additional", "importance": score}
+                   for score in (59, 60, 85, 99, 101, True, "90")]
+        diagrams = [{"title": "roles", "diagram_type": "sequence", "importance": 50}]
+        diagrams += [{"title": f"diagram-{score}", "diagram_type": "flowchart", "importance": score}
+                     for score in (59, 60, 80, 90)]
+        items = ae._normalize_viz_plan({"illustrations": images, "diagrams": diagrams,
+                                      "interactive_html": {"title": "relationship", "applicable": True}})
+        self.assertEqual([it["title"] for it in items],
+                         ["structure", "process", "comparison", "extra-99", "extra-85",
+                          "roles", "diagram-90", "diagram-80", "relationship"])
+        self.assertEqual([it["block"] for it in items[:3]], ["concept", "method", "result"])
+        self.assertEqual(items[-1]["tool"], "html")
+
+    def test_exact_threshold_and_inapplicable_html(self):
+        items = ae._normalize_viz_plan({
+            "illustrations": [{"title": "allowed", "purpose": "additional", "importance": 60},
+                              {"title": "rejected", "purpose": "additional", "importance": 59}],
+            "diagrams": [], "interactive_html": {"title": "unsupported", "applicable": False},
+        })
+        self.assertEqual([it["title"] for it in items], ["allowed"])
+
+    async def test_flare_quality_policy_keeps_setting_as_cap(self):
+        from services.viz.figure_gen import FigureGenResult
+        generate = AsyncMock(return_value=FigureGenResult("/tmp/image.png", "openai", 1, 0.03, None))
+        with patch("api.settings._get_all_settings", new=AsyncMock(return_value={"image_quality": "high"})), patch(
+            "services.viz.figure_gen.generate_illustration", new=generate
+        ):
+            for purpose, quality in (("structure", "medium"), ("process", "high"),
+                                     ("comparison", "high"), ("additional", "medium")):
+                result = await ae._generate_single_paperbanana(
+                    7, {"title": purpose, "diagram_type": purpose}, "source", "folder", "", "",
+                    llm_provider="gemini",
+                )
+                self.assertEqual(generate.await_args.kwargs["preferred_provider"], "openai")
+                self.assertEqual(generate.await_args.kwargs["llm_provider"], "gemini")
+                self.assertEqual(generate.await_args.kwargs["quality"], quality)
+                self.assertEqual(result["model_used"], "gpt-image-2.5-flare")
+        with patch("api.settings._get_all_settings", new=AsyncMock(return_value={"image_quality": "low"})), patch(
+            "services.viz.figure_gen.generate_illustration", new=generate
+        ):
+            await ae._generate_single_paperbanana(7, {"diagram_type": "comparison"}, "source", "folder", "", "")
+            self.assertEqual(generate.await_args.kwargs["quality"], "low")
+
+    async def test_html_generation_preserves_controls_and_rejects_plain_text(self):
+        response = {"text": '```html\n<input type="range"><script>console.assert(2+2===4)</script>\n```',
+                    "model": "test", "tokens_in": 0, "tokens_out": 0}
+        with patch.object(ae, "call_interaction", new=AsyncMock(return_value=response)):
+            out = await ae._generate_single_html({"title": "test"}, "source", provider="openai")
+            self.assertIn('<input type="range">', out["html_code"])
+            self.assertNotIn("```", out["html_code"])
+        with patch.object(ae, "call_interaction", new=AsyncMock(return_value={"text": "no data"})):
+            with self.assertRaises(ValueError):
+                await ae._generate_single_html({}, "source", provider="openai")
+
+    async def test_unknown_image_cost_is_not_saved_as_zero(self):
+        insert = AsyncMock()
+        with patch.object(ae, "fetch_one", new=AsyncMock(return_value=None)), patch.object(
+            ae, "_insert_analysis_result", new=insert
+        ):
+            await ae._store_visualization_progress(7, [{"id": 1, "tool": "paperbanana", "status": "completed"}],
+                                                   "cache", True, provider="openai")
+        self.assertIsNone(insert.await_args.args[6])
+        self.assertTrue(json.loads(insert.await_args.args[2])["cost_incomplete"])
+
+    async def test_invalid_plan_does_not_generate_a_default_flowchart(self):
+        from models.schemas import AnalysisStatus
+        response = {"text": "not JSON", "model": "test", "tokens_in": 0, "tokens_out": 0}
+        insert = AsyncMock()
+        with patch.object(ae, "_get_cached_phase_result", new=AsyncMock(return_value=None)), patch.object(
+            ae, "_run_chain_stage", new=AsyncMock(return_value=response)
+        ), patch.object(ae, "_insert_analysis_result", new=insert):
+            with self.assertRaises(ValueError):
+                await ae._plan_visualizations(7, "source", [], AnalysisStatus(paper_id=7), provider="openai")
+        stored = json.loads(insert.await_args.args[2])
+        self.assertIn("_parse_error", stored)
+        self.assertNotIn("visualizations", stored)
 
 
 class SchemaShapeTests(unittest.TestCase):

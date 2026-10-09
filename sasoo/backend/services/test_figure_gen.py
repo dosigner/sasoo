@@ -139,6 +139,30 @@ class FigureGenTests(unittest.IsolatedAsyncioTestCase):
         for ch in '<>:"/\\?*':
             self.assertNotIn(ch, name)
 
+    async def test_distinct_ids_do_not_overwrite_images_with_the_same_title(self):
+        with patch.object(figure_gen, "build_providers", return_value=[_FakeProvider("openai")]):
+            first = await generate_illustration({**_target(), "id": 1}, self.paper_dir)
+            second = await generate_illustration({**_target(), "id": 2}, self.paper_dir)
+        self.assertNotEqual(first.path, second.path)
+        self.assertTrue(Path(first.path).exists())
+        self.assertTrue(Path(second.path).exists())
+
+    async def test_model_switch_keeps_both_assets_and_changes_the_url(self):
+        target = {**_target(), "id": 1}
+        with patch.object(figure_gen, "build_providers", return_value=[_FakeProvider("openai")]):
+            flare = await generate_illustration(target, self.paper_dir, image_model="gpt-image-2.5-flare")
+            sunburst = await generate_illustration(target, self.paper_dir, image_model="gpt-image-2.5-sunburst")
+        self.assertNotEqual(flare.path, sunburst.path)
+        self.assertTrue(Path(flare.path).exists())
+        self.assertTrue(Path(sunburst.path).exists())
+
+    async def test_model_prefix_leaves_room_for_long_korean_titles(self):
+        with patch.object(figure_gen, "build_providers", return_value=[_FakeProvider("openai")]):
+            result = await generate_illustration({**_target("긴제목" * 100), "id": 1}, self.paper_dir,
+                                                image_model="gpt-image-2.5-sunburst")
+        self.assertTrue(Path(result.path).exists())
+        self.assertLessEqual(len(Path(result.path).name.encode("utf-8")), 255)
+
 
 class ProviderOrderTests(unittest.TestCase):
     def test_gemini_selection_stays_on_gemini(self):
@@ -153,6 +177,29 @@ class ProviderOrderTests(unittest.TestCase):
 
 
 class FlareRenderTests(unittest.IsolatedAsyncioTestCase):
+    async def test_sunburst_request_and_cost_keep_the_selected_model(self):
+        usage = {"input_tokens": 200, "input_tokens_details": {"text_tokens": 200, "image_tokens": 0}, "output_tokens": 1000}
+        response = Mock()
+        response.json.return_value = {"data": [{"b64_json": base64.b64encode(PNG_1PX).decode()}], "usage": usage}
+        with TemporaryDirectory() as directory, patch.dict("os.environ", {"OPENAI_API_KEY": "test"}), patch.object(
+            figure_gen, "_plan_description", new=AsyncMock(return_value="A scientific diagram")
+        ), patch("httpx.post", return_value=response) as post:
+            result = await generate_illustration(_target(), directory, image_model="gpt-image-2.5-sunburst")
+        request = post.call_args.kwargs["json"]
+        self.assertEqual(request["model"], "gpt-image-2.5-sunburst")
+        self.assertEqual(request["quality"], "high")
+        self.assertEqual(request["size"], "1536x1024")
+        self.assertAlmostEqual(result.cost_usd, 0.031)
+
+    async def test_sunburst_failure_does_not_retry_flare(self):
+        with TemporaryDirectory() as directory, patch.dict("os.environ", {"OPENAI_API_KEY": "test"}), patch.object(
+            figure_gen, "_plan_description", new=AsyncMock(return_value="A scientific diagram")
+        ), patch("httpx.post", side_effect=RuntimeError("render failed")) as post:
+            result = await generate_illustration(_target(), directory, image_model="gpt-image-2.5-sunburst")
+        self.assertIsNone(result.path)
+        self.assertEqual(post.call_count, 1)
+        self.assertEqual(post.call_args.kwargs["json"]["model"], "gpt-image-2.5-sunburst")
+
     async def test_planner_and_renderer_keep_readable_labels_and_usage(self):
         description = "Three panels labeled 'Wavefront measurement and reconstruction'."
         usage = {"input_tokens": 200, "input_tokens_details": {"text_tokens": 200, "image_tokens": 0},

@@ -442,14 +442,14 @@ class PaperBananaResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Visualization Plan (Gemini Pro 3 → up to 5 diagrams/figures)
+# Mixed visualization plan
 # ---------------------------------------------------------------------------
 
 class VisualizationItem(BaseModel):
-    """A single visualization item planned by Gemini Pro 3."""
-    id: int = 0                             # ordinal index (1-5)
+    """One planned image, Mermaid diagram, or HTML explainer."""
+    id: int = 0
     title: str                              # short descriptive title
-    tool: str = "mermaid"                   # "mermaid" or "paperbanana"
+    tool: str = "mermaid"                   # mermaid, paperbanana, html
     diagram_type: str = "flowchart"         # flowchart, sequence, methodology, etc.
     description: str = ""                   # why this viz helps understand the method
     category: str = ""                      # from DiagramCategory taxonomy
@@ -461,13 +461,22 @@ class VisualizationItem(BaseModel):
     # PaperBanana-specific
     image_url: Optional[str] = None
     image_path: Optional[str] = None
+    html_code: Optional[str] = None
+    importance: Optional[int] = None
+    image_quality: Optional[str] = None
+    image_model: Optional[str] = None
+    difficulty: Optional[int] = None
+    model_used: Optional[str] = None
+    provider: Optional[str] = None
+    cost_usd: Optional[float] = None
+    duration_s: Optional[float] = None
     # Status
     status: str = "pending"                 # pending | generating | completed | error
     error_message: Optional[str] = None
 
 
 class VisualizationPlanResponse(BaseModel):
-    """Complete visualization plan: up to 5 items, each Mermaid or PaperBanana."""
+    """Mixed image, Mermaid, and interactive HTML visualizations."""
     paper_id: int
     items: list[VisualizationItem] = Field(default_factory=list)
     total_count: int = 0

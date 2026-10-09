@@ -277,17 +277,26 @@ export interface MermaidDiagram {
   description: string | null;
 }
 
-// Visualization plan types (Gemini Pro 3 → up to 5 items)
+// Mixed image, Mermaid, and HTML visualizations.
 export interface VisualizationItem {
   id: number;
   title: string;
-  tool: 'mermaid' | 'paperbanana';
+  tool: 'mermaid' | 'paperbanana' | 'html';
   diagram_type: string;
   description: string;
   category: string;
   mermaid_code: string | null;
   image_url: string | null;
   image_path: string | null;
+  html_code?: string | null;
+  importance?: number | null;
+  image_quality?: string | null;
+  image_model?: string | null;
+  difficulty?: number | null;
+  model_used?: string | null;
+  provider?: string | null;
+  cost_usd?: number | null;
+  duration_s?: number | null;
   status: 'pending' | 'generating' | 'completed' | 'error';
   error_message: string | null;
   /** 종합 뷰가 배정한 구획. 기존 논문(종합 도입 전 생성)에는 없어서 null. */

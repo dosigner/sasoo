@@ -8,6 +8,7 @@
 import JSZip from 'jszip';
 import { getStaticUrl, type VisualizationItem } from '@/lib/api';
 import { downloadBlob } from '@/lib/download';
+import { htmlVisualizationDocument } from '@/components/HtmlVisualization';
 import {
   renderMermaidSvg,
   safeFilename,
@@ -53,6 +54,13 @@ export async function exportVisualizationsZip(
           imageName = `${base}.png`;
           images.file(imageName, await response.blob());
         }
+      } else if (item.tool === 'html' && item.html_code) {
+        const document = htmlVisualizationDocument(item.html_code)
+          .replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
+        sources.file(`${base}.html`, `<!doctype html><html lang="ko"><meta charset="utf-8"><title>변수와 결과</title><iframe title="변수와 결과" sandbox="allow-scripts" referrerpolicy="no-referrer" style="border:0;width:100%;height:95vh" srcdoc="${document}"></iframe></html>`);
+        exported += 1;
+        mdLines.push(`## ${item.id}. ${item.title}`, '', item.description, '', `[HTML 설명](sources/${base}.html)`, '');
+        continue;
       }
     } catch (err) {
       console.warn(`viz export: item ${item.id} failed`, err);

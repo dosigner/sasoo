@@ -21,6 +21,21 @@ function makeItem(overrides: Partial<VisualizationItem> & { id: number }): Visua
 }
 
 describe('assignBlocks', () => {
+  it('keeps all generated image roles, extra diagrams, and the HTML explainer', () => {
+    const items = [
+      makeItem({ id: 1, tool: 'paperbanana', diagram_type: 'structure', block: 'concept' }),
+      makeItem({ id: 2, tool: 'paperbanana', diagram_type: 'process', block: 'method' }),
+      makeItem({ id: 3, tool: 'paperbanana', diagram_type: 'comparison', block: 'result' }),
+      makeItem({ id: 4, tool: 'paperbanana', diagram_type: 'additional', block: 'method' }),
+      makeItem({ id: 5, tool: 'paperbanana', diagram_type: 'additional', block: 'method' }),
+      ...[6, 7, 8].map((id) => makeItem({ id, block: 'method' })),
+      makeItem({ id: 9, tool: 'html', block: 'result', html_code: '<input>' }),
+    ];
+    const assigned = assignBlocks(items);
+    expect(assigned.concept?.id).toBe(1);
+    expect(assigned.method.map((it) => it.id)).toEqual([2, 4, 5, 6, 7, 8]);
+    expect(assigned.result.map((it) => it.id)).toEqual([3, 9]);
+  });
   it('block 없는 혼합 목록: paperbanana는 concept, comparison mermaid는 result, 그 외 mermaid는 method, mindmap은 버림', () => {
     const items: VisualizationItem[] = [
       makeItem({ id: 1, tool: 'paperbanana' }),

@@ -55,7 +55,7 @@ from api.analysis_helpers import (
 # _phase_cache_key를 거치지 않는 바깥 캐시라서 "Gemini 모델을 갈면 무효화"를
 # 스스로 담아야 한다. 공급사 격리는 compute_input_hash(provider/model/effort)가
 # 따로 하므로 역할이 겹치지 않는다. 테스트가 patch.object로 이 이름을 덮는다.
-from services.models import MODEL_CITATION, MODEL_MERMAID, MODEL_VIZ_PLANNING
+from services.models import MODEL_CITATION, MODEL_IMAGE_OPENAI, MODEL_IMAGE_SUNBURST, MODEL_MERMAID, MODEL_VIZ_PLANNING
 from services.model_registry import (
     ModelChoice,
     active_provider,
@@ -252,6 +252,7 @@ def _visualization_cache_input(
     deep_dive_result,
     image_provider: str,
     image_quality: str,
+    analysis_provider: str = "gemini",
 ) -> str:
     """시각화 phase의 캐시 키.
 
@@ -263,6 +264,7 @@ def _visualization_cache_input(
     return json.dumps(
         {
             "chain_version": _CHAIN_CACHE_VERSION,
+            "visualization_policy": "images-124-sequence-3-html-5-v2-sunburst",
             "visualization_input": visualization_input,
             "previous_results": previous_results,
             "recipe_result": recipe_result,
@@ -271,8 +273,13 @@ def _visualization_cache_input(
             "image_quality": image_quality,
             # This cache reuses the rendered image, so model changes need a new key.
             "image_model": resolve_model("image", image_provider).model,
+            "sunburst_model": MODEL_IMAGE_SUNBURST,
             "plan_model": MODEL_VIZ_PLANNING,
             "mermaid_model": MODEL_MERMAID,
+            "analysis_provider": analysis_provider,
+            "resolved_plan_model": resolve_model("viz_planning", analysis_provider).model,
+            "resolved_mermaid_model": resolve_model("mermaid", analysis_provider).model,
+            "html_model": resolve_model("viz_image_plan", analysis_provider).model,
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -1309,23 +1316,28 @@ _DIAGRAM_CATEGORIES = [
     "conceptual_illustration",
 ]
 
-# 스펙 §5.4. 개념도 1개(PaperBanana)와 Mermaid 다이어그램을 분리하고, 구획(block)과
-# 종류(diagram_type)를 enum으로 고정한다. 마지막 속성은 숫자다(DEC-014).
+# Keep the count last to avoid a trailing free-text field.
 _VIZ_PLAN_SCHEMA = {
     "type": "object",
     "properties": {
-        "concept_illustration": {
-            "type": "object",
-            "properties": {
-                "title": {"type": "string"},
-                "description": {"type": "string"},
-                "category": {"type": "string", "enum": _DIAGRAM_CATEGORIES},
+        "illustrations": {
+            "type": "array", "maxItems": 5,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "purpose": {"type": "string", "enum": ["structure", "process", "comparison", "additional"]},
+                    "description": {"type": "string"},
+                    "category": {"type": "string", "enum": _DIAGRAM_CATEGORIES},
+                    "importance": {"type": "integer", "minimum": 0, "maximum": 100},
+                    "difficulty": {"type": "integer", "minimum": 0, "maximum": 100},
+                },
+                "required": ["title", "purpose", "description", "category", "importance", "difficulty"],
             },
-            "required": ["title", "description", "category"],
         },
         "diagrams": {
             "type": "array",
-            "maxItems": 5,
+            "maxItems": 3,
             "items": {
                 "type": "object",
                 "properties": {
@@ -1334,13 +1346,23 @@ _VIZ_PLAN_SCHEMA = {
                     "diagram_type": {"type": "string", "enum": ["flowchart", "sequence"]},
                     "description": {"type": "string"},
                     "category": {"type": "string", "enum": _DIAGRAM_CATEGORIES},
+                    "importance": {"type": "integer", "minimum": 0, "maximum": 100},
                 },
-                "required": ["title", "block", "diagram_type", "description", "category"],
+                "required": ["title", "block", "diagram_type", "description", "category", "importance"],
             },
+        },
+        "interactive_html": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "description": {"type": "string"},
+                "applicable": {"type": "boolean"},
+            },
+            "required": ["title", "description", "applicable"],
         },
         "diagram_count": {"type": "integer"},
     },
-    "required": ["concept_illustration", "diagrams", "diagram_count"],
+    "required": ["illustrations", "diagrams", "interactive_html", "diagram_count"],
 }
 
 # 스펙 §5.3. 요약 문장 2개, 핵심 수치, 수식 체인, 결과 그림 선택, 핵심 파라미터 선택.
@@ -2478,6 +2500,8 @@ def _normalize_viz_plan(plan_data: dict) -> list[dict]:
     저장 형식은 기존과 같은 `{"visualizations": [...]}`다(get_visualizations 라우트와
     프론트가 그대로 읽는다). 항목에 block 필드만 새로 붙는다.
     """
+    if "illustrations" in plan_data:
+        return _normalize_mixed_viz_plan(plan_data)
     items: list[dict] = []
     concept = plan_data.get("concept_illustration")
     if isinstance(concept, dict) and str(concept.get("title") or "").strip():
@@ -2511,6 +2535,55 @@ def _normalize_viz_plan(plan_data: dict) -> list[dict]:
     return items
 
 
+def _normalize_mixed_viz_plan(plan_data: dict) -> list[dict]:
+    """Enforce purpose limits and the 60-point gate before paid generation."""
+    def importance(item):
+        score = item.get("importance")
+        return score if type(score) is int and 0 <= score <= 100 else 0
+
+    images = [it for it in plan_data.get("illustrations") or []
+              if isinstance(it, dict) and str(it.get("title") or "").strip()]
+    items = []
+    for purpose, block in (("structure", "concept"), ("process", "method"), ("comparison", "result")):
+        item = next((it for it in images if it.get("purpose") == purpose), None)
+        if item:
+            items.append({**item, "tool": "paperbanana", "block": block, "diagram_type": purpose})
+    extras = sorted((it for it in images if it.get("purpose") == "additional" and importance(it) >= 60),
+                    key=importance, reverse=True)[:2]
+    for item in extras:
+        block = "result" if item.get("category") == "comparison" else "method"
+        items.append({**item, "tool": "paperbanana", "block": block, "diagram_type": "additional"})
+
+    candidates = []
+    for item in items:
+        item["image_model"] = MODEL_IMAGE_OPENAI
+        difficulty = item.get("difficulty")
+        if type(difficulty) is not int or not 0 <= difficulty <= 100:
+            item["difficulty"] = None
+        elif item["diagram_type"] != "additional" and difficulty >= 70 and importance(item) >= 60:
+            candidates.append(item)
+    if candidates:
+        hardest = max(candidates, key=lambda item: (item["difficulty"], importance(item)))
+        hardest["image_model"] = MODEL_IMAGE_SUNBURST
+
+    diagrams = [it for it in plan_data.get("diagrams") or []
+                if isinstance(it, dict) and str(it.get("title") or "").strip()
+                and it.get("diagram_type") in _MERMAID_RENDERABLE_TYPES]
+    primary = next((it for it in diagrams if it.get("diagram_type") == "sequence"), None)
+    selected = [primary] if primary else []
+    selected.extend(sorted((it for it in diagrams if it is not primary and importance(it) >= 60),
+                           key=importance, reverse=True)[:2])
+    for item in selected:
+        block = item.get("block") if item.get("block") in ("method", "result") else "method"
+        items.append({**item, "tool": "mermaid", "block": block})
+
+    interactive = plan_data.get("interactive_html")
+    if isinstance(interactive, dict) and interactive.get("applicable") is True and str(interactive.get("title") or "").strip():
+        items.append({**interactive, "tool": "html", "block": "result", "diagram_type": "interactive",
+                      "category": "parameter_relationship"})
+    return items
+
+
 async def _plan_visualizations(
     paper_id: int,
     visualization_input: str,
@@ -2528,7 +2601,7 @@ async def _plan_visualizations(
     """
     Decide which visualizations best help understand the paper's methodology.
     Final stage of the stateful chain. Returns a plan as a list of dicts
-    (개념도 1개 + Mermaid 최대 5개, 스펙 §5.4).
+    Images for structure/process/comparison, Mermaid interactions, and HTML.
     """
     phase_status = PhaseStatus(
         phase=AnalysisPhase.DEEP_DIVE,  # piggyback on deep_dive phase for status
@@ -2545,21 +2618,36 @@ async def _plan_visualizations(
     instruction = """너는 연구 논문 분석 시스템의 시각화 기획자야. 종합 뷰의 두 구획
 (방법 흐름, 결과)에 들어갈 시각화를 기획해.
 
-concept_illustration(개념도, PaperBanana 일러스트) 1개를 반드시 낸다:
-논문의 물리적 설정이나 핵심 개념을 그림으로 보여주는 도식이다. 실험 장비가 없는
-이론 논문이면 문제 설정(입력·가정·목표) 도식으로 낸다. 비워 두지 마.
+illustrations는 이미지 모델로 만들 그림이다. 다음 목적별로 1개씩 기획한다:
+- purpose="structure": 전체 체계, 구성 요소, 공간 배치 또는 이론의 문제 설정.
+- purpose="process": 같은 입력이 3~5단계에서 어떻게 변하는지 패널로 보여준다.
+- purpose="comparison": 기존 방식과 제안 방식을 같은 배치로 나란히 비교한다.
+  추가된 구성과 원리 차이를 강조하되 원문에 없는 성능 수치나 곡선은 만들지 않는다.
+논문에 해당 내용이 없으면 그 목적은 생략한다. 세 목적을 Mermaid로 중복 생성하지 마.
+추가 그림은 purpose="additional"로 최대 2개, importance가 60 이상인 경우만 낸다.
 
-diagrams(Mermaid 다이어그램)는 최대 5개다. 각 항목의 block으로 구획을 정한다:
-- block="method"(최대 3): 절차·처리 순서는 diagram_type="flowchart",
-  신호나 시간 순서로 주고받는 상호작용은 diagram_type="sequence".
-- block="result"(최대 2): 조건·기법·성능의 비교 구조. diagram_type은 "flowchart"만
-  쓴다(sequence를 내면 버려진다).
-마인드맵·타임라인은 만들지 않는다.
+diagrams는 역할과 시간 순서 설명을 위한 Mermaid sequence 1개가 기본이다.
+여러 주체의 상호작용이 없으면 생략한다. 추가 Mermaid는 flowchart 또는 sequence로
+최대 2개, importance가 60 이상일 때만 낸다. block은 method 또는 result다.
+각 항목의 title과 description은 한국어다. description에는 필요한 이유와 논문 근거를 쓴다.
 
-각 diagrams 항목 필드: title(짧은 제목, 한국어), block(method|result),
-diagram_type(flowchart|sequence), description(왜 필요한지·무엇을 보여주는지
-2-3문장, 한국어), category(위 enum 중 하나).
-diagram_count에는 diagrams의 개수를 넣는다.
+importance는 확률이 아니라 이해에 필요한 정도의 0~100 정수 점수다.
+핵심 기여 이해 40점, 다른 자료로 설명되지 않는 정보 30점, 원문 근거 30점으로 판단한다.
+추가 항목으로 분량을 채우지 마. 기존 그림과 중복되면 점수를 낮춘다.
+
+각 illustrations 항목에 difficulty(0~100 정수)를 별도로 평가한다. 중요도와 혼동하지 마.
+여러 패널에서 같은 대상을 유지하는 어려움 40점, 공간 배치와 연결 관계의 복잡성 40점,
+레이블과 세부 표현 제약 20점으로 평가한다. 단순 그림은 70점 미만으로 준다.
+description에 난도가 높은 이유를 구체적으로 쓴다. 구조/단계/비교의 핵심 그림 중
+importance>=60, difficulty>=70인 후보에서 난도가 가장 높은 한 장만 Sunburst로
+생성하고 나머지와 추가 그림은 Flare로 생성한다. 높은 점수를 억지로 만들지 마.
+
+interactive_html은 변수와 결과의 관계를 직접 조작할 설명이다. 논문의 식과 계수 또는
+실험 데이터가 있어 검증 가능할 때만 applicable=true로 한다. description에 식, 단위,
+값 범위, 원문 근거, 검산 가능한 입력과 출력 예를 포함한다. 미확인 계수를 추정하거나
+측정되지 않은 성능 곡선을 만드는 것은 금지한다. 해당 근거가 없으면 applicable=false,
+title과 description은 빈 문자열로 낸다.
+diagram_count는 illustrations와 diagrams, applicable인 HTML의 합이다.
 
 제목·설명·다이어그램 레이블에 이모지를 쓰지 마.
 실험 방법을 최대한 이해할 수 있는 시각화를 우선시해."""
@@ -2617,21 +2705,17 @@ diagram_count에는 diagrams의 개수를 넣는다.
         lines = [l for l in lines if not l.strip().startswith("```")]
         raw = "\n".join(lines).strip()
 
+    plan_error = None
     try:
         items = _normalize_viz_plan(json.loads(raw))
-    except (json.JSONDecodeError, TypeError, AttributeError):
-        # Fallback: create a single default flowchart
-        items = [{
-            "title": "실험 프로세스 흐름도",
-            "tool": "mermaid",
-            "block": "method",
-            "diagram_type": "flowchart",
-            "description": "논문의 실험 방법론 전체 흐름을 보여주는 플로우차트",
-            "category": "experimental_protocol",
-        }]
+    except (json.JSONDecodeError, TypeError, AttributeError) as exc:
+        items = []
+        plan_error = exc
 
     # Store the plan in DB
     result_text = result["text"] if _is_error_result(result["text"]) else json.dumps({"visualizations": items}, ensure_ascii=False)
+    if plan_error is not None:
+        result_text = json.dumps({"_raw": raw, "_parse_error": "invalid visualization plan"}, ensure_ascii=False)
     await _insert_analysis_result(
         paper_id,
         "viz_plan",
@@ -2647,6 +2731,8 @@ diagram_count에는 diagrams의 개수를 넣는다.
         effort=choice.effort,
     )
 
+    if plan_error is not None:
+        raise ValueError("Visualization planning returned an invalid plan") from plan_error
     return items
 
 
@@ -2686,6 +2772,9 @@ async def _generate_single_mermaid(
 
 추가 규칙: 모든 노드 레이블과 엣지 레이블을 반드시 한국어로 작성해.
 추가 규칙: 노드·엣지·subgraph 레이블에 이모지를 쓰지 마.
+추가 규칙: 실제 신호 전달과 통신 메시지를 구분해. 관측만 하는 장비에 원문에 없는
+요청이나 제어 메시지를 추가하지 마. 구조 그림과 HTML에서 설명할 수식과 파라미터를
+sequence의 메시지로 나열하지 말고, 주체와 전달 순서에 집중해.
 
 분석 데이터와 논문 텍스트를 소스로 사용해:
 
@@ -2740,12 +2829,21 @@ async def _generate_single_paperbanana(
     from api.settings import _get_all_settings
 
     settings = await _get_all_settings()
+    purpose = viz_item.get("diagram_type")
+    mixed_image = purpose in {"structure", "process", "comparison", "additional"}
+    image_model = viz_item.get("image_model") or MODEL_IMAGE_OPENAI
+    if image_model not in {MODEL_IMAGE_OPENAI, MODEL_IMAGE_SUNBURST}:
+        raise ValueError(f"Unsupported image model: {image_model}")
+    quality = settings.get("image_quality", "high")
+    if mixed_image and image_model == MODEL_IMAGE_OPENAI and purpose in {"structure", "additional"} and quality == "high":
+        quality = "medium"
     result = await generate_illustration(
         enriched_item,
         str(get_paper_dir(folder_name)),
-        preferred_provider=llm_provider,
-        quality=settings.get("image_quality", "high"),
+        preferred_provider="openai" if mixed_image else llm_provider,
+        quality=quality,
         llm_provider=llm_provider,
+        image_model=image_model if mixed_image else None,
     )
     if result.path:
         url = f"/static/library/{folder_name}/paperbanana/{Path(result.path).name}"
@@ -2759,9 +2857,45 @@ async def _generate_single_paperbanana(
             "provider": result.provider,
             "duration_s": result.duration_s,
             "cost_usd": result.cost_usd,
+            "image_quality": quality,
+            "model_used": image_model if mixed_image else resolve_model("image", llm_provider).model,
         }
     _logger.warning("figure_gen failed for '%s': %s", title, result.error)
     return {"error": result.error or "generation failed"}
+
+
+async def _generate_single_html(viz_item: dict, visualization_input: str, *, provider: str) -> dict:
+    """Generate a self-contained parameter explainer for a sandboxed frame."""
+    prompt = f"""논문 변수와 결과의 관계를 조작하며 확인할 수 있는 작은 HTML 설명을 만들어.
+제목: {viz_item.get('title', '')}
+기획 및 검산 예: {viz_item.get('description', '')}
+논문 근거: {visualization_input[:10000]}
+
+HTML body 조각만 반환해. inline style과 script, SVG, 기본 JavaScript만 사용해.
+외부 리소스, CDN, 네트워크 요청, iframe, 링크, eval, 저장소, 부모 창 접근은 금지해.
+한국어 레이블, 단위, 범위, 기본값, 적용 가정, 원문 근거와 검산 예를 화면에 표시해.
+핵심 조작부, 현재 출력값, 그래프를 위쪽에 간결하게 배치하고 자세한 가정과 근거는
+details로 펼치게 해. 좁은 화면에서도 입력을 조작하며 출력값을 확인할 수 있게 해.
+변수 사이의 종속관계를 유지해. 종속 변수도 표시값을 갱신하고, 고정 조건과 독립 변수
+설정이 충돌하면 안 돼. 기본 조건과 조작 후 조건을 구분해.
+슬라이더 또는 숫자 입력을 바꾸면 값과 SVG 그래프가 함께 갱신되어야 해.
+입력 범위를 검증하고 NaN, Infinity를 출력하지 마. 반응형, 키보드 접근, 충분한 대비를 지켜.
+논문의 식이나 제공된 데이터만 사용해. 임의 계수나 실험 성능을 만들지 마.
+제공된 검산 예를 JavaScript assert로 확인해. 결과는 설명용 계산이며 실험 재현과 구분해.
+"""
+    choice = resolve_model("viz_image_plan", provider)
+    result = await call_interaction(
+        prompt, lane="pipeline", model=choice.model, thinking_level=choice.effort, store=False,
+        max_output_tokens=8000,
+    )
+    code = str(result.get("text") or "").strip()
+    if code.startswith("```"):
+        code = "\n".join(code.splitlines()[1:]).removesuffix("```").strip()
+    if _is_error_result(code) or result.get("response_status") in {"incomplete", "failed", "cancelled"}:
+        raise ValueError("HTML generation did not complete")
+    if len(code) > 100000 or "<script" not in code.lower() or not re.search(r"<(input|button|select)\b", code, re.I):
+        raise ValueError("HTML explainer has no valid interactive controls")
+    return {"html_code": code, "cost_usd": _result_cost(result), "model_used": choice.model}
 
 
 async def _store_visualization_progress(
@@ -2778,7 +2912,9 @@ async def _store_visualization_progress(
     항목(mermaid/paperbanana)의 모델이 아니다.
     """
     input_hash = compute_input_hash(cache_input)
-    total_cost_usd = sum(it.get("cost_usd") or 0 for it in items)
+    cost_unknown = any(it.get("tool") in {"paperbanana", "html"} and it.get("status") == "completed"
+                       and it.get("cost_usd") is None for it in items)
+    total_cost_usd = None if cost_unknown else sum(it.get("cost_usd") or 0 for it in items)
     model_used = resolve_model("viz_planning", provider).model
     payload = json.dumps(
         {
@@ -2787,6 +2923,7 @@ async def _store_visualization_progress(
             "model_used": model_used,
             "planned_at": _utcnow_iso(),
             "complete": done,
+            "cost_incomplete": cost_unknown,
         },
         ensure_ascii=False,
     )
@@ -3110,8 +3247,8 @@ async def _run_visualizations(
     """
     Full visualization pipeline:
     0. 종합 스테이지(_run_synthesis)를 먼저 돌려 저장한다
-    1. 개념도 1개 + Mermaid 최대 5개를 기획한다
-    2. Generate each (Mermaid or PaperBanana) in parallel
+    1. Plan up to five images, three Mermaid diagrams, and one HTML explainer.
+    2. Render images in sequence; generate Mermaid and HTML separately.
     3. Store results in DB
     """
     # 0. 종합 먼저(스펙 §7): 종합이 도착하면 프론트가 구획 5개 뼈대를 즉시 그리고
@@ -3142,8 +3279,9 @@ async def _run_visualizations(
         previous_results=previous_results,
         recipe_result=recipe_result,
         deep_dive_result=deep_dive_result,
-        image_provider=provider,
+        image_provider="openai",
         image_quality=_image_settings.get("image_quality", "high"),
+        analysis_provider=provider,
     )
     cached = await _get_cached_phase_result(paper_id, "visualization", visualization_cache_input)
     if cached is not None:
@@ -3188,6 +3326,9 @@ async def _run_visualizations(
             "diagram_type": item.get("diagram_type", "flowchart"),
             "description": item.get("description", ""),
             "category": item.get("category", ""),
+            "importance": item.get("importance"),
+            "difficulty": item.get("difficulty"),
+            "image_model": item.get("image_model"),
             "status": "generating",
         }
         try:
@@ -3204,7 +3345,7 @@ async def _run_visualizations(
             elif tool == "paperbanana":
                 pb_result = await _generate_single_paperbanana(
                     paper_id,
-                    item,
+                    {**item, "id": idx + 1},
                     visualization_input,
                     folder_name,
                     recipe_result,
@@ -3221,9 +3362,14 @@ async def _run_visualizations(
                         result_item["duration_s"] = pb_result["duration_s"]
                     if pb_result.get("cost_usd") is not None:
                         result_item["cost_usd"] = pb_result["cost_usd"]
+                    result_item["image_quality"] = pb_result.get("image_quality")
+                    result_item["model_used"] = pb_result.get("model_used")
                 else:
                     result_item["status"] = "error"
                     result_item["error_message"] = pb_result.get("error", "generation failed")
+            elif tool == "html":
+                result_item.update(await _generate_single_html(item, visualization_input, provider=provider))
+                result_item["status"] = "completed"
             else:
                 result_item["status"] = "error"
                 result_item["error_message"] = f"Unknown tool: {tool}"
