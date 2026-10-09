@@ -6,6 +6,7 @@ import type { VisualizationItem } from '@/lib/api';
 import { getStaticUrl } from '@/lib/api';
 import { S } from '@/lib/strings';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { HtmlVisualization } from '../HtmlVisualization';
 
 const MermaidRenderer = lazy(() => import('../MermaidRenderer'));
 const T = S.synthesis;
@@ -89,7 +90,7 @@ export function DiagramLightbox({
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, []);
+  }, [target?.item.tool]);
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
@@ -132,13 +133,13 @@ export function DiagramLightbox({
             {target.blockLabel} {index + 1}/{count}
           </span>
           <div className="ml-auto flex items-center gap-1">
-            <button className={iconBtn} onClick={() => zoomBy(1 / 1.25)} aria-label={T.zoomOut} title={T.zoomOut}>
+            <button className={iconBtn} disabled={item.tool === 'html'} onClick={() => zoomBy(1 / 1.25)} aria-label={T.zoomOut} title={T.zoomOut}>
               <Minus className="h-3 w-3" />
             </button>
-            <button className={`${iconBtn} tabular-nums`} onClick={() => setView(RESET)} title={T.zoomReset}>
+            <button className={`${iconBtn} tabular-nums`} disabled={item.tool === 'html'} onClick={() => setView(RESET)} title={T.zoomReset}>
               {Math.round(view.scale * 100)}%
             </button>
-            <button className={iconBtn} onClick={() => zoomBy(1.25)} aria-label={T.zoomIn} title={T.zoomIn}>
+            <button className={iconBtn} disabled={item.tool === 'html'} onClick={() => zoomBy(1.25)} aria-label={T.zoomIn} title={T.zoomIn}>
               <Plus className="h-3 w-3" />
             </button>
             <span className="mx-1 h-4 w-px bg-border" aria-hidden="true" />
@@ -154,7 +155,9 @@ export function DiagramLightbox({
           </div>
         </div>
 
-        <div
+        {item.tool === 'html' ? (
+          <div className="flex-1 overflow-auto p-4"><HtmlVisualization item={item} /></div>
+        ) : <div
           ref={viewportRef}
           className="flex-1 touch-none overflow-hidden cursor-grab active:cursor-grabbing"
           onPointerDown={onPointerDown}
@@ -190,7 +193,7 @@ export function DiagramLightbox({
               />
             ) : null}
           </div>
-        </div>
+        </div>}
       </div>
     </div>,
     document.body

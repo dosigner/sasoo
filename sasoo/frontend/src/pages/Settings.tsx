@@ -549,14 +549,13 @@ export default function Settings() {
 
           <SettingRow
             label={S.settings.imageProvider}
-            description={aiProvider === 'gemini' ? S.settings.geminiImageHelp : undefined}
           >
             <span className="text-sm text-fg-secondary">
-              {aiProvider === 'gemini' ? S.settings.imageProviderGemini : S.settings.imageProviderOpenai}
+              {S.settings.imageProviderOpenai}
             </span>
           </SettingRow>
 
-          {aiProvider === 'openai' && (
+          {(
             <SettingRow label={S.settings.imageQuality} description={S.settings.imageQualityHelp}>
               <div className="w-44">
                 <Select

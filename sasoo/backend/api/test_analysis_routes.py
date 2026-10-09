@@ -2121,11 +2121,13 @@ class MermaidRepairAndRegenerateTests(unittest.IsolatedAsyncioTestCase):
         """개념도 실패 자리의 "다시 생성"(스펙 §7)은 파이프라인과 같은 생성기로 돈다."""
         paper = {"id": 7, "title": "Paper", "folder_name": "folder"}
         items = [{"id": 1, "tool": "paperbanana", "title": "개념도", "status": "error",
+                  "diagram_type": "structure", "image_model": "gpt-image-2.5-sunburst", "difficulty": 90,
                   "error_message": "rate limit"}]
         generate = AsyncMock(return_value={
             "image_path": "/lib/folder/paperbanana/concept.png",
             "image_url": "/static/library/folder/paperbanana/concept.png",
             "provider": "openai", "duration_s": 3.0, "cost_usd": 0.04,
+            "model_used": "gpt-image-2.5-sunburst", "image_quality": "high",
         })
         update_mock = AsyncMock()
         with (
@@ -2147,6 +2149,9 @@ class MermaidRepairAndRegenerateTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(response.error_message)
         args, kwargs = generate.await_args
         self.assertEqual(args[1]["title"], "개념도")
+        self.assertEqual(args[1]["image_model"], "gpt-image-2.5-sunburst")
+        self.assertEqual(response.image_model, "gpt-image-2.5-sunburst")
+        self.assertEqual(response.model_used, "gpt-image-2.5-sunburst")
         self.assertEqual(args[2], "VIZ-CONTEXT")
         self.assertEqual(args[3], "folder")
         self.assertEqual((args[4], args[5]), ('{"title":"r"}', '{"as_is":"a"}'))
@@ -2188,6 +2193,24 @@ class MermaidRepairAndRegenerateTests(unittest.IsolatedAsyncioTestCase):
                 await analysis_routes.regenerate_visualization(7, 1)
         self.assertEqual(getattr(ctx.exception, "status_code", None), 400)
 
+    async def test_regenerate_html_persists_code_and_cost(self):
+        item = {"id": 1, "tool": "html", "title": "변수와 결과", "html_code": "old"}
+        generate = AsyncMock(return_value={"html_code": '<input><script></script>', "cost_usd": 0.01, "model_used": "text-model"})
+        update = AsyncMock()
+        with patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value={"folder_name": "folder"})), patch(
+            "api.analysis_routes.load_or_build_document_context", return_value={"phase_inputs": {"visualization": "source"}}
+        ), patch("api.analysis_routes.get_latest_completed_phase_row", new=AsyncMock(return_value=self._viz_row([item]))), patch(
+            "api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value={})
+        ), patch("api.analysis_routes._generate_single_html", new=generate), patch(
+            "api.analysis_routes.execute_update", new=update
+        ):
+            response = await analysis_routes.regenerate_visualization(7, 1)
+        self.assertEqual(response.html_code, '<input><script></script>')
+        self.assertEqual(response.cost_usd, 0.01)
+        self.assertEqual(response.status, "completed")
+        self.assertEqual(generate.await_args.args[1], "source")
+        update.assert_awaited_once()
+
 
 class VisualizationCacheKeyTests(unittest.TestCase):
     """시각화 캐시 키는 이미지 설정까지 담아야 한다.
@@ -2222,6 +2245,11 @@ class VisualizationCacheKeyTests(unittest.TestCase):
         base = self._key()
         with patch.object(analysis_execution, "resolve_model",
                           return_value=analysis_execution.ModelChoice("other-image-model", None)):
+            self.assertNotEqual(base, self._key())
+
+    def test_sunburst_model_changes_the_key(self):
+        base = self._key()
+        with patch.object(analysis_execution, "MODEL_IMAGE_SUNBURST", "other-sunburst-model"):
             self.assertNotEqual(base, self._key())
 
     def test_text_inputs_still_change_the_key(self):

@@ -96,6 +96,7 @@ IMAGE_PRICING: dict[str, float] = {
 # Official OpenAI and Google pricing pages, checked 2026-10-07.
 IMAGE_TOKEN_PRICING: dict[str, dict[str, float]] = {
     "gpt-image-2.5-flare": {"text_input": 5.0, "image_input": 8.0, "image_output": 30.0},
+    "gpt-image-2.5-sunburst": {"text_input": 5.0, "image_input": 8.0, "image_output": 30.0},
     "gemini-nano-banana-2.1": {"input": 1.50, "text_output": 7.50, "image_output": 30.00},
 }
 

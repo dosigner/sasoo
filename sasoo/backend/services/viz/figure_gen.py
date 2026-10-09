@@ -1,7 +1,7 @@
 """
 Sasoo - 논문 도해 생성 (PaperBanana 패키지 대체)
 
-Two stages: plan with the selected provider's text model, then render with its image model.
+Two stages: plan with a text model, then render with the chosen image model.
 품질은 렌더 프롬프트가 아니라 Planner 기술서에서 나온다 — 배경 스타일, 색, 선 굵기,
 아이콘 스타일, 라벨 텍스트까지 텍스트로 확정한 뒤 렌더러에는 실행만 시킨다.
 
@@ -31,7 +31,7 @@ from typing import Optional, Protocol
 
 from services.concurrency import RENDER_SEM, run_pipeline_blocking
 from services.model_registry import resolve as resolve_model
-from services.models import MODEL_IMAGE, MODEL_IMAGE_OPENAI
+from services.models import MODEL_IMAGE, MODEL_IMAGE_OPENAI, MODEL_IMAGE_SUNBURST
 from services.pricing import PricingUsageError, calc_image_cost
 
 logger = logging.getLogger(__name__)
@@ -78,7 +78,17 @@ _PLANNER_SYSTEM = (
     "layout, background style, color palette, line weight, icon style, and "
     "the EXACT text of every label (short English labels). Vague wording "
     "makes the figure worse — decide everything yourself. Do NOT include a "
-    "figure title or caption inside the image.\n\n" + _TYPOGRAPHY_INSTRUCTION
+    "figure title or caption inside the image. Use only supplied scientific "
+    "facts. Never invent numerical results, performance curves, or equipment. "
+    "Use context to check facts, not as a list of content to draw. For structure "
+    "images, focus on components and connections; omit result plots and "
+    "baseline comparisons unless the request explicitly asks for them. "
+    "Do not draw quantitative plots or introduce equations unless explicitly "
+    "requested. Supplied formulas are context, not instructions to draw axes. "
+    "For state snapshots, use pictorial states and short labels, not time plots. "
+    "For process images, show the SAME input changing across 3-5 numbered panels. "
+    "For comparisons, use aligned baseline and proposed panels with matching "
+    "scales and highlight only supported differences.\n\n" + _TYPOGRAPHY_INSTRUCTION
 )
 
 
@@ -90,6 +100,7 @@ async def _plan_description(viz_target: dict, *, llm_provider: str = "gemini") -
         f"Illustration request:\n"
         f"Title: {viz_target.get('title', '')}\n"
         f"Category: {viz_target.get('category', 'conceptual_illustration')}\n"
+        f"Purpose: {viz_target.get('diagram_type', 'structure')}\n"
         f"Context:\n{viz_target.get('description', '')[:6000]}\n\n"
         "Write the final image description now."
     )
@@ -129,9 +140,12 @@ _RENDER_INSTRUCTION = (
 class OpenAIImageProvider:
     name = "openai"
 
-    def __init__(self, quality: str = "high") -> None:
+    def __init__(self, quality: str = "high", model: str = MODEL_IMAGE_OPENAI) -> None:
+        if model not in {MODEL_IMAGE_OPENAI, MODEL_IMAGE_SUNBURST}:
+            raise ValueError(f"Unsupported image model: {model}")
         self._quality = quality
-        self.cost_key = f"{MODEL_IMAGE_OPENAI}:{quality}"
+        self._model = model
+        self.cost_key = f"{model}:{quality}"
         self.usage: dict | None = None
 
     def available(self) -> bool:
@@ -144,7 +158,7 @@ class OpenAIImageProvider:
             "https://api.openai.com/v1/images/generations",
             headers={"Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"},
             json={
-                "model": MODEL_IMAGE_OPENAI,
+                "model": self._model,
                 "prompt": _RENDER_INSTRUCTION + description + "\n\n" + _TYPOGRAPHY_INSTRUCTION,
                 "size": IMAGE_SIZE,
                 "quality": self._quality,
@@ -196,11 +210,11 @@ class GeminiImageProvider:
         return png
 
 
-def build_providers(preferred: str, quality: str) -> list:
+def build_providers(preferred: str, quality: str, image_model: str | None = None) -> list:
     """Use the selected provider for this render request."""
     if preferred == "gemini":
         return [GeminiImageProvider()]
-    return [OpenAIImageProvider(quality=quality)]
+    return [OpenAIImageProvider(quality=quality, model=image_model or MODEL_IMAGE_OPENAI)]
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +234,7 @@ async def generate_illustration(
     preferred_provider: str = "openai",
     quality: str = "high",
     llm_provider: str | None = None,
+    image_model: str | None = None,
 ) -> FigureGenResult:
     """Generate one figure and return an error result on failure.
 
@@ -235,7 +250,7 @@ async def generate_illustration(
         return FigureGenResult(None, None, round(time.monotonic() - start, 1), 0.0, f"planner: {exc}")
 
     errors: list[str] = []
-    for provider in build_providers(preferred_provider, quality):
+    for provider in build_providers(preferred_provider, quality, image_model):
         if not provider.available():
             logger.info("figure_gen: provider %s unavailable (no key), skipping", provider.name)
             continue
@@ -258,7 +273,13 @@ async def generate_illustration(
 
         out_dir = Path(paper_dir) / "paperbanana"
         out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / f"{_safe_filename(viz_target.get('title', 'illustration'))}.png"
+        prefix = f"{viz_target['id']}_" if viz_target.get("id") is not None else ""
+        filename = _safe_filename(viz_target.get("title", "illustration"))
+        if image_model:
+            # Keep model changes from overwriting or reusing a cached image URL.
+            prefix += f"{_safe_filename(image_model)}_{quality}_"
+            filename = filename[:40]  # Leave room for the prefix with UTF-8 titles.
+        out_path = out_dir / f"{prefix}{filename}.png"
         out_path.write_bytes(png)
         try:
             cost = calc_image_cost(provider.cost_key, usage=getattr(provider, "usage", None))

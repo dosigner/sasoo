@@ -82,6 +82,7 @@ from services.analysis_execution import (
     _config_hash,
     _generate_single_mermaid,
     _generate_single_paperbanana,
+    _generate_single_html,
     _get_visual_contract,
     _lookup_phase_result_with_staleness,
     _phase_result_snippet,
@@ -737,7 +738,7 @@ async def regenerate_visualization(paper_id: int, viz_id: int):
             detail=f"Visualization {viz_id} not found for paper {paper_id}.",
         )
     tool = stored_item.get("tool", "mermaid")
-    if tool not in ("mermaid", "paperbanana"):
+    if tool not in ("mermaid", "paperbanana", "html"):
         raise HTTPException(
             status_code=400,
             detail=f"Unknown visualization tool: {tool}",
@@ -784,9 +785,14 @@ async def regenerate_visualization(paper_id: int, viz_id: int):
             )
         new_fields = {
             key: pb_result[key]
-            for key in ("image_url", "image_path", "provider", "duration_s", "cost_usd")
+            for key in ("image_url", "image_path", "provider", "duration_s", "cost_usd", "image_quality", "model_used")
             if pb_result.get(key) is not None
         }
+    elif tool == "html":
+        try:
+            new_fields = await _generate_single_html(stored_item, visualization_input, provider=provider)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="HTML regeneration failed.") from exc
     else:
         code = await _generate_single_mermaid(
             paper_id, stored_item, visualization_input, previous_results, provider=provider,

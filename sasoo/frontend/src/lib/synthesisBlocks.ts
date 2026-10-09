@@ -21,6 +21,7 @@ export interface AssignedBlocks {
  * 상한은 method 3, result 2이고 초과분은 기획 순서대로 앞에서부터 남긴다.
  */
 export function assignBlocks(items: VisualizationItem[]): AssignedBlocks {
+  const mixedPlan = items.some((it) => typeof it.importance === 'number' || it.tool === 'html' || ['structure', 'process', 'comparison', 'additional'].includes(it.diagram_type));
   let concept: VisualizationItem | null = null;
   const method: VisualizationItem[] = [];
   const result: VisualizationItem[] = [];
@@ -60,8 +61,8 @@ export function assignBlocks(items: VisualizationItem[]): AssignedBlocks {
 
   return {
     concept,
-    method: method.slice(0, METHOD_LIMIT),
-    result: result.slice(0, RESULT_LIMIT),
+    method: mixedPlan ? method : method.slice(0, METHOD_LIMIT),
+    result: mixedPlan ? result : result.slice(0, RESULT_LIMIT),
   };
 }
 
