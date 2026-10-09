@@ -1,7 +1,7 @@
 // AgentAvatar — circular avatar showing first letter of agent name on a colored background
 
 interface AgentAvatarProps {
-  name: string;   // display_name_ko or name
+  name: string;   // agent key (e.g. photon); English display names all start with "Agent"
   color: string;  // hex color like "#ef4444"
   size?: 'sm' | 'md' | 'lg';
 }

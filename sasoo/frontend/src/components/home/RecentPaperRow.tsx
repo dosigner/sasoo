@@ -100,7 +100,7 @@ export default function RecentPaperRow({
         {agent && (
           <>
             <span className="h-1 w-1 rounded-full bg-border" />
-            <span>{agent.nameKo}</span>
+            <span>{agent.name}</span>
           </>
         )}
       </div>

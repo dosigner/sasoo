@@ -149,7 +149,7 @@ export const S = {
     outputRecipe: '재현 파라미터',
     outputChat: '질문 기록',
     domainConfirm: '담당 분야 확인',
-    domainConfirmHelp: '감지한 분야가 맞는지 확인하고 필요하면 다른 에이전트로 넘기세요.',
+    domainConfirmHelp: '감지한 분야가 맞는지 확인하고 필요하면 다른 분야로 넘기세요.',
     analysisOptionsTitle: '분석 옵션',
     analysisOptionsOpenLabel: '분석 옵션 펼치기',
     analysisOptionsCloseLabel: '분석 옵션 접기',
@@ -214,7 +214,7 @@ export const S = {
     cancel: '취소',
     panelResize: '패널 크기 조절',
     backToLibrary: '라이브러리',
-    assistant: '질문 도우미',
+    assistant: '사수',
     assistantWaiting: 'PDF 텍스트를 다 읽으면 질문할 수 있어요',
     statusRailTitle: '분석 상태',
     inspectNow: '지금 검토하기',
@@ -265,7 +265,7 @@ export const S = {
     emptyTitle: '아직 읽기 안내가 없어요',
     intro: '논문의 기호와 배경 개념, 각 섹션의 역할을 정리해요.',
     // 비용은 실측이 아니라 채팅 1회 기준의 정직한 비교로만 말한다.
-    costNotice: '질문 도우미 답변 한 번과 비슷한 비용이 들어요. 한 번 만들면 이 기기에 저장돼요.',
+    costNotice: '사수 답변 한 번과 비슷한 비용이 들어요. 한 번 만들면 이 기기에 저장돼요.',
     generate: '읽기 안내 만들기',
     confirmTitle: '읽기 안내를 만들까요?',
     confirmCta: '만들기',
@@ -912,8 +912,8 @@ export const S = {
     csvExported: 'CSV 파일을 내려받았어요',
     copied: '클립보드에 복사했어요',
     domainUpdated: '분야를 바꿨어요',
-    agentChanged: '담당 에이전트를 바꿨어요',
-    agentChangeFailed: '에이전트를 바꾸지 못했어요',
+    agentChanged: '담당 분야를 바꿨어요',
+    agentChangeFailed: '담당 분야를 바꾸지 못했어요',
   },
 
   // ── Error / Fallback ──
@@ -936,13 +936,13 @@ export const S = {
   // ── Agent fallback ──
   agent: {
     unknownDomain: '알 수 없는 분야',
-    unknownAgent: '알 수 없는 에이전트',
+    unknownAgent: '알 수 없는 분야',
     fallbackQuote: '분석을 준비하고 있어요.',
   },
 
-  // ── Chat launcher (질문 도우미 플로팅 버튼) ──
+  // ── Chat launcher (사수 토의 플로팅 버튼) ──
   chat: {
-    launcherOpen: '질문 도우미 열기',
+    launcherOpen: '사수와 토의하기',
     statusReady: '준비됨',
     statusPending: '대기',
     readyHint: '논문 맥락으로 바로 질문해요',

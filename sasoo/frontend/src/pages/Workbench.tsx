@@ -356,7 +356,7 @@ export default function Workbench() {
       <WorkbenchHeader
         title={paper.title}
         domain={paper.domain}
-        agentLabel={agentMeta?.nameKo || agentMeta?.name || paper.agent_used}
+        agentLabel={agentMeta?.name || paper.agent_used}
         agentColor={agentMeta?.color}
         agents={getAllAgents()}
         currentAgentKey={paper.agent_used}
@@ -503,7 +503,7 @@ export default function Workbench() {
         fallback={
           <PanelFallback
             title="채팅 불러오고 있어요..."
-            description="에이전트 채팅 패널을 준비하고 있어요."
+            description="토의 카드를 준비하고 있어요."
           />
         }
       >

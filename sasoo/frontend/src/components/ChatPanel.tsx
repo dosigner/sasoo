@@ -441,11 +441,12 @@ export default function ChatPanel({
                   state={!ready ? 'pending' : busy ? 'busy' : 'ready'}
                   className="discussion-orb-sm h-4 w-4"
                 />
-                <span className="truncate text-sm font-semibold text-fg">
-                  {agent?.display_name_ko || '질문 도우미'}
-                </span>
+                <span className="shrink-0 text-sm font-semibold text-fg">사수</span>
+                {agent?.domain_display && (
+                  <span className="truncate text-2xs text-fg-muted">{agent.domain_display}</span>
+                )}
                 {totalCost > 0 && (
-                  <span className="shrink-0 text-2xs tabular-nums text-fg-muted" title="이 대화의 누적 비용">
+                  <span className="shrink-0 text-2xs tabular-nums text-fg-muted" title="이 토의의 누적 비용">
                     ${totalCost.toFixed(4)}
                   </span>
                 )}
@@ -457,8 +458,8 @@ export default function ChatPanel({
                     type="button"
                     onClick={clearConversation}
                     className="btn-icon-subtle"
-                    aria-label="대화 초기화"
-                    title="대화 초기화"
+                    aria-label="토의 삭제"
+                    title="토의 삭제"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -467,7 +468,7 @@ export default function ChatPanel({
                   type="button"
                   onClick={(event) => closeCard(event.detail === 0)}
                   className="btn-icon-subtle"
-                  aria-label="질문 도우미 닫기"
+                  aria-label="토의 닫기"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -480,7 +481,7 @@ export default function ChatPanel({
                   <MessageSquare className="h-5 w-5 text-fg-muted" />
                 </div>
                 <p className="text-sm font-medium text-fg">
-                  질문 도우미를 준비하고 있어요
+                  사수가 논문을 읽고 있어요
                 </p>
                 <p className="mt-2 text-xs leading-relaxed text-fg-muted">
                   {readyMessage}
