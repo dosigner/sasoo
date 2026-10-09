@@ -19,7 +19,8 @@ const FONT_CLASSES = {
 } as const;
 
 export default function AgentAvatar({ name, color, size = 'md' }: AgentAvatarProps) {
-  const initial = name ? name.charAt(0).toUpperCase() : '?';
+  // 두 글자: 키의 첫 글자만 쓰면 cell, circuit, channel이 모두 C로 겹친다.
+  const initial = name ? name.charAt(0).toUpperCase() + name.slice(1, 2) : '?';
 
   return (
     <div

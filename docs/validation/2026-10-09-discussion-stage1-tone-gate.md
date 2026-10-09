@@ -46,3 +46,12 @@ PDF 대조는 최종 답변의 위치 인용 221건에서 시드 20261009로 10�
 - 다중 턴(5턴) 게이트는 2단계 기준이라 이번에 돌리지 않았다.
 
 원문: `assets/discussion-stage1-tone-gate-20261009/results-final-{openai,gemini}.json`. 하네스 `gate.py`는 저장소 루트의 `.scratch/discussion/tone-gate/`에서 실행하는 경로를 가정한다(`RULES_FROM`, `PROVIDER`, `KINDS`, `REPEATS` 환경 변수).
+
+## 실제 앱 화면 확인
+
+개발 앱(Electron, vite HMR)에 1단계 frontend 파일을 적용해 CDP로 확인했다(2026-10-09). 백엔드는 확인 시점에 떠 있던 개발 백엔드라 프롬프트 변경은 이 화면 확인과 무관하다.
+
+- 런처 aria-label: "사수와 토의하기, 준비됨, 논문 맥락으로 바로 질문해요".
+- 카드 헤더: "사수"와 부제 "Optics & Photonics"(`assets/discussion-stage1-tone-gate-20261009/app-card-header.png`).
+- 워크벤치 배지: "Agent Photon", aria-label "담당 분야: Agent Photon. 변경하려면 여세요".
+- 담당 분야 드롭다운: 영어 이름의 첫 글자만 쓰면 Cell, Circuit, Channel이 모두 "C"가 되어, 아바타 머리글자를 두 글자(Ce, Ci, Ne, Ph, Ch)로 바꿨다(`app-agent-dropdown.png`).
