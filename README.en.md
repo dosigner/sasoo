@@ -38,7 +38,7 @@ An AI research workbench for understanding a paper, checking its figures and tab
 
 Sasoo keeps the original paper within reach while you read. Start with the summary, follow questions through each section, and open linked figures and tables to check the evidence. PDFs and analysis results stay in a local library so you can return to them later.
 
-> **About the screenshots:** These development-app captures show the interface included in v1.0.1 (September 25, 2026). They use the Korean UI with saved analysis results; actual content depends on the paper and model settings. Download the latest [v1.0.2 release](https://github.com/dosigner/sasoo/releases/tag/v1.0.2).
+> **About the screenshots:** These development-app captures show the interface included in v1.0.1 (September 25, 2026). They use the Korean UI with saved analysis results; actual content depends on the paper and model settings. Download the latest [v1.1.0 release](https://github.com/dosigner/sasoo/releases/tag/v1.1.0).
 
 <p align="center">
   <img src="sasoo/docs/assets/readme-2026-09-25/workbench-light.png" alt="Sasoo development screen with the original Diffusion Policy PDF on the left and its summary on the right" width="1000" />
@@ -98,24 +98,24 @@ Check AI explanations and extracted values against the paper. A completed analys
 
 ### Downloads
 
-The distribution version is **v1.0.2**. See the [release notes and all files](https://github.com/dosigner/sasoo/releases/tag/v1.0.2) for changes and installers.
+The distribution version is **v1.1.0**. See the [release notes and all files](https://github.com/dosigner/sasoo/releases/tag/v1.1.0) for changes and installers.
 
 | Platform | Official release file | Notes |
 | --- | --- | --- |
-| macOS Apple Silicon | [DMG](https://github.com/dosigner/sasoo/releases/download/v1.0.2/Sasoo-1.0.2-arm64.dmg) / [ZIP](https://github.com/dosigner/sasoo/releases/download/v1.0.2/Sasoo-1.0.2-arm64-mac.zip) | Unsigned and unnotarized |
-| Windows x64 | [Installer EXE](https://github.com/dosigner/sasoo/releases/download/v1.0.2/Sasoo-Setup-1.0.2.exe) | Unsigned; SmartScreen may warn |
+| macOS Apple Silicon | [DMG](https://github.com/dosigner/sasoo/releases/download/v1.1.0/Sasoo-1.1.0-arm64.dmg) / [ZIP](https://github.com/dosigner/sasoo/releases/download/v1.1.0/Sasoo-1.1.0-arm64-mac.zip) | Unsigned and unnotarized |
+| Windows x64 | [Installer EXE](https://github.com/dosigner/sasoo/releases/download/v1.1.0/Sasoo-Setup-1.1.0.exe) | Unsigned; SmartScreen may warn |
 
 Official Linux and Intel Mac binaries are not available. A Linux source build command exists, but Linux is outside the distribution support listed above.
 
-### Changes in v1.0.2
+### Changes in v1.1.0
 
-- Failed list requests are distinct from an empty library, with retry actions on Home, Library, and Workbench.
-- Settings and Profile become editable after current values load. Internal navigation asks for confirmation when changes are unsaved.
-- Improved modal focus restoration, arrow keys for radio controls, long titles and filenames, light-theme contrast, and the chat orb and keyboard controls.
-- Experimental step numbers appear once in the interface, CSV, and Markdown. Decimal values and section numbers are preserved.
-- Includes GPT-6 Luna and Nano Banana 2.1 model settings, streamed figure explanations and request caching, Korean emphasis and analysis-stage display fixes, and dependency security updates.
+- The question panel becomes "Discuss with Sasoo". Sasoo first acknowledges what the paper actually supports in your interpretation, then points out what goes beyond it, with the cited location.
+- Discussions are saved per paper and continue after an app restart. A bar above the input shows the context Sasoo sees (tokens / 260K) and its sources.
+- "New context" starts fresh while keeping the record. After a re-analysis or when the context budget is exceeded, a new context starts automatically and earlier messages are collapsed.
+- Stopped answers stay marked "Interrupted", and deleting a discussion asks for confirmation.
+- New papers with a DOI are assigned an agent by OpenAlex field. Papers with no matching specialist go to the general agent.
 
-See the [detailed release notes](sasoo/docs/03-release/v1.0.2.md). Unsaved-change confirmation covers internal navigation; it does not preserve drafts after app exit or reload.
+See the [detailed release notes](sasoo/docs/03-release/v1.1.0.md). On startup the app adds a discussion table and an OpenAlex field column to the database automatically.
 
 <details>
 <summary>If macOS blocks the app</summary>
@@ -146,7 +146,7 @@ Choose OpenAI or Gemini in Settings. If only one provider has a saved key, the a
 | OpenAI | [OpenAI API keys](https://platform.openai.com/api-keys) | Paper analysis, chat, figure explanations, concept illustrations |
 | Gemini | [Google AI Studio](https://aistudio.google.com/apikey) | Paper analysis, chat, figure explanations, concept illustrations |
 
-v1.0.2 defaults to OpenAI with `gpt-6-luna` for text analysis. Concept illustrations use OpenAI `gpt-image-2.5-flare` or Gemini `gemini-nano-banana-2.1`, depending on the provider. See the [model registry](sasoo/backend/services/model_registry.py) for stage assignments and reasoning levels, and [model IDs](sasoo/backend/services/models.py) for the exact configuration.
+v1.1.0 defaults to OpenAI with `gpt-6-luna` for text analysis. Concept illustrations use OpenAI `gpt-image-2.5-flare` or Gemini `gemini-nano-banana-2.1`, depending on the provider. See the [model registry](sasoo/backend/services/model_registry.py) for stage assignments and reasoning levels, and [model IDs](sasoo/backend/services/models.py) for the exact configuration.
 
 Costs shown in Settings are **estimates** based on reported usage and the rates registered in the app. They may differ from provider invoices. Missing usage does not mean a request was free.
 
