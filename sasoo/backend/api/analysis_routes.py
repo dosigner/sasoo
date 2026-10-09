@@ -64,7 +64,8 @@ from services.concurrency import run_chat_blocking, run_pipeline_blocking
 from services.document_context import load_or_build_document_context
 from services.evidence_repo import build_evidence_payload
 from services.pricing import calc_result_cost
-from services.llm.interactions_client import call_interaction, stream_interaction
+from services.llm.interactions_client import call_interaction, count_input_tokens, stream_interaction
+from services import discussion
 
 from api.analysis_state import _running_analyses, _cancel_events, _analyses_lock
 from api.analysis_helpers import _clean_llm_json, _is_error_result, _SYSTEM_INSTRUCTION_KO
@@ -1258,22 +1259,22 @@ async def chat_with_agent(paper_id: int, request: Request):
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-async def _chat_with_agent_impl(paper_id: int, request: Request):
+_CHAT_PHASES = ["screening", "citation", "visual", "recipe", "deep_dive"]
+_CHAT_PHASE_LABELS = {
+    "screening": "스크리닝 결과",
+    "citation": "인용 분석 결과",
+    "visual": "시각 분석 결과",
+    "recipe": "레시피 추출 결과",
+    "deep_dive": "심층 분석 결과",
+}
+_CHAT_PHASE_SNIPPET_CHARS = 3000
+
+
+async def _build_chat_context(paper: dict) -> tuple[str, list[dict]]:
+    """토의 system prompt와 출처별 크기(맥락 팝오버용)를 만든다."""
     from services.agents import get_agent_for_domain
 
-    body = await request.json()
-    message = body.get("message", "").strip()
-    history = body.get("history", [])
-
-    if not message:
-        raise HTTPException(status_code=400, detail="Message is required.")
-
-    # 1. Load paper
-    paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
-    if not paper:
-        raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
-
-    # 2. Load stable chat context plus latest completed phase snippets
+    paper_id = int(paper["id"])
     paper_dir = get_paper_dir(paper["folder_name"])
     chat_context = ""
     try:
@@ -1287,24 +1288,14 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
         # the phase snippets alone instead of failing the turn.
         logger.warning("Chat context unavailable for paper %s: %s", paper_id, exc)
 
-    latest_phase_rows = await get_latest_completed_phase_rows(
-        paper_id,
-        phases=["screening", "citation", "visual", "recipe", "deep_dive"],
-    )
-    phases_data: dict[str, str] = {}
-    for phase in ["screening", "citation", "visual", "recipe", "deep_dive"]:
-        row = latest_phase_rows.get(phase)
-        if row:
-            phases_data[phase] = _phase_result_snippet(row, 3000)
+    latest_phase_rows = await get_latest_completed_phase_rows(paper_id, phases=_CHAT_PHASES)
 
-    # 3. Get agent persona
     agent = get_agent_for_domain(paper["domain"] or "general")
     agent_persona = (
         f"너는 {agent.profile.display_name_ko}({agent.profile.display_name}) 에이전트야. "
         f"성격: {agent.profile.personality}."
     )
 
-    # 4. Build system prompt
     paper_info = f"논문: {paper['title']}"
     if paper.get("authors"):
         paper_info += f"\n저자: {paper['authors']}"
@@ -1313,19 +1304,23 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
     if paper.get("journal"):
         paper_info += f"\n저널: {paper['journal']}"
 
-    phase_labels = {
-        "screening": "스크리닝 결과",
-        "citation": "인용 분석 결과",
-        "visual": "시각 분석 결과",
-        "recipe": "레시피 추출 결과",
-        "deep_dive": "심층 분석 결과",
-    }
+    sources = [{"key": "paper_info", "label": "논문 정보", "chars": len(paper_info), "truncated": False}]
     context_parts = [paper_info]
     if chat_context:
         context_parts.append(f"\n--- 논문 컨텍스트 ---\n{chat_context}")
-    for phase, label in phase_labels.items():
-        if phase in phases_data:
-            context_parts.append(f"\n--- {label} ---\n{phases_data[phase]}")
+        sources.append({"key": "paper_text", "label": "논문 원문", "chars": len(chat_context), "truncated": False})
+    for phase in _CHAT_PHASES:
+        row = latest_phase_rows.get(phase)
+        if not row:
+            continue
+        snippet = _phase_result_snippet(row, _CHAT_PHASE_SNIPPET_CHARS)
+        context_parts.append(f"\n--- {_CHAT_PHASE_LABELS[phase]} ---\n{snippet}")
+        sources.append({
+            "key": phase,
+            "label": _CHAT_PHASE_LABELS[phase],
+            "chars": len(snippet),
+            "truncated": len(str(row.get("result") or "")) > _CHAT_PHASE_SNIPPET_CHARS,
+        })
 
     system_prompt = (
         f"{_SYSTEM_INSTRUCTION_KO}\n\n"
@@ -1333,25 +1328,73 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
         f"{_DISCUSSION_RULES_KO}\n\n"
         + "\n".join(context_parts)
     )
+    return system_prompt, sources
 
-    # 5. 히스토리를 요청 텍스트로 조립 (stateless, store=False).
-    #    Interactions는 단일 input 텍스트를 받으므로 최근 대화를 전사(transcript)로 붙인다.
-    #    TODO(stateful): 후속 개선으로 paper 체인의 마지막 interaction_id를
-    #    previous_interaction_id로 이어 서버 상태를 재사용하는 stateful 모드가 가능하다.
-    #    다만 프론트가 매 요청 history 전체를 보내는 현재 계약을 바꿔야 하므로 이번 범위 밖이다.
-    transcript_parts: list[str] = []
-    for msg in history[-20:]:  # limit history to last 20 messages
-        speaker = "사용자" if msg.get("role") == "user" else "사수"
-        transcript_parts.append(f"{speaker}: {msg.get('content', '')}")
-    transcript_parts.append(f"사용자: {message}")
-    chat_input = "\n".join(transcript_parts)
 
-    # 5b. provider는 이 요청 안에서 한 번만 결정한다 — 스트림 재시도 도중 설정이
-    #     바뀌어도 같은 요청 안에서는 일관된 모델을 쓴다.
+def _chat_transcript(history: list[dict], message: str) -> str:
+    """Interactions는 단일 input 텍스트를 받으므로 대화를 전사(transcript)로 붙인다."""
+    parts = [
+        f"{'사용자' if msg.get('role') == 'user' else '사수'}: {msg.get('content', '')}"
+        for msg in history
+    ]
+    parts.append(f"사용자: {message}")
+    return "\n".join(parts)
+
+
+def _history_from_rows(rows: list[dict]) -> list[dict]:
+    return [{"role": "user" if row["kind"] == "user" else "agent", "content": row["content"]} for row in rows]
+
+
+async def _count_chat_tokens(chat_input: str, *, model: str, system_prompt: str) -> Optional[int]:
+    """경계 근처에서만 부르는 사전 계산. 실패하면 None(호출부는 추정값을 쓴다)."""
+    try:
+        return await count_input_tokens(chat_input, model=model, system_instruction=system_prompt)
+    except Exception as exc:  # 계산 실패가 질문 자체를 막으면 안 된다.
+        logger.warning("Chat token precount failed (%s): %s", model, exc)
+        return None
+
+
+async def _chat_with_agent_impl(paper_id: int, request: Request):
+    body = await request.json()
+    message = body.get("message", "").strip()
+    # persist=false는 읽기 안내처럼 토의 기록에 남기지 않는 호출이다. 이때만 body의
+    # history를 그대로 쓴다(예전 계약). 토의는 서버의 기록에서 맥락을 만든다.
+    persist = body.get("persist", True) is not False
+
+    if not message:
+        raise HTTPException(status_code=400, detail="Message is required.")
+
+    paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
+    if not paper:
+        raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
+
+    system_prompt, _sources = await _build_chat_context(paper)
+
+    # provider는 이 요청 안에서 한 번만 결정한다 — 스트림 재시도 도중 설정이
+    # 바뀌어도 같은 요청 안에서는 일관된 모델을 쓴다.
     provider = await active_provider()
     chat_choice = resolve_model("chat", provider)
 
-    # 6. Stream via SSE — stream_interaction(lane="chat")이 전용 풀에서 브릿지를 담당한다.
+    reset_row: Optional[dict] = None
+    user_message_id: Optional[int] = None
+    if persist:
+        if await discussion.reanalysis_reset_needed(paper_id):
+            reset_row = await discussion.append_reset(paper_id, discussion.RESET_REANALYSIS)
+        history = _history_from_rows(await discussion.active_context(paper_id))
+        estimate = discussion.estimate_next_input(await discussion.last_usage(paper_id), message)
+        if estimate > discussion.PRECOUNT_THRESHOLD_TOKENS:
+            counted = await _count_chat_tokens(
+                _chat_transcript(history, message), model=chat_choice.model, system_prompt=system_prompt
+            )
+            if (counted if counted is not None else estimate) > discussion.CONTEXT_BUDGET_TOKENS:
+                reset_row = await discussion.append_reset(paper_id, discussion.RESET_BUDGET)
+                history = []
+        user_message_id = await discussion.append_user(paper_id, message)
+    else:
+        history = body.get("history", [])
+    chat_input = _chat_transcript(history, message)
+
+    # Stream via SSE — stream_interaction(lane="chat")이 전용 풀에서 브릿지를 담당한다.
     #
     # 파이프라인과 같은 쿼터를 때리는 순간이 곧 채팅이 실패하기 쉬운 순간이라,
     # 분석 경로처럼 재시도한다. 단 토큰이 이미 나간 뒤의 실패는 답변을 되감을 수
@@ -1359,53 +1402,132 @@ async def _chat_with_agent_impl(paper_id: int, request: Request):
     async def event_generator():
         last_error: Exception | None = None
         streamed_any = False
+        answer: list[str] = []
+        saved = False
 
-        for attempt in range(_CHAT_MAX_ATTEMPTS):
-            try:
-                async for ev in stream_interaction(
-                    chat_input,
-                    lane="chat",
-                    model=chat_choice.model,
-                    thinking_level=chat_choice.effort,
-                    system_instruction=system_prompt,
-                    store=False,
-                ):
-                    if await request.is_disconnected():
-                        logger.info(
-                            "Chat client disconnected for paper %s; abandoning stream", paper_id
-                        )
-                        return
-                    if ev["type"] == "token":
-                        streamed_any = True
-                        yield f"data: {json.dumps({'type': 'token', 'content': ev['text']}, ensure_ascii=False)}\n\n"
-                    elif ev["type"] == "done":
-                        try:
-                            cost = calc_result_cost(ev, model=chat_choice.model)
-                        except ValueError:
-                            yield f"data: {json.dumps({'type': 'error', 'message': '응답 사용량을 확인하지 못했습니다', 'tokens_in': ev.get('tokens_in'), 'tokens_out': ev.get('tokens_out'), 'cost_usd': None}, ensure_ascii=False)}\n\n"
-                            return
-                        if ev.get("incomplete") or ev.get("response_status") in {"incomplete", "failed", "cancelled"}:
-                            yield f"data: {json.dumps({'type': 'error', 'message': '응답이 완료되지 않았습니다', 'tokens_in': ev['tokens_in'], 'tokens_out': ev['tokens_out'], 'cost_usd': cost}, ensure_ascii=False)}\n\n"
-                            return
-                        yield f"data: {json.dumps({'type': 'done', 'tokens_in': ev['tokens_in'], 'tokens_out': ev['tokens_out'], 'cost_usd': cost}, ensure_ascii=False)}\n\n"
-                return
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                last_error = exc
-                logger.warning(
-                    "Chat stream failed for paper %s (attempt %d/%d): %s",
-                    paper_id, attempt + 1, _CHAT_MAX_ATTEMPTS, exc,
-                )
-                if streamed_any or attempt == _CHAT_MAX_ATTEMPTS - 1:
-                    break
-                await asyncio.sleep(2 ** attempt)
+        async def save_answer(status: str, ev: Optional[dict] = None, cost: Optional[float] = None) -> Optional[int]:
+            nonlocal saved
+            if not persist or saved:
+                return None
+            saved = True
+            return await asyncio.shield(discussion.append_sasoo(
+                paper_id, "".join(answer), status=status, model_used=chat_choice.model,
+                tokens_in=(ev or {}).get("tokens_in"), tokens_out=(ev or {}).get("tokens_out"), cost_usd=cost,
+            ))
 
-        logger.error("Chat stream error for paper %s: %s", paper_id, last_error)
-        yield f"data: {json.dumps({'type': 'error', 'message': str(last_error)}, ensure_ascii=False)}\n\n"
+        try:
+            if persist:
+                meta = {"type": "meta", "user_message_id": user_message_id, "reset": reset_row}
+                yield f"data: {json.dumps(meta, ensure_ascii=False, default=str)}\n\n"
+
+            for attempt in range(_CHAT_MAX_ATTEMPTS):
+                try:
+                    async for ev in stream_interaction(
+                        chat_input,
+                        lane="chat",
+                        model=chat_choice.model,
+                        thinking_level=chat_choice.effort,
+                        system_instruction=system_prompt,
+                        store=False,
+                    ):
+                        if await request.is_disconnected():
+                            logger.info(
+                                "Chat client disconnected for paper %s; abandoning stream", paper_id
+                            )
+                            return
+                        if ev["type"] == "token":
+                            streamed_any = True
+                            answer.append(ev["text"])
+                            yield f"data: {json.dumps({'type': 'token', 'content': ev['text']}, ensure_ascii=False)}\n\n"
+                        elif ev["type"] == "done":
+                            try:
+                                cost = calc_result_cost(ev, model=chat_choice.model)
+                            except ValueError:
+                                await save_answer("interrupted", ev)
+                                yield f"data: {json.dumps({'type': 'error', 'message': '응답 사용량을 확인하지 못했습니다', 'tokens_in': ev.get('tokens_in'), 'tokens_out': ev.get('tokens_out'), 'cost_usd': None}, ensure_ascii=False)}\n\n"
+                                return
+                            if ev.get("incomplete") or ev.get("response_status") in {"incomplete", "failed", "cancelled"}:
+                                await save_answer("interrupted", ev, cost)
+                                yield f"data: {json.dumps({'type': 'error', 'message': '응답이 완료되지 않았습니다', 'tokens_in': ev['tokens_in'], 'tokens_out': ev['tokens_out'], 'cost_usd': cost}, ensure_ascii=False)}\n\n"
+                                return
+                            message_id = await save_answer("complete", ev, cost)
+                            done = {
+                                "type": "done", "tokens_in": ev["tokens_in"], "tokens_out": ev["tokens_out"],
+                                "cost_usd": cost, "message_id": message_id, "context_tokens": ev["tokens_in"],
+                            }
+                            yield f"data: {json.dumps(done, ensure_ascii=False)}\n\n"
+                    return
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    last_error = exc
+                    logger.warning(
+                        "Chat stream failed for paper %s (attempt %d/%d): %s",
+                        paper_id, attempt + 1, _CHAT_MAX_ATTEMPTS, exc,
+                    )
+                    if streamed_any or attempt == _CHAT_MAX_ATTEMPTS - 1:
+                        break
+                    await asyncio.sleep(2 ** attempt)
+
+            logger.error("Chat stream error for paper %s: %s", paper_id, last_error)
+            await save_answer("interrupted")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(last_error)}, ensure_ascii=False)}\n\n"
+        finally:
+            # 중지, 연결 끊김, 앱 종료: 받은 데까지 "중단됨"으로 남긴다.
+            if persist and not saved:
+                await save_answer("interrupted")
 
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+async def _require_paper(paper_id: int) -> dict:
+    paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
+    if not paper:
+        raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
+    return paper
+
+
+@router.get("/{paper_id}/discussion")
+async def get_discussion(paper_id: int):
+    """토의 기록과 맥락 막대 정보. 출처별 토큰은 실제 입력 토큰을 글자 수로 나눈 추정값이다."""
+    paper = await _require_paper(paper_id)
+    if await discussion.reanalysis_reset_needed(paper_id):
+        await discussion.append_reset(paper_id, discussion.RESET_REANALYSIS)
+    messages = await discussion.list_messages(paper_id)
+    _, sources = await _build_chat_context(paper)
+    active = await discussion.active_context(paper_id)
+    sources.append({
+        "key": "conversation", "label": "대화", "truncated": False,
+        "chars": sum(len(row["content"]) for row in active),
+    })
+    usage = await discussion.last_usage(paper_id)
+    context_tokens = int(usage["tokens_in"]) if usage else None
+    total_chars = sum(source["chars"] for source in sources) or 1
+    for source in sources:
+        source["estimated_tokens"] = (
+            round(context_tokens * source["chars"] / total_chars) if context_tokens is not None else None
+        )
+    return {
+        "messages": messages,
+        "context": {
+            "budget": discussion.CONTEXT_BUDGET_TOKENS,
+            "context_tokens": context_tokens,
+            "sources": sources,
+        },
+    }
+
+
+@router.post("/{paper_id}/discussion/reset")
+async def reset_discussion(paper_id: int):
+    await _require_paper(paper_id)
+    return await discussion.append_reset(paper_id, discussion.RESET_MANUAL)
+
+
+@router.delete("/{paper_id}/discussion", status_code=204)
+async def delete_discussion(paper_id: int):
+    await _require_paper(paper_id)
+    await discussion.delete_all(paper_id)
