@@ -510,6 +510,8 @@ export default function Workbench() {
         <ChatPanel
           paperId={paperId}
           agentName={paper.agent_used}
+          // 전문 사수가 없는 분야(일반 에이전트)는 OpenAlex 대분야명을 보인다.
+          fieldLabel={paper.agent_used === 'general' ? paper.openalex_field ?? undefined : undefined}
           open={chatOpen}
           ready={paper.text_ready}
           readyMessage={S.workbench.assistantWaiting}
