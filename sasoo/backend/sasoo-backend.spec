@@ -27,6 +27,8 @@ if agents_src.exists():
         agents_data.append(
             (str(md_file), "agents")
         )
+    # OpenAlex 소분야 표: 업로드 시 분야 배정(services/openalex.py)이 읽는다.
+    agents_data.append((str(agents_src / "openalex_subfields.json"), "agents"))
 
 # ---------------------------------------------------------------------------
 # PaperBanana data files (prompts, reference sets, configs)

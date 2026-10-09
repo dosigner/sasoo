@@ -103,6 +103,7 @@ class AgentProfile:
         keywords: Optional[list[str]] = None,
         weighted_keywords: Optional[list[str]] = None,
         recipe_parameters: Optional[list[str]] = None,
+        openalex_subfields: Optional[list[int]] = None,
         model: str = "gemini-pro",
         enabled: bool = True,
         prompts: Optional[dict[str, str]] = None,
@@ -121,6 +122,7 @@ class AgentProfile:
         self.keywords: list[str] = keywords or []
         self.weighted_keywords: list[str] = weighted_keywords or []
         self.recipe_parameters: list[str] = recipe_parameters or []
+        self.openalex_subfields: list[int] = openalex_subfields or []
         self.model = model
         self.enabled = enabled
         self.prompts: dict[str, str] = prompts or {}
@@ -142,6 +144,7 @@ class AgentProfile:
             "keywords": self.keywords,
             "weighted_keywords": self.weighted_keywords,
             "recipe_parameters": self.recipe_parameters,
+            "openalex_subfields": self.openalex_subfields,
             "model": self.model,
             "enabled": self.enabled,
             "prompts": self.prompts,
@@ -217,6 +220,7 @@ def parse_agent_md(text: str) -> AgentProfile:
         keywords=list(frontmatter.get("keywords", [])),
         weighted_keywords=list(frontmatter.get("weighted_keywords", [])),
         recipe_parameters=list(frontmatter.get("recipe_parameters", [])),
+        openalex_subfields=[int(x) for x in frontmatter.get("openalex_subfields", []) or []],
         model=str(frontmatter.get("model", "gemini-pro")),
         enabled=bool(frontmatter.get("enabled", True)),
         prompts=prompts,

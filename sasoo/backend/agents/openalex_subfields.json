@@ -1,0 +1,661 @@
+{
+ "source": "https://api.openalex.org/subfields (CC0), fetched 2026-10-09",
+ "scope": "Physical Sciences and Life Sciences fields",
+ "subfields": {
+  "1100": {
+   "name": "General Agricultural and Biological Sciences",
+   "field_id": 11,
+   "field": "Agricultural and Biological Sciences"
+  },
+  "1102": {
+   "name": "Agronomy and Crop Science",
+   "field_id": 11,
+   "field": "Agricultural and Biological Sciences"
+  },
+  "1103": {
+   "name": "Animal Science and Zoology",
+   "field_id": 11,
+   "field": "Agricultural and Biological Sciences"
+  },
+  "1104": {
+   "name": "Aquatic Science",
+   "field_id": 11,
+   "field": "Agricultural and Biological Sciences"
+  },
+  "1105": {
+   "name": "Ecology, Evolution, Behavior and Systematics",
+   "field_id": 11,
+   "field": "Agricultural and Biological Sciences"
+  },
+  "1106": {
+   "name": "Food Science",
+   "field_id": 11,
+   "field": "Agricultural and Biological Sciences"
+  },
+  "1107": {
+   "name": "Forestry",
+   "field_id": 11,
+   "field": "Agricultural and Biological Sciences"
+  },
+  "1108": {
+   "name": "Horticulture",
+   "field_id": 11,
+   "field": "Agricultural and Biological Sciences"
+  },
+  "1109": {
+   "name": "Insect Science",
+   "field_id": 11,
+   "field": "Agricultural and Biological Sciences"
+  },
+  "1110": {
+   "name": "Plant Science",
+   "field_id": 11,
+   "field": "Agricultural and Biological Sciences"
+  },
+  "1111": {
+   "name": "Soil Science",
+   "field_id": 11,
+   "field": "Agricultural and Biological Sciences"
+  },
+  "1302": {
+   "name": "Aging",
+   "field_id": 13,
+   "field": "Biochemistry, Genetics and Molecular Biology"
+  },
+  "1303": {
+   "name": "Biochemistry",
+   "field_id": 13,
+   "field": "Biochemistry, Genetics and Molecular Biology"
+  },
+  "1304": {
+   "name": "Biophysics",
+   "field_id": 13,
+   "field": "Biochemistry, Genetics and Molecular Biology"
+  },
+  "1305": {
+   "name": "Biotechnology",
+   "field_id": 13,
+   "field": "Biochemistry, Genetics and Molecular Biology"
+  },
+  "1306": {
+   "name": "Cancer Research",
+   "field_id": 13,
+   "field": "Biochemistry, Genetics and Molecular Biology"
+  },
+  "1307": {
+   "name": "Cell Biology",
+   "field_id": 13,
+   "field": "Biochemistry, Genetics and Molecular Biology"
+  },
+  "1308": {
+   "name": "Clinical Biochemistry",
+   "field_id": 13,
+   "field": "Biochemistry, Genetics and Molecular Biology"
+  },
+  "1309": {
+   "name": "Developmental Biology",
+   "field_id": 13,
+   "field": "Biochemistry, Genetics and Molecular Biology"
+  },
+  "1310": {
+   "name": "Endocrinology",
+   "field_id": 13,
+   "field": "Biochemistry, Genetics and Molecular Biology"
+  },
+  "1311": {
+   "name": "Genetics",
+   "field_id": 13,
+   "field": "Biochemistry, Genetics and Molecular Biology"
+  },
+  "1312": {
+   "name": "Molecular Biology",
+   "field_id": 13,
+   "field": "Biochemistry, Genetics and Molecular Biology"
+  },
+  "1313": {
+   "name": "Molecular Medicine",
+   "field_id": 13,
+   "field": "Biochemistry, Genetics and Molecular Biology"
+  },
+  "1314": {
+   "name": "Physiology",
+   "field_id": 13,
+   "field": "Biochemistry, Genetics and Molecular Biology"
+  },
+  "1315": {
+   "name": "Structural Biology",
+   "field_id": 13,
+   "field": "Biochemistry, Genetics and Molecular Biology"
+  },
+  "1502": {
+   "name": "Bioengineering",
+   "field_id": 15,
+   "field": "Chemical Engineering"
+  },
+  "1503": {
+   "name": "Catalysis",
+   "field_id": 15,
+   "field": "Chemical Engineering"
+  },
+  "1504": {
+   "name": "Chemical Health and Safety",
+   "field_id": 15,
+   "field": "Chemical Engineering"
+  },
+  "1506": {
+   "name": "Filtration and Separation",
+   "field_id": 15,
+   "field": "Chemical Engineering"
+  },
+  "1507": {
+   "name": "Fluid Flow and Transfer Processes",
+   "field_id": 15,
+   "field": "Chemical Engineering"
+  },
+  "1508": {
+   "name": "Process Chemistry and Technology",
+   "field_id": 15,
+   "field": "Chemical Engineering"
+  },
+  "1602": {
+   "name": "Analytical Chemistry",
+   "field_id": 16,
+   "field": "Chemistry"
+  },
+  "1603": {
+   "name": "Electrochemistry",
+   "field_id": 16,
+   "field": "Chemistry"
+  },
+  "1604": {
+   "name": "Inorganic Chemistry",
+   "field_id": 16,
+   "field": "Chemistry"
+  },
+  "1605": {
+   "name": "Organic Chemistry",
+   "field_id": 16,
+   "field": "Chemistry"
+  },
+  "1606": {
+   "name": "Physical and Theoretical Chemistry",
+   "field_id": 16,
+   "field": "Chemistry"
+  },
+  "1607": {
+   "name": "Spectroscopy",
+   "field_id": 16,
+   "field": "Chemistry"
+  },
+  "1702": {
+   "name": "Artificial Intelligence",
+   "field_id": 17,
+   "field": "Computer Science"
+  },
+  "1703": {
+   "name": "Computational Theory and Mathematics",
+   "field_id": 17,
+   "field": "Computer Science"
+  },
+  "1704": {
+   "name": "Computer Graphics and Computer-Aided Design",
+   "field_id": 17,
+   "field": "Computer Science"
+  },
+  "1705": {
+   "name": "Computer Networks and Communications",
+   "field_id": 17,
+   "field": "Computer Science"
+  },
+  "1706": {
+   "name": "Computer Science Applications",
+   "field_id": 17,
+   "field": "Computer Science"
+  },
+  "1707": {
+   "name": "Computer Vision and Pattern Recognition",
+   "field_id": 17,
+   "field": "Computer Science"
+  },
+  "1708": {
+   "name": "Hardware and Architecture",
+   "field_id": 17,
+   "field": "Computer Science"
+  },
+  "1709": {
+   "name": "Human-Computer Interaction",
+   "field_id": 17,
+   "field": "Computer Science"
+  },
+  "1710": {
+   "name": "Information Systems",
+   "field_id": 17,
+   "field": "Computer Science"
+  },
+  "1711": {
+   "name": "Signal Processing",
+   "field_id": 17,
+   "field": "Computer Science"
+  },
+  "1712": {
+   "name": "Software",
+   "field_id": 17,
+   "field": "Computer Science"
+  },
+  "1902": {
+   "name": "Atmospheric Science",
+   "field_id": 19,
+   "field": "Earth and Planetary Sciences"
+  },
+  "1904": {
+   "name": "Earth-Surface Processes",
+   "field_id": 19,
+   "field": "Earth and Planetary Sciences"
+  },
+  "1906": {
+   "name": "Geochemistry and Petrology",
+   "field_id": 19,
+   "field": "Earth and Planetary Sciences"
+  },
+  "1907": {
+   "name": "Geology",
+   "field_id": 19,
+   "field": "Earth and Planetary Sciences"
+  },
+  "1908": {
+   "name": "Geophysics",
+   "field_id": 19,
+   "field": "Earth and Planetary Sciences"
+  },
+  "1910": {
+   "name": "Oceanography",
+   "field_id": 19,
+   "field": "Earth and Planetary Sciences"
+  },
+  "1911": {
+   "name": "Paleontology",
+   "field_id": 19,
+   "field": "Earth and Planetary Sciences"
+  },
+  "1912": {
+   "name": "Space and Planetary Science",
+   "field_id": 19,
+   "field": "Earth and Planetary Sciences"
+  },
+  "2100": {
+   "name": "General Energy",
+   "field_id": 21,
+   "field": "Energy"
+  },
+  "2102": {
+   "name": "Energy Engineering and Power Technology",
+   "field_id": 21,
+   "field": "Energy"
+  },
+  "2103": {
+   "name": "Fuel Technology",
+   "field_id": 21,
+   "field": "Energy"
+  },
+  "2104": {
+   "name": "Nuclear Energy and Engineering",
+   "field_id": 21,
+   "field": "Energy"
+  },
+  "2105": {
+   "name": "Renewable Energy, Sustainability and the Environment",
+   "field_id": 21,
+   "field": "Energy"
+  },
+  "2200": {
+   "name": "General Engineering",
+   "field_id": 22,
+   "field": "Engineering"
+  },
+  "2202": {
+   "name": "Aerospace Engineering",
+   "field_id": 22,
+   "field": "Engineering"
+  },
+  "2203": {
+   "name": "Automotive Engineering",
+   "field_id": 22,
+   "field": "Engineering"
+  },
+  "2204": {
+   "name": "Biomedical Engineering",
+   "field_id": 22,
+   "field": "Engineering"
+  },
+  "2205": {
+   "name": "Civil and Structural Engineering",
+   "field_id": 22,
+   "field": "Engineering"
+  },
+  "2206": {
+   "name": "Computational Mechanics",
+   "field_id": 22,
+   "field": "Engineering"
+  },
+  "2207": {
+   "name": "Control and Systems Engineering",
+   "field_id": 22,
+   "field": "Engineering"
+  },
+  "2208": {
+   "name": "Electrical and Electronic Engineering",
+   "field_id": 22,
+   "field": "Engineering"
+  },
+  "2209": {
+   "name": "Industrial and Manufacturing Engineering",
+   "field_id": 22,
+   "field": "Engineering"
+  },
+  "2210": {
+   "name": "Mechanical Engineering",
+   "field_id": 22,
+   "field": "Engineering"
+  },
+  "2211": {
+   "name": "Mechanics of Materials",
+   "field_id": 22,
+   "field": "Engineering"
+  },
+  "2212": {
+   "name": "Ocean Engineering",
+   "field_id": 22,
+   "field": "Engineering"
+  },
+  "2213": {
+   "name": "Safety, Risk, Reliability and Quality",
+   "field_id": 22,
+   "field": "Engineering"
+  },
+  "2214": {
+   "name": "Media Technology",
+   "field_id": 22,
+   "field": "Engineering"
+  },
+  "2215": {
+   "name": "Building and Construction",
+   "field_id": 22,
+   "field": "Engineering"
+  },
+  "2216": {
+   "name": "Architecture",
+   "field_id": 22,
+   "field": "Engineering"
+  },
+  "2302": {
+   "name": "Ecological Modeling",
+   "field_id": 23,
+   "field": "Environmental Science"
+  },
+  "2303": {
+   "name": "Ecology",
+   "field_id": 23,
+   "field": "Environmental Science"
+  },
+  "2304": {
+   "name": "Environmental Chemistry",
+   "field_id": 23,
+   "field": "Environmental Science"
+  },
+  "2305": {
+   "name": "Environmental Engineering",
+   "field_id": 23,
+   "field": "Environmental Science"
+  },
+  "2306": {
+   "name": "Global and Planetary Change",
+   "field_id": 23,
+   "field": "Environmental Science"
+  },
+  "2307": {
+   "name": "Health, Toxicology and Mutagenesis",
+   "field_id": 23,
+   "field": "Environmental Science"
+  },
+  "2308": {
+   "name": "Management, Monitoring, Policy and Law",
+   "field_id": 23,
+   "field": "Environmental Science"
+  },
+  "2309": {
+   "name": "Nature and Landscape Conservation",
+   "field_id": 23,
+   "field": "Environmental Science"
+  },
+  "2310": {
+   "name": "Pollution",
+   "field_id": 23,
+   "field": "Environmental Science"
+  },
+  "2311": {
+   "name": "Waste Management and Disposal",
+   "field_id": 23,
+   "field": "Environmental Science"
+  },
+  "2312": {
+   "name": "Water Science and Technology",
+   "field_id": 23,
+   "field": "Environmental Science"
+  },
+  "2402": {
+   "name": "Applied Microbiology and Biotechnology",
+   "field_id": 24,
+   "field": "Immunology and Microbiology"
+  },
+  "2403": {
+   "name": "Immunology",
+   "field_id": 24,
+   "field": "Immunology and Microbiology"
+  },
+  "2404": {
+   "name": "Microbiology",
+   "field_id": 24,
+   "field": "Immunology and Microbiology"
+  },
+  "2405": {
+   "name": "Parasitology",
+   "field_id": 24,
+   "field": "Immunology and Microbiology"
+  },
+  "2406": {
+   "name": "Virology",
+   "field_id": 24,
+   "field": "Immunology and Microbiology"
+  },
+  "2500": {
+   "name": "General Materials Science",
+   "field_id": 25,
+   "field": "Materials Science"
+  },
+  "2502": {
+   "name": "Biomaterials",
+   "field_id": 25,
+   "field": "Materials Science"
+  },
+  "2503": {
+   "name": "Ceramics and Composites",
+   "field_id": 25,
+   "field": "Materials Science"
+  },
+  "2504": {
+   "name": "Electronic, Optical and Magnetic Materials",
+   "field_id": 25,
+   "field": "Materials Science"
+  },
+  "2505": {
+   "name": "Materials Chemistry",
+   "field_id": 25,
+   "field": "Materials Science"
+  },
+  "2506": {
+   "name": "Metals and Alloys",
+   "field_id": 25,
+   "field": "Materials Science"
+  },
+  "2507": {
+   "name": "Polymers and Plastics",
+   "field_id": 25,
+   "field": "Materials Science"
+  },
+  "2508": {
+   "name": "Surfaces, Coatings and Films",
+   "field_id": 25,
+   "field": "Materials Science"
+  },
+  "2602": {
+   "name": "Algebra and Number Theory",
+   "field_id": 26,
+   "field": "Mathematics"
+  },
+  "2604": {
+   "name": "Applied Mathematics",
+   "field_id": 26,
+   "field": "Mathematics"
+  },
+  "2605": {
+   "name": "Computational Mathematics",
+   "field_id": 26,
+   "field": "Mathematics"
+  },
+  "2607": {
+   "name": "Discrete Mathematics and Combinatorics",
+   "field_id": 26,
+   "field": "Mathematics"
+  },
+  "2608": {
+   "name": "Geometry and Topology",
+   "field_id": 26,
+   "field": "Mathematics"
+  },
+  "2610": {
+   "name": "Mathematical Physics",
+   "field_id": 26,
+   "field": "Mathematics"
+  },
+  "2611": {
+   "name": "Modeling and Simulation",
+   "field_id": 26,
+   "field": "Mathematics"
+  },
+  "2612": {
+   "name": "Numerical Analysis",
+   "field_id": 26,
+   "field": "Mathematics"
+  },
+  "2613": {
+   "name": "Statistics and Probability",
+   "field_id": 26,
+   "field": "Mathematics"
+  },
+  "2614": {
+   "name": "Theoretical Computer Science",
+   "field_id": 26,
+   "field": "Mathematics"
+  },
+  "2802": {
+   "name": "Behavioral Neuroscience",
+   "field_id": 28,
+   "field": "Neuroscience"
+  },
+  "2803": {
+   "name": "Biological Psychiatry",
+   "field_id": 28,
+   "field": "Neuroscience"
+  },
+  "2804": {
+   "name": "Cellular and Molecular Neuroscience",
+   "field_id": 28,
+   "field": "Neuroscience"
+  },
+  "2805": {
+   "name": "Cognitive Neuroscience",
+   "field_id": 28,
+   "field": "Neuroscience"
+  },
+  "2806": {
+   "name": "Developmental Neuroscience",
+   "field_id": 28,
+   "field": "Neuroscience"
+  },
+  "2807": {
+   "name": "Endocrine and Autonomic Systems",
+   "field_id": 28,
+   "field": "Neuroscience"
+  },
+  "2808": {
+   "name": "Neurology",
+   "field_id": 28,
+   "field": "Neuroscience"
+  },
+  "2809": {
+   "name": "Sensory Systems",
+   "field_id": 28,
+   "field": "Neuroscience"
+  },
+  "3002": {
+   "name": "Drug Discovery",
+   "field_id": 30,
+   "field": "Pharmacology, Toxicology and Pharmaceutics"
+  },
+  "3003": {
+   "name": "Pharmaceutical Science",
+   "field_id": 30,
+   "field": "Pharmacology, Toxicology and Pharmaceutics"
+  },
+  "3004": {
+   "name": "Pharmacology",
+   "field_id": 30,
+   "field": "Pharmacology, Toxicology and Pharmaceutics"
+  },
+  "3005": {
+   "name": "Toxicology",
+   "field_id": 30,
+   "field": "Pharmacology, Toxicology and Pharmaceutics"
+  },
+  "3102": {
+   "name": "Acoustics and Ultrasonics",
+   "field_id": 31,
+   "field": "Physics and Astronomy"
+  },
+  "3103": {
+   "name": "Astronomy and Astrophysics",
+   "field_id": 31,
+   "field": "Physics and Astronomy"
+  },
+  "3104": {
+   "name": "Condensed Matter Physics",
+   "field_id": 31,
+   "field": "Physics and Astronomy"
+  },
+  "3105": {
+   "name": "Instrumentation",
+   "field_id": 31,
+   "field": "Physics and Astronomy"
+  },
+  "3106": {
+   "name": "Nuclear and High Energy Physics",
+   "field_id": 31,
+   "field": "Physics and Astronomy"
+  },
+  "3107": {
+   "name": "Atomic and Molecular Physics, and Optics",
+   "field_id": 31,
+   "field": "Physics and Astronomy"
+  },
+  "3108": {
+   "name": "Radiation",
+   "field_id": 31,
+   "field": "Physics and Astronomy"
+  },
+  "3109": {
+   "name": "Statistical and Nonlinear Physics",
+   "field_id": 31,
+   "field": "Physics and Astronomy"
+  }
+ }
+}

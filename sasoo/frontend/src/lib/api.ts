@@ -30,6 +30,10 @@ export interface Paper {
   visual_state: VisualState;
   visual_error: string | null;
   artifacts_ready: boolean;
+  /** OpenAlex primary_topic 소분야 ID. DOI가 없거나 조회하지 못한 논문은 null. */
+  openalex_subfield_id?: number | null;
+  /** 소분야의 영문 대분야명(예: "Materials Science"). */
+  openalex_field?: string | null;
 }
 
 export type ArtifactStatus = Pick<Paper, 'text_ready' | 'visual_ready' | 'visual_state'>;

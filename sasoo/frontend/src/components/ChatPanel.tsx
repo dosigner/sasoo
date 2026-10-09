@@ -81,6 +81,8 @@ function DiscussionOrb({ state, className = '' }: { state: OrbState; className?:
 interface ChatPanelProps {
   paperId: string;
   agentName?: string;
+  /** 카드 부제. 없으면 담당 에이전트의 domain_display를 쓴다. */
+  fieldLabel?: string;
   open: boolean;
   ready: boolean;
   readyMessage: string;
@@ -94,6 +96,7 @@ interface ChatPanelProps {
 export default function ChatPanel({
   paperId,
   agentName,
+  fieldLabel,
   open,
   ready,
   readyMessage,
@@ -442,8 +445,8 @@ export default function ChatPanel({
                   className="discussion-orb-sm h-4 w-4"
                 />
                 <span className="shrink-0 text-sm font-semibold text-fg">사수</span>
-                {agent?.domain_display && (
-                  <span className="truncate text-2xs text-fg-muted">{agent.domain_display}</span>
+                {(fieldLabel || agent?.domain_display) && (
+                  <span className="truncate text-2xs text-fg-muted">{fieldLabel || agent?.domain_display}</span>
                 )}
                 {totalCost > 0 && (
                   <span className="shrink-0 text-2xs tabular-nums text-fg-muted" title="이 토의의 누적 비용">

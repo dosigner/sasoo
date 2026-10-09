@@ -53,6 +53,7 @@ recipe_parameters:
   - drug_concentration
 model: gemini-pro
 enabled: true
+openalex_subfields: [1303, 1307, 1312]
 ---
 
 # Screening

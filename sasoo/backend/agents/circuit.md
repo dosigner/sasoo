@@ -51,6 +51,7 @@ recipe_parameters:
   - measurement_setup
 model: gemini-pro
 enabled: true
+openalex_subfields: [2208]
 ---
 
 # Screening

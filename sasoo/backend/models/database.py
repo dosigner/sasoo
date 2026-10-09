@@ -244,7 +244,8 @@ CREATE TABLE IF NOT EXISTS papers (
     explanation_level TEXT,
     analysis_focus TEXT,
     pdf_file_uri TEXT,
-    pdf_file_expires_at TEXT
+    pdf_file_expires_at TEXT,
+    openalex_subfield_id INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS analysis_results (
@@ -496,6 +497,8 @@ async def init_db() -> None:
         "ALTER TABLE papers ADD COLUMN analysis_focus TEXT",
         "ALTER TABLE papers ADD COLUMN pdf_file_uri TEXT",
         "ALTER TABLE papers ADD COLUMN pdf_file_expires_at TEXT",
+        # OpenAlex primary_topic 소분야(services/openalex.py). 옛 행과 DOI 없는 논문은 NULL.
+        "ALTER TABLE papers ADD COLUMN openalex_subfield_id INTEGER",
         "ALTER TABLE analysis_results ADD COLUMN interaction_id TEXT",
     ):
         try:
