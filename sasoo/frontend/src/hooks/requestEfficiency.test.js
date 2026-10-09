@@ -50,7 +50,9 @@ vi.mock('@/lib/api', () => ({
   getFigures: vi.fn(), getTables: vi.fn(), getRecipe: vi.fn(), getMermaid: vi.fn(), getVisualizations: vi.fn(),
   getSynthesis: vi.fn(),
 }));
+vi.mock('@/lib/guideCache', () => ({ deleteGuide: vi.fn() }));
 import * as api from '@/lib/api';
+import { deleteGuide } from '@/lib/guideCache';
 import { useAnalysis } from './useAnalysis';
 import { usePapers } from './usePapers';
 
@@ -149,6 +151,14 @@ it('fetches a list only once on mount including the aggregate', async () => {
   const papers = await hooks.flush();
   expect(api.getPapers).toHaveBeenCalledTimes(1);
   expect(papers.completedTotal).toBe(4);
+});
+it('removes the stored reading guide when a paper is deleted', async () => {
+  api.deletePaper.mockResolvedValue(undefined);
+  deleteGuide.mockResolvedValue(undefined);
+  hooks.mount(() => usePapers());
+  const papers = await hooks.flush();
+  await papers.deletePaper('7');
+  expect(deleteGuide).toHaveBeenCalledWith('7');
 });
 it('keeps the newest list when older search responses arrive last', async () => {
   hooks.mount(() => usePapers());

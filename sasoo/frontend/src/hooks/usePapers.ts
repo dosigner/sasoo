@@ -10,6 +10,7 @@ import {
   updatePaper as apiUpdatePaper,
   ApiError,
 } from '@/lib/api';
+import { deleteGuide } from '@/lib/guideCache';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -174,6 +175,9 @@ export function usePapers(initialFilters?: PaperFilters): UsePapersReturn {
     async (id: string) => {
       try {
         await apiDeletePaper(id);
+        // 읽기 안내는 브라우저 IndexedDB에만 있어 서버 CASCADE가 지우지 못한다.
+        // 정리에 실패해도 논문 삭제는 이미 끝났으므로 흐름을 막지 않는다.
+        void deleteGuide(id).catch(() => {});
         if (!mountedRef.current) return;
         // Remove from local state immediately
         setPapers((prev) => prev.filter((p) => String(p.id) !== id));

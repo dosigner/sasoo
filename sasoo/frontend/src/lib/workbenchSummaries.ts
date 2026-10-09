@@ -177,7 +177,7 @@ export function buildPhaseSummary(
       collapsedMeta: ([
         domain,
         relevance ? { text: `관련도 ${relevance}`, accent: true } : null,
-        agent ? `추천 ${getAgentMeta(agent)?.nameKo ?? agent}` : null,
+        agent ? `추천 ${getAgentMeta(agent)?.name ?? agent}` : null,
       ] as Array<string | { text: string; accent?: boolean } | null>).filter(
         (item): item is string | { text: string; accent?: boolean } => item !== null,
       ),
@@ -482,7 +482,7 @@ function buildWorkbenchStatusSummaryCore({
       return {
         runStateLabel: `${currentPhaseLabel} 진행 중`,
         trustStateLabel,
-        nextActionLabel: '본문 정리가 끝나면 핵심 주장과 질문 도우미가 열려요.',
+        nextActionLabel: '본문 정리가 끝나면 핵심 주장과 토의가 열려요.',
         currentPhaseLabel,
         completedCount,
         totalCount,
@@ -574,7 +574,7 @@ function buildWorkbenchStatusSummaryCore({
     return {
       runStateLabel: `${currentPhaseLabel} 진행 중`,
       trustStateLabel,
-      nextActionLabel: '스크리닝이 끝나면 핵심 주장과 질문 도우미가 열려요.',
+      nextActionLabel: '스크리닝이 끝나면 핵심 주장과 토의가 열려요.',
       currentPhaseLabel,
       completedCount,
       totalCount,

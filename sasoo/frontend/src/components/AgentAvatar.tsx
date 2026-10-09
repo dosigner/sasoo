@@ -1,7 +1,7 @@
 // AgentAvatar — circular avatar showing first letter of agent name on a colored background
 
 interface AgentAvatarProps {
-  name: string;   // display_name_ko or name
+  name: string;   // agent key (e.g. photon); English display names all start with "Agent"
   color: string;  // hex color like "#ef4444"
   size?: 'sm' | 'md' | 'lg';
 }
@@ -19,7 +19,8 @@ const FONT_CLASSES = {
 } as const;
 
 export default function AgentAvatar({ name, color, size = 'md' }: AgentAvatarProps) {
-  const initial = name ? name.charAt(0).toUpperCase() : '?';
+  // 두 글자: 키의 첫 글자만 쓰면 cell, circuit, channel이 모두 C로 겹친다.
+  const initial = name ? name.charAt(0).toUpperCase() + name.slice(1, 2) : '?';
 
   return (
     <div

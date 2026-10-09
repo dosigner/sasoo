@@ -136,7 +136,7 @@ function AgentBadgeDropdown({
         disabled={!canOpen}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={`담당 에이전트: ${agentLabel}. 변경하려면 여세요`}
+        aria-label={`담당 분야: ${agentLabel}. 변경하려면 여세요`}
         className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-2xs font-medium text-fg-secondary transition-colors duration-150 hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
       >
         {changing ? (
@@ -154,7 +154,7 @@ function AgentBadgeDropdown({
           id={listboxId}
           role="listbox"
           tabIndex={-1}
-          aria-label="담당 에이전트 선택"
+          aria-label="담당 분야 선택"
           aria-activedescendant={`${listboxId}-opt-${activeIndex}`}
           onKeyDown={handleListKeyDown}
           className="absolute left-0 top-full z-50 mt-1.5 max-h-72 w-56 overflow-y-auto rounded-lg border border-border bg-surface p-1 shadow-lg backdrop-blur-sm focus:outline-hidden"
@@ -176,8 +176,8 @@ function AgentBadgeDropdown({
                     : 'text-fg-secondary'
                 }`}
               >
-                <AgentAvatar name={agent.nameKo || agent.name} color={agent.color} size="sm" />
-                <span className="min-w-0 flex-1 truncate">{agent.nameKo || agent.name}</span>
+                <AgentAvatar name={agent.key} color={agent.color} size="sm" />
+                <span className="min-w-0 flex-1 truncate">{agent.name}</span>
                 {isSelected && <AppIcon name="success" className="h-3.5 w-3.5 text-accent" />}
               </li>
             );
