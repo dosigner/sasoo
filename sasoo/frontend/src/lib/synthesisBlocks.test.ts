@@ -36,6 +36,10 @@ describe('assignBlocks', () => {
     expect(assigned.method.map((it) => it.id)).toEqual([2, 4, 5, 6, 7, 8]);
     expect(assigned.result.map((it) => it.id)).toEqual([3, 9]);
   });
+  it('keeps three result diagrams when a scored plan contains only Mermaid', () => {
+    const items = [1, 2, 3].map((id) => makeItem({ id, block: 'result', importance: 60 }));
+    expect(assignBlocks(items).result.map((item) => item.id)).toEqual([1, 2, 3]);
+  });
   it('block 없는 혼합 목록: paperbanana는 concept, comparison mermaid는 result, 그 외 mermaid는 method, mindmap은 버림', () => {
     const items: VisualizationItem[] = [
       makeItem({ id: 1, tool: 'paperbanana' }),

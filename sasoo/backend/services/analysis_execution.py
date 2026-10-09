@@ -2537,9 +2537,12 @@ def _normalize_viz_plan(plan_data: dict) -> list[dict]:
 
 def _normalize_mixed_viz_plan(plan_data: dict) -> list[dict]:
     """Enforce purpose limits and the 60-point gate before paid generation."""
+    def score(item, field):
+        value = item.get(field)
+        return int(value) if type(value) in (int, float) and 0 <= value <= 100 and value == int(value) else None
+
     def importance(item):
-        score = item.get("importance")
-        return score if type(score) is int and 0 <= score <= 100 else 0
+        return score(item, "importance") or 0
 
     images = [it for it in plan_data.get("illustrations") or []
               if isinstance(it, dict) and str(it.get("title") or "").strip()]
@@ -2557,10 +2560,9 @@ def _normalize_mixed_viz_plan(plan_data: dict) -> list[dict]:
     candidates = []
     for item in items:
         item["image_model"] = MODEL_IMAGE_OPENAI
-        difficulty = item.get("difficulty")
-        if type(difficulty) is not int or not 0 <= difficulty <= 100:
-            item["difficulty"] = None
-        elif item["diagram_type"] != "additional" and difficulty >= 70 and importance(item) >= 60:
+        item["importance"] = importance(item)
+        difficulty = item["difficulty"] = score(item, "difficulty")
+        if difficulty is not None and item["diagram_type"] != "additional" and difficulty >= 70 and importance(item) >= 60:
             candidates.append(item)
     if candidates:
         hardest = max(candidates, key=lambda item: (item["difficulty"], importance(item)))
@@ -2575,7 +2577,7 @@ def _normalize_mixed_viz_plan(plan_data: dict) -> list[dict]:
                            key=importance, reverse=True)[:2])
     for item in selected:
         block = item.get("block") if item.get("block") in ("method", "result") else "method"
-        items.append({**item, "tool": "mermaid", "block": block})
+        items.append({**item, "tool": "mermaid", "block": block, "importance": importance(item)})
 
     interactive = plan_data.get("interactive_html")
     if isinstance(interactive, dict) and interactive.get("applicable") is True and str(interactive.get("title") or "").strip():

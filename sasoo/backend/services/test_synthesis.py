@@ -168,12 +168,27 @@ class MixedVisualizationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([it["title"] for it in items if it["image_model"] == ae.MODEL_IMAGE_SUNBURST], ["comparison"])
 
     def test_simple_and_invalid_difficulty_scores_keep_flare(self):
-        for score in (None, 69, True, "90", 101):
+        for score in (None, 69, True, "90", 101, 70.5, float("nan"), float("inf")):
             with self.subTest(score=score):
                 items = ae._normalize_viz_plan({"illustrations": [{"title": "core", "purpose": "structure",
                                               "importance": 100, "difficulty": score,
                                               "image_model": ae.MODEL_IMAGE_SUNBURST}], "diagrams": []})
                 self.assertEqual(items[0]["image_model"], ae.MODEL_IMAGE_OPENAI)
+
+    def test_integer_float_scores_preserve_generation_gates(self):
+        items = ae._normalize_viz_plan({
+            "illustrations": [
+                {"title": "core", "purpose": "process", "importance": 60.0, "difficulty": 70.0},
+                {"title": "extra", "purpose": "additional", "importance": 60.0},
+                {"title": "fraction", "purpose": "additional", "importance": 60.5},
+                {"title": "bool", "purpose": "additional", "importance": True},
+            ],
+            "diagrams": [{"title": "diagram", "diagram_type": "flowchart", "importance": 60.0}],
+        })
+        self.assertEqual([it["title"] for it in items], ["core", "extra", "diagram"])
+        self.assertEqual(items[0]["image_model"], ae.MODEL_IMAGE_SUNBURST)
+        self.assertEqual(items[0]["difficulty"], 70)
+        self.assertTrue(all(type(it["importance"]) is int for it in items))
 
     async def test_selected_sunburst_model_survives_regeneration_and_quality_cap(self):
         from services.viz.figure_gen import FigureGenResult
