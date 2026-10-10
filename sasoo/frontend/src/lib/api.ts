@@ -390,6 +390,8 @@ export interface ModelStats {
   model: string;
   calls: number;
   cost_usd: number;
+  /** Requests whose usage was never reported; cost_usd leaves them out. */
+  unknown_cost_count?: number;
   tokens_in: number;
   tokens_out: number;
 }
@@ -398,6 +400,7 @@ export interface CostSummary {
   monthly_costs: {
     month: string;
     total_usd: number;
+    unknown_cost_count?: number;
     papers_analyzed: number;
     tokens_in: number;
     tokens_out: number;
@@ -407,6 +410,7 @@ export interface CostSummary {
     paper_id: number;
     title: string;
     total_usd: number;
+    unknown_cost_count?: number;
     tokens_in: number;
     tokens_out: number;
     phases: Record<string, number>;
@@ -415,6 +419,7 @@ export interface CostSummary {
   current_month: {
     month: string;
     cost_usd: number;
+    unknown_cost_count?: number;
     tokens_in: number;
     tokens_out: number;
     papers_analyzed: number;
@@ -422,6 +427,8 @@ export interface CostSummary {
   totals: {
     total_papers: number;
     total_cost_usd: number;
+    /** Known costs only: this many requests are not in total_cost_usd. */
+    unknown_cost_count?: number;
     avg_cost_per_paper: number;
     total_tokens_in: number;
     total_tokens_out: number;

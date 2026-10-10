@@ -30,12 +30,17 @@ class _WorkerDied(BaseException):
     """Not an Exception, so per-item error handling cannot swallow it."""
 
 
-def _text(text):
-    return {"text": text, "model": "gpt-6-luna", "tokens_in": 100, "tokens_out": 50,
+def _text(text, tokens_in=100, tokens_out=50):
+    return {"text": text, "model": "gpt-6-luna", "tokens_in": tokens_in, "tokens_out": tokens_out,
             "tokens_cached": 0, "tokens_cache_write": 0}
 
 
-class PartialRetryTests(IsolatedDbCase):
+class PipelineCase(IsolatedDbCase):
+    """Real pipeline with paid calls replaced; no tests of its own."""
+
+    render_usage = None
+    tokens = {"mermaid": (100, 50), "html": (100, 50), "describe": (100, 50)}
+
     async def asyncSetUp(self):
         await super().asyncSetUp()
         self.calls = {"plan": 0, "mermaid": 0, "html": 0, "describe": 0, "render": 0}
@@ -48,19 +53,19 @@ class PartialRetryTests(IsolatedDbCase):
         async def call(prompt, **_kwargs):
             if "Mermaid" in prompt:
                 self.calls["mermaid"] += 1
-                return _text("sequenceDiagram\nA->>B: 신호")
+                return _text("sequenceDiagram\nA->>B: 신호", *self.tokens["mermaid"])
             self.calls["html"] += 1
             if self.html_fails:
                 raise RuntimeError("temporary upstream error")
-            return _text('<input type="range"><script>/* y=2x */</script>')
+            return _text('<input type="range"><script>/* y=2x */</script>', *self.tokens["html"])
 
         async def describe(*_args, **_kwargs):
             self.calls["describe"] += 1
-            return _text("A clean diagram")
+            return _text("A clean diagram", *self.tokens["describe"])
 
         def render(provider, _description):
             self.calls["render"] += 1
-            provider.usage = None
+            provider.usage = self.render_usage
             return PNG
 
         for target, value in (
@@ -87,6 +92,15 @@ class PartialRetryTests(IsolatedDbCase):
         return await database.fetch_all(
             "SELECT id, result FROM analysis_results WHERE phase = 'visualization' ORDER BY id")
 
+    def cache_hash(self):
+        cache_input = ae._visualization_cache_input(
+            visualization_input="source", previous_results=["previous"], recipe_result="recipe",
+            deep_dive_result="deep", image_provider="openai", image_quality="high", analysis_provider="openai",
+        )
+        return ae.compute_input_hash(cache_input)
+
+
+class PartialRetryTests(PipelineCase):
     async def test_failed_items_are_retried_and_successes_are_not_replayed(self):
         first = {it["id"]: it for it in await self.run_pipeline()}
         self.assertEqual([first[i]["status"] for i in (1, 2, 3)], ["error", "completed", "error"])
@@ -159,13 +173,6 @@ class PartialRetryTests(IsolatedDbCase):
 
         self.assertEqual(len(items), 3)
         self.assertEqual(self.calls["plan"], 1)
-
-    def cache_hash(self):
-        cache_input = ae._visualization_cache_input(
-            visualization_input="source", previous_results=["previous"], recipe_result="recipe",
-            deep_dive_result="deep", image_provider="openai", image_quality="high", analysis_provider="openai",
-        )
-        return ae.compute_input_hash(cache_input)
 
 
 class ReusableItemTests(IsolatedDbCase):

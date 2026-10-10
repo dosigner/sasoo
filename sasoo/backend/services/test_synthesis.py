@@ -223,15 +223,17 @@ class MixedVisualizationTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(ValueError):
                 await ae._generate_single_html({}, "source", provider="openai")
 
-    async def test_unknown_image_cost_is_not_saved_as_zero(self):
+    async def test_unknown_image_cost_is_counted_not_priced(self):
         insert = AsyncMock()
         with patch.object(ae, "fetch_one", new=AsyncMock(return_value=None)), patch.object(
             ae, "_insert_analysis_result", new=insert
         ):
             await ae._store_visualization_progress(7, [{"id": 1, "tool": "paperbanana", "status": "completed"}],
                                                    "cache", True, provider="openai")
-        self.assertIsNone(insert.await_args.args[6])
-        self.assertTrue(json.loads(insert.await_args.args[2])["cost_incomplete"])
+        # The column keeps the known total; the unknown request is counted beside it.
+        self.assertEqual(insert.await_args.args[6], 0.0)
+        payload = json.loads(insert.await_args.args[2])
+        self.assertEqual((payload["cost_incomplete"], payload["cost_unknown_count"]), (True, 1))
 
     async def test_invalid_plan_does_not_generate_a_default_flowchart(self):
         from models.schemas import AnalysisStatus
@@ -275,7 +277,7 @@ class MermaidRenderableTypeTests(unittest.IsolatedAsyncioTestCase):
                 [],
             )
 
-        self.assertEqual(code, "flowchart TD\nA-->B")
+        self.assertEqual(code["mermaid_code"], "flowchart TD\nA-->B")
         self.assertIn("Mermaid flowchart 다이어그램", captured["prompt"])
         self.assertNotIn("mindmap", captured["prompt"])
 

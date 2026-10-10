@@ -269,7 +269,10 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
 
   if (!costData || !hero) return null;
 
-  const hasData = costData.totals.total_cost_usd > 0 || costData.totals.total_tokens_in > 0;
+  const unknownTotal = costData.totals.unknown_cost_count ?? 0;
+  const unknownThisMonth = costData.current_month.unknown_cost_count ?? 0;
+  const hasData =
+    costData.totals.total_cost_usd > 0 || costData.totals.total_tokens_in > 0 || unknownTotal > 0;
 
   if (!hasData) {
     return (
@@ -321,6 +324,9 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
                 {formatCurrency(hero.avgThisMonth)}
               </span>
             </div>
+            {unknownThisMonth > 0 && (
+              <p className="mt-1 text-xs text-warning-fg">{S.cost.unknownCostNotice(unknownThisMonth)}</p>
+            )}
           </div>
 
           {monthlyChartData.months.length > 0 && (
@@ -379,7 +385,12 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
                       <td className="py-2 px-2 text-right text-fg-muted font-mono tabular-nums">{m.calls}</td>
                       <td className="py-2 px-2 text-right text-fg-muted font-mono tabular-nums">{formatTokens(m.tokens_in)}</td>
                       <td className="py-2 px-2 text-right text-fg-muted font-mono tabular-nums">{formatTokens(m.tokens_out)}</td>
-                      <td className="py-2 pl-2 text-right text-fg font-mono tabular-nums font-semibold">{formatCurrency(m.cost_usd)}</td>
+                      <td className="py-2 pl-2 text-right text-fg font-mono tabular-nums font-semibold">
+                        {formatCurrency(m.cost_usd)}
+                        {(m.unknown_cost_count ?? 0) > 0 && (
+                          <span className="block text-2xs font-normal text-warning-fg">{S.cost.unknownCostCount(m.unknown_cost_count ?? 0)}</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -397,6 +408,9 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
                     </td>
                     <td className="py-2 pl-2 text-right text-accent font-mono tabular-nums font-semibold">
                       {formatCurrency(costData.totals.total_cost_usd)}
+                      {unknownTotal > 0 && (
+                        <span className="block text-2xs font-normal text-warning-fg">{S.cost.unknownCostCount(unknownTotal)}</span>
+                      )}
                     </td>
                   </tr>
                 </tfoot>
@@ -423,6 +437,9 @@ export default function CostDashboard({ refreshKey }: CostDashboardProps) {
                     <span className="text-fg font-mono tabular-nums font-semibold">
                       {formatCurrency(paper.total_usd)}
                     </span>
+                    {(paper.unknown_cost_count ?? 0) > 0 && (
+                      <span className="ml-2 text-2xs text-warning-fg">{S.cost.unknownCostCount(paper.unknown_cost_count ?? 0)}</span>
+                    )}
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     {Object.entries(paper.phases).map(([phase, cost]) => (

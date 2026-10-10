@@ -108,7 +108,8 @@ class RegenerationRunIdentityTests(IsolatedDbCase):
 
         async def mermaid(*_args, **_kwargs):
             await both_started.wait()
-            return "sequenceDiagram\nA->>B: new"
+            return {"mermaid_code": "sequenceDiagram\nA->>B: new", "cost_usd": 0.001, "model_used": "m",
+                    "requests": [{"kind": "mermaid", "model": "m", "cost_usd": 0.001}]}
 
         with patch("api.analysis_routes._generate_single_html", new=html), patch(
             "api.analysis_routes._generate_single_mermaid", new=mermaid

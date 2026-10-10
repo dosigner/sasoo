@@ -115,6 +115,7 @@ export const S = {
     costTitle: '이번 달 비용',
     costOpenSettings: '자세히 보기',
     costMeta: (papers: number) => `논문 ${papers}편 분석`,
+    costUnknown: (n: number) => `미확인 ${n}건 제외`,
     costDelta: (delta: string) => `지난달 대비 ${delta}`,
     costEmptyMeta: '논문을 분석하면 비용이 여기에 표시돼요.',
     libraryTitle: '연구 보관함',
@@ -560,6 +561,9 @@ export const S = {
     monthLabel: (mm: string) => `${mm}월`,
     paperCount: (n: number) => `${n}개 논문`,
     perPaperCost: '논문별 비용 (상위 10개)',
+    // 비용 합계는 사용량이 확인된 요청만 더한다. 미확인 요청은 0으로 치지 않고 건수로 알린다.
+    unknownCostNotice: (n: number) => `사용량을 확인하지 못한 요청 ${n}건은 합계에서 빠졌어요.`,
+    unknownCostCount: (n: number) => `미확인 ${n}건`,
     modelBreakdown: '모델별 사용량',
     modelName: '모델',
     calls: '호출',

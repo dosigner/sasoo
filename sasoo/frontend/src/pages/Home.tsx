@@ -19,6 +19,7 @@ function todayLabel(): string {
 
 interface CostTileData {
   costUsd: number;
+  unknownCount: number;
   papersAnalyzed: number;
   // 지난달 비용이 있을 때만 채워지는 부호 포함 증감률 문자열 (예: "+12%", "-8%")
   delta: string | null;
@@ -85,6 +86,7 @@ export default function Home() {
         }
         setCost({
           costUsd: current?.cost_usd ?? 0,
+          unknownCount: current?.unknown_cost_count ?? 0,
           papersAnalyzed: current?.papers_analyzed ?? 0,
           delta,
         });
@@ -105,7 +107,11 @@ export default function Home() {
 
   const costMetaLine = cost
     ? cost.papersAnalyzed > 0
-      ? [S.home.costMeta(cost.papersAnalyzed), cost.delta ? S.home.costDelta(cost.delta) : null]
+      ? [
+          S.home.costMeta(cost.papersAnalyzed),
+          cost.unknownCount > 0 ? S.home.costUnknown(cost.unknownCount) : null,
+          cost.delta ? S.home.costDelta(cost.delta) : null,
+        ]
           .filter(Boolean)
           .join(' · ')
       : S.home.costEmptyMeta

@@ -38,7 +38,7 @@ from services.evidence_repo import ensure_recipe_anchors
 # 종합 스테이지의 핵심 수치 검증은 값 가드(#48)와 같은 수치 동치 판정을 쓴다 —
 # 리터럴 대조를 새로 짜면 "1,550"과 "1550"이 다른 값이 된다.
 from services.evidence_verifier import _numeric_tokens, normalize_text
-from services.pricing import PricingUsageError, calc_result_cost
+from services.pricing import PricingUsageError, calc_result_cost, item_usage_records, records_cost, usage_record
 from services.llm.interactions_client import call_interaction
 from services.llm.openai_client import load_pdf_part
 
@@ -2773,6 +2773,25 @@ diagram_count는 illustrations와 diagrams, applicable인 HTML의 합이다.
 _MERMAID_RENDERABLE_TYPES = {"flowchart", "sequence"}
 
 
+class VizGenerationError(ValueError):
+    """A visualization request failed; requests keeps what was (maybe) spent."""
+
+    def __init__(self, message: str, requests: list[dict]):
+        super().__init__(message)
+        self.requests = requests
+
+
+def _viz_cost_totals(items: list[dict], prior_requests: list[dict]) -> tuple[float, int]:
+    """Known USD total and unknown request count of one visualization run.
+
+    prior_requests holds attempts no longer shown by an item (failed tries that were
+    retried, replaced regenerations, stale regenerations, Mermaid repairs).
+    """
+    records = [record for item in items for record in item_usage_records(item)] + list(prior_requests)
+    known = sum(record["cost_usd"] for record in records if record.get("cost_usd") is not None)
+    return float(known), sum(1 for record in records if record.get("cost_usd") is None)
+
+
 async def _generate_single_mermaid(
     paper_id: int,
     viz_item: dict,
@@ -2780,8 +2799,12 @@ async def _generate_single_mermaid(
     previous_results: list[str],
     *,
     provider: str = "gemini",
-) -> str:
-    """Generate Mermaid code for a single visualization item using Gemini Pro 3."""
+) -> dict:
+    """Generate Mermaid code for one visualization item.
+
+    Returns {"mermaid_code", "cost_usd", "model_used", "requests"}. A failed call
+    raises VizGenerationError with an unknown-cost request record.
+    """
     title = viz_item.get("title", "Diagram")
     diagram_type = viz_item.get("diagram_type", "flowchart")
     if diagram_type not in _MERMAID_RENDERABLE_TYPES:
@@ -2817,11 +2840,17 @@ sequence의 메시지로 나열하지 말고, 주체와 전달 순서에 집중�
 """
 
     choice = resolve_model("mermaid", provider)
-    result = await call_interaction(
-        prompt, lane="pipeline", model=choice.model, thinking_level=choice.effort, store=False,
-    )
-
-    return _sanitize_mermaid_code(result["text"])
+    try:
+        result = await call_interaction(
+            prompt, lane="pipeline", model=choice.model, thinking_level=choice.effort, store=False,
+        )
+    except Exception as exc:
+        raise VizGenerationError(str(exc), [usage_record("mermaid", choice.model)]) from exc
+    requests = [usage_record("mermaid", choice.model, result)]
+    code = _sanitize_mermaid_code(result["text"])
+    if not code:
+        raise VizGenerationError("Mermaid generation returned no code", requests)
+    return {"mermaid_code": code, "cost_usd": records_cost(requests), "model_used": choice.model, "requests": requests}
 
 
 async def _generate_single_paperbanana(
@@ -2888,9 +2917,10 @@ async def _generate_single_paperbanana(
             "cost_usd": result.cost_usd,
             "image_quality": quality,
             "model_used": image_model if mixed_image else resolve_model("image", llm_provider).model,
+            "requests": result.requests,
         }
     _logger.warning("figure_gen failed for '%s': %s", title, result.error)
-    return {"error": result.error or "generation failed"}
+    return {"error": result.error or "generation failed", "requests": result.requests}
 
 
 async def _generate_single_html(viz_item: dict, visualization_input: str, *, provider: str) -> dict:
@@ -2913,18 +2943,22 @@ details로 펼치게 해. 좁은 화면에서도 입력을 조작하며 출력�
 제공된 검산 예를 JavaScript assert로 확인해. 결과는 설명용 계산이며 실험 재현과 구분해.
 """
     choice = resolve_model("viz_image_plan", provider)
-    result = await call_interaction(
-        prompt, lane="pipeline", model=choice.model, thinking_level=choice.effort, store=False,
-        max_output_tokens=8000,
-    )
+    try:
+        result = await call_interaction(
+            prompt, lane="pipeline", model=choice.model, thinking_level=choice.effort, store=False,
+            max_output_tokens=8000,
+        )
+    except Exception as exc:
+        raise VizGenerationError(str(exc), [usage_record("html", choice.model)]) from exc
+    requests = [usage_record("html", choice.model, result)]
     code = str(result.get("text") or "").strip()
     if code.startswith("```"):
         code = "\n".join(code.splitlines()[1:]).removesuffix("```").strip()
     if _is_error_result(code) or result.get("response_status") in {"incomplete", "failed", "cancelled"}:
-        raise ValueError("HTML generation did not complete")
+        raise VizGenerationError("HTML generation did not complete", requests)
     if len(code) > 100000 or "<script" not in code.lower() or not re.search(r"<(input|button|select)\b", code, re.I):
-        raise ValueError("HTML explainer has no valid interactive controls")
-    return {"html_code": code, "cost_usd": _result_cost(result), "model_used": choice.model}
+        raise VizGenerationError("HTML explainer has no valid interactive controls", requests)
+    return {"html_code": code, "cost_usd": records_cost(requests), "model_used": choice.model, "requests": requests}
 
 
 def _viz_item_reusable(item: dict, folder_name: str) -> bool:
@@ -2948,7 +2982,7 @@ def _viz_item_reusable(item: dict, folder_name: str) -> bool:
 
 async def _store_visualization_progress(
     paper_id: int, items: list[dict], cache_input: str, done: bool, *, provider: str = "gemini",
-    planned_empty: bool = False,
+    planned_empty: bool = False, prior_requests: list[dict] | None = None,
 ) -> None:
     """항목이 하나 끝날 때마다 visualization 행을 갱신한다 (중간 사망 시 유실 방지).
 
@@ -2961,9 +2995,10 @@ async def _store_visualization_progress(
     항목(mermaid/paperbanana)의 모델이 아니다.
     """
     input_hash = compute_input_hash(cache_input)
-    cost_unknown = any(it.get("tool") in {"paperbanana", "html"} and it.get("status") == "completed"
-                       and it.get("cost_usd") is None for it in items)
-    total_cost_usd = None if cost_unknown else sum(it.get("cost_usd") or 0 for it in items)
+    # The cost column holds the known total; unknown requests are counted beside it.
+    # Totals are recomputed from the records each time, so checkpoints never add twice.
+    prior_requests = prior_requests or []
+    total_cost_usd, unknown_count = _viz_cost_totals(items, prior_requests)
     model_used = resolve_model("viz_planning", provider).model
     payload = json.dumps(
         {
@@ -2972,7 +3007,9 @@ async def _store_visualization_progress(
             "model_used": model_used,
             "planned_at": _utcnow_iso(),
             "complete": done,
-            "cost_incomplete": cost_unknown,
+            "cost_incomplete": unknown_count > 0,
+            "cost_unknown_count": unknown_count,
+            "prior_requests": prior_requests,
             "planned_empty": planned_empty,
         },
         ensure_ascii=False,
@@ -3338,6 +3375,8 @@ async def _run_visualizations(
     # are generated again (paid results are not replayed).
     cached = await _get_cached_phase_result(paper_id, "visualization", visualization_cache_input)
     reusable: dict[int, dict] = {}
+    cached_items: list[dict] = []
+    prior_requests: list[dict] = []
     if cached is not None:
         try:
             cached_data = json.loads(cached["text"])
@@ -3356,6 +3395,9 @@ async def _run_visualizations(
         if finished and len(reusable) == len(cached_items) and (cached_items or cached_data.get("planned_empty")):
             status.progress_pct = 100.0
             return cached_items
+        # Spend of the attempts this run replaces stays in the run total.
+        prior_requests = list(cached_data.get("prior_requests") or [])
+        prior_requests += [r for it in cached_items if it.get("id") not in reusable for r in item_usage_records(it)]
 
     # Step 1: Plan (final stage of the stateful chain), then the paid-generation gate
     viz_plan = _gate_viz_items(await _plan_visualizations(
@@ -3395,14 +3437,13 @@ async def _run_visualizations(
         }
         try:
             if tool == "mermaid":
-                code = await _generate_single_mermaid(
+                result_item.update(await _generate_single_mermaid(
                     paper_id,
                     item,
                     visualization_input,
                     previous_results,
                     provider=provider,
-                )
-                result_item["mermaid_code"] = code
+                ))
                 result_item["status"] = "completed"
             elif tool == "paperbanana":
                 pb_result = await _generate_single_paperbanana(
@@ -3416,14 +3457,14 @@ async def _run_visualizations(
                 )
                 result_item["image_url"] = pb_result.get("image_url")
                 result_item["image_path"] = pb_result.get("image_path")
+                result_item["requests"] = pb_result.get("requests") or []
                 if pb_result.get("image_path"):
                     result_item["status"] = "completed"
                     if pb_result.get("provider"):
                         result_item["provider"] = pb_result["provider"]
                     if pb_result.get("duration_s") is not None:
                         result_item["duration_s"] = pb_result["duration_s"]
-                    if pb_result.get("cost_usd") is not None:
-                        result_item["cost_usd"] = pb_result["cost_usd"]
+                    result_item["cost_usd"] = pb_result.get("cost_usd")
                     result_item["image_quality"] = pb_result.get("image_quality")
                     result_item["model_used"] = pb_result.get("model_used")
                 else:
@@ -3435,6 +3476,8 @@ async def _run_visualizations(
             else:
                 result_item["status"] = "error"
                 result_item["error_message"] = f"Unknown tool: {tool}"
+        except VizGenerationError as e:
+            result_item.update(status="error", error_message=str(e), requests=e.requests)
         except Exception as e:
             result_item["status"] = "error"
             result_item["error_message"] = str(e)
@@ -3456,6 +3499,7 @@ async def _run_visualizations(
         accumulated.extend(mermaid_results)
         await _store_visualization_progress(
             paper_id, accumulated, visualization_cache_input, done=False, provider=provider,
+            prior_requests=prior_requests,
         )
 
     # Run paperbanana generations sequentially to avoid API rate limits
@@ -3466,6 +3510,7 @@ async def _run_visualizations(
         accumulated.append(result)
         await _store_visualization_progress(
             paper_id, accumulated, visualization_cache_input, done=False, provider=provider,
+            prior_requests=prior_requests,
         )
         # Small delay between PaperBanana calls to avoid rate limiting
         if idx < len(paperbanana_items) - 1 and result is not reusable.get(i + 1):
@@ -3478,16 +3523,21 @@ async def _run_visualizations(
         accumulated.extend(other_results)
         await _store_visualization_progress(
             paper_id, accumulated, visualization_cache_input, done=False, provider=provider,
+            prior_requests=prior_requests,
         )
 
     # Combine and sort by original index
     all_results = list(mermaid_results) + paperbanana_results + list(other_results)
     generated_items = sorted(all_results, key=lambda x: x.get("id", 0))
 
+    # Reusable items the new plan no longer contains were still paid for.
+    prior_requests += [r for it in reusable.values() if not any(it is g for g in generated_items)
+                       for r in item_usage_records(it)]
+
     # Step 3: Store all visualization results in DB (final, complete=True)
     await _store_visualization_progress(
         paper_id, generated_items, visualization_cache_input, done=True, provider=provider,
-        planned_empty=not viz_plan,
+        planned_empty=not viz_plan, prior_requests=prior_requests,
     )
 
     # Visualization complete — set progress to 100%
