@@ -1,6 +1,6 @@
-import { useState, useCallback, lazy, Suspense } from 'react';
+import { useState, useCallback, useMemo, lazy, Suspense } from 'react';
 import { AlertCircle, Loader2, Download, FolderDown, RefreshCw } from 'lucide-react';
-import { getStaticUrl, repairMermaid, regenerateVisualization } from '@/lib/api';
+import { ApiError, getStaticUrl, repairMermaid, regenerateVisualization } from '@/lib/api';
 import type { VisualizationItem, VisualizationPlan, MermaidDiagram } from '@/lib/api';
 import { S } from '@/lib/strings';
 import { assetExtension, downloadBlob, safeAssetFilename } from '@/lib/download';
@@ -91,15 +91,35 @@ export function PaperBananaViewer({ item }: { item: VisualizationItem }) {
 /**
  * 재생성과 복구와 ZIP 내보내기 상태. 갤러리와 종합 뷰가 같은 엔드포인트를
  * 같은 규칙으로 쓰므로 훅 하나로 공유한다.
+ *
+ * 상태는 분석 실행(plan.run_id)별로 저장한다. 같은 논문을 재분석해 새 실행이
+ * 도착하면 이전 실행의 override, 진행 표시, 오류는 보이지 않고, 늦게 끝난
+ * 이전 실행의 재생성 결과도 새 실행에 적용되지 않는다.
  */
-export function useVisualizationActions() {
+export function useVisualizationActions(plan: VisualizationPlan | null) {
+  const runId = plan?.run_id ?? null;
   // Locally regenerated/repaired items override the fetched plan until the
-  // next reload (the backend persists them too).
-  const [itemOverrides, setItemOverrides] = useState<Record<number, VisualizationItem>>({});
-  const [regeneratingIds, setRegeneratingIds] = useState<Record<number, boolean>>({});
-  const [regenerateErrors, setRegenerateErrors] = useState<Record<number, string>>({});
+  // next reload (the backend persists them too). Keys are `${runId}:${vizId}`.
+  const [overridesByRun, setItemOverrides] = useState<Record<string, VisualizationItem>>({});
+  const [regeneratingByRun, setRegeneratingIds] = useState<Record<string, boolean>>({});
+  const [errorsByRun, setRegenerateErrors] = useState<Record<string, string>>({});
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+
+  const forRun = useCallback(
+    <T,>(byRun: Record<string, T>): Record<number, T> => {
+      const prefix = `${runId}:`;
+      const out: Record<number, T> = {};
+      for (const [key, value] of Object.entries(byRun)) {
+        if (key.startsWith(prefix)) out[Number(key.slice(prefix.length))] = value;
+      }
+      return out;
+    },
+    [runId]
+  );
+  const itemOverrides = useMemo(() => forRun(overridesByRun), [forRun, overridesByRun]);
+  const regeneratingIds = useMemo(() => forRun(regeneratingByRun), [forRun, regeneratingByRun]);
+  const regenerateErrors = useMemo(() => forRun(errorsByRun), [forRun, errorsByRun]);
 
   const handleExportAll = useCallback(
     async (paperId: number, items: VisualizationItem[]) => {
@@ -119,21 +139,24 @@ export function useVisualizationActions() {
 
   const handleRegenerate = useCallback(
     async (paperId: number, vizId: number) => {
-      setRegeneratingIds((prev) => ({ ...prev, [vizId]: true }));
-      setRegenerateErrors((prev) => ({ ...prev, [vizId]: '' }));
+      const key = `${runId}:${vizId}`;
+      setRegeneratingIds((prev) => ({ ...prev, [key]: true }));
+      setRegenerateErrors((prev) => ({ ...prev, [key]: '' }));
       try {
-        const updated = await regenerateVisualization(paperId, vizId);
-        setItemOverrides((prev) => ({ ...prev, [vizId]: updated }));
-      } catch {
+        const updated = await regenerateVisualization(paperId, vizId, runId);
+        setItemOverrides((prev) => ({ ...prev, [key]: updated }));
+      } catch (err) {
         setRegenerateErrors((prev) => ({
           ...prev,
-          [vizId]: S.mermaid.regenerateFailed,
+          [key]: err instanceof ApiError && err.status === 409
+            ? S.mermaid.regenerateStale
+            : S.mermaid.regenerateFailed,
         }));
       } finally {
-        setRegeneratingIds((prev) => ({ ...prev, [vizId]: false }));
+        setRegeneratingIds((prev) => ({ ...prev, [key]: false }));
       }
     },
-    []
+    [runId]
   );
 
   const makeRepairHandler = useCallback(
@@ -144,13 +167,14 @@ export function useVisualizationActions() {
             mermaid_code: code,
             error_message: errorMessage,
             viz_id: vizId,
+            run_id: runId,
           });
           return result.mermaid_code || null;
         } catch {
           return null;
         }
       },
-    []
+    [runId]
   );
 
   return {
@@ -183,7 +207,7 @@ export function VisualizationGallery({
     handleExportAll,
     handleRegenerate,
     makeRepairHandler,
-  } = useVisualizationActions();
+  } = useVisualizationActions(visualizations);
 
   // If we have the new visualization plan, use it
   if (visualizations && visualizations.items.length > 0) {

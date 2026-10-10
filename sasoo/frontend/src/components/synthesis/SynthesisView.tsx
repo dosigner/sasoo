@@ -54,7 +54,7 @@ export function SynthesisView({
   onOpenFigure,
   onOpenRecipe,
 }: SynthesisViewProps) {
-  const actions = useVisualizationActions();
+  const actions = useVisualizationActions(visualizations);
   const [expandAll, setExpandAll] = useState(false);
   const [building, setBuilding] = useState(false);
   const [buildError, setBuildError] = useState('');

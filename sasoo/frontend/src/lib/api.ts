@@ -309,6 +309,8 @@ export interface VisualizationPlan {
   total_count: number;
   model_used: string;
   planned_at: string | null;
+  /** analysis_results.id of the run; regenerate, repair and overrides bind to it. */
+  run_id?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -767,6 +769,7 @@ export interface MermaidRepairRequest {
   mermaid_code: string;
   error_message: string;
   viz_id?: number | null;
+  run_id?: number | null;
 }
 
 export async function repairMermaid(
@@ -781,10 +784,12 @@ export async function repairMermaid(
 
 export async function regenerateVisualization(
   paperId: string | number,
-  vizId: number
+  vizId: number,
+  runId?: number | null
 ): Promise<VisualizationItem> {
+  const query = runId == null ? '' : `?run_id=${runId}`;
   return request<VisualizationItem>(
-    `/analysis/${paperId}/visualizations/${vizId}/regenerate`,
+    `/analysis/${paperId}/visualizations/${vizId}/regenerate${query}`,
     { method: 'POST' }
   );
 }

@@ -831,6 +831,7 @@ export const S = {
     regenerate: '다시 생성',
     regenerating: '다시 만들고 있어요...',
     regenerateFailed: '다시 만들지 못했어요',
+    regenerateStale: '새 분석 결과로 바뀌어 저장하지 않았어요',
     exportAll: '전체 다운로드',
     exporting: '내보내고 있어요...',
     exportFailed: '시각화를 내보내지 못했어요',

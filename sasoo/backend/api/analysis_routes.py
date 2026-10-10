@@ -621,42 +621,56 @@ async def get_visualizations(paper_id: int):
             total_count=data.get("total_count", len(items)),
             model_used=data.get("model_used", ""),
             planned_at=data.get("planned_at"),
+            run_id=viz_result.get("id"),
         )
     except (json.JSONDecodeError, TypeError):
         return VisualizationPlanResponse(paper_id=paper_id)
 
 
+_VIZ_UPDATE_ATTEMPTS = 5
+
+
 async def _update_stored_visualization_item(
-    paper_id: int, viz_id: int, new_fields: dict
+    paper_id: int, viz_id: int, new_fields: dict, *, run_id: Optional[int] = None,
 ) -> Optional[dict]:
-    """Patch one item inside the latest stored visualization row.
+    """Patch one item inside the stored visualization row of one analysis run.
+
+    run_id pins the row the caller read before generating. When a newer run has
+    replaced it the write is refused with 409 instead of putting an old artifact
+    into the new run. The write compares the row text it read, so a concurrent
+    edit of another item (this server or the analysis worker) is re-read, not lost.
 
     Returns the updated item dict, or None when no stored row/item matches.
     """
-    viz_row = await get_latest_completed_phase_row(paper_id, "visualization")
-    if viz_row is None:
-        return None
-    data = viz_row.get("parsed_result")
-    if not isinstance(data, dict):
-        return None
-    items = data.get("items")
-    if not isinstance(items, list):
-        return None
+    for _ in range(_VIZ_UPDATE_ATTEMPTS):
+        viz_row = await get_latest_completed_phase_row(paper_id, "visualization")
+        if viz_row is None:
+            return None
+        if run_id is not None and viz_row["id"] != run_id:
+            raise HTTPException(status_code=409, detail="A newer analysis run replaced this visualization.")
+        data = viz_row.get("parsed_result")
+        if not isinstance(data, dict):
+            return None
+        items = data.get("items")
+        if not isinstance(items, list):
+            return None
 
-    updated_item = None
-    for item in items:
-        if isinstance(item, dict) and item.get("id") == viz_id:
-            item.update(new_fields)
-            updated_item = item
-            break
-    if updated_item is None:
-        return None
+        updated_item = None
+        for item in items:
+            if isinstance(item, dict) and item.get("id") == viz_id:
+                item.update(new_fields)
+                updated_item = item
+                break
+        if updated_item is None:
+            return None
 
-    await execute_update(
-        "UPDATE analysis_results SET result = ? WHERE id = ?",
-        (json.dumps(data, ensure_ascii=False), viz_row["id"]),
-    )
-    return updated_item
+        changed = await execute_update(
+            "UPDATE analysis_results SET result = ? WHERE id = ? AND result = ?",
+            (json.dumps(data, ensure_ascii=False), viz_row["id"], viz_row["result"]),
+        )
+        if changed:
+            return updated_item
+    raise HTTPException(status_code=409, detail="The visualization changed during the update. Try again.")
 
 
 @router.post("/{paper_id}/mermaid/repair", response_model=MermaidResult)
@@ -698,11 +712,17 @@ async def repair_mermaid(paper_id: int, request: MermaidRepairRequest):
         raise HTTPException(status_code=502, detail="Repair produced empty Mermaid code.")
 
     if request.viz_id is not None:
-        await _update_stored_visualization_item(
-            paper_id,
-            request.viz_id,
-            {"mermaid_code": repaired, "status": "completed", "error_message": None},
-        )
+        try:
+            await _update_stored_visualization_item(
+                paper_id,
+                request.viz_id,
+                {"mermaid_code": repaired, "status": "completed", "error_message": None},
+                run_id=request.run_id,
+            )
+        except HTTPException as exc:
+            # The displayed diagram belongs to a replaced run: show the fix, keep the new run.
+            if exc.status_code != 409:
+                raise
 
     return MermaidResult(
         paper_id=paper_id,
@@ -716,16 +736,21 @@ async def repair_mermaid(paper_id: int, request: MermaidRepairRequest):
     "/{paper_id}/visualizations/{viz_id}/regenerate",
     response_model=VisualizationItem,
 )
-async def regenerate_visualization(paper_id: int, viz_id: int):
+async def regenerate_visualization(paper_id: int, viz_id: int, run_id: Optional[int] = None):
     """
     Regenerate a single Mermaid visualization item with the current prompt
     (styling rules included) and persist it, without re-running the analysis.
+
+    run_id is the plan's run the client is showing. A stale id is refused before
+    any paid call; the result is saved only into the row read here.
     """
     paper = await fetch_one("SELECT * FROM papers WHERE id = ?", (paper_id,))
     if paper is None:
         raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
 
     viz_row = await get_latest_completed_phase_row(paper_id, "visualization")
+    if viz_row is not None and run_id is not None and viz_row["id"] != run_id:
+        raise HTTPException(status_code=409, detail="A newer analysis run replaced this visualization.")
     data = (viz_row or {}).get("parsed_result") or {}
     items = data.get("items") if isinstance(data, dict) else None
     stored_item = next(
@@ -802,8 +827,10 @@ async def regenerate_visualization(paper_id: int, viz_id: int):
         new_fields = {"mermaid_code": code}
     new_fields.update({"status": "completed", "error_message": None})
 
-    updated = await _update_stored_visualization_item(paper_id, viz_id, new_fields)
-    return VisualizationItem(**(updated or {**stored_item, **new_fields}))
+    updated = await _update_stored_visualization_item(paper_id, viz_id, new_fields, run_id=viz_row["id"])
+    if updated is None:
+        raise HTTPException(status_code=404, detail=f"Visualization {viz_id} no longer exists for paper {paper_id}.")
+    return VisualizationItem(**updated)
 
 
 def _synthesis_response(paper_id: int, row: dict) -> SynthesisResponse:

@@ -307,6 +307,7 @@ class MermaidRepairRequest(BaseModel):
     mermaid_code: str
     error_message: str
     viz_id: Optional[int] = None  # visualization item ordinal to persist into; None = don't persist
+    run_id: Optional[int] = None  # visualization run the code came from; a newer run is not overwritten
 
 
 # ---------------------------------------------------------------------------
@@ -482,6 +483,9 @@ class VisualizationPlanResponse(BaseModel):
     total_count: int = 0
     model_used: str = ""
     planned_at: Optional[str] = None
+    # analysis_results.id of the visualization row: the run that regenerate,
+    # repair and UI overrides must stay bound to.
+    run_id: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
