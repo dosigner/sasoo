@@ -4137,7 +4137,7 @@ class IntegrationSynthesisHandoffTests(unittest.IsolatedAsyncioTestCase):
             if phase == "synthesis":
                 keys.append(key)
                 return None
-            return {"text": '{"items":[],"complete":true}'}
+            return {"text": '{"items":[],"complete":true,"planned_empty":true}'}
 
         call = AsyncMock(return_value={"text": "{}", "model": "gpt-5.6-luna", "tokens_in": 100,
                                       "tokens_out": 50, "tokens_cached": 0, "tokens_cache_write": 0})

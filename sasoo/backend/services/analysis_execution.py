@@ -2927,8 +2927,28 @@ details로 펼치게 해. 좁은 화면에서도 입력을 조작하며 출력�
     return {"html_code": code, "cost_usd": _result_cost(result), "model_used": choice.model}
 
 
+def _viz_item_reusable(item: dict, folder_name: str) -> bool:
+    """A stored item that can be served again without a new paid call.
+
+    Images are checked where /static serves them (the paper folder), not at the
+    stored absolute path, which goes stale when the library is moved.
+    """
+    if item.get("status") != "completed" or not isinstance(item.get("id"), int):
+        return False
+    tool = item.get("tool")
+    if tool == "paperbanana":
+        name = Path(str(item.get("image_path") or "")).name
+        return bool(name) and (get_paper_dir(folder_name) / "paperbanana" / name).is_file()
+    if tool == "mermaid":
+        return bool(item.get("mermaid_code"))
+    if tool == "html":
+        return bool(item.get("html_code"))
+    return False
+
+
 async def _store_visualization_progress(
     paper_id: int, items: list[dict], cache_input: str, done: bool, *, provider: str = "gemini",
+    planned_empty: bool = False,
 ) -> None:
     """항목이 하나 끝날 때마다 visualization 행을 갱신한다 (중간 사망 시 유실 방지).
 
@@ -2953,6 +2973,7 @@ async def _store_visualization_progress(
             "planned_at": _utcnow_iso(),
             "complete": done,
             "cost_incomplete": cost_unknown,
+            "planned_empty": planned_empty,
         },
         ensure_ascii=False,
     )
@@ -3312,20 +3333,29 @@ async def _run_visualizations(
         image_quality=_image_settings.get("image_quality", "high"),
         analysis_provider=provider,
     )
+    # A cached run is returned only when every item really succeeded. Otherwise its
+    # successful items are reused by id and only failed, missing or unfinished items
+    # are generated again (paid results are not replayed).
     cached = await _get_cached_phase_result(paper_id, "visualization", visualization_cache_input)
+    reusable: dict[int, dict] = {}
     if cached is not None:
         try:
             cached_data = json.loads(cached["text"])
-            # `complete` was introduced with per-item checkpointing (f577fe2): a mid-run
-            # crash can leave behind a partial checkpoint row (complete=False) that shares
-            # the same input_hash as a full run. Rows written before checkpointing existed
-            # have no `complete` field at all, but every one of them was a final save, so
-            # default to True for those and only reject an explicit complete=False.
-            if cached_data.get("complete", True) is not False:
-                status.progress_pct = 100.0
-                return list(cached_data.get("items", []))
+            cached_items = [it for it in cached_data.get("items") or [] if isinstance(it, dict)]
         except (json.JSONDecodeError, TypeError, AttributeError):
-            pass
+            cached_data, cached_items = {}, []
+        reusable = {it["id"]: it for it in cached_items if _viz_item_reusable(it, folder_name)}
+        # `complete` was introduced with per-item checkpointing (f577fe2): a mid-run
+        # crash can leave behind a partial checkpoint row (complete=False) that shares
+        # the same input_hash as a full run. Rows written before checkpointing existed
+        # have no `complete` field at all, but every one of them was a final save, so
+        # default to True for those and only reject an explicit complete=False.
+        # An empty run counts only with the planned_empty marker: v1.2.0 saved planning
+        # failures as complete runs with no items.
+        finished = cached_data.get("complete", True) is not False
+        if finished and len(reusable) == len(cached_items) and (cached_items or cached_data.get("planned_empty")):
+            status.progress_pct = 100.0
+            return cached_items
 
     # Step 1: Plan (final stage of the stateful chain), then the paid-generation gate
     viz_plan = _gate_viz_items(await _plan_visualizations(
@@ -3344,6 +3374,9 @@ async def _run_visualizations(
 
     # Step 2: Generate all in parallel
     async def generate_one(idx: int, item: dict) -> dict:
+        previous = reusable.get(idx + 1)
+        if previous and all(previous.get(key) == item.get(key) for key in ("tool", "title", "diagram_type")):
+            return previous
         tool = item.get("tool", "mermaid")
         result_item = {
             "id": idx + 1,
@@ -3435,7 +3468,7 @@ async def _run_visualizations(
             paper_id, accumulated, visualization_cache_input, done=False, provider=provider,
         )
         # Small delay between PaperBanana calls to avoid rate limiting
-        if idx < len(paperbanana_items) - 1:
+        if idx < len(paperbanana_items) - 1 and result is not reusable.get(i + 1):
             await asyncio.sleep(2.0)
 
     # Run other tool types in parallel
@@ -3454,6 +3487,7 @@ async def _run_visualizations(
     # Step 3: Store all visualization results in DB (final, complete=True)
     await _store_visualization_progress(
         paper_id, generated_items, visualization_cache_input, done=True, provider=provider,
+        planned_empty=not viz_plan,
     )
 
     # Visualization complete — set progress to 100%
