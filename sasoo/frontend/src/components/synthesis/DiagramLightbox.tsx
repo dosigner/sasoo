@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Loader2, Minus, Plus, X } from 'lucide-react';
-import type { VisualizationItem } from '@/lib/api';
+import type { HtmlCheckResult, VisualizationItem } from '@/lib/api';
 import { getStaticUrl } from '@/lib/api';
 import { S } from '@/lib/strings';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
@@ -29,6 +29,7 @@ interface DiagramLightboxProps {
     paperId: number,
     vizId: number
   ) => (code: string, errorMessage: string) => Promise<string | null>;
+  onHtmlCheck?: (item: VisualizationItem, result: HtmlCheckResult) => void;
 }
 
 interface ViewState {
@@ -50,6 +51,7 @@ export function DiagramLightbox({
   onClose,
   onIndexChange,
   makeRepairHandler,
+  onHtmlCheck,
 }: DiagramLightboxProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -156,7 +158,7 @@ export function DiagramLightbox({
         </div>
 
         {item.tool === 'html' ? (
-          <div className="flex-1 overflow-auto p-4"><HtmlVisualization item={item} /></div>
+          <div className="flex-1 overflow-auto p-4"><HtmlVisualization item={item} onCheck={(result) => onHtmlCheck?.(item, result)} /></div>
         ) : <div
           ref={viewportRef}
           className="flex-1 touch-none overflow-hidden cursor-grab active:cursor-grabbing"

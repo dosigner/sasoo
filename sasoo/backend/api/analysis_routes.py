@@ -10,6 +10,7 @@ Phases:
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -36,6 +37,7 @@ from models.schemas import (
     FigureInfo,
     FigureListResponse,
     FullAnalysisResponse,
+    HtmlCheckReport,
     MermaidRepairRequest,
     MermaidResult,
     PaperBananaRequest,
@@ -871,6 +873,32 @@ async def regenerate_visualization(paper_id: int, viz_id: int, run_id: Optional[
         raise
     if updated is None:
         raise HTTPException(status_code=404, detail=f"Visualization {viz_id} no longer exists for paper {paper_id}.")
+    return VisualizationItem(**updated)
+
+
+@router.post("/{paper_id}/visualizations/{viz_id}/html-check", response_model=VisualizationItem)
+async def report_html_check(paper_id: int, viz_id: int, report: HtmlCheckReport):
+    """Store the app's execution check of one HTML explainer in its run.
+
+    The hash must match the stored code, so a check of replaced code is refused.
+    A failed or timed-out explainer is then not reused by a cached reanalysis.
+    """
+    def mutate(data):
+        item = next((it for it in data["items"] if isinstance(it, dict) and it.get("id") == viz_id), None)
+        if item is None or item.get("tool") != "html" or not item.get("html_code"):
+            return None
+        if hashlib.sha256(item["html_code"].encode("utf-8")).hexdigest() != report.html_sha256:
+            raise HTTPException(status_code=409, detail="The checked HTML is not the stored version.")
+        item["execution_check"] = {
+            "status": report.status,
+            "issues": [issue[:200] for issue in report.issues],
+            "checked_at": _utcnow_iso(),
+        }
+        return item
+
+    updated = await _write_visualization_row(paper_id, report.run_id, mutate)
+    if updated is None:
+        raise HTTPException(status_code=404, detail=f"HTML visualization {viz_id} not found for paper {paper_id}.")
     return VisualizationItem(**updated)
 
 

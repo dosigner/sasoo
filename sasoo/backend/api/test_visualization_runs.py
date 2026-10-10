@@ -131,3 +131,42 @@ class RegenerationRunIdentityTests(IsolatedDbCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HtmlCheckReportTests(IsolatedDbCase):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.row = await self.insert_viz([HTML_ITEM, MERMAID_ITEM])
+        import hashlib
+        self.sha = hashlib.sha256(HTML_ITEM["html_code"].encode()).hexdigest()
+
+    def report(self, **overrides):
+        from models.schemas import HtmlCheckReport
+        body = {"run_id": self.row, "status": "failed", "issues": ["assertion failed: y=2x"], "html_sha256": self.sha}
+        return HtmlCheckReport(**{**body, **overrides})
+
+    async def test_failed_check_is_stored_and_makes_the_item_not_reusable(self):
+        from services import analysis_execution as ae
+        response = await analysis_routes.report_html_check(7, 1, self.report())
+        self.assertEqual(response.execution_check["status"], "failed")
+        stored = (await self.stored_items(self.row))[1]
+        self.assertEqual(stored["execution_check"]["issues"], ["assertion failed: y=2x"])
+        self.assertEqual(stored["status"], "completed")  # generated, but not executable
+        self.assertFalse(ae._viz_item_reusable(stored, "folder"))
+        self.assertTrue(ae._viz_item_reusable({**stored, "execution_check": {"status": "passed"}}, "folder"))
+
+    async def test_check_of_other_code_or_run_or_item_is_refused(self):
+        await self.insert_viz([HTML_ITEM], input_hash="run-b")
+        for kwargs, viz_id, code in (({"html_sha256": "0" * 64}, 1, 409), ({}, 1, 409), ({}, 2, 404)):
+            with self.subTest(kwargs=kwargs, viz_id=viz_id):
+                newest = await database.fetch_one("SELECT MAX(id) AS id FROM analysis_results")
+                run = self.row if code == 409 and not kwargs else newest["id"]
+                with self.assertRaises(HTTPException) as ctx:
+                    await analysis_routes.report_html_check(7, viz_id, self.report(run_id=run, **kwargs))
+                self.assertEqual(ctx.exception.status_code, code)
+
+    def test_report_schema_rejects_unknown_status_and_long_lists(self):
+        from pydantic import ValidationError
+        for overrides in ({"status": "verified"}, {"issues": ["x"] * 6}, {"html_sha256": "abc"}):
+            with self.subTest(overrides=overrides), self.assertRaises(ValidationError):
+                self.report(**overrides)

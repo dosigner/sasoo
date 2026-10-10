@@ -1,7 +1,7 @@
-import { useState, useCallback, useMemo, lazy, Suspense } from 'react';
+import { useState, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { AlertCircle, Loader2, Download, FolderDown, RefreshCw } from 'lucide-react';
-import { ApiError, getStaticUrl, repairMermaid, regenerateVisualization } from '@/lib/api';
-import type { VisualizationItem, VisualizationPlan, MermaidDiagram } from '@/lib/api';
+import { ApiError, getStaticUrl, repairMermaid, regenerateVisualization, reportHtmlCheck } from '@/lib/api';
+import type { HtmlCheckResult, VisualizationItem, VisualizationPlan, MermaidDiagram } from '@/lib/api';
 import { S } from '@/lib/strings';
 import { assetExtension, downloadBlob, safeAssetFilename } from '@/lib/download';
 import { AppIcon } from '@/components/icons';
@@ -177,6 +177,28 @@ export function useVisualizationActions(plan: VisualizationPlan | null) {
     [runId]
   );
 
+  // The in-frame execution check is stored on the item (once per run, code and
+  // status) so the backend does not reuse an HTML explainer that fails to run.
+  const reportedChecks = useRef(new Set<string>());
+  const handleHtmlCheck = useCallback(
+    async (paperId: number, item: VisualizationItem, result: HtmlCheckResult) => {
+      if (runId == null || !item.html_code) return;
+      const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(item.html_code));
+      const sha = Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, '0')).join('');
+      const key = `${runId}:${item.id}:${sha}:${result.status}`;
+      if (reportedChecks.current.has(key) || item.execution_check?.status === result.status) return;
+      reportedChecks.current.add(key);
+      try {
+        await reportHtmlCheck(paperId, item.id, {
+          run_id: runId, status: result.status, issues: result.issues, html_sha256: sha,
+        });
+      } catch {
+        // Best effort: the status shown in the frame does not depend on this write.
+      }
+    },
+    [runId]
+  );
+
   return {
     itemOverrides,
     regeneratingIds,
@@ -185,6 +207,7 @@ export function useVisualizationActions(plan: VisualizationPlan | null) {
     exportError,
     handleExportAll,
     handleRegenerate,
+    handleHtmlCheck,
     makeRepairHandler,
   };
 }
@@ -206,6 +229,7 @@ export function VisualizationGallery({
     exportError,
     handleExportAll,
     handleRegenerate,
+    handleHtmlCheck,
     makeRepairHandler,
   } = useVisualizationActions(visualizations);
 
@@ -294,7 +318,10 @@ export function VisualizationGallery({
                 />
               </Suspense>
             ) : item.tool === 'html' && item.html_code ? (
-              <HtmlVisualization item={item} />
+              <HtmlVisualization
+                item={item}
+                onCheck={(result) => void handleHtmlCheck(visualizations.paper_id, item, result)}
+              />
             ) : item.tool === 'paperbanana' ? (
               <PaperBananaViewer item={item} />
             ) : item.status === 'error' ? (

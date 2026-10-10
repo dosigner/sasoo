@@ -2939,6 +2939,7 @@ details로 펼치게 해. 좁은 화면에서도 입력을 조작하며 출력�
 설정이 충돌하면 안 돼. 기본 조건과 조작 후 조건을 구분해.
 슬라이더 또는 숫자 입력을 바꾸면 값과 SVG 그래프가 함께 갱신되어야 해.
 입력 범위를 검증하고 NaN, Infinity를 출력하지 마. 반응형, 키보드 접근, 충분한 대비를 지켜.
+현재 출력값은 각각 <output> 요소에 표시해.
 논문의 식이나 제공된 데이터만 사용해. 임의 계수나 실험 성능을 만들지 마.
 제공된 검산 예를 JavaScript assert로 확인해. 결과는 설명용 계산이며 실험 재현과 구분해.
 """
@@ -2976,7 +2977,8 @@ def _viz_item_reusable(item: dict, folder_name: str) -> bool:
     if tool == "mermaid":
         return bool(item.get("mermaid_code"))
     if tool == "html":
-        return bool(item.get("html_code"))
+        check = item.get("execution_check") or {}
+        return bool(item.get("html_code")) and check.get("status") not in {"failed", "timeout"}
     return False
 
 

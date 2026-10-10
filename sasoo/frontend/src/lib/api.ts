@@ -297,10 +297,19 @@ export interface VisualizationItem {
   provider?: string | null;
   cost_usd?: number | null;
   duration_s?: number | null;
+  /** Last in-frame execution check reported by the app; absent until one ran. */
+  execution_check?: { status: HtmlCheckResult['status']; issues: string[]; checked_at: string } | null;
   status: 'pending' | 'generating' | 'completed' | 'error';
   error_message: string | null;
   /** 종합 뷰가 배정한 구획. 기존 논문(종합 도입 전 생성)에는 없어서 null. */
   block: 'concept' | 'method' | 'result' | null;
+}
+
+/** Result of the in-frame execution check of an HTML explainer (not a check against the paper). */
+export interface HtmlCheckResult {
+  status: 'passed' | 'failed' | 'timeout';
+  issues: string[];
+  probed: number;
 }
 
 export interface VisualizationPlan {
@@ -799,6 +808,17 @@ export async function regenerateVisualization(
     `/analysis/${paperId}/visualizations/${vizId}/regenerate${query}`,
     { method: 'POST' }
   );
+}
+
+export async function reportHtmlCheck(
+  paperId: string | number,
+  vizId: number,
+  body: { run_id: number; status: HtmlCheckResult['status']; issues: string[]; html_sha256: string }
+): Promise<VisualizationItem> {
+  return request<VisualizationItem>(`/analysis/${paperId}/visualizations/${vizId}/html-check`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
 }
 
 export async function getVisualizations(

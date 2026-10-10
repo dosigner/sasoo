@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 
+// iframe is included so keyboard users can enter an HTML explainer in a dialog.
 const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])';
 
 export function useFocusTrap(
   containerRef: RefObject<HTMLElement | null>,

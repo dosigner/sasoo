@@ -302,6 +302,14 @@ class MermaidResult(BaseModel):
     description: Optional[str] = None
 
 
+class HtmlCheckReport(BaseModel):
+    """Execution check result of one HTML explainer, measured in the app's sandboxed frame."""
+    run_id: int
+    status: Literal["passed", "failed", "timeout"]
+    issues: list[str] = Field(default_factory=list, max_length=5)
+    html_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class MermaidRepairRequest(BaseModel):
     """Client-reported parse failure asking the LLM to fix the diagram code."""
     mermaid_code: str
@@ -471,6 +479,10 @@ class VisualizationItem(BaseModel):
     provider: Optional[str] = None
     cost_usd: Optional[float] = None
     duration_s: Optional[float] = None
+    # Latest in-frame execution check of an HTML explainer, reported by the app:
+    # {"status": passed | failed | timeout, "issues": [...], "checked_at": ...}.
+    # It is not a check against the paper's numbers.
+    execution_check: Optional[dict] = None
     # Status
     status: str = "pending"                 # pending | generating | completed | error
     error_message: Optional[str] = None
