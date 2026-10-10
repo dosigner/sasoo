@@ -2486,63 +2486,37 @@ def _sanitize_mermaid_code(raw: str) -> str:
     return _filter_out_of_range_linkstyles(code.strip()).strip()
 
 
-# 구획별 Mermaid 상한(스펙 §5.4). 개념도 1 + method 3 + result 2 = 총 6.
-_VIZ_BLOCK_LIMITS = {"method": 3, "result": 2}
+_VIZ_CORE_PURPOSES = ("structure", "process", "comparison")
+
+
+def _viz_score(value) -> int | None:
+    """A 0~100 integer score. Integral floats count; bool, NaN, inf and text do not."""
+    return int(value) if type(value) in (int, float) and 0 <= value <= 100 and value == int(value) else None
+
+
+def _viz_plan_shape_error(plan) -> str | None:
+    """Why a new planner response does not match _VIZ_PLAN_SCHEMA, or None."""
+    if not isinstance(plan, dict):
+        return "plan is not an object"
+    for key, kind in (("illustrations", list), ("diagrams", list), ("interactive_html", dict)):
+        if not isinstance(plan.get(key), kind):
+            return f"{key} is missing or malformed"
+    if not all(isinstance(it, dict) for it in plan["illustrations"] + plan["diagrams"]):
+        return "plan item is not an object"
+    if type(plan["interactive_html"].get("applicable")) is not bool:
+        return "interactive_html.applicable is not a boolean"
+    if type(plan.get("diagram_count")) is not int:
+        return "diagram_count is not an integer"
+    return None
 
 
 def _normalize_viz_plan(plan_data: dict) -> list[dict]:
-    """기획 스키마(§5.4)를 생성 파이프라인이 쓰는 평평한 항목 리스트로 편다.
+    """Enforce purpose limits and the 60-point gate before paid generation.
 
-    개념도가 항상 맨 앞(tool=paperbanana, block=concept)이고 그 뒤에 Mermaid가 온다.
-    "result 구획은 flowchart만"과 구획 상한은 프롬프트 부탁이 아니라 여기서 강제한다
-    — 모델이 넘겨도 초과분 생성 비용이 나가지 않게.
-
-    저장 형식은 기존과 같은 `{"visualizations": [...]}`다(get_visualizations 라우트와
-    프론트가 그대로 읽는다). 항목에 block 필드만 새로 붙는다.
+    The planner's diagram_count is not trusted; the item count is what is generated.
     """
-    if "illustrations" in plan_data:
-        return _normalize_mixed_viz_plan(plan_data)
-    items: list[dict] = []
-    concept = plan_data.get("concept_illustration")
-    if isinstance(concept, dict) and str(concept.get("title") or "").strip():
-        items.append({
-            "title": concept.get("title", ""),
-            "tool": "paperbanana",
-            "block": "concept",
-            "description": concept.get("description", ""),
-            "category": concept.get("category", "conceptual_illustration"),
-        })
-
-    counts = {"method": 0, "result": 0}
-    for diagram in plan_data.get("diagrams") or []:
-        if not isinstance(diagram, dict):
-            continue
-        block = diagram.get("block") if diagram.get("block") in _VIZ_BLOCK_LIMITS else "method"
-        diagram_type = diagram.get("diagram_type") or "flowchart"
-        if block == "result" and diagram_type != "flowchart":
-            continue
-        if counts[block] >= _VIZ_BLOCK_LIMITS[block]:
-            continue
-        counts[block] += 1
-        items.append({
-            "title": diagram.get("title", ""),
-            "tool": "mermaid",
-            "block": block,
-            "diagram_type": diagram_type,
-            "description": diagram.get("description", ""),
-            "category": diagram.get("category", ""),
-        })
-    return items
-
-
-def _normalize_mixed_viz_plan(plan_data: dict) -> list[dict]:
-    """Enforce purpose limits and the 60-point gate before paid generation."""
-    def score(item, field):
-        value = item.get(field)
-        return int(value) if type(value) in (int, float) and 0 <= value <= 100 and value == int(value) else None
-
     def importance(item):
-        return score(item, "importance") or 0
+        return _viz_score(item.get("importance")) or 0
 
     images = [it for it in plan_data.get("illustrations") or []
               if isinstance(it, dict) and str(it.get("title") or "").strip()]
@@ -2561,7 +2535,7 @@ def _normalize_mixed_viz_plan(plan_data: dict) -> list[dict]:
     for item in items:
         item["image_model"] = MODEL_IMAGE_OPENAI
         item["importance"] = importance(item)
-        difficulty = item["difficulty"] = score(item, "difficulty")
+        difficulty = item["difficulty"] = _viz_score(item.get("difficulty"))
         if difficulty is not None and item["diagram_type"] != "additional" and difficulty >= 70 and importance(item) >= 60:
             candidates.append(item)
     if candidates:
@@ -2584,6 +2558,49 @@ def _normalize_mixed_viz_plan(plan_data: dict) -> list[dict]:
         items.append({**interactive, "tool": "html", "block": "result", "diagram_type": "interactive",
                       "category": "parameter_relationship"})
     return items
+
+
+def _gate_viz_items(items: list[dict]) -> list[dict]:
+    """Last check before paid generation: 5 images, 3 Mermaid, 1 HTML, one Sunburst.
+
+    Fresh plans already pass. Cached plans saved before this check (or by the
+    removed legacy schema path) are cut here instead of being generated.
+    """
+    kept: list[dict] = []
+    core_seen: set[str] = set()
+    extra_images = extra_diagrams = html = 0
+    primary_sequence = sunburst = False
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        tool, kind = item.get("tool"), item.get("diagram_type")
+        importance = _viz_score(item.get("importance")) or 0
+        if tool == "paperbanana":
+            if kind in _VIZ_CORE_PURPOSES and kind not in core_seen:
+                core_seen.add(kind)
+            elif kind == "additional" and importance >= 60 and extra_images < 2:
+                extra_images += 1
+            else:
+                continue
+            item = dict(item)
+            eligible = kind in _VIZ_CORE_PURPOSES and importance >= 60 and (_viz_score(item.get("difficulty")) or 0) >= 70
+            if item.get("image_model") == MODEL_IMAGE_SUNBURST and eligible and not sunburst:
+                sunburst = True
+            else:
+                item["image_model"] = MODEL_IMAGE_OPENAI
+        elif tool == "mermaid" and kind in _MERMAID_RENDERABLE_TYPES:
+            if kind == "sequence" and not primary_sequence:
+                primary_sequence = True
+            elif importance >= 60 and extra_diagrams < 2:
+                extra_diagrams += 1
+            else:
+                continue
+        elif tool == "html" and html < 1:
+            html += 1
+        else:
+            continue
+        kept.append(item)
+    return kept
 
 
 async def _plan_visualizations(
@@ -2676,9 +2693,11 @@ diagram_count는 illustrations와 diagrams, applicable인 HTML의 합이다.
     )
     if cached is not None:
         try:
-            return json.loads(cached["text"]).get("visualizations", [])
-        except (json.JSONDecodeError, TypeError, AttributeError):
-            return []
+            planned = json.loads(cached["text"])["visualizations"]
+            if isinstance(planned, list):
+                return planned
+        except (json.JSONDecodeError, TypeError, KeyError):
+            pass  # unreadable cache is a miss, not an empty plan
 
     result = await _run_chain_stage(
         phase="visualization",
@@ -2699,25 +2718,33 @@ diagram_count는 illustrations와 diagrams, applicable인 HTML의 합이다.
     status.total_tokens_in += result["tokens_in"] or 0
     status.total_tokens_out += result["tokens_out"] or 0
 
-    # Parse the plan
+    # Parse the plan. Failure envelopes (incomplete response, usage error) are valid
+    # JSON too, so they are rejected first instead of normalizing to an empty plan.
+    items: list[dict] = []
     raw = result["text"].strip()
-    # Strip markdown fences if present
-    if raw.startswith("```"):
-        lines = raw.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        raw = "\n".join(lines).strip()
-
-    plan_error = None
-    try:
-        items = _normalize_viz_plan(json.loads(raw))
-    except (json.JSONDecodeError, TypeError, AttributeError) as exc:
-        items = []
-        plan_error = exc
+    plan_error = "planner response did not complete" if _is_error_result(raw) else None
+    if plan_error is None:
+        # Strip markdown fences if present
+        if raw.startswith("```"):
+            lines = raw.split("\n")
+            lines = [l for l in lines if not l.strip().startswith("```")]
+            raw = "\n".join(lines).strip()
+        try:
+            plan_data = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            plan_error = "invalid visualization plan"
+        else:
+            plan_error = _viz_plan_shape_error(plan_data)
+            if plan_error is None:
+                items = _normalize_viz_plan(plan_data)
 
     # Store the plan in DB
-    result_text = result["text"] if _is_error_result(result["text"]) else json.dumps({"visualizations": items}, ensure_ascii=False)
-    if plan_error is not None:
-        result_text = json.dumps({"_raw": raw, "_parse_error": "invalid visualization plan"}, ensure_ascii=False)
+    if plan_error is None:
+        result_text = json.dumps({"visualizations": items}, ensure_ascii=False)
+    elif _is_error_result(result["text"]):
+        result_text = result["text"]
+    else:
+        result_text = json.dumps({"_raw": raw, "_parse_error": plan_error}, ensure_ascii=False)
     await _insert_analysis_result(
         paper_id,
         "viz_plan",
@@ -2734,7 +2761,7 @@ diagram_count는 illustrations와 diagrams, applicable인 HTML의 합이다.
     )
 
     if plan_error is not None:
-        raise ValueError("Visualization planning returned an invalid plan") from plan_error
+        raise ValueError(f"Visualization planning returned an invalid plan: {plan_error}")
     return items
 
 
@@ -3300,8 +3327,8 @@ async def _run_visualizations(
         except (json.JSONDecodeError, TypeError, AttributeError):
             pass
 
-    # Step 1: Plan (final stage of the stateful chain)
-    viz_plan = await _plan_visualizations(
+    # Step 1: Plan (final stage of the stateful chain), then the paid-generation gate
+    viz_plan = _gate_viz_items(await _plan_visualizations(
         paper_id,
         visualization_input,
         previous_results,
@@ -3313,7 +3340,7 @@ async def _run_visualizations(
         openai_pdf_part=openai_pdf_part,
         pdf_sha256=pdf_sha256,
         provider=provider,
-    )
+    ))
 
     # Step 2: Generate all in parallel
     async def generate_one(idx: int, item: dict) -> dict:

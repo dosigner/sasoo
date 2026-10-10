@@ -3057,7 +3057,8 @@ class ChainPromptWordingByProviderTests(unittest.IsolatedAsyncioTestCase):
 
             async def _fake_call(contents, **kwargs):
                 captured["contents"] = contents
-                return {"text": '{"visualizations": []}',
+                return {"text": '{"illustrations": [], "diagrams": [], "interactive_html": '
+                                '{"title": "", "description": "", "applicable": false}, "diagram_count": 0}',
                         "model": "m", "tokens_in": 1, "tokens_out": 1, "interaction_id": "i"}
 
             with (
@@ -4057,8 +4058,9 @@ class NativePdfValidationTests(unittest.IsolatedAsyncioTestCase):
                 "services.analysis_execution._insert_analysis_result", new=insert
             ):
                 if stage == "viz_plan":
-                    result = await analysis_execution._plan_visualizations(7, "source", [], status, provider="openai")
-                    self.assertEqual(result, [])
+                    # A failed plan must not become an empty successful plan (no generation follows).
+                    with self.assertRaises(ValueError):
+                        await analysis_execution._plan_visualizations(7, "source", [], status, provider="openai")
                 else:
                     result = await analysis_execution._run_synthesis(7, "source", [], status, provider="openai")
                     self.assertIsNone(result)
