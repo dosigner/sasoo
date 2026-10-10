@@ -320,6 +320,8 @@ export interface VisualizationPlan {
   planned_at: string | null;
   /** analysis_results.id of the run; regenerate, repair and overrides bind to it. */
   run_id?: number | null;
+  /** Changes when a reanalysis with the same inputs reuses the row. */
+  run_token?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -786,6 +788,7 @@ export interface MermaidRepairRequest {
   error_message: string;
   viz_id?: number | null;
   run_id?: number | null;
+  run_token?: string | null;
 }
 
 export async function repairMermaid(
@@ -801,9 +804,13 @@ export async function repairMermaid(
 export async function regenerateVisualization(
   paperId: string | number,
   vizId: number,
-  runId?: number | null
+  runId?: number | null,
+  runToken?: string | null
 ): Promise<VisualizationItem> {
-  const query = runId == null ? '' : `?run_id=${runId}`;
+  const params = new URLSearchParams();
+  if (runId != null) params.set('run_id', String(runId));
+  if (runToken) params.set('run_token', runToken);
+  const query = params.size ? `?${params}` : '';
   return request<VisualizationItem>(
     `/analysis/${paperId}/visualizations/${vizId}/regenerate${query}`,
     { method: 'POST' }
@@ -813,7 +820,13 @@ export async function regenerateVisualization(
 export async function reportHtmlCheck(
   paperId: string | number,
   vizId: number,
-  body: { run_id: number; status: HtmlCheckResult['status']; issues: string[]; html_sha256: string }
+  body: {
+    run_id: number;
+    run_token: string | null;
+    status: HtmlCheckResult['status'];
+    issues: string[];
+    html_sha256: string;
+  }
 ): Promise<VisualizationItem> {
   return request<VisualizationItem>(`/analysis/${paperId}/visualizations/${vizId}/html-check`, {
     method: 'POST',

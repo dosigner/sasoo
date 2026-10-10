@@ -627,6 +627,7 @@ async def get_visualizations(paper_id: int):
             model_used=data.get("model_used", ""),
             planned_at=data.get("planned_at"),
             run_id=viz_result.get("id"),
+            run_token=data.get("run_token"),
         )
     except (json.JSONDecodeError, TypeError):
         return VisualizationPlanResponse(paper_id=paper_id)
@@ -635,12 +636,15 @@ async def get_visualizations(paper_id: int):
 _VIZ_UPDATE_ATTEMPTS = 5
 
 
-async def _write_visualization_row(paper_id: int, run_id: Optional[int], mutate, *, latest_only: bool = True):
+async def _write_visualization_row(
+    paper_id: int, run_id: Optional[int], mutate, *, latest_only: bool = True, run_token: Optional[str] = None,
+):
     """Apply mutate(data) to one visualization row and save it with its cost totals.
 
     run_id pins the row the caller read before generating; None means the latest
     row (older clients). With latest_only, a run replaced by a newer analysis is
-    refused with 409 so the new run never receives an old artifact. The write
+    refused with 409 so the new run never receives an old artifact; run_token
+    catches a reanalysis that reuses the same row (same id, new run_token). The write
     compares the row text it read, so a concurrent edit of another item (this
     server or the analysis worker) is re-read, not lost. The cost column is the
     known total of the row's request records; unknown ones are counted beside it.
@@ -660,6 +664,8 @@ async def _write_visualization_row(paper_id: int, run_id: Optional[int], mutate,
         data = viz_row.get("parsed_result")
         if not isinstance(data, dict) or not isinstance(data.get("items"), list):
             return None
+        if latest_only and run_token is not None and data.get("run_token") != run_token:
+            raise HTTPException(status_code=409, detail="A newer analysis run replaced this visualization.")
         out = mutate(data)
         if out is None:
             return None
@@ -671,12 +677,13 @@ async def _write_visualization_row(paper_id: int, run_id: Optional[int], mutate,
         )
         if changed:
             return out
-    raise HTTPException(status_code=409, detail="The visualization changed during the update. Try again.")
+    # Contention, not a replaced run: the client may simply try again.
+    raise HTTPException(status_code=503, detail="The visualization changed during the update. Try again.")
 
 
 async def _update_stored_visualization_item(
     paper_id: int, viz_id: int, new_fields: dict, *, run_id: Optional[int] = None,
-    spent: Optional[list[dict]] = None,
+    spent: Optional[list[dict]] = None, run_token: Optional[str] = None,
 ) -> Optional[dict]:
     """Patch one item of the visualization run run_id (see _write_visualization_row).
 
@@ -694,7 +701,7 @@ async def _update_stored_visualization_item(
         item.update(new_fields)
         return item
 
-    return await _write_visualization_row(paper_id, run_id, mutate)
+    return await _write_visualization_row(paper_id, run_id, mutate, run_token=run_token)
 
 
 async def _record_visualization_spend(paper_id: int, run_id: int, requests: list[dict]) -> None:
@@ -740,9 +747,14 @@ async def repair_mermaid(paper_id: int, request: MermaidRepairRequest):
 
     provider = await active_provider()
     choice = resolve_model("mermaid", provider)
-    result = await call_interaction(
-        prompt, lane="chat", model=choice.model, thinking_level=choice.effort, store=False,
-    )
+    try:
+        result = await call_interaction(
+            prompt, lane="chat", model=choice.model, thinking_level=choice.effort, store=False,
+        )
+    except Exception as exc:
+        if request.viz_id is not None and request.run_id is not None:
+            await _record_visualization_spend(paper_id, request.run_id, [usage_record("mermaid_repair", choice.model)])
+        raise HTTPException(status_code=502, detail="Mermaid repair failed.") from exc
     spent = [usage_record("mermaid_repair", choice.model, result)]
     repaired = _sanitize_mermaid_code(result["text"])
 
@@ -750,11 +762,11 @@ async def repair_mermaid(paper_id: int, request: MermaidRepairRequest):
         fields = {"mermaid_code": repaired, "status": "completed", "error_message": None} if repaired else {}
         try:
             await _update_stored_visualization_item(
-                paper_id, request.viz_id, fields, run_id=request.run_id, spent=spent,
+                paper_id, request.viz_id, fields, run_id=request.run_id, spent=spent, run_token=request.run_token,
             )
         except HTTPException as exc:
-            # The displayed diagram belongs to a replaced run: show the fix, keep the new run.
-            if exc.status_code != 409:
+            # The displayed diagram belongs to a replaced or busy run: show the fix, keep the run.
+            if exc.status_code not in {409, 503}:
                 raise
             if request.run_id is not None:
                 await _record_visualization_spend(paper_id, request.run_id, spent)
@@ -773,7 +785,9 @@ async def repair_mermaid(paper_id: int, request: MermaidRepairRequest):
     "/{paper_id}/visualizations/{viz_id}/regenerate",
     response_model=VisualizationItem,
 )
-async def regenerate_visualization(paper_id: int, viz_id: int, run_id: Optional[int] = None):
+async def regenerate_visualization(
+    paper_id: int, viz_id: int, run_id: Optional[int] = None, run_token: Optional[str] = None,
+):
     """
     Regenerate a single Mermaid visualization item with the current prompt
     (styling rules included) and persist it, without re-running the analysis.
@@ -786,9 +800,12 @@ async def regenerate_visualization(paper_id: int, viz_id: int, run_id: Optional[
         raise HTTPException(status_code=404, detail=f"Paper {paper_id} not found.")
 
     viz_row = await get_latest_completed_phase_row(paper_id, "visualization")
-    if viz_row is not None and run_id is not None and viz_row["id"] != run_id:
-        raise HTTPException(status_code=409, detail="A newer analysis run replaced this visualization.")
     data = (viz_row or {}).get("parsed_result") or {}
+    if viz_row is not None and (
+        (run_id is not None and viz_row["id"] != run_id)
+        or (run_token is not None and isinstance(data, dict) and data.get("run_token") != run_token)
+    ):
+        raise HTTPException(status_code=409, detail="A newer analysis run replaced this visualization.")
     items = data.get("items") if isinstance(data, dict) else None
     stored_item = next(
         (it for it in items or [] if isinstance(it, dict) and it.get("id") == viz_id),
@@ -830,6 +847,7 @@ async def regenerate_visualization(paper_id: int, viz_id: int, run_id: Optional[
 
     provider = await active_provider()
     run_id = viz_row["id"]
+    started_token = data.get("run_token")
     try:
         if tool == "paperbanana":
             # 개념도는 파이프라인(_run_visualizations)과 같은 생성기로 다시 그린다(스펙 §7).
@@ -866,9 +884,11 @@ async def regenerate_visualization(paper_id: int, viz_id: int, run_id: Optional[
     new_fields.update({"status": "completed", "error_message": None})
 
     try:
-        updated = await _update_stored_visualization_item(paper_id, viz_id, new_fields, run_id=run_id)
+        updated = await _update_stored_visualization_item(
+            paper_id, viz_id, new_fields, run_id=run_id, run_token=started_token,
+        )
     except HTTPException as exc:
-        if exc.status_code == 409:
+        if exc.status_code in {409, 503}:
             await _record_visualization_spend(paper_id, run_id, new_fields.get("requests") or [])
         raise
     if updated is None:
@@ -896,7 +916,7 @@ async def report_html_check(paper_id: int, viz_id: int, report: HtmlCheckReport)
         }
         return item
 
-    updated = await _write_visualization_row(paper_id, report.run_id, mutate)
+    updated = await _write_visualization_row(paper_id, report.run_id, mutate, run_token=report.run_token)
     if updated is None:
         raise HTTPException(status_code=404, detail=f"HTML visualization {viz_id} not found for paper {paper_id}.")
     return VisualizationItem(**updated)

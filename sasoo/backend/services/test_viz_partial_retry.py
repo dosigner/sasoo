@@ -45,6 +45,9 @@ class PipelineCase(IsolatedDbCase):
         await super().asyncSetUp()
         self.calls = {"plan": 0, "mermaid": 0, "html": 0, "describe": 0, "render": 0}
         self.html_fails = True
+        self.mermaid_fails = False
+        self.mermaid_text = "sequenceDiagram\nA->>B: 신호"
+        self.html_hold = None  # an asyncio.Event the next HTML call waits for
 
         async def chain(**_kwargs):
             self.calls["plan"] += 1
@@ -53,8 +56,13 @@ class PipelineCase(IsolatedDbCase):
         async def call(prompt, **_kwargs):
             if "Mermaid" in prompt:
                 self.calls["mermaid"] += 1
-                return _text("sequenceDiagram\nA->>B: 신호", *self.tokens["mermaid"])
+                if self.mermaid_fails:
+                    raise RuntimeError("temporary upstream error")
+                return _text(self.mermaid_text, *self.tokens["mermaid"])
             self.calls["html"] += 1
+            hold, self.html_hold = self.html_hold, None
+            if hold is not None:
+                await hold.wait()
             if self.html_fails:
                 raise RuntimeError("temporary upstream error")
             return _text('<input type="range"><script>/* y=2x */</script>', *self.tokens["html"])
@@ -175,6 +183,95 @@ class PartialRetryTests(PipelineCase):
         self.assertEqual(self.calls["plan"], 1)
 
 
+class ConcurrentEditTests(PipelineCase):
+    """The worker and the routes edit the same row when a reanalysis reuses it."""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        os.environ["OPENAI_API_KEY"] = "sk-dummy"
+        await self.run_pipeline()  # html fails: the next analysis reuses this row
+        self.row_id = (await self.viz_rows())[0]["id"]
+        self.html_fails = False
+
+    async def wait_for_html_calls(self, count, task):
+        import asyncio
+        for _ in range(500):
+            if self.calls["html"] >= count:
+                return
+            if task.done():
+                task.result()  # surface the error
+                self.fail("task finished before reaching its HTML call")
+            await asyncio.wait({task}, timeout=0.01)  # asyncio.sleep is patched in this case
+        self.fail(f"HTML call {count} never started: {self.calls}")
+
+    async def stored(self):
+        row = await database.fetch_one("SELECT cost_usd, result FROM analysis_results WHERE id = ?", (self.row_id,))
+        return row["cost_usd"], json.loads(row["result"])
+
+    async def test_regeneration_during_a_reanalysis_of_the_same_row_is_kept(self):
+        import asyncio
+        from api import analysis_routes
+        hold = self.html_hold = asyncio.Event()
+        worker = asyncio.create_task(self.run_pipeline())
+        await self.wait_for_html_calls(2, worker)  # the worker is waiting inside its HTML call
+        token = (await self.stored())[1]["run_token"]
+        self.mermaid_text = "sequenceDiagram\nA->>B: 사용자가 다시 만듦"
+        await analysis_routes.regenerate_visualization(7, 2, run_id=self.row_id, run_token=token)
+        regenerated = {it["id"]: it for it in (await self.stored())[1]["items"]}[2]["requests"]
+        hold.set()
+        await worker
+
+        _, payload = await self.stored()
+        items = {it["id"]: it for it in payload["items"]}
+        self.assertEqual(items[2]["mermaid_code"], "sequenceDiagram\nA->>B: 사용자가 다시 만듦")
+        self.assertEqual(items[3]["status"], "completed")
+        prior_ids = {r.get("id") for r in payload["prior_requests"]}
+        self.assertEqual([r["id"] for r in regenerated], [r["id"] for r in items[2]["requests"]])
+        self.assertEqual(len(prior_ids), len(payload["prior_requests"]), "no record twice")
+        self.assertEqual(payload["cost_unknown_count"], 2)  # the unpriced render and the first failed html
+
+    async def test_regeneration_from_the_replaced_run_is_refused_after_reanalysis(self):
+        import asyncio
+        from api import analysis_routes
+        from fastapi import HTTPException
+        old_token = (await self.stored())[1]["run_token"]
+        hold = self.html_hold = asyncio.Event()
+        route = asyncio.create_task(analysis_routes.regenerate_visualization(7, 3, run_id=self.row_id, run_token=old_token))
+        await self.wait_for_html_calls(2, route)  # the route waits inside its HTML call
+        await self.run_pipeline()  # same inputs, same row id, new run_token
+        _, after_reanalysis = await self.stored()
+        hold.set()
+        with self.assertRaises(HTTPException) as ctx:
+            await route
+        self.assertEqual(ctx.exception.status_code, 409)
+        cost, payload = await self.stored()
+        self.assertEqual(payload["items"], after_reanalysis["items"])
+        self.assertEqual(len(payload["prior_requests"]), len(after_reanalysis["prior_requests"]) + 1)
+
+    async def test_crash_after_the_first_checkpoint_keeps_reused_items(self):
+        await self.run_pipeline()  # complete run: image, mermaid, html all succeeded
+        self.mermaid_fails = True
+        await database.execute_update(
+            "UPDATE analysis_results SET result = json_set(result, '$.items[1].status', 'error') WHERE id = ?",
+            (self.row_id,),
+        )
+        cost_before, _ = await self.stored()
+        real_store = ae._store_visualization_progress
+
+        async def die_after_one_checkpoint(*args, **kwargs):
+            await real_store(*args, **kwargs)
+            raise _WorkerDied
+
+        with patch("services.analysis_execution._store_visualization_progress", new=die_after_one_checkpoint):
+            with self.assertRaises(_WorkerDied):
+                await self.run_pipeline()
+
+        cost, payload = await self.stored()
+        self.assertEqual({it["id"] for it in payload["items"]}, {1, 2, 3})
+        self.assertEqual({it["id"]: it["status"] for it in payload["items"]}, {1: "completed", 2: "error", 3: "completed"})
+        self.assertGreaterEqual(cost, cost_before)
+
+
 class ReusableItemTests(IsolatedDbCase):
     def test_image_is_found_in_the_paper_folder_after_a_library_move(self):
         folder = database.get_paper_dir("folder") / "paperbanana"
@@ -184,4 +281,7 @@ class ReusableItemTests(IsolatedDbCase):
         self.assertTrue(ae._viz_item_reusable(moved, "folder"))
         self.assertFalse(ae._viz_item_reusable({**moved, "image_path": "/x/2_gone.png"}, "folder"))
         self.assertFalse(ae._viz_item_reusable({**moved, "status": "error"}, "folder"))
+        html = {"id": 3, "tool": "html", "status": "completed", "html_code": "<input>"}
+        self.assertFalse(ae._viz_item_reusable({**html, "execution_check": {"status": "failed"}}, "folder"))
+        self.assertTrue(ae._viz_item_reusable({**html, "execution_check": {"status": "timeout"}}, "folder"))
         self.assertFalse(ae._viz_item_reusable({"id": 2, "tool": "mermaid", "status": "completed", "mermaid_code": ""}, "folder"))

@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import traceback
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -2978,61 +2979,145 @@ def _viz_item_reusable(item: dict, folder_name: str) -> bool:
         return bool(item.get("mermaid_code"))
     if tool == "html":
         check = item.get("execution_check") or {}
-        return bool(item.get("html_code")) and check.get("status") not in {"failed", "timeout"}
+        # A timeout can come from a slow device, so only a failed run blocks reuse.
+        return bool(item.get("html_code")) and check.get("status") != "failed"
     return False
+
+
+_VIZ_WRITE_ATTEMPTS = 5
+
+
+def _item_key(item: dict) -> str:
+    return json.dumps(item, sort_keys=True, ensure_ascii=False)
+
+
+def _merge_records(*groups: list[dict]) -> list[dict]:
+    """Union of request records; the same record (by id) is kept once."""
+    seen: set[str] = set()
+    merged: list[dict] = []
+    for group in groups:
+        for record in group:
+            if not isinstance(record, dict):
+                continue
+            key = str(record.get("id") or _item_key(record))
+            if key not in seen:
+                seen.add(key)
+                merged.append(record)
+    return merged
+
+
+async def _claim_visualization_row(row_id: int, run_token: str) -> Optional[dict]:
+    """Mark a cached row as being updated by this run and return what it holds.
+
+    The claim is a compare-and-swap, so a regeneration saved just before it is part
+    of the data the run reuses; afterwards the routes see the new run_token and do
+    not write results of the replaced run into it.
+    """
+    for _ in range(_VIZ_WRITE_ATTEMPTS):
+        row = await fetch_one("SELECT result FROM analysis_results WHERE id = ?", (row_id,))
+        if row is None:
+            return None
+        try:
+            data = json.loads(row["result"])
+        except (TypeError, json.JSONDecodeError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        data.update(complete=False, run_token=run_token)
+        if await execute_update(
+            "UPDATE analysis_results SET result = ? WHERE id = ? AND result = ?",
+            (json.dumps(data, ensure_ascii=False), row_id, row["result"]),
+        ):
+            return data
+    raise RuntimeError("visualization row kept changing while the run claimed it")
 
 
 async def _store_visualization_progress(
     paper_id: int, items: list[dict], cache_input: str, done: bool, *, provider: str = "gemini",
     planned_empty: bool = False, prior_requests: list[dict] | None = None,
-) -> None:
+    run_token: str | None = None, written: dict[int, str] | None = None,
+) -> list[dict]:
     """항목이 하나 끝날 때마다 visualization 행을 갱신한다 (중간 사망 시 유실 방지).
 
     UPDATE 대상 SELECT는 input_hash까지 걸어 같은 실행(run)의 행만 찾는다. paper_id+phase
     최신 1건만 보면, 재분석(다른 input_hash로 재실행)이 이전 실행의 완료된 행을 이어달리기로
     착각하고 덮어써버린다 — 새 실행은 반드시 새 행을 INSERT해야 한다.
 
+    The app can edit the same row while this run is going (regenerate, repair,
+    execution checks). The write is a compare-and-swap; for a row of this run
+    (same run_token) an item the run has not changed since its last write keeps
+    the stored version, an item the run replaces moves the stored version's spend
+    into prior_requests, and request records are merged by id. written maps item
+    id to what this run last wrote and is updated here. Returns the stored items.
+
     model_used는 provider에 맞는 레지스트리 모델명이어야 한다 — 이 메타데이터는
     plan(viz_planning role)이 실제로 어떤 모델로 계획됐는지를 남기는 것이지, 개별
     항목(mermaid/paperbanana)의 모델이 아니다.
     """
     input_hash = compute_input_hash(cache_input)
-    # The cost column holds the known total; unknown requests are counted beside it.
-    # Totals are recomputed from the records each time, so checkpoints never add twice.
-    prior_requests = prior_requests or []
-    total_cost_usd, unknown_count = _viz_cost_totals(items, prior_requests)
+    written = written if written is not None else {}
     model_used = resolve_model("viz_planning", provider).model
-    payload = json.dumps(
-        {
-            "items": sorted(items, key=lambda x: x.get("id", 0)),
-            "total_count": len(items),
-            "model_used": model_used,
-            "planned_at": _utcnow_iso(),
-            "complete": done,
-            "cost_incomplete": unknown_count > 0,
-            "cost_unknown_count": unknown_count,
-            "prior_requests": prior_requests,
-            "planned_empty": planned_empty,
-        },
-        ensure_ascii=False,
-    )
-    row = await fetch_one(
-        """
-        SELECT id FROM analysis_results
-        WHERE paper_id = ? AND phase = 'visualization' AND input_hash = ?
-        ORDER BY id DESC LIMIT 1
-        """,
-        (paper_id, input_hash),
-    )
-    if row:
-        await execute_update(
-            "UPDATE analysis_results SET result = ?, input_hash = ?, cost_usd = ? WHERE id = ?",
-            (payload, input_hash, total_cost_usd, row["id"]),
+    for _ in range(_VIZ_WRITE_ATTEMPTS):
+        row = await fetch_one(
+            """
+            SELECT id, result FROM analysis_results
+            WHERE paper_id = ? AND phase = 'visualization' AND input_hash = ?
+            ORDER BY id DESC LIMIT 1
+            """,
+            (paper_id, input_hash),
         )
-    else:
-        await _insert_analysis_result(
-            paper_id, "visualization", payload, model_used, 0, 0, total_cost_usd, cache_input,
+        merged_items, merged_prior = list(items), list(prior_requests or [])
+        if row and run_token is not None:
+            try:
+                current = json.loads(row["result"])
+            except (TypeError, json.JSONDecodeError):
+                current = None
+            if isinstance(current, dict) and current.get("run_token") == run_token:
+                stored = {it.get("id"): it for it in current.get("items") or [] if isinstance(it, dict)}
+                replaced: list[dict] = []
+                merged_items = []
+                for item in items:
+                    other = stored.get(item.get("id"))
+                    if other is not None and written.get(item.get("id")) == _item_key(item):
+                        merged_items.append(other)  # unchanged by this run: keep app edits
+                        continue
+                    other_key = _item_key(other) if other is not None else None
+                    if other_key not in {None, _item_key(item), written.get(item.get("id"))}:
+                        replaced.extend(item_usage_records(other))  # an app edit this run replaces
+                    merged_items.append(item)
+                merged_prior = _merge_records(current.get("prior_requests") or [], merged_prior, replaced)
+        # The cost column holds the known total; unknown requests are counted beside it.
+        # Totals are recomputed from the records each time, so checkpoints never add twice.
+        total_cost_usd, unknown_count = _viz_cost_totals(merged_items, merged_prior)
+        payload = json.dumps(
+            {
+                "items": sorted(merged_items, key=lambda x: x.get("id", 0)),
+                "total_count": len(merged_items),
+                "model_used": model_used,
+                "planned_at": _utcnow_iso(),
+                "complete": done,
+                "cost_incomplete": unknown_count > 0,
+                "cost_unknown_count": unknown_count,
+                "prior_requests": merged_prior,
+                "planned_empty": planned_empty,
+                "run_token": run_token,
+            },
+            ensure_ascii=False,
         )
+        if row:
+            if not await execute_update(
+                "UPDATE analysis_results SET result = ?, input_hash = ?, cost_usd = ? WHERE id = ? AND result = ?",
+                (payload, input_hash, total_cost_usd, row["id"], row["result"]),
+            ):
+                continue
+        else:
+            await _insert_analysis_result(
+                paper_id, "visualization", payload, model_used, 0, 0, total_cost_usd, cache_input,
+            )
+        for item in items:
+            written[item.get("id")] = _item_key(item)
+        return sorted(merged_items, key=lambda x: x.get("id", 0))
+    raise RuntimeError("visualization row kept changing during a checkpoint")
 
 
 # ---------------------------------------------------------------------------
@@ -3379,6 +3464,7 @@ async def _run_visualizations(
     reusable: dict[int, dict] = {}
     cached_items: list[dict] = []
     prior_requests: list[dict] = []
+    run_token = uuid.uuid4().hex
     if cached is not None:
         try:
             cached_data = json.loads(cached["text"])
@@ -3397,6 +3483,12 @@ async def _run_visualizations(
         if finished and len(reusable) == len(cached_items) and (cached_items or cached_data.get("planned_empty")):
             status.progress_pct = 100.0
             return cached_items
+        # Re-read under a claim: app edits saved before it are reused, later ones are merged.
+        claimed = await _claim_visualization_row(cached["result_id"], run_token) if cached.get("result_id") else None
+        if claimed is not None:
+            cached_data = claimed
+            cached_items = [it for it in claimed.get("items") or [] if isinstance(it, dict)]
+            reusable = {it["id"]: it for it in cached_items if _viz_item_reusable(it, folder_name)}
         # Spend of the attempts this run replaces stays in the run total.
         prior_requests = list(cached_data.get("prior_requests") or [])
         prior_requests += [r for it in cached_items if it.get("id") not in reusable for r in item_usage_records(it)]
@@ -3416,10 +3508,29 @@ async def _run_visualizations(
         provider=provider,
     ))
 
+    # Successful items of the cached run that the plan still contains are served
+    # again; the others were paid for, so their records join prior_requests now.
+    reuse = {
+        idx + 1: reusable[idx + 1] for idx, item in enumerate(viz_plan)
+        if idx + 1 in reusable
+        and all(reusable[idx + 1].get(key) == item.get(key) for key in ("tool", "title", "diagram_type"))
+    }
+    prior_requests += [r for vid, it in reusable.items() if vid not in reuse for r in item_usage_records(it)]
+    written: dict[int, str] = {}
+
+    async def checkpoint(done_items: list[dict], *, done: bool = False) -> list[dict]:
+        # Reused items not reached yet are written too, so a crash keeps them.
+        finished = {it.get("id") for it in done_items}
+        pending = [it for vid, it in reuse.items() if vid not in finished]
+        return await _store_visualization_progress(
+            paper_id, done_items + pending, visualization_cache_input, done=done, provider=provider,
+            planned_empty=not viz_plan, prior_requests=prior_requests, run_token=run_token, written=written,
+        )
+
     # Step 2: Generate all in parallel
     async def generate_one(idx: int, item: dict) -> dict:
-        previous = reusable.get(idx + 1)
-        if previous and all(previous.get(key) == item.get(key) for key in ("tool", "title", "diagram_type")):
+        previous = reuse.get(idx + 1)
+        if previous is not None:
             return previous
         tool = item.get("tool", "mermaid")
         result_item = {
@@ -3499,10 +3610,7 @@ async def _run_visualizations(
     mermaid_results = await asyncio.gather(*mermaid_tasks, return_exceptions=False) if mermaid_tasks else []
     if mermaid_results:
         accumulated.extend(mermaid_results)
-        await _store_visualization_progress(
-            paper_id, accumulated, visualization_cache_input, done=False, provider=provider,
-            prior_requests=prior_requests,
-        )
+        await checkpoint(accumulated)
 
     # Run paperbanana generations sequentially to avoid API rate limits
     paperbanana_results = []
@@ -3510,12 +3618,9 @@ async def _run_visualizations(
         result = await generate_one(i, item)
         paperbanana_results.append(result)
         accumulated.append(result)
-        await _store_visualization_progress(
-            paper_id, accumulated, visualization_cache_input, done=False, provider=provider,
-            prior_requests=prior_requests,
-        )
+        await checkpoint(accumulated)
         # Small delay between PaperBanana calls to avoid rate limiting
-        if idx < len(paperbanana_items) - 1 and result is not reusable.get(i + 1):
+        if idx < len(paperbanana_items) - 1 and result is not reuse.get(i + 1):
             await asyncio.sleep(2.0)
 
     # Run other tool types in parallel
@@ -3523,29 +3628,19 @@ async def _run_visualizations(
     other_results = await asyncio.gather(*other_tasks, return_exceptions=False) if other_tasks else []
     if other_results:
         accumulated.extend(other_results)
-        await _store_visualization_progress(
-            paper_id, accumulated, visualization_cache_input, done=False, provider=provider,
-            prior_requests=prior_requests,
-        )
+        await checkpoint(accumulated)
 
     # Combine and sort by original index
     all_results = list(mermaid_results) + paperbanana_results + list(other_results)
     generated_items = sorted(all_results, key=lambda x: x.get("id", 0))
 
-    # Reusable items the new plan no longer contains were still paid for.
-    prior_requests += [r for it in reusable.values() if not any(it is g for g in generated_items)
-                       for r in item_usage_records(it)]
-
     # Step 3: Store all visualization results in DB (final, complete=True)
-    await _store_visualization_progress(
-        paper_id, generated_items, visualization_cache_input, done=True, provider=provider,
-        planned_empty=not viz_plan, prior_requests=prior_requests,
-    )
+    stored = await checkpoint(generated_items, done=True)
 
     # Visualization complete — set progress to 100%
     status.progress_pct = 100.0
 
-    return list(generated_items)
+    return stored
 
 
 # ---------------------------------------------------------------------------

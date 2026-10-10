@@ -101,7 +101,7 @@ class GenerationGateTests(unittest.IsolatedAsyncioTestCase):
             return {"html_code": "<input><script></script>", "cost_usd": 0.01}
 
         plan = AsyncMock(side_effect=plan_error) if plan_error else AsyncMock(return_value=plan_items)
-        store = AsyncMock()
+        store = AsyncMock(side_effect=lambda _pid, items, *a, **k: items)
         with patch.object(ae, "_run_synthesis", new=AsyncMock()), patch.object(
             ae, "_get_all_settings", new=AsyncMock(return_value={})
         ), patch.object(ae, "_get_cached_phase_result", new=AsyncMock(return_value=None)), patch.object(

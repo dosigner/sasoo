@@ -1310,7 +1310,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         ]
 
         with (
-            patch("services.analysis_execution.fetch_one", new=AsyncMock(return_value={"id": 42})),
+            patch("services.analysis_execution.fetch_one", new=AsyncMock(return_value={"id": 42, "result": "{}"})),
             patch("services.analysis_execution.execute_update", new=AsyncMock(return_value=1)) as update_mock,
             patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()) as insert_mock,
         ):
@@ -1320,8 +1320,9 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         args = update_mock.call_args.args
         self.assertIn("UPDATE analysis_results", args[0])
         self.assertIn("cost_usd = ?", args[0])
-        self.assertEqual(args[1][-1], 42)
-        self.assertAlmostEqual(args[1][-2], 0.05)
+        # The write is a compare-and-swap on the text that was read.
+        self.assertEqual(args[1][-2:], (42, "{}"))
+        self.assertAlmostEqual(args[1][-3], 0.05)
         insert_mock.assert_not_awaited()
 
     async def test_store_visualization_progress_inserts_when_no_row(self):
@@ -1384,7 +1385,8 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value={"text": stale_partial_payload}),
             ),
             patch("services.analysis_execution._plan_visualizations", new=AsyncMock(return_value=[])) as plan_mock,
-            patch("services.analysis_execution._store_visualization_progress", new=AsyncMock()) as store_mock,
+            patch("services.analysis_execution._store_visualization_progress",
+                  new=AsyncMock(side_effect=lambda _pid, items, *a, **k: items)) as store_mock,
             # 캐시 키가 이미지 설정을 읽으므로 DB 접근을 막는다.
             patch(
                 "services.analysis_execution._get_all_settings",

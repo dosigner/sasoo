@@ -16,6 +16,7 @@ PRICING에 두고, 한시 도입가는 만료일과 함께 INTRO_PRICING에 둔�
 기준일로 고른다.
 """
 
+import uuid
 from collections.abc import Mapping
 from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_EVEN
@@ -264,7 +265,7 @@ def calc_image_cost(model: str, image_count: int = 1, *, usage: Mapping | None =
 
 
 def usage_record(kind: str, model: str, result: Mapping[str, object] | None = None, *,  # noqa: OBJECT_OK - Matches calc_result_cost.
-                 cost_usd: float | None = None) -> dict:
+                 cost_usd: float | None = None, record_id: str | None = None) -> dict:
     """One paid request of a visualization item: {"kind", "model", "cost_usd"}.
 
     cost_usd is None when usage was not reported or the request failed without a
@@ -275,7 +276,7 @@ def usage_record(kind: str, model: str, result: Mapping[str, object] | None = No
             cost_usd = calc_result_cost(result, model=model)
         except PricingUsageError:
             cost_usd = None
-    return {"kind": kind, "model": model, "cost_usd": cost_usd}
+    return {"id": record_id or uuid.uuid4().hex, "kind": kind, "model": model, "cost_usd": cost_usd}
 
 
 def records_cost(records: list[dict]) -> float | None:
@@ -294,8 +295,10 @@ def item_usage_records(item: Mapping[str, object]) -> list[dict]:  # noqa: OBJEC
     if isinstance(records, list):
         return [record for record in records if isinstance(record, dict)]
     model = str(item.get("model_used") or "unknown")
+    # A stable id, so the same legacy item is never counted twice when records merge.
+    record_id = f"legacy-{item.get('id')}-{item.get('tool')}"
     if item.get("cost_usd") is not None:
-        return [usage_record("legacy", model, cost_usd=item["cost_usd"])]
+        return [usage_record("legacy", model, cost_usd=item["cost_usd"], record_id=record_id)]
     if item.get("tool") in {"paperbanana", "html"} and item.get("status") == "completed":
-        return [usage_record("legacy", model)]
+        return [usage_record("legacy", model, record_id=record_id)]
     return []

@@ -25,8 +25,9 @@ const item = (title: string): VisualizationItem => ({
   mermaid_code: null, image_url: null, image_path: null, html_code: title, status: 'completed',
   error_message: null, block: null,
 });
-const plan = (runId: number, title: string): VisualizationPlan => ({
+const plan = (runId: number, title: string, runToken: string | null = null): VisualizationPlan => ({
   paper_id: 7, items: [item(title)], total_count: 1, model_used: 'm', planned_at: null, run_id: runId,
+  run_token: runToken,
 });
 
 let actions: ReturnType<typeof useVisualizationActions>;
@@ -49,7 +50,7 @@ it('shows the new run after regenerate then reanalysis of the same paper', async
 
   await act(() => actions.handleRegenerate(7, 1));
   expect(container.textContent).toBe('regenerated old plan');
-  expect(api.regenerateVisualization).toHaveBeenCalledWith(7, 1, 10);
+  expect(api.regenerateVisualization).toHaveBeenCalledWith(7, 1, 10, null);
 
   render(plan(11, 'new backend plan'));
   expect(container.textContent).toBe('new backend plan');
@@ -69,4 +70,15 @@ it('drops a regeneration that finishes after a new run arrived', async () => {
 
   expect(container.textContent).toBe('new backend plan');
   expect(actions.regenerateErrors[1]).toBeFalsy();
+});
+
+it('treats a reanalysis that reuses the same row as a new run', async () => {
+  api.regenerateVisualization.mockResolvedValue(item('regenerated old plan'));
+  const container = render(plan(10, 'old plan', 'token-a'));
+  await act(() => actions.handleRegenerate(7, 1));
+  expect(api.regenerateVisualization).toHaveBeenCalledWith(7, 1, 10, 'token-a');
+  expect(container.textContent).toBe('regenerated old plan');
+
+  render(plan(10, 'reanalysed plan', 'token-b'));
+  expect(container.textContent).toBe('reanalysed plan');
 });

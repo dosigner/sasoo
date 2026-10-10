@@ -98,6 +98,9 @@ export function PaperBananaViewer({ item }: { item: VisualizationItem }) {
  */
 export function useVisualizationActions(plan: VisualizationPlan | null) {
   const runId = plan?.run_id ?? null;
+  const runToken = plan?.run_token ?? null;
+  // A reanalysis with the same inputs reuses the row id with a new token.
+  const runKey = `${runId}:${runToken ?? ''}`;
   // Locally regenerated/repaired items override the fetched plan until the
   // next reload (the backend persists them too). Keys are `${runId}:${vizId}`.
   const [overridesByRun, setItemOverrides] = useState<Record<string, VisualizationItem>>({});
@@ -108,14 +111,14 @@ export function useVisualizationActions(plan: VisualizationPlan | null) {
 
   const forRun = useCallback(
     <T,>(byRun: Record<string, T>): Record<number, T> => {
-      const prefix = `${runId}:`;
+      const prefix = `${runKey}:`;
       const out: Record<number, T> = {};
       for (const [key, value] of Object.entries(byRun)) {
         if (key.startsWith(prefix)) out[Number(key.slice(prefix.length))] = value;
       }
       return out;
     },
-    [runId]
+    [runKey]
   );
   const itemOverrides = useMemo(() => forRun(overridesByRun), [forRun, overridesByRun]);
   const regeneratingIds = useMemo(() => forRun(regeneratingByRun), [forRun, regeneratingByRun]);
@@ -139,11 +142,11 @@ export function useVisualizationActions(plan: VisualizationPlan | null) {
 
   const handleRegenerate = useCallback(
     async (paperId: number, vizId: number) => {
-      const key = `${runId}:${vizId}`;
+      const key = `${runKey}:${vizId}`;
       setRegeneratingIds((prev) => ({ ...prev, [key]: true }));
       setRegenerateErrors((prev) => ({ ...prev, [key]: '' }));
       try {
-        const updated = await regenerateVisualization(paperId, vizId, runId);
+        const updated = await regenerateVisualization(paperId, vizId, runId, runToken);
         setItemOverrides((prev) => ({ ...prev, [key]: updated }));
       } catch (err) {
         setRegenerateErrors((prev) => ({
@@ -156,7 +159,7 @@ export function useVisualizationActions(plan: VisualizationPlan | null) {
         setRegeneratingIds((prev) => ({ ...prev, [key]: false }));
       }
     },
-    [runId]
+    [runId, runToken, runKey]
   );
 
   const makeRepairHandler = useCallback(
@@ -168,13 +171,14 @@ export function useVisualizationActions(plan: VisualizationPlan | null) {
             error_message: errorMessage,
             viz_id: vizId,
             run_id: runId,
+            run_token: runToken,
           });
           return result.mermaid_code || null;
         } catch {
           return null;
         }
       },
-    [runId]
+    [runId, runToken]
   );
 
   // The in-frame execution check is stored on the item (once per run, code and
@@ -185,18 +189,18 @@ export function useVisualizationActions(plan: VisualizationPlan | null) {
       if (runId == null || !item.html_code) return;
       const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(item.html_code));
       const sha = Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, '0')).join('');
-      const key = `${runId}:${item.id}:${sha}:${result.status}`;
+      const key = `${runKey}:${item.id}:${sha}:${result.status}`;
       if (reportedChecks.current.has(key) || item.execution_check?.status === result.status) return;
       reportedChecks.current.add(key);
       try {
         await reportHtmlCheck(paperId, item.id, {
-          run_id: runId, status: result.status, issues: result.issues, html_sha256: sha,
+          run_id: runId, run_token: runToken, status: result.status, issues: result.issues, html_sha256: sha,
         });
       } catch {
         // Best effort: the status shown in the frame does not depend on this write.
       }
     },
-    [runId]
+    [runId, runToken, runKey]
   );
 
   return {

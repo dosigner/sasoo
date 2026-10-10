@@ -6,12 +6,14 @@ import { S } from '@/lib/strings';
 // Exports reuse it on the parent page: frame-src there blocks navigating the frame away.
 export const HTML_VISUALIZATION_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'";
 export const HTML_CHECK_TYPE = 'sasoo-html-check';
-export const HTML_CHECK_TIMEOUT_MS = 6000;
+export const HTML_CHECK_TIMEOUT_MS = 10000;
 
 // Execution check that runs inside the sandboxed frame before the generated code.
-// It reports script errors, failed console.assert, NaN/Infinity in the outputs and
-// inputs that change nothing, after moving every range/number input through its
-// range (and past it for number inputs). It removes its own element so the
+// It reports script errors, failed console.assert, NaN/Infinity in <output> (or
+// [data-output]) elements and inputs that change nothing, after moving every
+// range/number input through its range (and past it for number inputs). Each step
+// waits 80 ms so debounced or animated updates are seen. Pages
+// without output elements are not scanned for NaN: prose may name it. It removes its own element so the
 // generated code cannot read the nonce. This finds accidental faults only: a
 // hostile page could fake a pass. The sandbox and CSP are the security boundary,
 // and nothing here compares results with the paper.
@@ -22,14 +24,15 @@ const add=m=>{m=String(m).slice(0,200);if(issues.includes(m)||issues.length>=5)r
 addEventListener("error",e=>add(e.message||"script error"));
 addEventListener("unhandledrejection",e=>add("unhandled rejection: "+((e.reason&&e.reason.message)||e.reason)));
 const assert=console.assert.bind(console);console.assert=(ok,...a)=>{if(!ok)add("assertion failed"+(a.length?": "+a.join(" "):""));assert(ok,...a)};
-const shown=()=>{const o=document.querySelectorAll("output,[data-output]");return o.length?[...o].map(e=>e.textContent).join(" "):document.body.innerText};
+const shown=()=>[...document.querySelectorAll("output,[data-output]")].map(e=>e.textContent).join(" ");
 const bad=()=>/(^|[^A-Za-z0-9_.])(NaN|-?Infinity)(?![A-Za-z0-9_])/.test(shown());
+const settle=()=>new Promise(r=>setTimeout(r,80));
 const fire=el=>{el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}))};
-addEventListener("load",()=>{if(bad())add("NaN or Infinity is shown");const before=document.body.innerHTML;let changed=false;
+addEventListener("load",async()=>{await settle();if(bad())add("NaN or Infinity is shown");const before=document.body.innerHTML;let changed=false;
 for(const el of document.querySelectorAll("input[type=range],input[type=number]")){const v0=el.value,lo=parseFloat(el.min),hi=parseFloat(el.max);
 const vals=[lo,hi,(lo+hi)/2].filter(Number.isFinite);if(el.type==="number"&&Number.isFinite(lo)&&Number.isFinite(hi))vals.push(lo-(hi-lo||1),hi+(hi-lo||1));if(!vals.length)vals.push(Number(v0)+1);
-for(const v of vals){el.value=String(v);fire(el);if(bad())add("NaN or Infinity after "+(el.id||el.name||"input")+"="+v);if(document.body.innerHTML!==before)changed=true}
-el.value=v0;fire(el);probed++}
+for(const v of vals){el.value=String(v);fire(el);await settle();if(bad())add("NaN or Infinity after "+(el.id||el.name||"input")+"="+v);if(document.body.innerHTML!==before)changed=true}
+el.value=v0;fire(el);await settle();probed++}
 if(probed&&!changed)add("changing the inputs updated no output");send()});
 document.currentScript.remove()})()</script>`;
 }
