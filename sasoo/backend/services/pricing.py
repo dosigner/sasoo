@@ -16,6 +16,7 @@ PRICING에 두고, 한시 도입가는 만료일과 함께 INTRO_PRICING에 둔�
 기준일로 고른다.
 """
 
+import uuid
 from collections.abc import Mapping
 from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_EVEN
@@ -261,3 +262,43 @@ def calc_image_cost(model: str, image_count: int = 1, *, usage: Mapping | None =
                       + tokens_out * rates["image_output"]) / 1_000_000, 8)
     price = IMAGE_PRICING.get(model, IMAGE_PRICING["gemini-3.1-flash-image"])
     return round(price * image_count, 8)
+
+
+def usage_record(kind: str, model: str, result: Mapping[str, object] | None = None, *,  # noqa: OBJECT_OK - Matches calc_result_cost.
+                 cost_usd: float | None = None, record_id: str | None = None) -> dict:
+    """One paid request of a visualization item: {"kind", "model", "cost_usd"}.
+
+    cost_usd is None when usage was not reported or the request failed without a
+    response; it is never guessed as 0. With result, the cost is priced from its usage.
+    """
+    if result is not None:
+        try:
+            cost_usd = calc_result_cost(result, model=model)
+        except PricingUsageError:
+            cost_usd = None
+    return {"id": record_id or uuid.uuid4().hex, "kind": kind, "model": model, "cost_usd": cost_usd}
+
+
+def records_cost(records: list[dict]) -> float | None:
+    """Total of request records, or None when any of them is unknown."""
+    costs = [record.get("cost_usd") for record in records]
+    return None if any(cost is None for cost in costs) else float(sum(costs))
+
+
+def item_usage_records(item: Mapping[str, object]) -> list[dict]:  # noqa: OBJECT_OK - Stored item JSON.
+    """Request records behind one stored visualization item.
+
+    Items saved before records existed become one "legacy" record from their own
+    cost field. Unpriced old Mermaid and failed items have none: nothing is invented.
+    """
+    records = item.get("requests")
+    if isinstance(records, list):
+        return [record for record in records if isinstance(record, dict)]
+    model = str(item.get("model_used") or "unknown")
+    # A stable id, so the same legacy item is never counted twice when records merge.
+    record_id = f"legacy-{item.get('id')}-{item.get('tool')}"
+    if item.get("cost_usd") is not None:
+        return [usage_record("legacy", model, cost_usd=item["cost_usd"], record_id=record_id)]
+    if item.get("tool") in {"paperbanana", "html"} and item.get("status") == "completed":
+        return [usage_record("legacy", model, record_id=record_id)]
+    return []

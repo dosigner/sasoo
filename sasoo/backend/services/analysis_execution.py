@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import traceback
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -38,7 +39,7 @@ from services.evidence_repo import ensure_recipe_anchors
 # 종합 스테이지의 핵심 수치 검증은 값 가드(#48)와 같은 수치 동치 판정을 쓴다 —
 # 리터럴 대조를 새로 짜면 "1,550"과 "1550"이 다른 값이 된다.
 from services.evidence_verifier import _numeric_tokens, normalize_text
-from services.pricing import PricingUsageError, calc_result_cost
+from services.pricing import PricingUsageError, calc_result_cost, item_usage_records, records_cost, usage_record
 from services.llm.interactions_client import call_interaction
 from services.llm.openai_client import load_pdf_part
 
@@ -2486,63 +2487,37 @@ def _sanitize_mermaid_code(raw: str) -> str:
     return _filter_out_of_range_linkstyles(code.strip()).strip()
 
 
-# 구획별 Mermaid 상한(스펙 §5.4). 개념도 1 + method 3 + result 2 = 총 6.
-_VIZ_BLOCK_LIMITS = {"method": 3, "result": 2}
+_VIZ_CORE_PURPOSES = ("structure", "process", "comparison")
+
+
+def _viz_score(value) -> int | None:
+    """A 0~100 integer score. Integral floats count; bool, NaN, inf and text do not."""
+    return int(value) if type(value) in (int, float) and 0 <= value <= 100 and value == int(value) else None
+
+
+def _viz_plan_shape_error(plan) -> str | None:
+    """Why a new planner response does not match _VIZ_PLAN_SCHEMA, or None."""
+    if not isinstance(plan, dict):
+        return "plan is not an object"
+    for key, kind in (("illustrations", list), ("diagrams", list), ("interactive_html", dict)):
+        if not isinstance(plan.get(key), kind):
+            return f"{key} is missing or malformed"
+    if not all(isinstance(it, dict) for it in plan["illustrations"] + plan["diagrams"]):
+        return "plan item is not an object"
+    if type(plan["interactive_html"].get("applicable")) is not bool:
+        return "interactive_html.applicable is not a boolean"
+    if type(plan.get("diagram_count")) is not int:
+        return "diagram_count is not an integer"
+    return None
 
 
 def _normalize_viz_plan(plan_data: dict) -> list[dict]:
-    """기획 스키마(§5.4)를 생성 파이프라인이 쓰는 평평한 항목 리스트로 편다.
+    """Enforce purpose limits and the 60-point gate before paid generation.
 
-    개념도가 항상 맨 앞(tool=paperbanana, block=concept)이고 그 뒤에 Mermaid가 온다.
-    "result 구획은 flowchart만"과 구획 상한은 프롬프트 부탁이 아니라 여기서 강제한다
-    — 모델이 넘겨도 초과분 생성 비용이 나가지 않게.
-
-    저장 형식은 기존과 같은 `{"visualizations": [...]}`다(get_visualizations 라우트와
-    프론트가 그대로 읽는다). 항목에 block 필드만 새로 붙는다.
+    The planner's diagram_count is not trusted; the item count is what is generated.
     """
-    if "illustrations" in plan_data:
-        return _normalize_mixed_viz_plan(plan_data)
-    items: list[dict] = []
-    concept = plan_data.get("concept_illustration")
-    if isinstance(concept, dict) and str(concept.get("title") or "").strip():
-        items.append({
-            "title": concept.get("title", ""),
-            "tool": "paperbanana",
-            "block": "concept",
-            "description": concept.get("description", ""),
-            "category": concept.get("category", "conceptual_illustration"),
-        })
-
-    counts = {"method": 0, "result": 0}
-    for diagram in plan_data.get("diagrams") or []:
-        if not isinstance(diagram, dict):
-            continue
-        block = diagram.get("block") if diagram.get("block") in _VIZ_BLOCK_LIMITS else "method"
-        diagram_type = diagram.get("diagram_type") or "flowchart"
-        if block == "result" and diagram_type != "flowchart":
-            continue
-        if counts[block] >= _VIZ_BLOCK_LIMITS[block]:
-            continue
-        counts[block] += 1
-        items.append({
-            "title": diagram.get("title", ""),
-            "tool": "mermaid",
-            "block": block,
-            "diagram_type": diagram_type,
-            "description": diagram.get("description", ""),
-            "category": diagram.get("category", ""),
-        })
-    return items
-
-
-def _normalize_mixed_viz_plan(plan_data: dict) -> list[dict]:
-    """Enforce purpose limits and the 60-point gate before paid generation."""
-    def score(item, field):
-        value = item.get(field)
-        return int(value) if type(value) in (int, float) and 0 <= value <= 100 and value == int(value) else None
-
     def importance(item):
-        return score(item, "importance") or 0
+        return _viz_score(item.get("importance")) or 0
 
     images = [it for it in plan_data.get("illustrations") or []
               if isinstance(it, dict) and str(it.get("title") or "").strip()]
@@ -2561,7 +2536,7 @@ def _normalize_mixed_viz_plan(plan_data: dict) -> list[dict]:
     for item in items:
         item["image_model"] = MODEL_IMAGE_OPENAI
         item["importance"] = importance(item)
-        difficulty = item["difficulty"] = score(item, "difficulty")
+        difficulty = item["difficulty"] = _viz_score(item.get("difficulty"))
         if difficulty is not None and item["diagram_type"] != "additional" and difficulty >= 70 and importance(item) >= 60:
             candidates.append(item)
     if candidates:
@@ -2584,6 +2559,49 @@ def _normalize_mixed_viz_plan(plan_data: dict) -> list[dict]:
         items.append({**interactive, "tool": "html", "block": "result", "diagram_type": "interactive",
                       "category": "parameter_relationship"})
     return items
+
+
+def _gate_viz_items(items: list[dict]) -> list[dict]:
+    """Last check before paid generation: 5 images, 3 Mermaid, 1 HTML, one Sunburst.
+
+    Fresh plans already pass. Cached plans saved before this check (or by the
+    removed legacy schema path) are cut here instead of being generated.
+    """
+    kept: list[dict] = []
+    core_seen: set[str] = set()
+    extra_images = extra_diagrams = html = 0
+    primary_sequence = sunburst = False
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        tool, kind = item.get("tool"), item.get("diagram_type")
+        importance = _viz_score(item.get("importance")) or 0
+        if tool == "paperbanana":
+            if kind in _VIZ_CORE_PURPOSES and kind not in core_seen:
+                core_seen.add(kind)
+            elif kind == "additional" and importance >= 60 and extra_images < 2:
+                extra_images += 1
+            else:
+                continue
+            item = dict(item)
+            eligible = kind in _VIZ_CORE_PURPOSES and importance >= 60 and (_viz_score(item.get("difficulty")) or 0) >= 70
+            if item.get("image_model") == MODEL_IMAGE_SUNBURST and eligible and not sunburst:
+                sunburst = True
+            else:
+                item["image_model"] = MODEL_IMAGE_OPENAI
+        elif tool == "mermaid" and kind in _MERMAID_RENDERABLE_TYPES:
+            if kind == "sequence" and not primary_sequence:
+                primary_sequence = True
+            elif importance >= 60 and extra_diagrams < 2:
+                extra_diagrams += 1
+            else:
+                continue
+        elif tool == "html" and html < 1:
+            html += 1
+        else:
+            continue
+        kept.append(item)
+    return kept
 
 
 async def _plan_visualizations(
@@ -2676,9 +2694,11 @@ diagram_count는 illustrations와 diagrams, applicable인 HTML의 합이다.
     )
     if cached is not None:
         try:
-            return json.loads(cached["text"]).get("visualizations", [])
-        except (json.JSONDecodeError, TypeError, AttributeError):
-            return []
+            planned = json.loads(cached["text"])["visualizations"]
+            if isinstance(planned, list):
+                return planned
+        except (json.JSONDecodeError, TypeError, KeyError):
+            pass  # unreadable cache is a miss, not an empty plan
 
     result = await _run_chain_stage(
         phase="visualization",
@@ -2699,25 +2719,33 @@ diagram_count는 illustrations와 diagrams, applicable인 HTML의 합이다.
     status.total_tokens_in += result["tokens_in"] or 0
     status.total_tokens_out += result["tokens_out"] or 0
 
-    # Parse the plan
+    # Parse the plan. Failure envelopes (incomplete response, usage error) are valid
+    # JSON too, so they are rejected first instead of normalizing to an empty plan.
+    items: list[dict] = []
     raw = result["text"].strip()
-    # Strip markdown fences if present
-    if raw.startswith("```"):
-        lines = raw.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        raw = "\n".join(lines).strip()
-
-    plan_error = None
-    try:
-        items = _normalize_viz_plan(json.loads(raw))
-    except (json.JSONDecodeError, TypeError, AttributeError) as exc:
-        items = []
-        plan_error = exc
+    plan_error = "planner response did not complete" if _is_error_result(raw) else None
+    if plan_error is None:
+        # Strip markdown fences if present
+        if raw.startswith("```"):
+            lines = raw.split("\n")
+            lines = [l for l in lines if not l.strip().startswith("```")]
+            raw = "\n".join(lines).strip()
+        try:
+            plan_data = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            plan_error = "invalid visualization plan"
+        else:
+            plan_error = _viz_plan_shape_error(plan_data)
+            if plan_error is None:
+                items = _normalize_viz_plan(plan_data)
 
     # Store the plan in DB
-    result_text = result["text"] if _is_error_result(result["text"]) else json.dumps({"visualizations": items}, ensure_ascii=False)
-    if plan_error is not None:
-        result_text = json.dumps({"_raw": raw, "_parse_error": "invalid visualization plan"}, ensure_ascii=False)
+    if plan_error is None:
+        result_text = json.dumps({"visualizations": items}, ensure_ascii=False)
+    elif _is_error_result(result["text"]):
+        result_text = result["text"]
+    else:
+        result_text = json.dumps({"_raw": raw, "_parse_error": plan_error}, ensure_ascii=False)
     await _insert_analysis_result(
         paper_id,
         "viz_plan",
@@ -2734,7 +2762,7 @@ diagram_count는 illustrations와 diagrams, applicable인 HTML의 합이다.
     )
 
     if plan_error is not None:
-        raise ValueError("Visualization planning returned an invalid plan") from plan_error
+        raise ValueError(f"Visualization planning returned an invalid plan: {plan_error}")
     return items
 
 
@@ -2746,6 +2774,25 @@ diagram_count는 illustrations와 diagrams, applicable인 HTML의 합이다.
 _MERMAID_RENDERABLE_TYPES = {"flowchart", "sequence"}
 
 
+class VizGenerationError(ValueError):
+    """A visualization request failed; requests keeps what was (maybe) spent."""
+
+    def __init__(self, message: str, requests: list[dict]):
+        super().__init__(message)
+        self.requests = requests
+
+
+def _viz_cost_totals(items: list[dict], prior_requests: list[dict]) -> tuple[float, int]:
+    """Known USD total and unknown request count of one visualization run.
+
+    prior_requests holds attempts no longer shown by an item (failed tries that were
+    retried, replaced regenerations, stale regenerations, Mermaid repairs).
+    """
+    records = [record for item in items for record in item_usage_records(item)] + list(prior_requests)
+    known = sum(record["cost_usd"] for record in records if record.get("cost_usd") is not None)
+    return float(known), sum(1 for record in records if record.get("cost_usd") is None)
+
+
 async def _generate_single_mermaid(
     paper_id: int,
     viz_item: dict,
@@ -2753,8 +2800,12 @@ async def _generate_single_mermaid(
     previous_results: list[str],
     *,
     provider: str = "gemini",
-) -> str:
-    """Generate Mermaid code for a single visualization item using Gemini Pro 3."""
+) -> dict:
+    """Generate Mermaid code for one visualization item.
+
+    Returns {"mermaid_code", "cost_usd", "model_used", "requests"}. A failed call
+    raises VizGenerationError with an unknown-cost request record.
+    """
     title = viz_item.get("title", "Diagram")
     diagram_type = viz_item.get("diagram_type", "flowchart")
     if diagram_type not in _MERMAID_RENDERABLE_TYPES:
@@ -2790,11 +2841,17 @@ sequence의 메시지로 나열하지 말고, 주체와 전달 순서에 집중�
 """
 
     choice = resolve_model("mermaid", provider)
-    result = await call_interaction(
-        prompt, lane="pipeline", model=choice.model, thinking_level=choice.effort, store=False,
-    )
-
-    return _sanitize_mermaid_code(result["text"])
+    try:
+        result = await call_interaction(
+            prompt, lane="pipeline", model=choice.model, thinking_level=choice.effort, store=False,
+        )
+    except Exception as exc:
+        raise VizGenerationError(str(exc), [usage_record("mermaid", choice.model)]) from exc
+    requests = [usage_record("mermaid", choice.model, result)]
+    code = _sanitize_mermaid_code(result["text"])
+    if not code:
+        raise VizGenerationError("Mermaid generation returned no code", requests)
+    return {"mermaid_code": code, "cost_usd": records_cost(requests), "model_used": choice.model, "requests": requests}
 
 
 async def _generate_single_paperbanana(
@@ -2861,9 +2918,10 @@ async def _generate_single_paperbanana(
             "cost_usd": result.cost_usd,
             "image_quality": quality,
             "model_used": image_model if mixed_image else resolve_model("image", llm_provider).model,
+            "requests": result.requests,
         }
     _logger.warning("figure_gen failed for '%s': %s", title, result.error)
-    return {"error": result.error or "generation failed"}
+    return {"error": result.error or "generation failed", "requests": result.requests}
 
 
 async def _generate_single_html(viz_item: dict, visualization_input: str, *, provider: str) -> dict:
@@ -2882,70 +2940,184 @@ details로 펼치게 해. 좁은 화면에서도 입력을 조작하며 출력�
 설정이 충돌하면 안 돼. 기본 조건과 조작 후 조건을 구분해.
 슬라이더 또는 숫자 입력을 바꾸면 값과 SVG 그래프가 함께 갱신되어야 해.
 입력 범위를 검증하고 NaN, Infinity를 출력하지 마. 반응형, 키보드 접근, 충분한 대비를 지켜.
+현재 출력값은 각각 <output> 요소에 표시해.
 논문의 식이나 제공된 데이터만 사용해. 임의 계수나 실험 성능을 만들지 마.
 제공된 검산 예를 JavaScript assert로 확인해. 결과는 설명용 계산이며 실험 재현과 구분해.
 """
     choice = resolve_model("viz_image_plan", provider)
-    result = await call_interaction(
-        prompt, lane="pipeline", model=choice.model, thinking_level=choice.effort, store=False,
-        max_output_tokens=8000,
-    )
+    try:
+        result = await call_interaction(
+            prompt, lane="pipeline", model=choice.model, thinking_level=choice.effort, store=False,
+            max_output_tokens=8000,
+        )
+    except Exception as exc:
+        raise VizGenerationError(str(exc), [usage_record("html", choice.model)]) from exc
+    requests = [usage_record("html", choice.model, result)]
     code = str(result.get("text") or "").strip()
     if code.startswith("```"):
         code = "\n".join(code.splitlines()[1:]).removesuffix("```").strip()
     if _is_error_result(code) or result.get("response_status") in {"incomplete", "failed", "cancelled"}:
-        raise ValueError("HTML generation did not complete")
+        raise VizGenerationError("HTML generation did not complete", requests)
     if len(code) > 100000 or "<script" not in code.lower() or not re.search(r"<(input|button|select)\b", code, re.I):
-        raise ValueError("HTML explainer has no valid interactive controls")
-    return {"html_code": code, "cost_usd": _result_cost(result), "model_used": choice.model}
+        raise VizGenerationError("HTML explainer has no valid interactive controls", requests)
+    return {"html_code": code, "cost_usd": records_cost(requests), "model_used": choice.model, "requests": requests}
+
+
+def _viz_item_reusable(item: dict, folder_name: str) -> bool:
+    """A stored item that can be served again without a new paid call.
+
+    Images are checked where /static serves them (the paper folder), not at the
+    stored absolute path, which goes stale when the library is moved.
+    """
+    if item.get("status") != "completed" or not isinstance(item.get("id"), int):
+        return False
+    tool = item.get("tool")
+    if tool == "paperbanana":
+        name = Path(str(item.get("image_path") or "")).name
+        return bool(name) and (get_paper_dir(folder_name) / "paperbanana" / name).is_file()
+    if tool == "mermaid":
+        return bool(item.get("mermaid_code"))
+    if tool == "html":
+        check = item.get("execution_check") or {}
+        # A timeout can come from a slow device, so only a failed run blocks reuse.
+        return bool(item.get("html_code")) and check.get("status") != "failed"
+    return False
+
+
+_VIZ_WRITE_ATTEMPTS = 5
+
+
+def _item_key(item: dict) -> str:
+    return json.dumps(item, sort_keys=True, ensure_ascii=False)
+
+
+def _merge_records(*groups: list[dict]) -> list[dict]:
+    """Union of request records; the same record (by id) is kept once."""
+    seen: set[str] = set()
+    merged: list[dict] = []
+    for group in groups:
+        for record in group:
+            if not isinstance(record, dict):
+                continue
+            key = str(record.get("id") or _item_key(record))
+            if key not in seen:
+                seen.add(key)
+                merged.append(record)
+    return merged
+
+
+async def _claim_visualization_row(row_id: int, run_token: str) -> Optional[dict]:
+    """Mark a cached row as being updated by this run and return what it holds.
+
+    The claim is a compare-and-swap, so a regeneration saved just before it is part
+    of the data the run reuses; afterwards the routes see the new run_token and do
+    not write results of the replaced run into it.
+    """
+    for _ in range(_VIZ_WRITE_ATTEMPTS):
+        row = await fetch_one("SELECT result FROM analysis_results WHERE id = ?", (row_id,))
+        if row is None:
+            return None
+        try:
+            data = json.loads(row["result"])
+        except (TypeError, json.JSONDecodeError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        data.update(complete=False, run_token=run_token)
+        if await execute_update(
+            "UPDATE analysis_results SET result = ? WHERE id = ? AND result = ?",
+            (json.dumps(data, ensure_ascii=False), row_id, row["result"]),
+        ):
+            return data
+    raise RuntimeError("visualization row kept changing while the run claimed it")
 
 
 async def _store_visualization_progress(
     paper_id: int, items: list[dict], cache_input: str, done: bool, *, provider: str = "gemini",
-) -> None:
+    planned_empty: bool = False, prior_requests: list[dict] | None = None,
+    run_token: str | None = None, written: dict[int, str] | None = None,
+) -> list[dict]:
     """항목이 하나 끝날 때마다 visualization 행을 갱신한다 (중간 사망 시 유실 방지).
 
     UPDATE 대상 SELECT는 input_hash까지 걸어 같은 실행(run)의 행만 찾는다. paper_id+phase
     최신 1건만 보면, 재분석(다른 input_hash로 재실행)이 이전 실행의 완료된 행을 이어달리기로
     착각하고 덮어써버린다 — 새 실행은 반드시 새 행을 INSERT해야 한다.
 
+    The app can edit the same row while this run is going (regenerate, repair,
+    execution checks). The write is a compare-and-swap; for a row of this run
+    (same run_token) an item the run has not changed since its last write keeps
+    the stored version, an item the run replaces moves the stored version's spend
+    into prior_requests, and request records are merged by id. written maps item
+    id to what this run last wrote and is updated here. Returns the stored items.
+
     model_used는 provider에 맞는 레지스트리 모델명이어야 한다 — 이 메타데이터는
     plan(viz_planning role)이 실제로 어떤 모델로 계획됐는지를 남기는 것이지, 개별
     항목(mermaid/paperbanana)의 모델이 아니다.
     """
     input_hash = compute_input_hash(cache_input)
-    cost_unknown = any(it.get("tool") in {"paperbanana", "html"} and it.get("status") == "completed"
-                       and it.get("cost_usd") is None for it in items)
-    total_cost_usd = None if cost_unknown else sum(it.get("cost_usd") or 0 for it in items)
+    written = written if written is not None else {}
     model_used = resolve_model("viz_planning", provider).model
-    payload = json.dumps(
-        {
-            "items": sorted(items, key=lambda x: x.get("id", 0)),
-            "total_count": len(items),
-            "model_used": model_used,
-            "planned_at": _utcnow_iso(),
-            "complete": done,
-            "cost_incomplete": cost_unknown,
-        },
-        ensure_ascii=False,
-    )
-    row = await fetch_one(
-        """
-        SELECT id FROM analysis_results
-        WHERE paper_id = ? AND phase = 'visualization' AND input_hash = ?
-        ORDER BY id DESC LIMIT 1
-        """,
-        (paper_id, input_hash),
-    )
-    if row:
-        await execute_update(
-            "UPDATE analysis_results SET result = ?, input_hash = ?, cost_usd = ? WHERE id = ?",
-            (payload, input_hash, total_cost_usd, row["id"]),
+    for _ in range(_VIZ_WRITE_ATTEMPTS):
+        row = await fetch_one(
+            """
+            SELECT id, result FROM analysis_results
+            WHERE paper_id = ? AND phase = 'visualization' AND input_hash = ?
+            ORDER BY id DESC LIMIT 1
+            """,
+            (paper_id, input_hash),
         )
-    else:
-        await _insert_analysis_result(
-            paper_id, "visualization", payload, model_used, 0, 0, total_cost_usd, cache_input,
+        merged_items, merged_prior = list(items), list(prior_requests or [])
+        if row and run_token is not None:
+            try:
+                current = json.loads(row["result"])
+            except (TypeError, json.JSONDecodeError):
+                current = None
+            if isinstance(current, dict) and current.get("run_token") == run_token:
+                stored = {it.get("id"): it for it in current.get("items") or [] if isinstance(it, dict)}
+                replaced: list[dict] = []
+                merged_items = []
+                for item in items:
+                    other = stored.get(item.get("id"))
+                    if other is not None and written.get(item.get("id")) == _item_key(item):
+                        merged_items.append(other)  # unchanged by this run: keep app edits
+                        continue
+                    other_key = _item_key(other) if other is not None else None
+                    if other_key not in {None, _item_key(item), written.get(item.get("id"))}:
+                        replaced.extend(item_usage_records(other))  # an app edit this run replaces
+                    merged_items.append(item)
+                merged_prior = _merge_records(current.get("prior_requests") or [], merged_prior, replaced)
+        # The cost column holds the known total; unknown requests are counted beside it.
+        # Totals are recomputed from the records each time, so checkpoints never add twice.
+        total_cost_usd, unknown_count = _viz_cost_totals(merged_items, merged_prior)
+        payload = json.dumps(
+            {
+                "items": sorted(merged_items, key=lambda x: x.get("id", 0)),
+                "total_count": len(merged_items),
+                "model_used": model_used,
+                "planned_at": _utcnow_iso(),
+                "complete": done,
+                "cost_incomplete": unknown_count > 0,
+                "cost_unknown_count": unknown_count,
+                "prior_requests": merged_prior,
+                "planned_empty": planned_empty,
+                "run_token": run_token,
+            },
+            ensure_ascii=False,
         )
+        if row:
+            if not await execute_update(
+                "UPDATE analysis_results SET result = ?, input_hash = ?, cost_usd = ? WHERE id = ? AND result = ?",
+                (payload, input_hash, total_cost_usd, row["id"], row["result"]),
+            ):
+                continue
+        else:
+            await _insert_analysis_result(
+                paper_id, "visualization", payload, model_used, 0, 0, total_cost_usd, cache_input,
+            )
+        for item in items:
+            written[item.get("id")] = _item_key(item)
+        return sorted(merged_items, key=lambda x: x.get("id", 0))
+    raise RuntimeError("visualization row kept changing during a checkpoint")
 
 
 # ---------------------------------------------------------------------------
@@ -3285,23 +3457,44 @@ async def _run_visualizations(
         image_quality=_image_settings.get("image_quality", "high"),
         analysis_provider=provider,
     )
+    # A cached run is returned only when every item really succeeded. Otherwise its
+    # successful items are reused by id and only failed, missing or unfinished items
+    # are generated again (paid results are not replayed).
     cached = await _get_cached_phase_result(paper_id, "visualization", visualization_cache_input)
+    reusable: dict[int, dict] = {}
+    cached_items: list[dict] = []
+    prior_requests: list[dict] = []
+    run_token = uuid.uuid4().hex
     if cached is not None:
         try:
             cached_data = json.loads(cached["text"])
-            # `complete` was introduced with per-item checkpointing (f577fe2): a mid-run
-            # crash can leave behind a partial checkpoint row (complete=False) that shares
-            # the same input_hash as a full run. Rows written before checkpointing existed
-            # have no `complete` field at all, but every one of them was a final save, so
-            # default to True for those and only reject an explicit complete=False.
-            if cached_data.get("complete", True) is not False:
-                status.progress_pct = 100.0
-                return list(cached_data.get("items", []))
+            cached_items = [it for it in cached_data.get("items") or [] if isinstance(it, dict)]
         except (json.JSONDecodeError, TypeError, AttributeError):
-            pass
+            cached_data, cached_items = {}, []
+        reusable = {it["id"]: it for it in cached_items if _viz_item_reusable(it, folder_name)}
+        # `complete` was introduced with per-item checkpointing (f577fe2): a mid-run
+        # crash can leave behind a partial checkpoint row (complete=False) that shares
+        # the same input_hash as a full run. Rows written before checkpointing existed
+        # have no `complete` field at all, but every one of them was a final save, so
+        # default to True for those and only reject an explicit complete=False.
+        # An empty run counts only with the planned_empty marker: v1.2.0 saved planning
+        # failures as complete runs with no items.
+        finished = cached_data.get("complete", True) is not False
+        if finished and len(reusable) == len(cached_items) and (cached_items or cached_data.get("planned_empty")):
+            status.progress_pct = 100.0
+            return cached_items
+        # Re-read under a claim: app edits saved before it are reused, later ones are merged.
+        claimed = await _claim_visualization_row(cached["result_id"], run_token) if cached.get("result_id") else None
+        if claimed is not None:
+            cached_data = claimed
+            cached_items = [it for it in claimed.get("items") or [] if isinstance(it, dict)]
+            reusable = {it["id"]: it for it in cached_items if _viz_item_reusable(it, folder_name)}
+        # Spend of the attempts this run replaces stays in the run total.
+        prior_requests = list(cached_data.get("prior_requests") or [])
+        prior_requests += [r for it in cached_items if it.get("id") not in reusable for r in item_usage_records(it)]
 
-    # Step 1: Plan (final stage of the stateful chain)
-    viz_plan = await _plan_visualizations(
+    # Step 1: Plan (final stage of the stateful chain), then the paid-generation gate
+    viz_plan = _gate_viz_items(await _plan_visualizations(
         paper_id,
         visualization_input,
         previous_results,
@@ -3313,10 +3506,32 @@ async def _run_visualizations(
         openai_pdf_part=openai_pdf_part,
         pdf_sha256=pdf_sha256,
         provider=provider,
-    )
+    ))
+
+    # Successful items of the cached run that the plan still contains are served
+    # again; the others were paid for, so their records join prior_requests now.
+    reuse = {
+        idx + 1: reusable[idx + 1] for idx, item in enumerate(viz_plan)
+        if idx + 1 in reusable
+        and all(reusable[idx + 1].get(key) == item.get(key) for key in ("tool", "title", "diagram_type"))
+    }
+    prior_requests += [r for vid, it in reusable.items() if vid not in reuse for r in item_usage_records(it)]
+    written: dict[int, str] = {}
+
+    async def checkpoint(done_items: list[dict], *, done: bool = False) -> list[dict]:
+        # Reused items not reached yet are written too, so a crash keeps them.
+        finished = {it.get("id") for it in done_items}
+        pending = [it for vid, it in reuse.items() if vid not in finished]
+        return await _store_visualization_progress(
+            paper_id, done_items + pending, visualization_cache_input, done=done, provider=provider,
+            planned_empty=not viz_plan, prior_requests=prior_requests, run_token=run_token, written=written,
+        )
 
     # Step 2: Generate all in parallel
     async def generate_one(idx: int, item: dict) -> dict:
+        previous = reuse.get(idx + 1)
+        if previous is not None:
+            return previous
         tool = item.get("tool", "mermaid")
         result_item = {
             "id": idx + 1,
@@ -3335,14 +3550,13 @@ async def _run_visualizations(
         }
         try:
             if tool == "mermaid":
-                code = await _generate_single_mermaid(
+                result_item.update(await _generate_single_mermaid(
                     paper_id,
                     item,
                     visualization_input,
                     previous_results,
                     provider=provider,
-                )
-                result_item["mermaid_code"] = code
+                ))
                 result_item["status"] = "completed"
             elif tool == "paperbanana":
                 pb_result = await _generate_single_paperbanana(
@@ -3356,14 +3570,14 @@ async def _run_visualizations(
                 )
                 result_item["image_url"] = pb_result.get("image_url")
                 result_item["image_path"] = pb_result.get("image_path")
+                result_item["requests"] = pb_result.get("requests") or []
                 if pb_result.get("image_path"):
                     result_item["status"] = "completed"
                     if pb_result.get("provider"):
                         result_item["provider"] = pb_result["provider"]
                     if pb_result.get("duration_s") is not None:
                         result_item["duration_s"] = pb_result["duration_s"]
-                    if pb_result.get("cost_usd") is not None:
-                        result_item["cost_usd"] = pb_result["cost_usd"]
+                    result_item["cost_usd"] = pb_result.get("cost_usd")
                     result_item["image_quality"] = pb_result.get("image_quality")
                     result_item["model_used"] = pb_result.get("model_used")
                 else:
@@ -3375,6 +3589,8 @@ async def _run_visualizations(
             else:
                 result_item["status"] = "error"
                 result_item["error_message"] = f"Unknown tool: {tool}"
+        except VizGenerationError as e:
+            result_item.update(status="error", error_message=str(e), requests=e.requests)
         except Exception as e:
             result_item["status"] = "error"
             result_item["error_message"] = str(e)
@@ -3394,9 +3610,7 @@ async def _run_visualizations(
     mermaid_results = await asyncio.gather(*mermaid_tasks, return_exceptions=False) if mermaid_tasks else []
     if mermaid_results:
         accumulated.extend(mermaid_results)
-        await _store_visualization_progress(
-            paper_id, accumulated, visualization_cache_input, done=False, provider=provider,
-        )
+        await checkpoint(accumulated)
 
     # Run paperbanana generations sequentially to avoid API rate limits
     paperbanana_results = []
@@ -3404,11 +3618,9 @@ async def _run_visualizations(
         result = await generate_one(i, item)
         paperbanana_results.append(result)
         accumulated.append(result)
-        await _store_visualization_progress(
-            paper_id, accumulated, visualization_cache_input, done=False, provider=provider,
-        )
+        await checkpoint(accumulated)
         # Small delay between PaperBanana calls to avoid rate limiting
-        if idx < len(paperbanana_items) - 1:
+        if idx < len(paperbanana_items) - 1 and result is not reuse.get(i + 1):
             await asyncio.sleep(2.0)
 
     # Run other tool types in parallel
@@ -3416,23 +3628,19 @@ async def _run_visualizations(
     other_results = await asyncio.gather(*other_tasks, return_exceptions=False) if other_tasks else []
     if other_results:
         accumulated.extend(other_results)
-        await _store_visualization_progress(
-            paper_id, accumulated, visualization_cache_input, done=False, provider=provider,
-        )
+        await checkpoint(accumulated)
 
     # Combine and sort by original index
     all_results = list(mermaid_results) + paperbanana_results + list(other_results)
     generated_items = sorted(all_results, key=lambda x: x.get("id", 0))
 
     # Step 3: Store all visualization results in DB (final, complete=True)
-    await _store_visualization_progress(
-        paper_id, generated_items, visualization_cache_input, done=True, provider=provider,
-    )
+    stored = await checkpoint(generated_items, done=True)
 
     # Visualization complete — set progress to 100%
     status.progress_pct = 100.0
 
-    return list(generated_items)
+    return stored
 
 
 # ---------------------------------------------------------------------------

@@ -49,6 +49,10 @@ def _target(title="개념도 테스트"):
     return {"title": title, "description": "레이저가 거울에 반사되는 개념도"}
 
 
+# A described request with a known zero cost keeps the render-only totals below.
+_DESCRIBED = {"kind": "describe", "model": "gpt-6-luna", "cost_usd": 0.0}
+
+
 class FigureGenTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self._tmp = TemporaryDirectory()
@@ -61,7 +65,7 @@ class FigureGenTests(unittest.IsolatedAsyncioTestCase):
         self._plan.start()
 
     async def _fake_plan(self, viz_target, **kwargs):
-        return "A minimal schematic: laser, mirror, labeled arrows."
+        return "A minimal schematic: laser, mirror, labeled arrows.", _DESCRIBED
 
     def tearDown(self):
         self._plan.stop()
@@ -182,7 +186,7 @@ class FlareRenderTests(unittest.IsolatedAsyncioTestCase):
         response = Mock()
         response.json.return_value = {"data": [{"b64_json": base64.b64encode(PNG_1PX).decode()}], "usage": usage}
         with TemporaryDirectory() as directory, patch.dict("os.environ", {"OPENAI_API_KEY": "test"}), patch.object(
-            figure_gen, "_plan_description", new=AsyncMock(return_value="A scientific diagram")
+            figure_gen, "_plan_description", new=AsyncMock(return_value=("A scientific diagram", _DESCRIBED))
         ), patch("httpx.post", return_value=response) as post:
             result = await generate_illustration(_target(), directory, image_model="gpt-image-2.5-sunburst")
         request = post.call_args.kwargs["json"]
@@ -193,7 +197,7 @@ class FlareRenderTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_sunburst_failure_does_not_retry_flare(self):
         with TemporaryDirectory() as directory, patch.dict("os.environ", {"OPENAI_API_KEY": "test"}), patch.object(
-            figure_gen, "_plan_description", new=AsyncMock(return_value="A scientific diagram")
+            figure_gen, "_plan_description", new=AsyncMock(return_value=("A scientific diagram", _DESCRIBED))
         ), patch("httpx.post", side_effect=RuntimeError("render failed")) as post:
             result = await generate_illustration(_target(), directory, image_model="gpt-image-2.5-sunburst")
         self.assertIsNone(result.path)
@@ -207,7 +211,8 @@ class FlareRenderTests(unittest.IsolatedAsyncioTestCase):
         response = Mock()
         response.json.return_value = {"data": [{"b64_json": base64.b64encode(PNG_1PX).decode()}],
                                       "usage": usage}
-        planner = AsyncMock(return_value={"text": description})
+        planner = AsyncMock(return_value={"text": description, "model": "gpt-6-luna", "tokens_in": 1000,
+                                          "tokens_out": 200, "tokens_cached": 0, "tokens_cache_write": 0})
         provider = figure_gen.OpenAIImageProvider()
         with (
             TemporaryDirectory() as directory,
@@ -229,7 +234,11 @@ class FlareRenderTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("Never squeeze or shrink text to fit", prompt)
         self.assertTrue(request["prompt"].endswith(figure_gen._TYPOGRAPHY_INSTRUCTION))
         self.assertIn(description, request["prompt"])
-        self.assertAlmostEqual(result.cost_usd, 0.031)
+        # Render (200 text in x $5 + 1000 out x $30 per 1M) plus the description call
+        # (1000 in x $0.10 + 200 out x $0.50 per 1M).
+        self.assertAlmostEqual(result.cost_usd, 0.031 + 0.0002)
+        self.assertEqual([(r["kind"], r["model"]) for r in result.requests],
+                         [("describe", "gpt-6-luna"), ("render", "gpt-image-2.5-flare")])
         self.assertIsNone(result.error)
 
     async def test_missing_usage_keeps_image_without_inventing_cost(self):
@@ -237,7 +246,7 @@ class FlareRenderTests(unittest.IsolatedAsyncioTestCase):
         provider.cost_key = "gpt-image-2.5-flare:high"
         with (
             TemporaryDirectory() as directory,
-            patch.object(figure_gen, "_plan_description", AsyncMock(return_value="A laser.")),
+            patch.object(figure_gen, "_plan_description", AsyncMock(return_value=("A laser.", _DESCRIBED))),
             patch.object(figure_gen, "build_providers", return_value=[provider]),
         ):
             result = await generate_illustration(_target(), directory)
@@ -291,7 +300,7 @@ class NanoBananaRenderTests(unittest.IsolatedAsyncioTestCase):
             TemporaryDirectory() as directory,
             patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}),
             patch("google.genai.Client", return_value=client),
-            patch.object(figure_gen, "_plan_description", AsyncMock(return_value="A laser diagram.")),
+            patch.object(figure_gen, "_plan_description", AsyncMock(return_value=("A laser diagram.", _DESCRIBED))),
         ):
             result = await generate_illustration(_target(), directory, preferred_provider="gemini")
             self.assertEqual(Path(result.path).read_bytes(), PNG_1PX)

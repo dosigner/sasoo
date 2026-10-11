@@ -54,7 +54,7 @@ export function SynthesisView({
   onOpenFigure,
   onOpenRecipe,
 }: SynthesisViewProps) {
-  const actions = useVisualizationActions();
+  const actions = useVisualizationActions(visualizations);
   const [expandAll, setExpandAll] = useState(false);
   const [building, setBuilding] = useState(false);
   const [buildError, setBuildError] = useState('');
@@ -108,6 +108,7 @@ export function SynthesisView({
       onOpen={() => openItem(item)}
       onRegenerate={pid ? () => actions.handleRegenerate(pid, item.id) : undefined}
       onRepair={pid ? actions.makeRepairHandler(pid, item.id) : undefined}
+      onHtmlCheck={pid ? (result) => void actions.handleHtmlCheck(pid, item, result) : undefined}
     />
   );
 
@@ -216,6 +217,7 @@ export function SynthesisView({
           onClose={() => setLightboxIndex(null)}
           onIndexChange={setLightboxIndex}
           makeRepairHandler={actions.makeRepairHandler}
+          onHtmlCheck={(item, result) => void actions.handleHtmlCheck(pid, item, result)}
         />
       )}
 

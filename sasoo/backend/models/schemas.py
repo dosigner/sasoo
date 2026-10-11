@@ -302,11 +302,22 @@ class MermaidResult(BaseModel):
     description: Optional[str] = None
 
 
+class HtmlCheckReport(BaseModel):
+    """Execution check result of one HTML explainer, measured in the app's sandboxed frame."""
+    run_id: int
+    run_token: Optional[str] = None
+    status: Literal["passed", "failed", "timeout"]
+    issues: list[str] = Field(default_factory=list, max_length=5)
+    html_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class MermaidRepairRequest(BaseModel):
     """Client-reported parse failure asking the LLM to fix the diagram code."""
     mermaid_code: str
     error_message: str
     viz_id: Optional[int] = None  # visualization item ordinal to persist into; None = don't persist
+    run_id: Optional[int] = None  # visualization run the code came from; a newer run is not overwritten
+    run_token: Optional[str] = None  # tells a reanalysis that reused the same row apart
 
 
 # ---------------------------------------------------------------------------
@@ -470,6 +481,10 @@ class VisualizationItem(BaseModel):
     provider: Optional[str] = None
     cost_usd: Optional[float] = None
     duration_s: Optional[float] = None
+    # Latest in-frame execution check of an HTML explainer, reported by the app:
+    # {"status": passed | failed | timeout, "issues": [...], "checked_at": ...}.
+    # It is not a check against the paper's numbers.
+    execution_check: Optional[dict] = None
     # Status
     status: str = "pending"                 # pending | generating | completed | error
     error_message: Optional[str] = None
@@ -482,6 +497,12 @@ class VisualizationPlanResponse(BaseModel):
     total_count: int = 0
     model_used: str = ""
     planned_at: Optional[str] = None
+    # analysis_results.id of the visualization row: the run that regenerate,
+    # repair and UI overrides must stay bound to.
+    run_id: Optional[int] = None
+    # Changes when a reanalysis with the same inputs reuses this row: (run_id,
+    # run_token) together identify one run.
+    run_token: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

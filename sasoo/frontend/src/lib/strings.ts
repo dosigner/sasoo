@@ -115,6 +115,7 @@ export const S = {
     costTitle: '이번 달 비용',
     costOpenSettings: '자세히 보기',
     costMeta: (papers: number) => `논문 ${papers}편 분석`,
+    costUnknown: (n: number) => `미확인 ${n}건 제외`,
     costDelta: (delta: string) => `지난달 대비 ${delta}`,
     costEmptyMeta: '논문을 분석하면 비용이 여기에 표시돼요.',
     libraryTitle: '연구 보관함',
@@ -548,6 +549,19 @@ export const S = {
     statusMissing: '추가 설정 필요',
   },
 
+  // ── HTML 설명의 실행 점검 ──
+  // 실행 점검은 오류와 출력 갱신만 본다. 원문 수치와 대조하지 않으므로 그 사실을 항상 함께 적는다.
+  htmlCheck: {
+    intro: '변수와 결과의 관계를 확인하는 설명용 계산입니다. 적용 가정과 원문 근거를 함께 확인하세요.',
+    checking: '실행을 점검하고 있어요.',
+    passed: '실행 점검: 오류 없이 실행됐어요. 수치는 원문 기준으로 검산하지 않았어요.',
+    passedWithInputs: (n: number) =>
+      `실행 점검: 입력 ${n}개를 범위 끝까지 움직여도 오류 없이 출력이 바뀌었어요. 수치는 원문 기준으로 검산하지 않았어요.`,
+    failed: '실행 점검에서 오류가 나왔어요. 계산 결과를 믿기 전에 다시 생성해 주세요.',
+    timeout: '응답이 없어 실행을 멈췄어요. 계산이 끝나지 않는 코드일 수 있어요.',
+    rerun: '다시 실행',
+  },
+
   // ── Cost Dashboard ──
   cost: {
     thisMonth: '이번 달 비용',
@@ -560,6 +574,9 @@ export const S = {
     monthLabel: (mm: string) => `${mm}월`,
     paperCount: (n: number) => `${n}개 논문`,
     perPaperCost: '논문별 비용 (상위 10개)',
+    // 비용 합계는 사용량이 확인된 요청만 더한다. 미확인 요청은 0으로 치지 않고 건수로 알린다.
+    unknownCostNotice: (n: number) => `사용량을 확인하지 못한 요청 ${n}건은 합계에서 빠졌어요.`,
+    unknownCostCount: (n: number) => `미확인 ${n}건`,
     modelBreakdown: '모델별 사용량',
     modelName: '모델',
     calls: '호출',
@@ -831,6 +848,7 @@ export const S = {
     regenerate: '다시 생성',
     regenerating: '다시 만들고 있어요...',
     regenerateFailed: '다시 만들지 못했어요',
+    regenerateStale: '새 분석 결과로 바뀌어 저장하지 않았어요',
     exportAll: '전체 다운로드',
     exporting: '내보내고 있어요...',
     exportFailed: '시각화를 내보내지 못했어요',

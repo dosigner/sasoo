@@ -8,7 +8,13 @@
 import JSZip from 'jszip';
 import { getStaticUrl, type VisualizationItem } from '@/lib/api';
 import { downloadBlob } from '@/lib/download';
-import { htmlVisualizationDocument } from '@/components/HtmlVisualization';
+import {
+  HTML_CHECK_TIMEOUT_MS,
+  HTML_CHECK_TYPE,
+  HTML_VISUALIZATION_CSP,
+  htmlCheckText,
+  htmlVisualizationDocument,
+} from '@/components/HtmlVisualization';
 import {
   renderMermaidSvg,
   safeFilename,
@@ -18,6 +24,25 @@ import {
 export interface VizExportResult {
   exported: number;
   skipped: number;
+}
+
+// Standalone page around the sandboxed frame. It shows the same execution check
+// as the app: only messages from its own frame with its nonce count, and a frame
+// that never answers is removed so a runaway loop stops.
+function exportedHtmlPage(code: string): string {
+  const nonce = crypto.randomUUID();
+  const frameDoc = htmlVisualizationDocument(code, nonce)
+    .replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
+  const text = {
+    passed: htmlCheckText({ status: 'passed', issues: [], probed: 0 }),
+    failed: htmlCheckText({ status: 'failed', issues: [], probed: 0 }),
+    timeout: htmlCheckText({ status: 'timeout', issues: [], probed: 0 }),
+  };
+  const listener = `(()=>{const N=${JSON.stringify(nonce)},T=${JSON.stringify(text).replaceAll('<', '\\u003c')},f=document.getElementById("f"),s=document.getElementById("s");let done=false;
+addEventListener("message",e=>{const d=e.data;if(e.source!==f.contentWindow||!d||d.type!==${JSON.stringify(HTML_CHECK_TYPE)}||d.nonce!==N||(d.status!=="passed"&&d.status!=="failed"))return;done=true;
+s.textContent=T[d.status]+(Array.isArray(d.issues)&&d.issues.length?" ("+d.issues.slice(0,5).map(String).join("; ").slice(0,600)+")":"");s.style.color=d.status==="failed"?"#b42318":"#475467"});
+setTimeout(()=>{if(!done){s.textContent=T.timeout;s.style.color="#b42318";f.remove()}},${HTML_CHECK_TIMEOUT_MS})})()`;
+  return `<!doctype html><html lang="ko"><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${HTML_VISUALIZATION_CSP}"><title>변수와 결과</title><p id="s" role="status" aria-live="polite" style="font:14px Arial,sans-serif;color:#475467">${htmlCheckText(null)}</p><iframe id="f" title="변수와 결과" sandbox="allow-scripts" referrerpolicy="no-referrer" style="border:0;width:100%;height:90vh" srcdoc="${frameDoc}"></iframe><script>${listener}</script></html>`;
 }
 
 export async function exportVisualizationsZip(
@@ -55,9 +80,7 @@ export async function exportVisualizationsZip(
           images.file(imageName, await response.blob());
         }
       } else if (item.tool === 'html' && item.html_code) {
-        const document = htmlVisualizationDocument(item.html_code)
-          .replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
-        sources.file(`${base}.html`, `<!doctype html><html lang="ko"><meta charset="utf-8"><title>변수와 결과</title><iframe title="변수와 결과" sandbox="allow-scripts" referrerpolicy="no-referrer" style="border:0;width:100%;height:95vh" srcdoc="${document}"></iframe></html>`);
+        sources.file(`${base}.html`, exportedHtmlPage(item.html_code));
         exported += 1;
         mdLines.push(`## ${item.id}. ${item.title}`, '', item.description, '', `[HTML 설명](sources/${base}.html)`, '');
         continue;

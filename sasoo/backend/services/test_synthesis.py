@@ -3,7 +3,8 @@
 여기서 잠그는 계약:
 - `_validate_synthesis`는 근거 없는 수치·목록 밖 참조를 버린다. 버림은 조용해선 안 되고
   `dropped` 카운트로 세어져야 한다(스펙 §8 게이트 지표).
-- `_normalize_viz_plan`은 구획 상한과 "result는 flowchart만"을 강제한다.
+- `_normalize_viz_plan`은 이미지 5, Mermaid 3, HTML 1 상한과 60점 조건을 강제한다
+  (생성 전 검증은 test_viz_plan_contract.py).
 - 두 스키마의 마지막 속성은 정수다(DEC-014: 마지막 자유서술 필드가 폭주의 자리였다).
 """
 
@@ -114,44 +115,6 @@ class ValidateSynthesisTests(unittest.TestCase):
         self.assertEqual(dropped["key_metrics"], 0)
 
 
-class NormalizeVizPlanTests(unittest.TestCase):
-    def _plan(self, diagrams):
-        return {
-            "concept_illustration": {
-                "title": "광학 셋업", "description": "설명", "category": "physical_setup",
-            },
-            "diagrams": diagrams,
-            "diagram_count": len(diagrams),
-        }
-
-    def test_concept_illustration_comes_first(self):
-        items = ae._normalize_viz_plan(self._plan([
-            {"title": "절차", "block": "method", "diagram_type": "flowchart",
-             "description": "d", "category": "algorithm_flow"},
-        ]))
-        self.assertEqual(items[0]["tool"], "paperbanana")
-        self.assertEqual(items[0]["block"], "concept")
-        self.assertEqual(items[1]["tool"], "mermaid")
-
-    def test_sequence_in_result_block_is_dropped(self):
-        items = ae._normalize_viz_plan(self._plan([
-            {"title": "시간 순서", "block": "result", "diagram_type": "sequence",
-             "description": "d", "category": "timeline"},
-            {"title": "비교", "block": "result", "diagram_type": "flowchart",
-             "description": "d", "category": "comparison"},
-        ]))
-        self.assertEqual([it["title"] for it in items], ["광학 셋업", "비교"])
-
-    def test_method_block_capped_at_three(self):
-        items = ae._normalize_viz_plan(self._plan([
-            {"title": f"방법{i}", "block": "method", "diagram_type": "flowchart",
-             "description": "d", "category": "algorithm_flow"}
-            for i in range(4)
-        ]))
-        self.assertEqual(len([it for it in items if it["block"] == "method"]), 3)
-        self.assertEqual(len(items), 4)  # 개념도 1 + method 3
-
-
 class MixedVisualizationTests(unittest.IsolatedAsyncioTestCase):
     def test_sunburst_goes_to_one_difficult_core_image(self):
         images = [
@@ -260,15 +223,17 @@ class MixedVisualizationTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(ValueError):
                 await ae._generate_single_html({}, "source", provider="openai")
 
-    async def test_unknown_image_cost_is_not_saved_as_zero(self):
+    async def test_unknown_image_cost_is_counted_not_priced(self):
         insert = AsyncMock()
         with patch.object(ae, "fetch_one", new=AsyncMock(return_value=None)), patch.object(
             ae, "_insert_analysis_result", new=insert
         ):
             await ae._store_visualization_progress(7, [{"id": 1, "tool": "paperbanana", "status": "completed"}],
                                                    "cache", True, provider="openai")
-        self.assertIsNone(insert.await_args.args[6])
-        self.assertTrue(json.loads(insert.await_args.args[2])["cost_incomplete"])
+        # The column keeps the known total; the unknown request is counted beside it.
+        self.assertEqual(insert.await_args.args[6], 0.0)
+        payload = json.loads(insert.await_args.args[2])
+        self.assertEqual((payload["cost_incomplete"], payload["cost_unknown_count"]), (True, 1))
 
     async def test_invalid_plan_does_not_generate_a_default_flowchart(self):
         from models.schemas import AnalysisStatus
@@ -312,7 +277,7 @@ class MermaidRenderableTypeTests(unittest.IsolatedAsyncioTestCase):
                 [],
             )
 
-        self.assertEqual(code, "flowchart TD\nA-->B")
+        self.assertEqual(code["mermaid_code"], "flowchart TD\nA-->B")
         self.assertIn("Mermaid flowchart 다이어그램", captured["prompt"])
         self.assertNotIn("mindmap", captured["prompt"])
 

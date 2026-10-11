@@ -1310,7 +1310,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         ]
 
         with (
-            patch("services.analysis_execution.fetch_one", new=AsyncMock(return_value={"id": 42})),
+            patch("services.analysis_execution.fetch_one", new=AsyncMock(return_value={"id": 42, "result": "{}"})),
             patch("services.analysis_execution.execute_update", new=AsyncMock(return_value=1)) as update_mock,
             patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()) as insert_mock,
         ):
@@ -1320,8 +1320,9 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         args = update_mock.call_args.args
         self.assertIn("UPDATE analysis_results", args[0])
         self.assertIn("cost_usd = ?", args[0])
-        self.assertEqual(args[1][-1], 42)
-        self.assertAlmostEqual(args[1][-2], 0.05)
+        # The write is a compare-and-swap on the text that was read.
+        self.assertEqual(args[1][-2:], (42, "{}"))
+        self.assertAlmostEqual(args[1][-3], 0.05)
         insert_mock.assert_not_awaited()
 
     async def test_store_visualization_progress_inserts_when_no_row(self):
@@ -1384,7 +1385,8 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value={"text": stale_partial_payload}),
             ),
             patch("services.analysis_execution._plan_visualizations", new=AsyncMock(return_value=[])) as plan_mock,
-            patch("services.analysis_execution._store_visualization_progress", new=AsyncMock()) as store_mock,
+            patch("services.analysis_execution._store_visualization_progress",
+                  new=AsyncMock(side_effect=lambda _pid, items, *a, **k: items)) as store_mock,
             # 캐시 키가 이미지 설정을 읽으므로 DB 접근을 막는다.
             patch(
                 "services.analysis_execution._get_all_settings",
@@ -3057,7 +3059,8 @@ class ChainPromptWordingByProviderTests(unittest.IsolatedAsyncioTestCase):
 
             async def _fake_call(contents, **kwargs):
                 captured["contents"] = contents
-                return {"text": '{"visualizations": []}',
+                return {"text": '{"illustrations": [], "diagrams": [], "interactive_html": '
+                                '{"title": "", "description": "", "applicable": false}, "diagram_count": 0}',
                         "model": "m", "tokens_in": 1, "tokens_out": 1, "interaction_id": "i"}
 
             with (
@@ -4057,8 +4060,9 @@ class NativePdfValidationTests(unittest.IsolatedAsyncioTestCase):
                 "services.analysis_execution._insert_analysis_result", new=insert
             ):
                 if stage == "viz_plan":
-                    result = await analysis_execution._plan_visualizations(7, "source", [], status, provider="openai")
-                    self.assertEqual(result, [])
+                    # A failed plan must not become an empty successful plan (no generation follows).
+                    with self.assertRaises(ValueError):
+                        await analysis_execution._plan_visualizations(7, "source", [], status, provider="openai")
                 else:
                     result = await analysis_execution._run_synthesis(7, "source", [], status, provider="openai")
                     self.assertIsNone(result)
@@ -4135,7 +4139,7 @@ class IntegrationSynthesisHandoffTests(unittest.IsolatedAsyncioTestCase):
             if phase == "synthesis":
                 keys.append(key)
                 return None
-            return {"text": '{"items":[],"complete":true}'}
+            return {"text": '{"items":[],"complete":true,"planned_empty":true}'}
 
         call = AsyncMock(return_value={"text": "{}", "model": "gpt-5.6-luna", "tokens_in": 100,
                                       "tokens_out": 50, "tokens_cached": 0, "tokens_cache_write": 0})

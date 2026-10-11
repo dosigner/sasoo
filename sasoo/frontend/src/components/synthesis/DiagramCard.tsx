@@ -1,6 +1,6 @@
 import { useState, lazy, Suspense } from 'react';
 import { AlertCircle, Maximize2, RefreshCw } from 'lucide-react';
-import type { VisualizationItem } from '@/lib/api';
+import type { HtmlCheckResult, VisualizationItem } from '@/lib/api';
 import { S } from '@/lib/strings';
 import { PaperBananaViewer } from '../VisualizationGallery';
 import { HtmlVisualization } from '../HtmlVisualization';
@@ -17,6 +17,7 @@ interface DiagramCardProps {
   onOpen: () => void;
   onRegenerate?: () => void;
   onRepair?: (code: string, errorMessage: string) => Promise<string | null>;
+  onHtmlCheck?: (result: HtmlCheckResult) => void;
 }
 
 function Skeleton() {
@@ -55,6 +56,7 @@ export function DiagramCard({
   onOpen,
   onRegenerate,
   onRepair,
+  onHtmlCheck,
 }: DiagramCardProps) {
   const [descOpen, setDescOpen] = useState(false);
   const isConcept = item.tool === 'paperbanana';
@@ -106,7 +108,7 @@ export function DiagramCard({
           regenerating={regenerating}
         />
       ) : item.tool === 'html' ? (
-        <div className="px-4 pb-2"><HtmlVisualization item={item} /></div>
+        <div className="px-4 pb-2"><HtmlVisualization item={item} onCheck={onHtmlCheck} /></div>
       ) : (
         <div
           className="cursor-zoom-in [&_svg]:max-h-[58vh]"

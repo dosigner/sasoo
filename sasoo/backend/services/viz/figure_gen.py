@@ -25,14 +25,14 @@ import logging
 import os
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Protocol
 
 from services.concurrency import RENDER_SEM, run_pipeline_blocking
 from services.model_registry import resolve as resolve_model
 from services.models import MODEL_IMAGE, MODEL_IMAGE_OPENAI, MODEL_IMAGE_SUNBURST
-from services.pricing import PricingUsageError, calc_image_cost
+from services.pricing import PricingUsageError, calc_image_cost, records_cost, usage_record
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,9 @@ class FigureGenResult:
     duration_s: float
     cost_usd: float | None
     error: Optional[str]
+    # Every paid request (description, render), failed ones included. cost_usd is
+    # their total, or None when any of them is unknown.
+    requests: list[dict] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -92,8 +95,11 @@ _PLANNER_SYSTEM = (
 )
 
 
-async def _plan_description(viz_target: dict, *, llm_provider: str = "gemini") -> str:
-    """Build the image description with the selected provider's text model."""
+async def _plan_description(viz_target: dict, *, llm_provider: str = "gemini") -> tuple[str, dict]:
+    """Build the image description with the selected provider's text model.
+
+    Returns the description and its request record.
+    """
     from services.llm.interactions_client import call_interaction
 
     prompt = (
@@ -116,7 +122,7 @@ async def _plan_description(viz_target: dict, *, llm_provider: str = "gemini") -
         thinking_level=_choice.effort,
         store=False,
     )
-    return str(result.get("text", "")).strip()
+    return str(result.get("text", "")).strip(), usage_record("describe", _choice.model, result)
 
 
 # ---------------------------------------------------------------------------
@@ -244,11 +250,13 @@ async def generate_illustration(
     llm_provider = llm_provider or preferred_provider
 
     try:
-        description = await _plan_description(viz_target, llm_provider=llm_provider)
+        description, described = await _plan_description(viz_target, llm_provider=llm_provider)
     except Exception as exc:
         logger.warning("figure_gen planner failed for '%s': %s", viz_target.get("title"), exc)
-        return FigureGenResult(None, None, round(time.monotonic() - start, 1), 0.0, f"planner: {exc}")
+        failed = [usage_record("describe", resolve_model("viz_image_plan", llm_provider).model)]
+        return FigureGenResult(None, None, round(time.monotonic() - start, 1), None, f"planner: {exc}", failed)
 
+    requests = [described]
     errors: list[str] = []
     for provider in build_providers(preferred_provider, quality, image_model):
         if not provider.available():
@@ -263,10 +271,13 @@ async def generate_illustration(
                     timeout=RENDER_TIMEOUT_S,
                 )
         except asyncio.TimeoutError:
+            # The provider may still bill a request we stopped waiting for.
+            requests.append(usage_record("render", provider.cost_key.split(":", 1)[0]))
             errors.append(f"{provider.name}: timeout after {RENDER_TIMEOUT_S:.0f}s")
             logger.warning("figure_gen: %s timed out for '%s'", provider.name, viz_target.get("title"))
             continue
         except Exception as exc:
+            requests.append(usage_record("render", provider.cost_key.split(":", 1)[0]))
             errors.append(f"{provider.name}: {exc}")
             logger.warning("figure_gen: %s failed for '%s': %s", provider.name, viz_target.get("title"), exc)
             continue
@@ -287,15 +298,17 @@ async def generate_illustration(
             # Keep a successful image even when the provider omits billing usage.
             logger.warning("figure_gen: %s cost unavailable: %s", provider.name, exc)
             cost = None
+        requests.append(usage_record("render", provider.cost_key.split(":", 1)[0], cost_usd=cost))
         return FigureGenResult(
             path=str(out_path),
             provider=provider.name,
             duration_s=round(time.monotonic() - start, 1),
-            cost_usd=cost,
+            cost_usd=records_cost(requests),
             error=None,
+            requests=requests,
         )
 
     return FigureGenResult(
-        None, None, round(time.monotonic() - start, 1), 0.0,
-        "; ".join(errors) or "no image provider configured",
+        None, None, round(time.monotonic() - start, 1), records_cost(requests),
+        "; ".join(errors) or "no image provider configured", requests,
     )

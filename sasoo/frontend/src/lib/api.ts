@@ -297,10 +297,19 @@ export interface VisualizationItem {
   provider?: string | null;
   cost_usd?: number | null;
   duration_s?: number | null;
+  /** Last in-frame execution check reported by the app; absent until one ran. */
+  execution_check?: { status: HtmlCheckResult['status']; issues: string[]; checked_at: string } | null;
   status: 'pending' | 'generating' | 'completed' | 'error';
   error_message: string | null;
   /** 종합 뷰가 배정한 구획. 기존 논문(종합 도입 전 생성)에는 없어서 null. */
   block: 'concept' | 'method' | 'result' | null;
+}
+
+/** Result of the in-frame execution check of an HTML explainer (not a check against the paper). */
+export interface HtmlCheckResult {
+  status: 'passed' | 'failed' | 'timeout';
+  issues: string[];
+  probed: number;
 }
 
 export interface VisualizationPlan {
@@ -309,6 +318,10 @@ export interface VisualizationPlan {
   total_count: number;
   model_used: string;
   planned_at: string | null;
+  /** analysis_results.id of the run; regenerate, repair and overrides bind to it. */
+  run_id?: number | null;
+  /** Changes when a reanalysis with the same inputs reuses the row. */
+  run_token?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -388,6 +401,8 @@ export interface ModelStats {
   model: string;
   calls: number;
   cost_usd: number;
+  /** Requests whose usage was never reported; cost_usd leaves them out. */
+  unknown_cost_count?: number;
   tokens_in: number;
   tokens_out: number;
 }
@@ -396,6 +411,7 @@ export interface CostSummary {
   monthly_costs: {
     month: string;
     total_usd: number;
+    unknown_cost_count?: number;
     papers_analyzed: number;
     tokens_in: number;
     tokens_out: number;
@@ -405,6 +421,7 @@ export interface CostSummary {
     paper_id: number;
     title: string;
     total_usd: number;
+    unknown_cost_count?: number;
     tokens_in: number;
     tokens_out: number;
     phases: Record<string, number>;
@@ -413,6 +430,7 @@ export interface CostSummary {
   current_month: {
     month: string;
     cost_usd: number;
+    unknown_cost_count?: number;
     tokens_in: number;
     tokens_out: number;
     papers_analyzed: number;
@@ -420,6 +438,8 @@ export interface CostSummary {
   totals: {
     total_papers: number;
     total_cost_usd: number;
+    /** Known costs only: this many requests are not in total_cost_usd. */
+    unknown_cost_count?: number;
     avg_cost_per_paper: number;
     total_tokens_in: number;
     total_tokens_out: number;
@@ -767,6 +787,8 @@ export interface MermaidRepairRequest {
   mermaid_code: string;
   error_message: string;
   viz_id?: number | null;
+  run_id?: number | null;
+  run_token?: string | null;
 }
 
 export async function repairMermaid(
@@ -781,12 +803,35 @@ export async function repairMermaid(
 
 export async function regenerateVisualization(
   paperId: string | number,
-  vizId: number
+  vizId: number,
+  runId?: number | null,
+  runToken?: string | null
 ): Promise<VisualizationItem> {
+  const params = new URLSearchParams();
+  if (runId != null) params.set('run_id', String(runId));
+  if (runToken) params.set('run_token', runToken);
+  const query = params.size ? `?${params}` : '';
   return request<VisualizationItem>(
-    `/analysis/${paperId}/visualizations/${vizId}/regenerate`,
+    `/analysis/${paperId}/visualizations/${vizId}/regenerate${query}`,
     { method: 'POST' }
   );
+}
+
+export async function reportHtmlCheck(
+  paperId: string | number,
+  vizId: number,
+  body: {
+    run_id: number;
+    run_token: string | null;
+    status: HtmlCheckResult['status'];
+    issues: string[];
+    html_sha256: string;
+  }
+): Promise<VisualizationItem> {
+  return request<VisualizationItem>(`/analysis/${paperId}/visualizations/${vizId}/html-check`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
 }
 
 export async function getVisualizations(
