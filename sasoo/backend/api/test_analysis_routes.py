@@ -1460,6 +1460,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             patch("api.analysis_routes.load_or_build_document_context", return_value={"phase_inputs": {"visualization": "VISUALIZATION-CONTEXT"}}),
             patch("api.analysis_routes.get_latest_completed_phase_row", new=AsyncMock(return_value=_row("recipe", '{"title":"recipe"}'))),
             patch("api.analysis_routes.call_interaction", new=_fake_call),
+            patch("api.analysis_routes.execute_insert", new=AsyncMock()),
         ):
             response = await analysis_routes.get_mermaid(7)
 
@@ -1844,7 +1845,8 @@ class BudgetParityTests(unittest.IsolatedAsyncioTestCase):
         conn.row_factory = aiosqlite.Row
         saved_flag = os.environ.pop("SASOO_ANALYSIS_SUBPROCESS", None)
         try:
-            await conn.execute("CREATE TABLE analysis_results (cost_usd REAL, created_at TEXT, phase TEXT)")
+            await conn.execute("CREATE TABLE analysis_results (cost_usd REAL, created_at TEXT, phase TEXT, "
+                               "model_used TEXT, result TEXT)")
             await conn.executemany(
                 "INSERT INTO analysis_results (cost_usd, created_at, phase) VALUES (?, ?, ?)",
                 [
@@ -2068,9 +2070,11 @@ class MermaidRepairAndRegenerateTests(unittest.IsolatedAsyncioTestCase):
             return {"text": "flowchart TD\nA-->B", "model": "gemini", "tokens_in": 1, "tokens_out": 1}
 
         update_mock = AsyncMock()
+        insert_mock = AsyncMock()
         with (
             patch("api.analysis_routes.fetch_one", new=AsyncMock(return_value=paper)),
             patch("api.analysis_routes.execute_update", new=update_mock),
+            patch("api.analysis_routes.execute_insert", new=insert_mock),
             patch("api.analysis_routes.call_interaction", new=_fake_call),
         ):
             request = analysis_routes.MermaidRepairRequest(
@@ -2080,6 +2084,9 @@ class MermaidRepairAndRegenerateTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response.mermaid_code, "flowchart TD\nA-->B")
         update_mock.assert_not_awaited()
+        # No visualization row to patch, but the paid repair is still a ledger row.
+        insert_mock.assert_awaited_once()
+        self.assertIn("'mermaid'", insert_mock.await_args.args[0])
 
     async def test_regenerate_uses_stored_item_and_persists(self):
         paper = {"id": 7, "title": "Paper", "folder_name": "folder"}

@@ -383,9 +383,12 @@ class ReadBudgetStateTests(unittest.IsolatedAsyncioTestCase):
         from unittest.mock import AsyncMock
         from services import analysis_supervisor as sup
 
-        row = {"spending": 5.25}
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        rows = [{"phase": "deep_dive", "cost_usd": 5.25, "model_used": "m", "created_at": now},
+                {"phase": "recipe", "cost_usd": None, "model_used": "m", "created_at": now}]
         with patch.dict(sys.modules, {"api.settings": self._settings_stub({"monthly_budget_limit": "12.5"})}), \
-             patch("models.database.fetch_one", new=AsyncMock(return_value=row)):
+             patch("models.database.fetch_all", new=AsyncMock(return_value=rows)):
             spending, limit = await sup.read_budget_state()
 
         self.assertEqual(limit, 12.5)
@@ -396,7 +399,7 @@ class ReadBudgetStateTests(unittest.IsolatedAsyncioTestCase):
         from services import analysis_supervisor as sup
 
         with patch.dict(sys.modules, {"api.settings": self._settings_stub({})}), \
-             patch("models.database.fetch_one", new=AsyncMock(return_value={"spending": 0})):
+             patch("models.database.fetch_all", new=AsyncMock(return_value=[])):
             spending, limit = await sup.read_budget_state()
 
         self.assertEqual(limit, 50.0)
@@ -408,9 +411,9 @@ class ReadBudgetStateTests(unittest.IsolatedAsyncioTestCase):
         from unittest.mock import AsyncMock
         from services import analysis_supervisor as sup
 
-        fetch_mock = AsyncMock(return_value={"spending": 0})
+        fetch_mock = AsyncMock(return_value=[])
         with patch.dict(sys.modules, {"api.settings": self._settings_stub({"monthly_budget_limit": "50.0"})}), \
-             patch("models.database.fetch_one", new=fetch_mock):
+             patch("models.database.fetch_all", new=fetch_mock):
             await sup.read_budget_state()
 
         query, params = fetch_mock.await_args.args

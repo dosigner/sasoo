@@ -416,6 +416,8 @@ export interface CostSummary {
     tokens_in: number;
     tokens_out: number;
     by_model: Record<string, number>;
+    /** Requests per model left out of by_model because their usage is unknown. */
+    by_model_unknown?: Record<string, number>;
   }[];
   per_paper_costs: {
     paper_id: number;

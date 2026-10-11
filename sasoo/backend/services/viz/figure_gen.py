@@ -282,8 +282,15 @@ async def generate_illustration(
             logger.warning("figure_gen: %s failed for '%s': %s", provider.name, viz_target.get("title"), exc)
             continue
 
+        try:
+            cost = calc_image_cost(provider.cost_key, usage=getattr(provider, "usage", None))
+        except PricingUsageError as exc:
+            # Keep a successful image even when the provider omits billing usage.
+            logger.warning("figure_gen: %s cost unavailable: %s", provider.name, exc)
+            cost = None
+        # Recorded before saving: the render is paid even if the file cannot be written.
+        requests.append(usage_record("render", provider.cost_key.split(":", 1)[0], cost_usd=cost))
         out_dir = Path(paper_dir) / "paperbanana"
-        out_dir.mkdir(parents=True, exist_ok=True)
         prefix = f"{viz_target['id']}_" if viz_target.get("id") is not None else ""
         filename = _safe_filename(viz_target.get("title", "illustration"))
         if image_model:
@@ -291,14 +298,14 @@ async def generate_illustration(
             prefix += f"{_safe_filename(image_model)}_{quality}_"
             filename = filename[:40]  # Leave room for the prefix with UTF-8 titles.
         out_path = out_dir / f"{prefix}{filename}.png"
-        out_path.write_bytes(png)
         try:
-            cost = calc_image_cost(provider.cost_key, usage=getattr(provider, "usage", None))
-        except PricingUsageError as exc:
-            # Keep a successful image even when the provider omits billing usage.
-            logger.warning("figure_gen: %s cost unavailable: %s", provider.name, exc)
-            cost = None
-        requests.append(usage_record("render", provider.cost_key.split(":", 1)[0], cost_usd=cost))
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path.write_bytes(png)
+        except OSError as exc:
+            # Another provider would hit the same folder and be paid again.
+            errors.append(f"saving the image failed: {exc}")
+            logger.warning("figure_gen: could not save '%s': %s", viz_target.get("title"), exc)
+            break
         return FigureGenResult(
             path=str(out_path),
             provider=provider.name,

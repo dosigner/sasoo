@@ -7,12 +7,15 @@ per 1M), not from the pricing helpers under test.
 
 import json
 import os
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 
 from api import analysis_routes, settings
+from api.test_visualization_runs import IsolatedDbCase
 from models import database
+from models.schemas import MermaidRepairRequest
 from services.test_viz_partial_retry import PipelineCase
 
 LUNA_IN, LUNA_OUT = 0.10 / 1e6, 0.50 / 1e6
@@ -22,6 +25,12 @@ HTML = 3000 * LUNA_IN + 1000 * LUNA_OUT          # 0.0008
 RENDER = (500 * 5.0 + 4000 * 30.0) / 1e6         # 0.1225
 RENDER_USAGE = {"input_tokens": 500, "output_tokens": 4000,
                 "input_tokens_details": {"text_tokens": 500, "image_tokens": 0}}
+
+
+def _reply(text=None, tokens_in=1000, tokens_out=200):
+    reply = {"model": "gpt-6-luna", "tokens_in": tokens_in, "tokens_out": tokens_out,
+             "tokens_cached": 0, "tokens_cache_write": 0}
+    return reply if text is None else {**reply, "text": text}
 
 
 class PipelineCostTests(PipelineCase):
@@ -156,6 +165,76 @@ class RegenerationCostTests(PipelineCase):
         self.assertEqual(await self.row(newer["id"]), (0.5, {"items": [], "complete": True, "planned_empty": True,
                                                             "cost_unknown_count": 0}))
 
+    async def test_reply_without_text_still_records_its_spend(self):
+        with patch("services.analysis_execution.call_interaction", new=AsyncMock(return_value=_reply())):
+            with self.assertRaises(HTTPException) as ctx:
+                await analysis_routes.regenerate_visualization(7, 2, run_id=self.row_id)
+        self.assertEqual(ctx.exception.status_code, 502)
+        self.assertAlmostEqual((await self.row())[0], self.base + MERMAID, places=10)
+
+    async def test_image_that_cannot_be_saved_still_records_the_paid_render(self):
+        with patch("pathlib.Path.write_bytes", side_effect=OSError("disk full")):
+            with self.assertRaises(HTTPException) as ctx:
+                await analysis_routes.regenerate_visualization(7, 1, run_id=self.row_id)
+        self.assertEqual(ctx.exception.status_code, 502)
+        self.assertIn("disk full", ctx.exception.detail)
+        self.assertAlmostEqual((await self.row())[0], self.base + DESCRIBE + RENDER, places=10)
+
+    async def test_late_regeneration_is_counted_in_the_month_it_ran(self):
+        # The analysis ran 60 days ago (rows and request times); the regeneration runs now.
+        old = datetime.utcnow() - timedelta(days=60)
+        old_ts = old.strftime("%Y-%m-%d %H:%M:%S")
+        _, payload = await self.row()
+        for item in payload["items"]:
+            for record in item["requests"]:
+                record["at"] = old_ts
+        await self.conn.execute("UPDATE analysis_results SET created_at = ? WHERE paper_id = 7", (old_ts,))
+        await self.conn.execute("UPDATE analysis_results SET result = ? WHERE id = ?",
+                                (json.dumps(payload, ensure_ascii=False), self.row_id))
+        await self.conn.commit()
+        before = (await settings.get_cost_summary(month=None))["totals"]["total_cost_usd"]
+
+        await analysis_routes.regenerate_visualization(7, 3, run_id=self.row_id)
+
+        summary = await settings.get_cost_summary(month=None)
+        months = {m["month"]: m for m in summary["monthly_costs"]}
+        self.assertEqual(months[old.strftime("%Y-%m")]["total_usd"], before)
+        self.assertEqual(months[datetime.utcnow().strftime("%Y-%m")]["total_usd"], round(HTML, 4))
+        self.assertEqual(summary["current_month"]["cost_usd"], round(HTML, 4))
+        self.assertAlmostEqual(summary["totals"]["total_cost_usd"], before + HTML, places=4)
+        # The monthly budget sees the same split.
+        from services.analysis_supervisor import read_budget_state
+        self.assertAlmostEqual((await read_budget_state())[0], HTML, places=10)
+
+
+class LegacyMermaidCostTests(IsolatedDbCase):
+    """The single Mermaid endpoints have no visualization run: they get their own ledger rows."""
+
+    async def ledger(self):
+        return await database.fetch_all(
+            "SELECT phase, model_used, cost_usd FROM analysis_results WHERE paper_id = 7 ORDER BY id")
+
+    async def test_generation_and_repair_are_recorded(self):
+        reply = AsyncMock(return_value=_reply("flowchart TD\nA-->B"))
+        with patch("api.analysis_routes.call_interaction", new=reply):
+            await analysis_routes.get_mermaid(7)
+            await analysis_routes.repair_mermaid(7, MermaidRepairRequest(mermaid_code="flowchart TD\nA-->",
+                                                                         error_message="parse error"))
+        rows = await self.ledger()
+        self.assertEqual([row["phase"] for row in rows], ["mermaid", "mermaid"])
+        for row in rows:
+            self.assertAlmostEqual(row["cost_usd"], MERMAID, places=10)
+        summary = await settings.get_cost_summary(month=None)
+        self.assertEqual(summary["totals"]["total_cost_usd"], round(2 * MERMAID, 4))
+
+    async def test_failed_repair_is_an_unknown_cost_not_a_free_one(self):
+        with patch("api.analysis_routes.call_interaction", new=AsyncMock(side_effect=RuntimeError("upstream"))):
+            with self.assertRaises(HTTPException):
+                await analysis_routes.repair_mermaid(7, MermaidRepairRequest(mermaid_code="x", error_message="e"))
+        rows = await self.ledger()
+        self.assertEqual([(row["phase"], row["cost_usd"]) for row in rows], [("mermaid", None)])
+        self.assertEqual((await settings.get_cost_summary(month=None))["totals"]["unknown_cost_count"], 1)
+
 
 class CostSummaryTests(PipelineCase):
     async def test_summary_keeps_known_totals_and_counts_unknown_requests(self):
@@ -187,6 +266,7 @@ class CostSummaryTests(PipelineCase):
         self.assertEqual(summary["totals"]["unknown_cost_count"], 3)
         self.assertEqual(summary["current_month"]["unknown_cost_count"], 3)
         self.assertEqual(summary["monthly_costs"][-1]["unknown_cost_count"], 3)
+        self.assertEqual(summary["monthly_costs"][-1]["by_model_unknown"], {"gpt-image-2.5-flare": 1, "gpt-6-luna": 2})
         paper = summary["per_paper_costs"][0]
         self.assertEqual((paper["total_usd"], paper["unknown_cost_count"]), (round(0.1331, 4), 3))
         models = {m["model"]: m for m in summary["by_model"]}
