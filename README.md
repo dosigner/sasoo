@@ -38,7 +38,7 @@ PDF 원문 옆에서 논문의 흐름을 이해하고, 그림과 표를 확인�
 
 Sasoo는 논문을 읽는 동안 원문을 곁에 둡니다. 요약에서 전체 흐름을 잡고, 섹션별 질문으로 내용을 따라가며, 연결된 Figure와 Table을 눌러 근거를 확인할 수 있습니다. PDF와 분석 결과는 로컬 라이브러리에 보관해 다시 열어 볼 수 있습니다.
 
-> **화면 안내:** 이 개발 앱 캡처는 v1.0.1에 포함된 화면을 보여줍니다(2026-09-25). 저장된 분석 결과를 사용한 한국어 UI 예시이며, 논문과 모델 설정에 따라 실제 내용은 달라집니다. 최신 버전은 [v1.2.0 릴리스](https://github.com/dosigner/sasoo/releases/tag/v1.2.0)에서 받을 수 있습니다.
+> **화면 안내:** 이 개발 앱 캡처는 v1.0.1에 포함된 화면을 보여줍니다(2026-09-25). 저장된 분석 결과를 사용한 한국어 UI 예시이며, 논문과 모델 설정에 따라 실제 내용은 달라집니다. 최신 버전은 [v1.2.1 릴리스](https://github.com/dosigner/sasoo/releases/tag/v1.2.1)에서 받을 수 있습니다.
 
 <p align="center">
   <img src="sasoo/docs/assets/readme-2026-09-25/workbench-light.png" alt="왼쪽의 Diffusion Policy 원본 PDF와 오른쪽의 요약을 나란히 보여주는 Sasoo 개발 화면" width="1000" />
@@ -98,23 +98,26 @@ AI 해설과 추출 값은 원문과 대조해 사용하세요. 분석 완료나
 
 ### 설치 파일
 
-배포 버전은 **v1.2.0**입니다. [릴리스 노트와 전체 파일](https://github.com/dosigner/sasoo/releases/tag/v1.2.0)에서 변경 내용과 설치 파일을 확인하세요.
+배포 버전은 **v1.2.1**입니다. [릴리스 노트와 전체 파일](https://github.com/dosigner/sasoo/releases/tag/v1.2.1)에서 변경 내용과 설치 파일을 확인하세요.
 
 | 플랫폼 | 공식 릴리스 파일 | 참고 |
 | --- | --- | --- |
-| macOS Apple Silicon | [DMG](https://github.com/dosigner/sasoo/releases/download/v1.2.0/Sasoo-1.2.0-arm64.dmg) / [ZIP](https://github.com/dosigner/sasoo/releases/download/v1.2.0/Sasoo-1.2.0-arm64-mac.zip) | 미서명, 미공증 |
-| Windows x64 | [설치 EXE](https://github.com/dosigner/sasoo/releases/download/v1.2.0/Sasoo-Setup-1.2.0.exe) | 미서명, SmartScreen 경고 가능 |
+| macOS Apple Silicon | [DMG](https://github.com/dosigner/sasoo/releases/download/v1.2.1/Sasoo-1.2.1-arm64.dmg) / [ZIP](https://github.com/dosigner/sasoo/releases/download/v1.2.1/Sasoo-1.2.1-arm64-mac.zip) | 미서명, 미공증 |
+| Windows x64 | [설치 EXE](https://github.com/dosigner/sasoo/releases/download/v1.2.1/Sasoo-Setup-1.2.1.exe) | 미서명, SmartScreen 경고 가능 |
 
 Linux와 Intel Mac용 공식 설치 파일은 없습니다. Linux 소스 빌드 명령은 있지만, 위 배포 지원 범위에는 포함되지 않습니다.
 
-### v1.2.0 변경 내용
+### v1.2.1 변경 내용
 
-- 구조, 과정, 기존 방식과 제안 방식의 비교를 이미지로 설명합니다. 역할과 시간 순서는 Mermaid sequence, 변수와 결과의 관계는 조작할 수 있는 HTML로 보여 줍니다.
-- 기본 이미지는 Flare로 생성하고, 중요도 60점 이상이면서 난이도 70점 이상인 핵심 이미지 중 가장 어려운 하나에 Sunburst를 사용합니다.
-- 중요도 60점 이상의 추가 이미지와 Mermaid 도식을 각각 최대 2개 생성할 수 있습니다. 카드에 모델, 품질, 중요도와 난이도를 표시합니다.
-- HTML 설명은 앱과 네트워크에 접근할 수 없는 별도 화면에서 실행되며, ZIP 내보내기에도 포함됩니다.
+v1.2.0의 혼합 시각화에서 발견된 문제를 고친 수정 릴리스입니다.
 
-[상세 릴리스 노트](sasoo/docs/03-release/v1.2.0.md)를 참고하세요. 기존 결과는 유지되며 새 시각화 배분을 적용하려면 재분석이 필요합니다.
+- ZIP으로 내보낸 HTML 설명이 다른 페이지로 이동하거나 외부로 요청을 보내지 못합니다.
+- 다시 생성한 시각화는 생성을 시작한 분석 결과에만 저장되며, 그사이 끝난 재분석 결과를 덮어쓰지 않습니다.
+- 생성 계획이 실패하면 이미지를 생성하지 않고, 저장된 계획에도 배분 한도를 다시 적용합니다. 재분석할 때는 실패했거나 파일이 없는 항목만 다시 생성합니다.
+- HTML 설명을 열면 실행을 점검해 스크립트 오류, NaN, 입력에 반응하지 않는 출력을 표시합니다.
+- 비용에 이미지 설명, Mermaid, 실패한 시도와 다시 생성을 포함하고, 사용량을 확인하지 못한 요청은 "미확인 n건"으로 따로 표시합니다.
+
+[상세 릴리스 노트](sasoo/docs/03-release/v1.2.1.md)를 참고하세요. 혼합 시각화 기능은 [v1.2.0 릴리스 노트](sasoo/docs/03-release/v1.2.0.md)에 설명되어 있습니다.
 
 <details>
 <summary>macOS에서 실행이 차단될 때</summary>
@@ -145,7 +148,7 @@ OpenAI와 Gemini 중 사용할 공급사를 설정에서 선택합니다. 한 �
 | OpenAI | [OpenAI API 키](https://platform.openai.com/api-keys) | 논문 분석, 채팅, 그림 해설, 개념도 생성 |
 | Gemini | [Google AI Studio](https://aistudio.google.com/apikey) | 논문 분석, 채팅, 그림 해설 |
 
-v1.2.0의 기본 분석 공급사는 OpenAI이며 텍스트 분석 모델은 `gpt-6-luna`입니다. 혼합 시각화의 이미지 생성에는 분석 공급사와 관계없이 OpenAI `gpt-image-2.5-flare`와 `gpt-image-2.5-sunburst`를 사용하므로 OpenAI API 키가 필요합니다. 단계별 모델과 추론 수준은 [모델 레지스트리](sasoo/backend/services/model_registry.py), 정확한 모델 ID는 [모델 ID](sasoo/backend/services/models.py)에서 확인할 수 있습니다.
+v1.2.1의 기본 분석 공급사는 OpenAI이며 텍스트 분석 모델은 `gpt-6-luna`입니다. 혼합 시각화의 이미지 생성에는 분석 공급사와 관계없이 OpenAI `gpt-image-2.5-flare`와 `gpt-image-2.5-sunburst`를 사용하므로 OpenAI API 키가 필요합니다. 단계별 모델과 추론 수준은 [모델 레지스트리](sasoo/backend/services/model_registry.py), 정확한 모델 ID는 [모델 ID](sasoo/backend/services/models.py)에서 확인할 수 있습니다.
 
 설정 화면의 비용은 보고된 사용량과 앱에 등록된 단가로 계산한 **추정치**입니다. 공급사의 청구액과 다를 수 있으며, 사용량을 확인하지 못한 요청이 무료라는 뜻은 아닙니다.
 
