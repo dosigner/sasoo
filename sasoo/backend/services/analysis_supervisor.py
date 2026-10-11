@@ -174,7 +174,8 @@ async def read_budget_state(settings: dict[str, str] | None = None) -> tuple[flo
     api.settings._get_all_settings 사용. 리컨실러의 자동 재개 경로에도 /run과 같은 한도를
     적용하기 위해 분리했다 — 계산식이 갈라지면 한도의 의미가 무너진다."""
     from api.settings import _get_all_settings
-    from models.database import fetch_one
+    from models.database import fetch_all
+    from services.pricing import ledger_entries
 
     if settings is None:
         settings = await _get_all_settings()
@@ -190,12 +191,18 @@ async def read_budget_state(settings: dict[str, str] | None = None) -> tuple[flo
     else:
         month_end = f"{year}-{month_num + 1:02d}-01"
 
-    cost_row = await fetch_one(
-        "SELECT COALESCE(SUM(cost_usd), 0) AS spending FROM analysis_results "
-        "WHERE created_at >= ? AND created_at < ? AND phase != 'error'",
+    # A visualization row from an earlier month can hold a regeneration paid this
+    # month, so those rows are read whatever their created_at (see ledger_entries).
+    rows = await fetch_all(
+        "SELECT phase, cost_usd, model_used, created_at, "
+        "CASE WHEN phase = 'visualization' THEN result END AS result FROM analysis_results "
+        "WHERE phase != 'error' AND ((created_at >= ? AND created_at < ?) OR phase = 'visualization')",
         (month_start, month_end),
     )
-    current_spending = float(cost_row["spending"])
+    current_spending = float(sum(
+        cost for row in rows for _, cost, month in ledger_entries(row)
+        if cost is not None and month == current_month
+    ))
     return current_spending, monthly_limit
 
 

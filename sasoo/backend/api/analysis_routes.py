@@ -586,11 +586,16 @@ Return ONLY valid Mermaid syntax starting with "flowchart TD" or "flowchart LR".
 
     provider = await active_provider()
     choice = resolve_model("mermaid", provider)
-    result = await call_interaction(
-        prompt, lane="chat", model=choice.model, thinking_level=choice.effort, store=False,
-    )
+    try:
+        result = await call_interaction(
+            prompt, lane="chat", model=choice.model, thinking_level=choice.effort, store=False,
+        )
+    except Exception as exc:
+        await _record_standalone_spend(paper_id, usage_record("mermaid", choice.model))
+        raise HTTPException(status_code=502, detail="Mermaid generation failed.") from exc
+    await _record_standalone_spend(paper_id, usage_record("mermaid", choice.model, result), result)
 
-    mermaid_code = _sanitize_mermaid_code(result["text"])
+    mermaid_code = _sanitize_mermaid_code(str(result.get("text") or ""))
 
     return MermaidResult(
         paper_id=paper_id,
@@ -704,7 +709,20 @@ async def _update_stored_visualization_item(
     return await _write_visualization_row(paper_id, run_id, mutate, run_token=run_token)
 
 
-async def _record_visualization_spend(paper_id: int, run_id: int, requests: list[dict]) -> None:
+async def _record_standalone_spend(paper_id: int, record: dict, result: Optional[dict] = None) -> None:
+    """A paid request outside any visualization run (the single Mermaid endpoints).
+
+    It gets its own ledger row, so the cost summary and the monthly budget see it.
+    """
+    await execute_insert(
+        "INSERT INTO analysis_results (paper_id, phase, result, model_used, tokens_in, tokens_out, cost_usd)"
+        " VALUES (?, 'mermaid', ?, ?, ?, ?, ?)",
+        (paper_id, json.dumps({"requests": [record]}), record["model"],
+         (result or {}).get("tokens_in"), (result or {}).get("tokens_out"), record["cost_usd"]),
+    )
+
+
+async def _record_visualization_spend(paper_id: int, run_id: Optional[int], requests: list[dict]) -> None:
     """Keep the cost of a failed or stale regeneration in the run it started from."""
     if not requests:
         return
@@ -752,24 +770,30 @@ async def repair_mermaid(paper_id: int, request: MermaidRepairRequest):
             prompt, lane="chat", model=choice.model, thinking_level=choice.effort, store=False,
         )
     except Exception as exc:
-        if request.viz_id is not None and request.run_id is not None:
-            await _record_visualization_spend(paper_id, request.run_id, [usage_record("mermaid_repair", choice.model)])
+        failed = usage_record("mermaid_repair", choice.model)
+        if request.viz_id is None:
+            await _record_standalone_spend(paper_id, failed)
+        else:
+            await _record_visualization_spend(paper_id, request.run_id, [failed])
         raise HTTPException(status_code=502, detail="Mermaid repair failed.") from exc
     spent = [usage_record("mermaid_repair", choice.model, result)]
-    repaired = _sanitize_mermaid_code(result["text"])
+    repaired = _sanitize_mermaid_code(str(result.get("text") or ""))
 
-    if request.viz_id is not None:
+    if request.viz_id is None:
+        await _record_standalone_spend(paper_id, spent[0], result)
+    else:
         fields = {"mermaid_code": repaired, "status": "completed", "error_message": None} if repaired else {}
         try:
-            await _update_stored_visualization_item(
+            updated = await _update_stored_visualization_item(
                 paper_id, request.viz_id, fields, run_id=request.run_id, spent=spent, run_token=request.run_token,
             )
         except HTTPException as exc:
             # The displayed diagram belongs to a replaced or busy run: show the fix, keep the run.
             if exc.status_code not in {409, 503}:
                 raise
-            if request.run_id is not None:
-                await _record_visualization_spend(paper_id, request.run_id, spent)
+            updated = None
+        if updated is None:  # also when the item is gone: the repair was still paid
+            await _record_visualization_spend(paper_id, request.run_id, spent)
     if not repaired:
         raise HTTPException(status_code=502, detail="Repair produced empty Mermaid code.")
 

@@ -16,6 +16,7 @@ PRICING에 두고, 한시 도입가는 만료일과 함께 INTRO_PRICING에 둔�
 기준일로 고른다.
 """
 
+import json
 import uuid
 from collections.abc import Mapping
 from datetime import date, datetime, timezone
@@ -266,17 +267,20 @@ def calc_image_cost(model: str, image_count: int = 1, *, usage: Mapping | None =
 
 def usage_record(kind: str, model: str, result: Mapping[str, object] | None = None, *,  # noqa: OBJECT_OK - Matches calc_result_cost.
                  cost_usd: float | None = None, record_id: str | None = None) -> dict:
-    """One paid request of a visualization item: {"kind", "model", "cost_usd"}.
+    """One paid request of a visualization item: {"id", "kind", "model", "cost_usd", "at"}.
 
     cost_usd is None when usage was not reported or the request failed without a
     response; it is never guessed as 0. With result, the cost is priced from its usage.
+    at is the UTC time in SQLite's created_at format, so a late regeneration is
+    counted in the month it ran, not the month its run row was created.
     """
     if result is not None:
         try:
             cost_usd = calc_result_cost(result, model=model)
         except PricingUsageError:
             cost_usd = None
-    return {"id": record_id or uuid.uuid4().hex, "kind": kind, "model": model, "cost_usd": cost_usd}
+    return {"id": record_id or uuid.uuid4().hex, "kind": kind, "model": model, "cost_usd": cost_usd,
+            "at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")}
 
 
 def records_cost(records: list[dict]) -> float | None:
@@ -297,8 +301,31 @@ def item_usage_records(item: Mapping[str, object]) -> list[dict]:  # noqa: OBJEC
     model = str(item.get("model_used") or "unknown")
     # A stable id, so the same legacy item is never counted twice when records merge.
     record_id = f"legacy-{item.get('id')}-{item.get('tool')}"
+    # No "at": a legacy item is counted in its run row's month.
     if item.get("cost_usd") is not None:
-        return [usage_record("legacy", model, cost_usd=item["cost_usd"], record_id=record_id)]
+        return [{"id": record_id, "kind": "legacy", "model": model, "cost_usd": item["cost_usd"]}]
     if item.get("tool") in {"paperbanana", "html"} and item.get("status") == "completed":
-        return [usage_record("legacy", model, record_id=record_id)]
+        return [{"id": record_id, "kind": "legacy", "model": model, "cost_usd": None}]
     return []
+
+
+def ledger_entries(row: Mapping[str, object]) -> list[tuple[str, float | None, str]]:  # noqa: OBJECT_OK - DB row.
+    """(model, cost, month) per paid request of one analysis_results row.
+
+    cost None means unknown. Visualization rows with request records expand into
+    them, each in the month it ran ("at"); other rows, and visualization rows
+    saved before records existed, are one entry in the row's created_at month.
+    month is "YYYY-MM", or "" when the row has no time.
+    """
+    row_month = str(row.get("created_at") or "")[:7]
+    if row.get("phase") == "visualization" and row.get("result"):
+        try:
+            data = json.loads(str(row["result"]))
+        except ValueError:
+            data = None
+        if isinstance(data, dict) and "cost_unknown_count" in data:
+            records = [r for it in data.get("items") or [] if isinstance(it, dict) for r in item_usage_records(it)]
+            records += [r for r in data.get("prior_requests") or [] if isinstance(r, dict)]
+            return [(str(r.get("model") or "unknown"), r.get("cost_usd"), str(r.get("at") or row_month)[:7])
+                    for r in records]
+    return [(str(row.get("model_used") or "unknown"), row.get("cost_usd"), row_month)]

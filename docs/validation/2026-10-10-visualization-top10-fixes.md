@@ -60,3 +60,18 @@
   - 앱 index.html CSP는 frame-src를 default-src 'self'에 맡긴다(외부 출처 탐색은 차단됨).
 - 늦게 실행한 재생성 비용은 해당 실행 행이 처음 기록된 달로 집계된다.
 - 실행 점검은 우발적 결함을 찾는다. 의도적으로 결과를 위조하는 HTML은 sandbox와 CSP로 격리할 뿐, 점검 결과를 신뢰할 수 없다.
+
+## 후속 수정 (2026-10-11, v1.2.1 이후)
+
+위 "남은 P3" 중 비용 기록 3건과 월 귀속 1건을 고쳤다. index.html CSP 항목은 그대로 남아 있다.
+
+| 항목 | 원인 | 수정 | 회귀 테스트 |
+|---|---|---|---|
+| 재생성의 일반 예외 | 생성기가 유료 호출 뒤에 예외를 내면 기록을 버렸다. Mermaid는 응답에 `text`가 없으면 `KeyError`, 이미지는 렌더 뒤 파일 저장이 실패하면 `OSError`. 재생성과 분석 파이프라인이 같은 생성기를 쓰므로 양쪽에 있던 결함이다 | 응답 텍스트는 `get`으로 읽는다. 렌더 기록을 파일 저장 전에 남기고, 저장 실패는 다른 공급사로 재시도하지 않는 실패 결과로 돌려준다 | `test_reply_without_text_still_records_its_spend`, `test_image_that_cannot_be_saved_still_records_the_paid_render` |
+| 레거시 단일 Mermaid | `GET /mermaid` 생성과 `viz_id` 없는 repair에는 기록할 실행이 없었다. 생성 쪽도 비용을 남기지 않았다(보고서에 없던 경로). 앱 화면은 이 경로를 쓰지 않는다(`useAnalysis`의 `mermaid`는 항상 null) | 두 경로의 요청을 `phase='mermaid'` 원장 행으로 남긴다. 호출 실패는 비용 미확인 행이다. repair 대상 항목이 사라진 경우도 원래 실행에 기록한다 | `LegacyMermaidCostTests` 2건 |
+| 월별 by_model 미확인 | 월별 항목에 모델별 미확인 건수가 없었다 | `by_model_unknown` 추가(화면에는 표시하지 않는 API 필드) | `test_summary_keeps_known_totals_and_counts_unknown_requests` |
+| 늦은 재생성의 월 귀속 | 월 집계가 행의 `created_at`만 봤다. 같은 원인으로 월 예산 한도(`read_budget_state`)도 늦은 재생성 비용을 이번 달에 넣지 않았다(보고서에 없던 경로) | 새 요청 기록에 `at`(UTC)을 넣고, 공용 `pricing.ledger_entries`가 요청마다 월을 정한다. 대시보드와 예산이 같은 함수를 쓴다. `at`이 없는 기존 기록과 일반 행은 행의 월을 따른다 | `test_late_regeneration_is_counted_in_the_month_it_ran`(대시보드와 예산) |
+
+새 회귀 테스트 6건은 수정 전 main(5d09040)에서 모두 실패하고 수정 후 통과한다. backend `services api models`는 1140 passed, 7 skipped, frontend vitest는 350 passed, root vitest는 277 passed, `tsc --noEmit`과 eslint는 통과했다. 예산 테스트 3건과 기존 mock 테스트 2건은 `fetch_one` 대신 `fetch_all`, 원장 INSERT에 맞춰 fixture만 고쳤고 단언의 의도는 같다.
+
+남은 한계: 이미 저장된 v1.2.x 기록에는 `at`이 없어 행의 월로 집계된다. 토큰 수와 논문 수는 계속 행의 월을 따른다.

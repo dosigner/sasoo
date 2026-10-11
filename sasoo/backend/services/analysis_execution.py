@@ -2848,7 +2848,7 @@ sequence의 메시지로 나열하지 말고, 주체와 전달 순서에 집중�
     except Exception as exc:
         raise VizGenerationError(str(exc), [usage_record("mermaid", choice.model)]) from exc
     requests = [usage_record("mermaid", choice.model, result)]
-    code = _sanitize_mermaid_code(result["text"])
+    code = _sanitize_mermaid_code(str(result.get("text") or ""))
     if not code:
         raise VizGenerationError("Mermaid generation returned no code", requests)
     return {"mermaid_code": code, "cost_usd": records_cost(requests), "model_used": choice.model, "requests": requests}

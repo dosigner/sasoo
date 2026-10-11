@@ -23,7 +23,7 @@ from models.database import (
     usable_library_path,
 )
 from models.schemas import SettingsModel, SettingsUpdate
-from services.pricing import item_usage_records
+from services.pricing import ledger_entries
 from services.crypto import (
     CryptoKeyStoreError,
     decrypt_value,
@@ -437,28 +437,9 @@ async def update_settings(update: SettingsUpdate):
     return await get_settings()
 
 
-def _cost_entries(row: dict) -> list[tuple[str, Optional[float]]]:
-    """(model, cost) per paid request of one ledger row; cost None means unknown.
-
-    Visualization rows with request records expand into them. Other rows, and
-    visualization rows saved before records existed, are one entry for the row.
-    """
-    if row.get("phase") == "visualization" and row.get("result"):
-        try:
-            data = json.loads(row["result"])
-        except (TypeError, ValueError):
-            data = None
-        if isinstance(data, dict) and "cost_unknown_count" in data:
-            records = [r for it in data.get("items") or [] if isinstance(it, dict) for r in item_usage_records(it)]
-            records += [r for r in data.get("prior_requests") or [] if isinstance(r, dict)]
-            return [(str(r.get("model") or "unknown"), r.get("cost_usd")) for r in records]
-    return [(row.get("model_used") or "unknown", row.get("cost_usd"))]
-
-
-def _known_and_unknown(rows: list[dict]) -> tuple[float, int]:
-    entries = [entry for row in rows for entry in _cost_entries(row)]
-    return (sum(cost for _, cost in entries if cost is not None),
-            sum(1 for _, cost in entries if cost is None))
+def _known_and_unknown(entries: list[tuple[str, Optional[float], str]]) -> tuple[float, int]:
+    return (sum(cost for _, cost, _ in entries if cost is not None),
+            sum(1 for _, cost, _ in entries if cost is None))
 
 
 @router.get("/cost")
@@ -480,48 +461,52 @@ async def get_cost_summary(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid month format. Use YYYY-MM.")
 
-    year = target_date.year
-    month_num = target_date.month
-    start_date = f"{year}-{month_num:02d}-01"
-    end_date = f"{year + 1}-01-01" if month_num == 12 else f"{year}-{month_num + 1:02d}-01"
+    month = target_date.strftime("%Y-%m")  # "2026-1" is accepted; compare as "2026-01"
 
     # Visualization rows expand into their request records: images are priced under
-    # the image model, not the planner's, and unknown requests stay counted.
-    _row_select = """SELECT model_used, cost_usd, tokens_in, tokens_out, paper_id, phase,
-                            CASE WHEN phase = 'visualization' THEN result END AS result
-                     FROM analysis_results"""
+    # the image model, not the planner's, unknown requests stay counted, and each
+    # request falls in the month it ran (a late regeneration is not back-dated).
+    # Tokens and paper counts stay with the row's month.
+    all_rows = await fetch_all(
+        """SELECT model_used, cost_usd, tokens_in, tokens_out, paper_id, phase, created_at,
+                  CASE WHEN phase = 'visualization' THEN result END AS result
+           FROM analysis_results WHERE phase != 'error'"""
+    )
+    ledger = [(r, ledger_entries(r)) for r in all_rows]
+
+    def month_slice(key: str) -> tuple[list[dict], list[tuple[str, Optional[float], str]]]:
+        rows = [r for r in all_rows if str(r.get("created_at") or "")[:7] == key]
+        return rows, [e for _, entries in ledger for e in entries if e[2] == key]
 
     # --- Monthly cost trends (last 6 months) ---
     monthly_costs = []
     for i in range(5, -1, -1):
         target = datetime.utcnow() - timedelta(days=30 * i)
-        m_year, m_month = target.year, target.month
-        m_start = f"{m_year}-{m_month:02d}-01"
-        m_end = f"{m_year + 1}-01-01" if m_month == 12 else f"{m_year}-{m_month + 1:02d}-01"
+        key = f"{target.year}-{target.month:02d}"
+        rows, entries = month_slice(key)
 
-        rows = await fetch_all(
-            f"{_row_select} WHERE created_at >= ? AND created_at < ? AND phase != 'error'",
-            (m_start, m_end),
-        )
-
-        total, unknown = _known_and_unknown(rows)
+        total, unknown = _known_and_unknown(entries)
         t_in = sum(r.get("tokens_in") or 0 for r in rows)
         t_out = sum(r.get("tokens_out") or 0 for r in rows)
         papers = len(set(r.get("paper_id") for r in rows if r.get("paper_id")))
 
         by_model: dict[str, float] = {}
-        for r in rows:
-            for model, cost in _cost_entries(r):
-                by_model[model] = by_model.get(model, 0.0) + (cost or 0.0)
+        by_model_unknown: dict[str, int] = {}
+        for model, cost, _ in entries:
+            by_model[model] = by_model.get(model, 0.0) + (cost or 0.0)
+            if cost is None:
+                by_model_unknown[model] = by_model_unknown.get(model, 0) + 1
 
         monthly_costs.append({
-            "month": f"{m_year}-{m_month:02d}",
+            "month": key,
             "total_usd": round(total, 4),
             "unknown_cost_count": unknown,
             "papers_analyzed": papers,
             "tokens_in": t_in,
             "tokens_out": t_out,
             "by_model": {k: round(v, 4) for k, v in by_model.items()},
+            # Requests left out of by_model because their usage is unknown.
+            "by_model_unknown": by_model_unknown,
         })
 
     # --- Per-paper costs (with token data) ---
@@ -551,7 +536,7 @@ async def get_cost_summary(
                 "phases": {},
             }
         phase = row.get("phase") or "unknown"
-        cost, unknown = _known_and_unknown([row])
+        cost, unknown = _known_and_unknown(ledger_entries(row))
         paper_data[pid]["total_usd"] += cost
         paper_data[pid]["unknown_cost_count"] += unknown
         paper_data[pid]["tokens_in"] += row.get("tokens_in") or 0
@@ -576,12 +561,9 @@ async def get_cost_summary(
     )
 
     # --- Model breakdown (all-time) ---
-    all_rows = await fetch_all(f"{_row_select} WHERE phase != 'error'")
-
     model_agg: dict[str, dict] = {}
-    for r in all_rows:
-        entries = _cost_entries(r)
-        for index, (model, cost) in enumerate(entries):
+    for r, entries in ledger:
+        for index, (model, cost, _) in enumerate(entries):
             if model not in model_agg:
                 model_agg[model] = {"calls": 0, "cost_usd": 0.0, "unknown_cost_count": 0, "tokens_in": 0, "tokens_out": 0}
             model_agg[model]["calls"] += 1
@@ -632,11 +614,8 @@ async def get_cost_summary(
     review_required_tables = int(table_repair_row.get("review_required") or 0) if table_repair_row else 0
 
     # --- Current month stats ---
-    cm_rows = await fetch_all(
-        f"{_row_select} WHERE created_at >= ? AND created_at < ? AND phase != 'error'",
-        (start_date, end_date),
-    )
-    cm_cost, cm_unknown = _known_and_unknown(cm_rows)
+    cm_rows, cm_entries = month_slice(month)
+    cm_cost, cm_unknown = _known_and_unknown(cm_entries)
     cm_tokens_in = sum(r.get("tokens_in") or 0 for r in cm_rows)
     cm_tokens_out = sum(r.get("tokens_out") or 0 for r in cm_rows)
     cm_papers = len(set(r.get("paper_id") for r in cm_rows if r.get("paper_id")))
@@ -644,7 +623,7 @@ async def get_cost_summary(
     # --- Totals ---
     all_papers = await fetch_all("SELECT id FROM papers")
     total_papers = len(all_papers)
-    total_cost, total_unknown = _known_and_unknown(all_rows)
+    total_cost, total_unknown = _known_and_unknown([e for _, entries in ledger for e in entries])
     total_tokens_in = sum(r.get("tokens_in") or 0 for r in all_rows)
     total_tokens_out = sum(r.get("tokens_out") or 0 for r in all_rows)
     avg_cost = total_cost / total_papers if total_papers > 0 else 0.0
