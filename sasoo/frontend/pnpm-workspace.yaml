@@ -5,7 +5,7 @@ overrides:
   'dompurify@<=3.4.15': '3.4.16'
   'js-yaml@>=4.0.0 <4.3.1': '4.3.2'
   'lodash-es': '4.18.1'
-  'minimatch@<10.2.5': '10.2.6'
+  'minimatch@<10.2.5': '11.0.1'
   'minimatch@<3.1.4': '3.1.5'
   'nanoid@<3.3.18': '3.3.18'
   'picomatch@<2.3.2': '2.3.2'
