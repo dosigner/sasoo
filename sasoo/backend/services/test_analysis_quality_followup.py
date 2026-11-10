@@ -14,12 +14,12 @@ from services.viz import figure_gen
 
 BASE = Path(__file__).resolve().parents[3] / 'docs/validation/assets/analysis-followup-20261012'
 OLD = BASE.parent / 'parallel-live-20261011'
-SOURCE = (BASE / 'source.md').read_text()
+SOURCE = (BASE / 'source.md').read_text(encoding="utf-8")
 
 
 def test_table_payload_reaches_description_without_prefix_truncation():
     item = {'title': 'FM OT comparison', 'description': 'Table 1 CIFAR-10 NLL FID NFE', 'diagram_type': 'additional'}
-    old_prompt = json.loads((OLD / '61bf2b13fb704fe8832a2cdfb85e8045-request.json').read_text())['prompt']
+    old_prompt = json.loads((OLD / '61bf2b13fb704fe8832a2cdfb85e8045-request.json').read_text(encoding="utf-8"))['prompt']
     assert all(value not in old_prompt for value in ('2.99', '6.35', '142'))
     call = AsyncMock(return_value={'text': 'Use the verified table values.', 'model': 'gpt-6-luna', 'tokens_in': 1, 'tokens_out': 1})
 
@@ -43,7 +43,7 @@ def test_missing_table_is_not_sent_to_paid_generation():
 
 
 def test_density_flow_swap_from_actual_description_is_detected():
-    description = json.loads((OLD / '65ed3f5fbe0a48628bc4b9adfeb83cf5-response.json').read_text())['text']
+    description = json.loads((OLD / '65ed3f5fbe0a48628bc4b9adfeb83cf5-response.json').read_text(encoding="utf-8"))['text']
     assert figure_gen.equation_role_conflicts(description, SOURCE)
     assert not figure_gen.equation_role_conflicts(r'p_t(x|x_1) = \mathcal{N}(x|mu,sigma); \psi_t(x)=sigma*x+mu', SOURCE)
 
@@ -63,7 +63,7 @@ def test_source_conditions_and_absence_claims_are_separate():
     with fitz.open(BASE / 'source.pdf') as doc:
         pages = [page.get_text() for page in doc]
     for variant in ('A', 'B'):
-        sample = json.loads((BASE / f'blind-sample-{variant}.json').read_text())
+        sample = json.loads((BASE / f'blind-sample-{variant}.json').read_text(encoding="utf-8"))
         recipe = sample['recipe']; original = deepcopy(recipe)
         out = verify_recipe_reproduction(recipe, pages)
         topics = {i['topic']: i for i in out['items']}
@@ -91,7 +91,7 @@ def test_review_without_applicable_conditions_is_not_forced_into_a_recipe():
 
 def test_recipe_route_returns_separate_local_check_and_preserves_raw_recipe():
     from api import analysis_routes
-    sample = json.loads((BASE / 'blind-sample-A.json').read_text())['recipe']
+    sample = json.loads((BASE / 'blind-sample-A.json').read_text(encoding="utf-8"))['recipe']
     original = deepcopy(sample)
     with patch.object(analysis_routes, 'get_latest_completed_phase_row', new=AsyncMock(return_value={'id': 1, 'parsed_result': sample})), patch.object(analysis_routes, 'fetch_one', new=AsyncMock(return_value={'folder_name': 'fixture'})), patch.object(analysis_routes, 'get_paper_dir', return_value=BASE), patch.object(analysis_routes, 'build_evidence_payload', new=AsyncMock(return_value=None)):
         out = asyncio.run(analysis_routes.get_recipe(7))
@@ -101,7 +101,7 @@ def test_recipe_route_returns_separate_local_check_and_preserves_raw_recipe():
 
 
 def test_bad_description_stops_render_and_keeps_known_description_spend():
-    description = json.loads((OLD / '65ed3f5fbe0a48628bc4b9adfeb83cf5-response.json').read_text())['text']
+    description = json.loads((OLD / '65ed3f5fbe0a48628bc4b9adfeb83cf5-response.json').read_text(encoding="utf-8"))['text']
     record = {'id': 'offline-describe', 'kind': 'describe', 'model_used': 'gpt-6-luna', 'cost_usd': 0.02}
     renderer = AsyncMock()
     with patch.object(figure_gen, '_plan_description', new=AsyncMock(return_value=(description, record))), patch.object(figure_gen, '_render_image', new=renderer):

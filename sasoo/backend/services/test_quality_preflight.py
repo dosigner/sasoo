@@ -113,10 +113,10 @@ def test_real_truncated_html_is_rejected_with_settled_usage():
     import json
     from pathlib import Path
     live = Path(__file__).resolve().parents[3] / 'docs/validation/assets/quality-live-20261014-flow'
-    rows = [json.loads(line) for line in (live / 'campaign/ledger.jsonl').read_text().splitlines()]
+    rows = [json.loads(line) for line in (live / 'campaign/ledger.jsonl').read_text(encoding="utf-8").splitlines()]
     row = next(r for r in rows if r.get('key') == 'viz_image_plan:9:text'
                and 'candidate' in r['run_id'] and r['state'] == 'settled')
-    response = json.loads((live / 'campaign' / (row['id'] + '-response.json')).read_text())
+    response = json.loads((live / 'campaign' / (row['id'] + '-response.json')).read_text(encoding="utf-8"))
     call = AsyncMock(return_value=response)
     from services.test_analysis_quality_followup import SOURCE
     with patch.object(ae, 'call_interaction', new=call):
@@ -134,7 +134,7 @@ def test_flow_matching_bibliography_excludes_tables_and_appendix():
     from services.document_context import build_document_context_from_text
     from services.citation_analyzer import parse_references
     source = Path(__file__).resolve().parents[3] / 'docs/validation/assets/quality-preflight-20261012/inputs/2023_FlowMatching_ai_ml/FLOW_MATCHING_FOR_GENERATIVE_MODELING.md'
-    refs = build_document_context_from_text(source.read_text())['phase_inputs']['citation_references']
+    refs = build_document_context_from_text(source.read_text(encoding="utf-8"))['phase_inputs']['citation_references']
     entries = parse_references(refs)
     # Independent PDF review counted 14 + 18 + 17 + 3 entries on pages 10–13.
     assert len(entries) == 52

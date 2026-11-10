@@ -10,7 +10,7 @@ import httpx
 from main import app
 
 
-VECTORS = json.loads((Path(__file__).resolve().parents[2] / "contract-fixtures/hmac-vectors.json").read_text())
+VECTORS = json.loads((Path(__file__).resolve().parents[2] / "contract-fixtures/hmac-vectors.json").read_text(encoding="utf-8"))
 
 
 def test_health_and_asset_hmac_vectors():
