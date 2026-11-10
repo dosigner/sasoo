@@ -10,7 +10,8 @@ _blocked_connections = 0
 
 
 def _is_local_address(sock, address):
-    if sock.family == socket.AF_UNIX:
+    unix_family = getattr(socket, "AF_UNIX", None)
+    if unix_family is not None and sock.family == unix_family:
         return True
     if sock.family not in (socket.AF_INET, socket.AF_INET6):
         return False
