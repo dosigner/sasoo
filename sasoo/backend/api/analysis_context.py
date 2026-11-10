@@ -1,9 +1,11 @@
 """분석 체인 system_instruction 조립. 페르소나 + 연구자 컨텍스트 + 초점 + 설명 수준."""
 
+import json
+
 from services.llm.interactions_client import _SYSTEM_INSTRUCTION_KO
 
 EXPLANATION_LEVELS: dict[str, str] = {
-    "elementary": "설명 수준: 초등학생. 전문용어를 쓰지 말고 일상 비유로 설명해. 수식은 말로 풀어써.",
+    "elementary": "설명 수준: 초등학생. 전문용어는 꼭 필요한 것만 영어 원문 표기로 쓰고 쉬운 한국어 뜻과 일상 비유를 붙여줘. 수식은 말로 풀어써.",
     "middle": "설명 수준: 중학생. 기초 과학 용어만 사용하고 새 용어는 즉시 한 줄로 정의해.",
     "high": "설명 수준: 고등학생. 고교 물리/화학/생물 수준의 용어와 간단한 수식을 사용해.",
     "undergrad": "설명 수준: 학부생. 전공 기초 용어를 사용하되 대학원 수준 개념은 짧게 배경을 설명해.",
@@ -152,3 +154,20 @@ def build_chain_system_instruction(
         parts.append(reader_profile.strip())
     parts.append(EXPLANATION_LEVELS.get(level_key, EXPLANATION_LEVELS["masters"]))
     return "\n\n".join(parts)
+
+
+def build_chat_reader_instruction(level: str, settings: dict) -> str:
+    """Keep knowledge level separate from the user's requested task."""
+    level_text = EXPLANATION_LEVELS.get(level, EXPLANATION_LEVELS["masters"])
+    if level == "phd":
+        level_text = "설명 수준: 박사생. 해당 분야 전문 용어와 수식을 사용하고 필요한 가정과 정의를 정확히 밝혀줘."
+    allowed = {
+        "field_expertise": {"novice", "basic", "major", "research", "expert"},
+        "reading_experience": {"rare", "occasional", "regular", "author"},
+        "research_role": set(ROLE_EMPHASIS),
+    }
+    profile = {key: settings[key] for key, values in allowed.items() if settings.get(key) in values}
+    return (level_text + "\n독자 프로필(배경지식 참고): " + json.dumps(profile, ensure_ascii=False)
+            + "\n독자 프로필은 어휘와 배경 설명량을 정하며 질문 주제나 비판 강도를 정하지 않아. "
+            "기본 답변은 짧은 1~3문단으로 해. 이번 질문의 깊이와 출력 형식을 우선해. "
+            "요청하지 않은 심층 비판이나 재현성 평가로 이끌지 마.")

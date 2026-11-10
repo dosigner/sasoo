@@ -1,0 +1,617 @@
+{
+  "deep_dive": {
+    "problem_definition": "Continuous Normalizing Flows (CNFs)는 유연한 확률 경로를 모델링할 수 있지만, 기존의 maximum-likelihood 학습은 매 학습 단계에서 비용이 큰 ODE 계산을 요구해 고차원 이미지로 확장하기 어렵다. diffusion 기반 학습은 효율적이지만, 사용할 수 있는 확률 경로가 diffusion 과정으로 제한된다. 이 논문은 ODE simulation 없이 CNF를 학습하면서 diffusion 이외의 경로도 사용할 수 있는 방법을 제안한다.",
+    "as_is": "논문이 설명하는 기존 CNF maximum-likelihood 학습은 forward·backward ODE 계산 때문에 비용이 크고, 고차원 이미지에 확장하기 어렵다. 기존 simulation-free CNF 학습에도 저자들의 서술에 따르면 고차원에서 적분 추정이 어렵거나 minibatch 설정에서 biased gradient가 발생하는 문제가 있다. 반면 diffusion 모델은 효율적으로 학습할 수 있지만, 선택 가능한 경로가 diffusion 기반 구성에 제한된다.",
+    "to_be": "확률 경로를 직접 정하고, 그 경로를 만드는 vector field를 simulation-free 방식으로 학습하는 CNF framework를 구축한다. 이를 통해 diffusion path뿐 아니라 OT 기반 경로로도 이미지 생성 모델을 학습하고 효율적으로 샘플링하는 것이 목표다.",
+    "solution": "먼저 데이터 표본마다 단순한 conditional probability path와 그 경로를 만드는 conditional vector field를 정한다. 이 conditional path들을 데이터 분포에 대해 섞으면 목표 marginal path와 marginal vector field가 구성되며, 저자들은 marginal vector field가 해당 marginal path를 생성함을 보인다. 하지만 marginal vector field는 직접 계산하기 어려우므로, 학습 때는 표본별 vector field를 맞추는 Conditional Flow Matching (CFM) loss를 사용한다. 저자들의 정리 아래 CFM과 marginal Flow Matching (FM)의 gradient가 같으므로 marginal 적분을 직접 계산하지 않고도 학습할 수 있다. Gaussian conditional path의 mean과 standard deviation을 시간에 따라 선형 변화시키는 OT 예에서는 조건부 궤적이 직선 형태가 되어, 저자들은 이를 더 효율적인 학습·샘플링 경로로 실험한다.",
+    "method_summary": "모델은 noise prior에서 시작해 데이터 표본 주변으로 이동하는 시간 의존적 확률 경로를 학습한다. 데이터 표본 x₁을 뽑고, 표준 Gaussian noise x₀와 시간 t를 사용해 conditional Gaussian path의 샘플을 만든 뒤, neural network vector field가 해당 conditional vector field를 회귀하도록 CFM loss를 계산한다. 이 설계는 marginal vector field를 직접 계산할 필요가 없다는 점이 핵심이다.\n\n논문은 일반적인 Gaussian path와 diffusion path, 그리고 mean과 standard deviation을 선형 변화시키는 OT conditional path를 다룬다. 생성 시에는 noise에서 시작해 학습된 vector field의 ODE를 풀어 샘플을 얻고, likelihood 평가에는 ODE와 divergence 계산을 사용한다. 이미지 실험은 CIFAR-10과 ImageNet 여러 해상도에서 수행했고, 주요 비교 항목은 likelihood, sample quality, ODE solver의 function evaluation 수였다.",
+    "key_results": "Table 1에서 FM w/ OT는 CIFAR-10에서 NLL 2.99 BPD, FID 6.35, NFE 142를 기록했다. 같은 표에서 DDPM은 3.12 BPD, FID 7.48, NFE 274였다. ImageNet 32×32에서는 FM w/ OT가 3.53 BPD, FID 5.02, NFE 122였고, ImageNet 64×64에서는 3.31 BPD, FID 14.45, NFE 138이었다. ImageNet 128×128 비교 표에는 FM w/ OT의 NLL 2.90 BPD와 FID 20.9가 제시되어 있다. 저자들은 Table 1에서 FM w/ OT가 비교 방법보다 전반적으로 유리하다고 보고하지만, 비교 대상과 학습 조건은 표 및 본문에 적힌 범위에서 해석해야 한다.\n\n저자들은 ImageNet-128에서 기존 연구의 4.36m iterations와 batch size 256에 비해 더 적은 iterations로 학습했다고 보고하면서, 자신들의 모델이 25% 더 크고 이미지 처리량은 33% 적었다고 설명한다. Sampling 실험에서는 OT 경로 모델이 적은 NFE에서 더 낮은 수치 오차 또는 더 나은 FID–계산량 trade-off를 보였고, conditional 64×64→256×256 실험에서는 FM w/ OT의 FID 3.4, IS 200.8, PSNR 24.7, SSIM 0.747을 보고했다. 표에 오차 막대, 신뢰구간 또는 통계적 검정 결과는 제시되지 않아, 보고된 값의 불확실성을 수치로 판단할 수는 없다.",
+    "novelty_assessment": "이 논문에서 핵심적인 방법론적 기여는 CNF의 목표 vector field를 직접 회귀하는 FM과, 이를 표본별 conditional vector field 회귀로 구현하는 CFM의 정식화다. 특히 conditional field를 적절히 marginalize하면 marginal path를 생성하며, CFM과 marginal FM이 같은 parameter gradient를 갖는다는 결과를 통해 simulation-free 학습을 가능하게 한다. Gaussian conditional path 중 diffusion path를 포함하면서 OT displacement path도 다룬다는 확장 역시 논문이 제시하는 중요한 기여다. 다만 저자들은 Related Work에서 동시기 유사 conditional objective 연구를 언급하므로, 논문의 새로움은 해당 연결과 실험적 구성의 제시에 두고 평가하는 것이 적절하다.",
+    "comparison_to_prior_work": "논문은 CNF maximum-likelihood 학습을 ODE simulation 비용이 큰 접근으로 설명하고, 기존 simulation-free CNF 방법 중 일부는 적분 추정의 어려움 또는 stochastic minibatch에서 biased gradient가 문제라고 비교한다. diffusion 모델의 denoising score matching은 효율적인 학습 사례로 제시되지만, 저자들은 그 경로 선택이 diffusion 구성에 제한된다고 설명한다. 이에 비해 FM은 probability path를 직접 지정하고 vector field를 회귀하며, CFM은 conditional target으로 marginal FM과 같은 gradient를 얻도록 한다. Related Work는 동시기 Liu et al. (2022), Albergo & Vanden-Eijnden (2022)의 유사한 conditional objective와 Neklyudov et al. (2023)의 gradient-field 가정 아래 implicit objective도 언급한다. 실험 비교는 논문에 제시된 데이터셋·모델·지표에 한정되며, 모든 이전 연구와 통일된 계산 예산을 맞춘 비교로 해석해서는 안 된다.",
+    "comparison_scope": "in_paper_only",
+    "strengths": [
+      "marginal path와 vector field를 conditional 구성에서 유도하고, CFM gradient가 marginal FM gradient와 같다는 이론적 근거를 제시한다. (Flow Matching, Conditional Flow Matching)",
+      "Gaussian probability path의 일반형에 diffusion path와 OT conditional path를 함께 포함해, 경로 선택과 학습 objective를 분리해 설명한다. (Conditional Probability Paths and Vector Fields, Fig. 2, Fig. 3)",
+      "2D 예시뿐 아니라 CIFAR-10 및 ImageNet 32×32, 64×64, 128×128에서 likelihood·FID·NFE를 비교하고, 별도로 conditional super-resolution도 평가한다. (Experiments, Table 1, Table 2)",
+      "샘플 경로와 낮은 NFE에서의 수치 오차 및 FID를 함께 다뤄, 생성 품질만이 아니라 계산량과 sampling trade-off도 보여준다. (Sampling Efficiency, Fig. 6, Fig. 7)"
+    ],
+    "weaknesses": [
+      "저자들은 CFM과 FM의 gradient 동등성을 정리로 제시하지만, 이 결과에는 양의 marginal density와 적분 교환을 정당화하는 regularity 조건 등이 전제된다. 따라서 이를 조건과 무관한 모든 path·vector field에 자동 적용되는 주장으로 읽어서는 안 된다. (Flow Matching, Theorem 2; Appendix A)",
+      "저자들은 conditional OT path가 최적이어도 marginal vector field가 optimal transport solution임을 뜻하지 않는다고 명시한다. 따라서 실험에서 OT path를 사용했다는 사실만으로 데이터 분포 간 marginal transport의 최적성이 확인된 것은 아니다. (Special Instances of Gaussian Conditional Probability Paths, Fig. 3)",
+      "ImageNet-128 비교에서 저자들은 자신들의 모델이 25% 더 크고 이미지 처리량이 33% 적었다고 함께 설명한다. 모델 규모와 계산 예산이 동일한 직접 비교가 아니므로, 성능 차이를 경로·loss만의 효과로 분리하기 어렵다. (Density Modeling and Sample Quality on ImageNet, Table 1)",
+      "본문은 모델들이 같은 architecture·hyperparameter·iteration으로 학습되었다고 서술하면서 baselines에는 더 많은 iterations를 허용했다고 덧붙인다. 두 설명의 적용 범위가 명확하지 않아 비교별 학습 예산을 해석하는 데 혼선이 생길 수 있다. 이는 본문 서술의 범위에 대한 Sasoo의 해석상 주의점이다. (Density Modeling and Sample Quality on ImageNet)",
+      "Table 1–2는 결과 수치를 제공하지만 불확실성 구간이나 반복 실행별 변동을 표기하지 않는다. 이는 논문이 반복을 수행하지 않았다는 뜻이 아니라, 제공된 결과만으로 성능 차이의 변동성을 평가하기 어렵다는 의미다. (Experiments, Table 1, Table 2)",
+      "저자들은 ImageNet-128에서 FID가 IC-GAN을 제외한 비교 표의 최상위라고 설명하며, IC-GAN은 self-supervised ResNet50 conditioning을 사용하므로 표에서 제외했다고 적는다. 따라서 표 안의 비교와 conditioning이 다른 방법을 포함한 전체 방법 간 비교를 구분해야 한다. (Density Modeling and Sample Quality on ImageNet, Table 1)",
+      "Conditional super-resolution에서는 FM w/ OT의 FID와 IS가 SR3보다 유리하지만, PSNR과 SSIM은 SR3보다 낮다. 모든 지표에서 개선된 결과로 일반화할 수 없다. (Conditional Sampling from Low-Resolution Images, Table 2)"
+    ],
+    "suggested_improvements": [
+      "비교 방법별 학습 iteration·epoch·effective batch size·모델 규모를 한 표에 정리하고, 본문에서 baseline 추가 학습을 허용한 비교의 범위를 분명히 하면 성능 비교를 더 정확히 해석할 수 있다.",
+      "주요 결과에 독립 반복 실행별 평균과 변동성 또는 불확실성 지표를 추가해, Table 1–2의 차이가 얼마나 안정적인지 평가할 수 있게 한다.",
+      "ImageNet-128 비교에서 모델 규모와 이미지 처리량 차이를 통제한 비교 또는 계산량별 성능 곡선을 보완하면, FM-OT의 이점과 계산 예산의 영향을 더 분리할 수 있다.",
+      "본문의 CFM 동등성 정리에서 필요한 양의 density 및 regularity 가정을 본문에서 간결하게 요약하고, 실험 구현이 이를 어떻게 만족시키는지 설명을 보강한다.",
+      "OT 경로 설정과 실험 구현의 핵심 수치·세부사항을 한 곳에 명시하고, 이미지 preprocessing·평가 dequantization·NFE 측정 조건을 방법별로 대응시켜 재현성을 높인다.",
+      "Conditional super-resolution 결과는 FID·IS와 PSNR·SSIM의 상반된 경향을 함께 해석하고, 지표별로 무엇을 평가하는지 설명을 보완한다."
+    ],
+    "follow_up_questions": [
+      "FM-OT에서 사용한 σ_min 값과 그 값을 선택한 기준은 무엇인가?",
+      "ImageNet-128에서 기존 방법보다 25% 큰 모델과 33% 적은 이미지 처리량이라는 조건을 통제해도 FM-OT의 likelihood·FID 이점이 유지되는가?",
+      "CFM–FM gradient 동등성의 이론적 조건은 실제 network와 minibatch 학습에서 어느 정도 충족되는가?",
+      "OT conditional path의 단순성이 marginal vector field의 복잡도와 solver NFE에 어떤 방식으로 이어지는가?",
+      "서로 다른 ODE solver 및 tolerance를 적용했을 때 FM-OT와 diffusion 기반 모델의 sampling 효율 순위가 유지되는가?",
+      "Conditional super-resolution에서 FID·IS의 이점과 PSNR·SSIM의 열세는 입력 조건이나 평가 지표 선택에 따라 어떻게 달라지는가?"
+    ],
+    "section_answers": [
+      {
+        "section_title": "Introduction",
+        "question": "논문은 기존 생성 모델 학습의 어떤 한계를 해결하려고 하는가?",
+        "answer": "CNF를 고차원 데이터에 효율적으로 학습하기 어렵고, diffusion 기반 접근은 확률 경로 선택이 제한된다는 문제를 해결하려 한다. 이를 위해 simulation-free CNF 학습법인 Flow Matching을 제안한다.",
+        "explanation": "저자들은 maximum-likelihood CNF 학습의 ODE 비용과 기존 simulation-free 방법의 한계를 문제로 제시한다. 제안법의 목적은 diffusion에 국한되지 않는 확률 경로를 효율적인 학습으로 연결하는 것이다.",
+        "source_refs": [
+          "Introduction"
+        ]
+      },
+      {
+        "section_title": "Preliminaries: Continuous Normalizing Flows",
+        "question": "CNF는 어떻게 noise 분포를 데이터에 가까운 분포로 변환하는가?",
+        "answer": "시간 의존적 vector field의 ODE를 풀어 flow를 만들고, 그 flow가 초기 density를 push-forward하도록 한다.",
+        "explanation": "이 절은 확률밀도 경로, vector field, ODE flow 및 change of variables의 관계를 정의한다. 이후 FM이 맞추려는 대상은 이 flow를 생성하는 vector field다.",
+        "source_refs": [
+          "Preliminaries: Continuous Normalizing Flows"
+        ]
+      },
+      {
+        "section_title": "Flow Matching",
+        "question": "FM objective는 무엇을 맞추며, 왜 marginal target을 바로 쓰기 어려운가?",
+        "answer": "FM은 지정된 probability path를 생성하는 target vector field에 CNF vector field를 회귀시킨다. 그러나 실제 데이터 분포에 대한 marginal path와 vector field에는 계산하기 어려운 적분이 있어, 이를 그대로 학습에 쓰기 어렵다.",
+        "explanation": "이 절은 FM loss를 정의하고, 표본별 conditional path를 marginalize해 목표 path를 만드는 전략을 도입한다. 핵심은 그 marginalization이 올바른 marginal vector field를 제공한다는 점이다.",
+        "source_refs": [
+          "Flow Matching"
+        ]
+      },
+      {
+        "section_title": "Constructing pt, ut from Conditional Probability Paths and Vector Fields",
+        "question": "conditional path와 vector field를 섞으면 marginal path를 올바르게 생성할 수 있는가?",
+        "answer": "저자들의 Theorem 1에 따르면 conditional vector field를 density 가중치로 marginalize한 vector field는 conditional path의 mixture인 marginal path를 생성한다.",
+        "explanation": "증명은 conditional density가 만족하는 continuity equation을 데이터 분포에 대해 적분하고, 적분과 divergence 연산을 교환해 marginal continuity equation을 얻는 구조다. 적분 교환에는 적절한 regularity 조건이 필요하다고 부록에서 설명한다.",
+        "source_refs": [
+          "Constructing pt, ut from Conditional Probability Paths and Vector Fields"
+        ]
+      },
+      {
+        "section_title": "Conditional Flow Matching",
+        "question": "계산하기 어려운 marginal FM 대신 어떤 objective로 학습할 수 있는가?",
+        "answer": "각 데이터 표본에 조건부인 target vector field를 회귀하는 CFM objective를 사용한다. 저자들은 정리의 가정 아래 CFM과 FM의 parameter gradient가 같다고 보인다.",
+        "explanation": "CFM은 데이터 표본과 conditional path에서 직접 샘플링해 loss를 계산하므로, marginal density와 vector field의 적분을 매번 구할 필요가 없다. 동등성은 원문에서 제시한 positivity 및 적분 관련 조건을 전제로 해석해야 한다.",
+        "source_refs": [
+          "Conditional Flow Matching"
+        ]
+      },
+      {
+        "section_title": "Conditional Probability Paths and Vector Fields",
+        "question": "일반적인 Gaussian conditional path의 target vector field는 어떻게 구하는가?",
+        "answer": "시간에 따라 평균과 scalar standard deviation이 변하는 Gaussian path를 두고, 대응하는 affine flow를 미분해 conditional vector field를 구한다.",
+        "explanation": "Theorem 3은 vector field를 standard deviation의 상대 변화율과 평균 변화율로 나타낸다. 이 구성 덕분에 정해진 Gaussian path에 대해 회귀 target을 표본별로 계산할 수 있다.",
+        "source_refs": [
+          "Conditional Probability Paths and Vector Fields"
+        ]
+      },
+      {
+        "section_title": "Special Instances of Gaussian Conditional Probability Paths",
+        "question": "FM framework에서 diffusion path와 OT path는 어떻게 다르게 구성되는가?",
+        "answer": "diffusion conditional path는 특정 mean·standard deviation 함수로 표현하고, OT 예에서는 이 두 값이 시간에 따라 선형 변화하도록 설정한다. 논문은 후자의 조건부 궤적이 직선 형태이며 vector field의 방향이 시간에 따라 일정한 점을 제시한다.",
+        "explanation": "저자들은 diffusion 경로와 OT 경로의 조건부 vector field 및 궤적을 시각화한다. 다만 conditional Gaussian 사이의 OT 최적성은 marginal vector field까지 OT 최적임을 뜻하지 않는다고 명시한다.",
+        "source_refs": [
+          "Special Instances of Gaussian Conditional Probability Paths",
+          "Fig. 2",
+          "Fig. 3"
+        ]
+      },
+      {
+        "section_title": "Related Work",
+        "question": "논문은 FM을 기존 CNF·diffusion 학습 방법과 어떻게 구별하는가?",
+        "answer": "저자들은 maximum-likelihood CNF의 ODE 비용, 일부 simulation-free CNF 방법의 적분 또는 gradient 문제, diffusion의 경로 제한을 대비시킨다. FM은 probability path의 vector field를 직접 회귀하고, CFM으로 이를 conditional 학습으로 바꾼다고 설명한다.",
+        "explanation": "이 절은 denoising score matching에서 얻은 conditional 학습 아이디어와의 관계도 설명한다. 또한 저자들은 동시기 유사 conditional objective와 gradient field 가정 아래의 implicit objective를 함께 언급한다.",
+        "source_refs": [
+          "Related Work"
+        ]
+      },
+      {
+        "section_title": "Experiments",
+        "question": "실험은 어떤 데이터와 평가 관점으로 구성되었는가?",
+        "answer": "CIFAR-10과 ImageNet 여러 해상도에서 likelihood, sample quality, sampling 비용을 평가하고, diffusion path와 OT path도 비교한다. 별도로 low-resolution 이미지 조건부 생성 실험을 수행한다.",
+        "explanation": "평가에는 likelihood·sample 평가를 위한 ODE solver 설정이 제시되어 있다. 구체적 학습 설정은 부록의 implementation details에 해상도별로 제공된다.",
+        "source_refs": [
+          "Experiments",
+          "Table 1",
+          "Table 3"
+        ]
+      },
+      {
+        "section_title": "Density Modeling and Sample Quality on ImageNet",
+        "question": "FM-OT는 이미지 분포 모델링 및 생성 품질에서 어떤 결과를 보였는가?",
+        "answer": "Table 1에서 FM-OT는 비교된 CIFAR-10 및 ImageNet 설정에서 낮은 NFE와 경쟁력 있는 NLL·FID를 보인다. ImageNet-128 결과는 논문이 제시한 일부 방법과 비교되지만, 모델·conditioning·학습량 조건이 모두 동일한 비교는 아니다.",
+        "explanation": "저자들은 학습 중 FID와 128×128 모델의 학습량 비교도 제시한다. 다만 ImageNet-128 비교에서는 모델 크기와 이미지 처리량 차이를 본문에서 함께 밝혀, 결과를 학습 방법만의 효과로 분리하기 어렵다.",
+        "source_refs": [
+          "Density Modeling and Sample Quality on ImageNet",
+          "Table 1",
+          "Fig. 5"
+        ]
+      },
+      {
+        "section_title": "Sampling Efficiency",
+        "question": "OT path를 쓴 모델은 적은 계산으로 샘플을 생성하는가?",
+        "answer": "논문에 제시된 solver 실험에서 FM-OT는 낮은 NFE 구간의 수치 오차와 FID–계산량 trade-off에서 유리한 결과를 보인다. 이 결과는 제시된 ImageNet 모델과 solver 설정에 대한 실험 결과다.",
+        "explanation": "Fig. 6은 샘플 경로의 시각적 차이를, Fig. 7은 NFE에 따른 수치 오차와 FID를 보여준다. 저자들은 특히 OT path가 적은 NFE에서 유리하다고 해석하지만, 이는 모든 solver·데이터에 대한 보편적 보장은 아니다.",
+        "source_refs": [
+          "Sampling Efficiency",
+          "Fig. 6",
+          "Fig. 7"
+        ]
+      },
+      {
+        "section_title": "Conditional Sampling from Low-Resolution Images",
+        "question": "FM-OT는 저해상도 입력을 조건으로 고해상도 이미지를 생성할 수 있는가?",
+        "answer": "논문은 64×64 입력에서 256×256으로 upsampling하는 conditional generation을 실험했다. FM-OT는 SR3보다 FID와 IS가 좋았지만 PSNR과 SSIM은 낮았다.",
+        "explanation": "Table 2는 FID·IS와 함께 pixel 단위 및 구조 유사도 지표를 제시한다. 따라서 결과는 지표에 따라 우열이 달라지며, 하나의 점수만으로 복원 품질 전체를 판단하기 어렵다.",
+        "source_refs": [
+          "Conditional Sampling from Low-Resolution Images",
+          "Table 2"
+        ]
+      }
+    ],
+    "transfer_checks": [
+      {
+        "item": "CFM의 이론적 가정",
+        "paper_condition": "Theorem 2는 marginal density가 모든 x,t에서 양수라는 조건을 두며, Appendix A의 증명은 적분 교환과 미분을 위해 추가 regularity 및 boundedness 조건을 가정한다.",
+        "condition_basis": "reported",
+        "check_before_transfer": "대상 데이터와 conditional path에서 density가 양수인지, 적분·미분 교환을 뒷받침하는 조건이 성립하는지 확인해야 해. 그렇지 않으면 CFM과 FM의 gradient 동등성을 그대로 적용할 수 있다고 단정하기 어렵다.",
+        "source_refs": [
+          "Conditional Flow Matching"
+        ]
+      },
+      {
+        "item": "OT path의 적용 범위",
+        "paper_condition": "논문은 표준 Gaussian과 표본별 Gaussian 사이의 conditional OT displacement path를 구성하고, conditional flow가 OT displacement map이라고 설명한다. 저자들은 이것이 marginal vector field까지 OT solution임을 뜻하지 않는다고 덧붙인다.",
+        "condition_basis": "reported",
+        "check_before_transfer": "대상 문제에서 Gaussian conditional path가 적절한지 확인하고, conditional OT의 성질을 전체 데이터 분포의 marginal transport 최적성으로 확대 해석하지 않도록 해야 해.",
+        "source_refs": [
+          "Special Instances of Gaussian Conditional Probability Paths",
+          "Fig. 3"
+        ]
+      },
+      {
+        "item": "OT 경로의 세부 수치",
+        "paper_condition": "OT path 정의에는 σ_min이 포함되지만, 제공된 논문 본문·부록에서 실험에 사용한 수치가 확인되지 않는다.",
+        "condition_basis": "not_reported",
+        "check_before_transfer": "구현 코드나 저자 제공 자료에서 σ_min을 확인해야 해. 이 값은 terminal conditional Gaussian의 집중도와 경로에 영향을 줄 수 있어, 임의로 정하면 논문 결과와의 직접 재현성이 제한돼.",
+        "source_refs": [
+          "Special Instances of Gaussian Conditional Probability Paths",
+          "Implementation Details"
+        ]
+      },
+      {
+        "item": "ImageNet resolution별 학습 설정",
+        "paper_condition": "Table 3은 해상도별 batch size, GPU 수, epochs, iterations, learning rate와 모델 구성을 각각 다르게 제시한다. ImageNet-128은 effective batch size 1536, 500k iterations, 571 epochs, learning rate 1e−4로 표기돼.",
+        "condition_basis": "reported",
+        "check_before_transfer": "대상 해상도에 맞는 행을 사용해야 해. 다른 해상도의 설정을 그대로 옮기면 모델 용량과 학습 계산량이 달라질 수 있으므로, 해상도별 행을 혼합하지 않았는지 확인해.",
+        "source_refs": [
+          "Experiments",
+          "Table 3"
+        ]
+      },
+      {
+        "item": "ImageNet-128 비교의 모델·계산 예산",
+        "paper_condition": "저자들은 ImageNet-128 비교에서 FM 모델이 25% 더 크고, 학습에 사용한 이미지 처리량은 비교 대상보다 33% 적었다고 설명한다.",
+        "condition_basis": "reported",
+        "check_before_transfer": "동일 계산 예산에서 방법 자체를 비교하려면 모델 크기와 처리량을 맞추거나 별도로 보고해야 해. 논문 수치를 조건이 동일한 benchmark 결과로 취급하지 않도록 주의해.",
+        "source_refs": [
+          "Density Modeling and Sample Quality on ImageNet",
+          "Table 1"
+        ]
+      },
+      {
+        "item": "solver 및 평가 tolerance",
+        "paper_condition": "논문은 별도 언급이 없을 때 likelihood와 sample 평가에 dopri5를 사용하고 absolute·relative tolerance를 각각 1e−5로 설정한다고 보고한다.",
+        "condition_basis": "reported",
+        "check_before_transfer": "같은 tolerance와 평가 절차를 적용해야 NFE·likelihood 비교가 해석 가능해. 다른 solver나 tolerance를 사용하면 수치 오차와 계산량이 달라질 수 있어.",
+        "source_refs": [
+          "Experiments",
+          "Sampling Efficiency"
+        ]
+      },
+      {
+        "item": "반복 실행 및 불확실성",
+        "paper_condition": "제공된 결과 표는 지표별 수치를 제시하지만, 표에 신뢰구간·오차 막대·반복 실행별 분산이 기재되어 있지 않다. 반복 실행을 실제로 하지 않았다는 뜻은 아니다.",
+        "condition_basis": "reported",
+        "check_before_transfer": "재현 연구에서는 반복 실행별 결과와 변동성을 기록해 차이의 안정성을 확인하는 것이 좋아. 논문 표의 단일 표기 수치만으로 미세한 성능 차이의 확실성을 판단하지 말아야 해.",
+        "source_refs": [
+          "Table 1",
+          "Table 2"
+        ]
+      },
+      {
+        "item": "이미지 preprocessing",
+        "paper_condition": "논문은 image center crop과 target resolution으로의 resize를 설명하고, 32×32 및 64×64에는 Chrabaszcz et al. (2017)의 preprocessing을 사용한다고 보고한다.",
+        "condition_basis": "reported",
+        "check_before_transfer": "데이터 전처리는 학습 분포와 likelihood·sample 평가에 영향을 줄 수 있으므로, 목표 해상도와 데이터셋에서 crop·resize·추가 변환을 구분해 기록해야 해. 논문에 적히지 않은 augmentation을 원문 설정으로 간주하지 않도록 해.",
+        "source_refs": [
+          "Implementation Details"
+        ]
+      }
+    ],
+    "practical_applications": [
+      "연속 vector field의 ODE를 이용하는 이미지 생성 및 density modeling. 이 논문은 CIFAR-10과 ImageNet 해상도별 실험으로 이를 평가한다.",
+      "적은 NFE에서 생성 품질과 계산량 사이의 trade-off가 중요한 이미지 샘플링. 다만 논문 결과는 제시된 데이터·solver 조건에서 확인된 범위로 한정해야 한다.",
+      "저해상도 이미지를 조건으로 고해상도 이미지를 생성하는 super-resolution. 논문은 64×64에서 256×256으로의 conditional generation을 평가하며 지표별 성능 차이를 함께 고려해야 한다."
+    ],
+    "_input_coverage": {
+      "mode": "pdf",
+      "status": "provided_pdf",
+      "missing": [],
+      "pdf_sha256": "5eeb39ba516396924aba4787452f9d0abdee88467a4d0c264d9f66cad0c5ee14"
+    }
+  },
+  "recipe": {
+    "title": "Flow Matching with Optimal Transport를 이용한 이미지 생성 모델 학습 레시피",
+    "objective": "Continuous Normalizing Flow (CNF)를 Conditional Flow Matching (CFM)으로 학습하고, conditional probability path로 Optimal Transport (OT) 경로를 사용해 이미지 분포를 모델링해. 주요 재현 대상은 ImageNet-128 unconditional 생성이며, 논문에 표로 제공된 CIFAR-10 및 ImageNet 32×32·64×64·128×128 설정도 함께 정리했어.",
+    "materials": [
+      "CIFAR-10 이미지 데이터셋(논문에서 데이터 개수는 명시하지 않음)",
+      "ImageNet 이미지 데이터셋: 32×32, 64×64, 128×128 해상도. ImageNet 256×256 샘플 결과도 제시되지만 학습 설정 표에는 포함되지 않음",
+      "표준 Gaussian noise prior: p₀(x) = N(x|0, I)"
+    ],
+    "equipment": [
+      "GPU: CIFAR-10 2개, ImageNet-32 4개, ImageNet-64 16개, ImageNet-128 32개 사용. GPU 제조사·모델은 명시되지 않음",
+      "torchdiffeq 라이브러리: likelihood 평가 및 ODE 풀이에 사용. 버전은 명시되지 않음"
+    ],
+    "parameters": [
+      {
+        "name": "architecture",
+        "value": "이미지는 Dhariwal & Nichol (2021)의 U-Net architecture를 최소 변경해 사용. 2D 실험은 5-layer MLP, 각 layer 512 neurons",
+        "unit": "architecture",
+        "notes": "Appendix E의 구현 설명. 이미지 모델의 전체 layer 구성 세부는 Table 3의 설정과 함께 봐야 해.",
+        "source_tag": "explicit",
+        "evidence_quote": "For the 2D example we used an MLP with 5-layers of 512 neurons each, while for images we used the UNet architecture from Dhariwal & Nichol (2021).",
+        "evidence_page": 19
+      },
+      {
+        "name": "num_layers",
+        "value": "CIFAR-10: 2; ImageNet-32: 3; ImageNet-64: 3; ImageNet-128: 3 (Table 3의 Depth 값)",
+        "unit": "depth",
+        "notes": "Table 3의 Depth 행을 layer-depth 설정으로 옮겼어. 논문은 이를 별도로 num_layers라고 부르지는 않아.",
+        "source_tag": "explicit",
+        "evidence_quote": "Depth                             2                    3                 3                3",
+        "evidence_page": 20
+      },
+      {
+        "name": "hidden_units",
+        "value": "Channels: CIFAR-10 256, ImageNet-32 256, ImageNet-64 192, ImageNet-128 256; channels multiple: 1,2,2,2 / 1,2,2,2 / 1,2,3,4 / 1,1,2,3,4",
+        "unit": "channels; channel multipliers",
+        "notes": "Table 3의 채널 폭 및 단계별 배수 설정이야. hidden_units라는 이름은 원문에 없으므로 U-Net의 채널 설정을 대응시켜 기록했어.",
+        "source_tag": "explicit",
+        "evidence_quote": "Channels                        256                  256               192              256",
+        "evidence_page": 20
+      },
+      {
+        "name": "num_heads",
+        "value": "4 (모든 표기 해상도)",
+        "unit": "heads",
+        "notes": "Table 3의 Heads 행. 논문은 이 값을 모든 모델 설정에 동일하게 제시해.",
+        "source_tag": "explicit",
+        "evidence_quote": "Heads                              4                   4                 4                4",
+        "evidence_page": 20
+      },
+      {
+        "name": "optimizer",
+        "value": "Adam; β₁=0.9, β₂=0.999, weight_decay=0.0, ε=1e−8",
+        "unit": "optimizer and hyperparameters",
+        "notes": "Appendix E.2에서 optimizer와 optimizer hyperparameters를 직접 명시해.",
+        "source_tag": "explicit",
+        "evidence_quote": "All models are trained using the Adam optimizer with the following parameters: β1 = 0.9, β2 = 0.999, weight decay = 0.0, and ϵ = 1e−8.",
+        "evidence_page": 20
+      },
+      {
+        "name": "learning_rate",
+        "value": "CIFAR-10: 5e−4; ImageNet-32: 1e−4; ImageNet-64: 1e−4; ImageNet-128: 1e−4",
+        "unit": "learning rate",
+        "notes": "Table 3의 resolution별 최고 learning rate 설정이야. scheduler와 warmup은 별도 parameter로 정리했어.",
+        "source_tag": "explicit",
+        "evidence_quote": "Learning Rate                   5e-4                1e-4              1e-4             1e-4",
+        "evidence_page": 20
+      },
+      {
+        "name": "batch_size",
+        "value": "Effective batch size: CIFAR-10 256; ImageNet-32 1024; ImageNet-64 2048; ImageNet-128 1536",
+        "unit": "images per effective batch",
+        "notes": "Table 3은 effective batch size를 명시해. GPU당 batch size나 gradient accumulation 방식은 적혀 있지 않아.",
+        "source_tag": "explicit",
+        "evidence_quote": "Effective Batch size             256                1024              2048             1536",
+        "evidence_page": 20
+      },
+      {
+        "name": "epochs",
+        "value": "CIFAR-10: 1000; ImageNet-32: 200; ImageNet-64: 250; ImageNet-128: 571",
+        "unit": "epochs",
+        "notes": "Table 3의 Epochs 행이야.",
+        "source_tag": "explicit",
+        "evidence_quote": "Epochs                          1000                 200               250              571",
+        "evidence_page": 20
+      },
+      {
+        "name": "training_iterations",
+        "value": "CIFAR-10: 391k; ImageNet-32: 250k; ImageNet-64: 157k; ImageNet-128: 500k",
+        "unit": "iterations",
+        "notes": "Table 3의 Iterations 행이야. ImageNet-128의 500k는 본문에서도 제시돼.",
+        "source_tag": "explicit",
+        "evidence_quote": "Iterations                      391k                250k              157k             500k",
+        "evidence_page": 20
+      },
+      {
+        "name": "training_data_size",
+        "value": "논문에 데이터셋별 실제 학습 표본 수가 명시되지 않음",
+        "unit": "samples",
+        "notes": "데이터셋 이름과 해상도는 명시돼 있지만, 학습 표본 수를 직접 확인할 수 없어.",
+        "source_tag": "explicit",
+        "evidence_quote": "We explore the empirical benefits of using Flow Matching on the image datasets of CIFAR-10 (Krizhevsky et al., 2009) and ImageNet at resolutions 32, 64, and 128 (Chrabaszcz et al., 2017; Deng et al., 2009).",
+        "evidence_page": 7
+      },
+      {
+        "name": "test_data_split",
+        "value": "ImageNet validation set을 conditional upsampling 평가에 사용. train/test split 비율 및 unconditional 평가용 split의 세부사항은 명시되지 않음",
+        "unit": "dataset split",
+        "notes": "Section 6.3은 validation set을 언급하지만, 일반적인 train/test 분할 방식이나 비율은 제공하지 않아.",
+        "source_tag": "explicit",
+        "evidence_quote": "we compute the FID of the upsampled validation images",
+        "evidence_page": 9
+      },
+      {
+        "name": "loss_function",
+        "value": "Conditional Flow Matching (CFM) objective; 주요 경로는 Flow Matching with Optimal Transport (FM-OT)",
+        "unit": "objective",
+        "notes": "본문은 FM/CFM 목적함수를 정의하고, 실험에서는 FM w/ OT를 주요 방법으로 평가해. OT conditional path의 σ_min 값은 제공되지 않아.",
+        "source_tag": "explicit",
+        "evidence_quote": "We simply need to design suitable conditional probability paths and vector fields.",
+        "evidence_page": 4
+      },
+      {
+        "name": "evaluation_metric",
+        "value": "NLL (bits per dimension, BPD), FID, NFE; conditional super-resolution에서는 IS, PSNR, SSIM도 보고",
+        "unit": "metrics",
+        "notes": "Table 1은 NLL/FID/NFE, Table 2는 super-resolution 지표를 보고해. 평가 solver 설정은 별도 항목에 기록했어.",
+        "source_tag": "explicit",
+        "evidence_quote": "Table 1: Likelihood (BPD), quality of generated samples (FID), and evaluation time (NFE) for the same model trained with different methods.",
+        "evidence_page": 8
+      },
+      {
+        "name": "GPU_type",
+        "value": "GPU 개수: CIFAR-10 2, ImageNet-32 4, ImageNet-64 16, ImageNet-128 32; GPU 모델은 미기재",
+        "unit": "GPUs",
+        "notes": "Table 3의 GPU 개수는 확인 가능하지만, 제품명·메모리·분산 학습 방식은 명시되지 않았어.",
+        "source_tag": "explicit",
+        "evidence_quote": "GPUs                              2                    4                16               32",
+        "evidence_page": 20
+      },
+      {
+        "name": "precision",
+        "value": "CIFAR-10 및 ImageNet-32: full 32 bit-precision; ImageNet-64/128/256: 16-bit mixed precision",
+        "unit": "precision",
+        "notes": "Appendix E.2에서 데이터셋별 training precision을 명시해. ImageNet-256은 이 문장에 포함되지만 Table 3에는 해당 설정이 없어.",
+        "source_tag": "explicit",
+        "evidence_quote": "We use full 32 bit-precision for training CIFAR10 and ImageNet-32 and 16-bit mixed precision for training ImageNet-64/128/256.",
+        "evidence_page": 20
+      },
+      {
+        "name": "regularization",
+        "value": "weight decay = 0.0",
+        "unit": "weight decay",
+        "notes": "Adam optimizer 설정으로 명시돼. 별도 regularization term은 이 인용문에서 제시되지 않아.",
+        "source_tag": "explicit",
+        "evidence_quote": "All models are trained using the Adam optimizer with the following parameters: β1 = 0.9, β2 = 0.999, weight decay = 0.0, and ϵ = 1e−8.",
+        "evidence_page": 20
+      },
+      {
+        "name": "dropout_rate",
+        "value": "0.0 (모든 표기 해상도)",
+        "unit": "probability",
+        "notes": "Table 3의 Dropout 행이야.",
+        "source_tag": "explicit",
+        "evidence_quote": "Dropout                          0.0                 0.0               0.0              0.0",
+        "evidence_page": 20
+      },
+      {
+        "name": "augmentation_method",
+        "value": "center crop 후 목표 해상도로 resize. 32×32 및 64×64는 Chrabaszcz et al. (2017)의 preprocessing도 사용",
+        "unit": "image preprocessing",
+        "notes": "Appendix E는 image preprocessing을 설명해. 논문에서 이를 별도의 augmentation 기법으로 부르지는 않으므로, 무작위 변환이나 추가 augmentation이 있었다고 해석하면 안 돼.",
+        "source_tag": "explicit",
+        "evidence_quote": "For images, we center crop images and resize to the appropriate dimension, whereas for the 32×32 and 64×64 resolutions we use the same pre-processing as (Chrabaszcz et al., 2017).",
+        "evidence_page": 19
+      },
+      {
+        "name": "learning_rate_scheduler",
+        "value": "CIFAR-10: Polynomial Decay, warmup 45k steps; ImageNet-32: Polynomial Decay, warmup 20k steps; ImageNet-64: Constant, warmup 없음; ImageNet-128: Polynomial Decay, warmup 20k steps",
+        "unit": "schedule; training steps",
+        "notes": "Table 3의 scheduler/warmup 행. Polynomial Decay는 warmup 중 1e−8에서 peak까지 선형 증가한 뒤 최종 step까지 1e−8로 선형 감소한다고 Appendix E.2가 설명해. 논문은 scheduler 행을 Polynomial Decay라고 부르지만 실제 서술은 선형 감소로 구체화돼.",
+        "source_tag": "explicit",
+        "evidence_quote": "Learning Rate Scheduler   Polynomial Decay    Polynomial Decay      Constant     Polynomial Decay\n    Warmup Steps                    45k                  20k                 -              20k",
+        "evidence_page": 20
+      },
+      {
+        "name": "warmup_learning_rate",
+        "value": "1e−8에서 peak learning rate까지 선형 증가",
+        "unit": "learning rate",
+        "notes": "Appendix E.2의 warm-up 설명. peak 값은 각 해상도의 learning_rate 항목을 참고해.",
+        "source_tag": "explicit",
+        "evidence_quote": "In the warm-up phase, the learning rate is linearly increased from 1e−8 to the peak learning rate (specified in Table 3).",
+        "evidence_page": 20
+      },
+      {
+        "name": "attention_resolution",
+        "value": "CIFAR-10: 16; ImageNet-32: 16, 8; ImageNet-64: 32, 16, 8; ImageNet-128: 32, 16, 8",
+        "unit": "resolution",
+        "notes": "Table 3의 attention resolution 행이야.",
+        "source_tag": "explicit",
+        "evidence_quote": "Attention resolution              16                16,8            32,16,8           32,16,8",
+        "evidence_page": 20
+      },
+      {
+        "name": "heads_channels",
+        "value": "64 (모든 표기 해상도)",
+        "unit": "channels per head",
+        "notes": "Table 3의 Heads Channels 행이야.",
+        "source_tag": "explicit",
+        "evidence_quote": "Heads Channels                    64                  64               64                64",
+        "evidence_page": 20
+      },
+      {
+        "name": "channels_multiple",
+        "value": "CIFAR-10: 1,2,2,2; ImageNet-32: 1,2,2,2; ImageNet-64: 1,2,3,4; ImageNet-128: 1,1,2,3,4",
+        "unit": "channel multipliers",
+        "notes": "Table 3의 Channels multiple 행이야.",
+        "source_tag": "explicit",
+        "evidence_quote": "Channels multiple              1,2,2,2             1,2,2,2           1,2,3,4         1,1,2,3,4",
+        "evidence_page": 20
+      },
+      {
+        "name": "ode_solver",
+        "value": "dopri5; atol=1e−5, rtol=1e−5",
+        "unit": "solver; tolerances",
+        "notes": "Section 6은 likelihood/sample 평가에 dopri5와 절대·상대 tolerance를 명시해. torchdiffeq 사용은 Appendix E.2에 적혀 있어.",
+        "source_tag": "explicit",
+        "evidence_quote": "Unless otherwise specified, we evaluate likelihood and samples from the model using dopri5 (Dormand & Prince, 1980) at absolute and relative tolerances of 1e-5.",
+        "evidence_page": 7
+      },
+      {
+        "name": "dequantization",
+        "value": "uniform dequantization; importance-weighted estimate의 K는 데이터셋·실험에 따라 표 4에 제시",
+        "unit": "method; samples",
+        "notes": "Appendix E.2는 uniform dequantization을 명시하고 Table 4에서 K 값을 데이터셋별로 보고해. 평가를 재현할 때 K 선택을 고정해야 해.",
+        "source_tag": "explicit",
+        "evidence_quote": "When reporting negative log-likelihood, we dequantize using the standard uniform dequantization.",
+        "evidence_page": 20
+      },
+      {
+        "name": "evaluation_sample_count",
+        "value": "50k samples",
+        "unit": "samples",
+        "notes": "Section 6.1에서 NFE 평균 계산에 사용한 sample 수야. 이는 평가 표본 수로, 학습 데이터 크기와는 달라.",
+        "source_tag": "explicit",
+        "evidence_quote": "averaged over 50k samples.",
+        "evidence_page": 8
+      },
+      {
+        "name": "dataset_name",
+        "value": "CIFAR-10 및 ImageNet (32×32, 64×64, 128×128). ImageNet-256×256 생성 예시도 부록에 있으나 해당 학습 설정은 Table 3에 없음",
+        "unit": "datasets and resolutions",
+        "notes": "Section 6 및 Table 3 기준. 데이터셋별 실제 학습 개수는 기재되지 않았어.",
+        "source_tag": "explicit",
+        "evidence_quote": "We explore the empirical benefits of using Flow Matching on the image datasets of CIFAR-10 (Krizhevsky et al., 2009) and ImageNet at resolutions 32, 64, and 128 (Chrabaszcz et al., 2017; Deng et al., 2009).",
+        "evidence_page": 7
+      }
+    ],
+    "steps": [
+      "재현할 데이터셋·해상도를 정해. 주요 ImageNet-128 설정은 U-Net, Depth 3, Channels 256, Channels multiple 1,1,2,3,4, Heads 4, Heads Channels 64, Attention resolution 32,16,8, Dropout 0.0이야. 다른 해상도는 Table 3의 값으로 바꿔.",
+      "이미지는 center crop 후 목표 해상도로 resize해. ImageNet 32×32 및 64×64에는 Chrabaszcz et al. (2017)의 preprocessing을 적용해. 논문에 random flip 등 다른 augmentation 설정은 제시되지 않았어.",
+      "표준 Gaussian noise prior p₀(x)=N(x|0,I)에서 noise를 뽑고, training example x₁과 시간 t에 따라 conditional Gaussian path를 구성해. CFM은 매 step마다 vector field vₜ가 conditional target vector field uₜ(x|x₁)를 맞추도록 학습하는 방식이야.",
+      "주요 실험에는 OT displacement path를 사용해. 논문은 mean과 standard deviation이 시간에 따라 선형 변화한다고 정의하지만 σ_min의 수치는 주지 않아. 따라서 이 값은 구현 전에 별도로 정해야 하며, 논문과 완전히 동일한 재현이라고 단정할 수 없어.",
+      "각 해상도별 effective batch size, epochs, iterations, learning rate, scheduler, warmup 및 GPU 개수는 parameters에 기록한 Table 3 값을 사용해. ImageNet-128은 effective batch size 1536, 571 epochs, 500k iterations, learning rate 1e−4, Polynomial Decay, warmup 20k steps, GPU 32개 설정이야.",
+      "Adam을 사용하고 β₁=0.9, β₂=0.999, weight decay=0.0, ε=1e−8을 설정해. ImageNet-128은 16-bit mixed precision으로 학습해. warmup은 1e−8에서 peak learning rate로 선형 증가하고, 이후 최종 step까지 1e−8로 선형 감소하도록 설정해.",
+      "학습 데이터의 시간 t sampling, optimizer step 처리, checkpoint 선택 및 random seed는 논문에 충분히 명시되지 않았으므로, 임의의 값으로 논문 설정인 것처럼 간주하지 말고 별도 구현 기록에 남겨.",
+      "likelihood 및 sample 평가 시 dopri5 ODE solver를 사용하고 atol=rtol=1e−5로 설정해. NLL은 uniform dequantization을 사용하며, importance-weighted 추정의 K 값은 재현할 데이터셋·비교 실험에 맞춰 Table 4에서 선택해.",
+      "ImageNet-128 결과 비교 시 논문 본문이 기존 방법과 모델 크기·batch size·iteration 수가 다르다고 언급한 점을 함께 기록해. 같은 계산 조건의 비교로 오해하지 않도록 해."
+    ],
+    "critical_notes": [
+      "이 논문은 여러 데이터셋과 해상도를 다루므로, 단일 설정처럼 취급하면 안 돼. 특히 Table 3의 hyperparameter는 해상도마다 달라.",
+      "표의 batch size는 effective batch size야. GPU별 batch size, gradient accumulation, 분산 학습 설정은 제공되지 않아.",
+      "σ_min은 OT path 정의에 등장하지만 실제 숫자가 명시되지 않아. 경로를 완전히 재현하는 데 중요한 누락이야.",
+      "random seed, 학습 데이터 수, train/test split 세부사항, checkpoint 선택 규칙 및 학습 시간은 논문에서 확인되지 않아.",
+      "GPU 개수는 나와 있지만 GPU 모델·메모리·분산 방식이 빠져 있어. 계산 재현 및 처리량 추정에 한계가 있어.",
+      "논문은 warmup 이후 learning rate가 peak에서 1e−8까지 선형 감소한다고 설명해. scheduler 명칭은 Polynomial Decay이므로, 이름만으로 다른 구현의 polynomial schedule을 임의 적용하지 말고 서술된 구체적 선형 변화를 우선 확인해야 해.",
+      "본문에서 FM-OT가 빠른 수렴 및 효율을 주장하지만, 학습 wall-clock time은 숫자로 제공하지 않아. iteration이나 epoch만으로 실제 소요 시간을 복원할 수 없어.",
+      "Table 2에서 FM w/ OT는 SR3보다 FID·IS가 좋지만 PSNR·SSIM은 낮아. super-resolution 성능을 모든 평가 지표에서 더 좋다고 해석하면 안 돼.",
+      "논문에서 이미지 preprocessing은 명시했지만 추가 data augmentation은 구체적으로 명시하지 않았어. 표준 관행을 논문 설정으로 보충하지 말아야 해."
+    ],
+    "expected_results": "논문 보고값 기준으로 FM w/ OT의 NLL/FID/NFE는 CIFAR-10에서 2.99/6.35/142, ImageNet-32×32에서 3.53/5.02/122, ImageNet-64×64에서 3.31/14.45/138이야. ImageNet-128×128은 NLL 2.90, FID 20.9로 보고돼. 이 값은 논문 결과이지 독립 재현에서 보장되는 목표는 아니야.",
+    "safety_notes": "생물학적·화학적 실험 위험은 없는 계산 실험이야. 대규모 GPU 학습은 전력과 열을 많이 발생시킬 수 있으니 GPU 냉각·전력·장시간 작업 환경을 확인해. 논문도 대규모 deep learning의 에너지 수요를 사회적 고려사항으로 언급해.",
+    "confidence": 0.91,
+    "missing_info": [
+      "random_seed 및 데이터 shuffle seed",
+      "학습 데이터의 정확한 표본 수와 train/validation/test split 비율·목록",
+      "ImageNet-128 OT path의 σ_min 실제 값",
+      "GPU 제조사·모델·메모리 및 distributed training 설정",
+      "학습 wall-clock training_time 및 실행 환경",
+      "정확한 framework 버전, torchdiffeq 버전, 코드 commit 또는 실행 명령",
+      "activation_function과 weight_initialization",
+      "학습 checkpoint 선택·저장 주기·초기화 및 resume 방식",
+      "데이터 augmentation 적용 여부와 세부 설정. center crop/resize 외 추가 augmentation은 확인되지 않음",
+      "pretrained weights 사용 여부 및 fine-tuning 여부",
+      "ImageNet-128의 K 및 평가 데이터 샘플링 세부사항을 포함한 평가 완전 설정",
+      "OT path에서 σ_min 외 세부 구현 선택과 시간 sampling의 실험별 설정"
+    ],
+    "reproducibility_score": 0.62,
+    "_input_coverage": {
+      "mode": "pdf",
+      "status": "provided_pdf",
+      "missing": [],
+      "pdf_sha256": "5eeb39ba516396924aba4787452f9d0abdee88467a4d0c264d9f66cad0c5ee14"
+    }
+  },
+  "screening": {
+    "domain": "ai_ml",
+    "agent_recommended": "neural",
+    "relevance_score": 0.95,
+    "recipe_applicable": true,
+    "deep_dive_applicable": true,
+    "applicability_reason": "Flow Matching을 이용해 Continuous Normalizing Flows를 학습하는 방법과 ImageNet 실험 결과가 제시되어 학습 절차의 재현 및 방법·성능 분석이 가능하지만, 제공된 발췌문만으로 세부 설정은 확인할 수 없습니다.",
+    "key_topics": [
+      "Flow Matching",
+      "Continuous Normalizing Flows",
+      "Gaussian probability paths",
+      "Optimal Transport",
+      "diffusion models",
+      "ImageNet",
+      "ODE solvers"
+    ],
+    "methodology_type": "computational",
+    "summary": "이 논문은 conditional probability paths의 vector field를 회귀하는 simulation-free 방식인 Flow Matching을 제안해 Continuous Normalizing Flows를 학습합니다. ImageNet 실험에서 diffusion-based 방법보다 likelihood와 sample quality가 향상되었으며, Optimal Transport 기반 경로를 통해 학습과 샘플링의 효율성을 높일 수 있다고 보고합니다.",
+    "is_experimental": true,
+    "has_figures": false,
+    "estimated_complexity": "high",
+    "confidence": 0.84
+  },
+  "visual": {
+    "figure_count": 17,
+    "tables_found": 1,
+    "equations_found": 47,
+    "diagram_types": [
+      "graph",
+      "photograph",
+      "schematic",
+      "vector-field plot",
+      "trajectory visualization"
+    ],
+    "quality_summary": "그림은 전반적으로 시각적으로 읽을 수 있고, 생성 이미지와 경로 비교는 내용 파악에 충분해. 다만 Fig. 3은 작고 해상도가 낮아 세부 궤적을 판독하기 어렵고, Fig. 4와 Fig. 5의 일부 축·범례 글씨도 작아 정밀한 값 비교에는 한계가 있어. 표 1–4는 비교 수치와 설정을 읽을 수 있지만, 오차 막대나 신뢰구간·유의성 검정은 제시되지 않아 성능 차이의 통계적 안정성은 그림·표만으로 확인할 수 없어. 학습 곡선은 제한된 epoch 구간에서 대체로 개선되지만 Fig. 5의 일부 곡선은 변동이 크고, 여러 비교에서 반복 실험 결과가 보이지 않아 수렴 및 재현성 판단은 제한적이야. 아울러 논문에는 architecture schematic이 없고, 수식은 번호가 매겨진 식 (1)–(47)을 기준으로 셌어.",
+    "key_findings_from_visuals": [
+      "Fig. 1: ImageNet-128 unconditional 생성 예시가 여러 범주의 장면과 사물을 포함해. 개별 샘플은 대체로 식별 가능하지만, 이 예시만으로 생성 품질이나 다양성을 정량 검증할 수는 없어.",
+      "Fig. 2: diffusion path와 OT path의 vector field 시각화에서 OT 쪽 방향은 시간에 따라 비교적 일정하고, diffusion 쪽은 시간 단계별 모양이 달라 보여. 색은 magnitude를 나타낸다고 설명돼 있지만 정량 눈금은 없어.",
+      "Fig. 3: diffusion 궤적은 휘어지고 OT 궤적은 직선에 가까운 형태로 그려져 있어. 작은 그림이라 세부 궤적의 수치적 비교는 판독 불가야.",
+      "Fig. 4: 2D checkerboard 예시에서 FM w/ OT가 다른 방법보다 checkerboard 패턴을 이른 단계에 형성하는 모습이 보이고, 오른쪽에서는 NFE가 늘수록 패턴이 선명해져. 패널의 작은 글씨와 점 분포는 정밀 판독이 제한돼.",
+      "Table 1: 표시된 수치에서 FM w/ OT는 CIFAR-10에서 NLL 2.99, FID 6.35, NFE 142를 기록해 비교된 ablation 중 NLL·NFE가 가장 낮고, FID도 DDPM 및 FM w/ Diffusion보다 낮아. ImageNet 32×32와 64×64에서도 FM w/ OT 행의 NFE는 각각 122, 138로 표의 해당 비교 모델 중 가장 낮아. 다만 오차 범위나 반복 실험 통계는 없어.",
+      "Fig. 5: ImageNet 64×64의 FID 곡선은 대체로 epoch가 진행되며 낮아지고, FM w/ OT 곡선이 표시된 구간에서 낮은 FID에 도달해. ScoreFlow 등 일부 곡선은 변동이 커 보이며, 반복 실험·오차 막대가 없어 안정성 차이를 확정하기 어려워.",
+      "Fig. 6: 같은 초기 noise에서 생성 경로를 비교한 예시에서 OT 모델은 중간 단계부터 이미지 구조가 드러나고 diffusion 모델은 후반에 더 뚜렷해지는 시각적 차이가 보여. 이는 제시된 샘플 경로의 관찰이며 일반적인 우월성을 단독으로 입증하진 않아.",
+      "Fig. 7: ODE solution error는 NFE 증가에 따라 감소하고, 오른쪽 FID–NFE 그래프에서는 낮은 NFE 구간에서 FM w/ OT가 비교 방법보다 유리한 형태로 표시돼. 그래프의 세부 수치는 작아 일부 판독 불가이며, 결과는 논문 설명대로 ImageNet 32×32 및 지정된 solver 설정에 한정돼.",
+      "Table 2: FM w/ OT의 FID 3.4와 IS 200.8은 SR3의 5.2와 180.1보다 유리하지만, PSNR 24.7 및 SSIM 0.747은 SR3의 26.4 및 0.762보다 낮아. 따라서 본문에서 말한 PSNR·SSIM의 'similar' 여부는 표만으로 입증되지 않고, 실제 표 수치는 FM w/ OT가 두 지표에서 열세임을 보여.",
+      "Table 3: 해상도별 batch size, GPU 수, epoch 및 iteration 등 학습 설정이 제시돼 있어. 다만 ImageNet-128의 비교는 본문에서 모델 크기·batch size·iteration 조건 차이를 함께 언급하므로, 계산량이나 학습 효율의 직접 비교에는 해당 차이를 고려해야 해.",
+      "Table 4: uniform dequantization 표에서 K가 커질수록 제시된 NLL(BPD)이 대체로 감소해. 예를 들어 CIFAR-10의 FM w/ OT는 K=1에서 3.11, K=50에서 2.99야. K가 데이터셋별로 다르고 불확실성 표기가 없어 수치 간 미세한 차이를 통계적으로 해석하긴 어려워.",
+      "Fig. 10: CIFAR-10 학습 중 sampling NFE 그래프에서 score_dif는 초기에 크게 상승한 뒤 감소하고, fm_dif와 fm_ot는 상대적으로 낮은 범위에 머물러. 이 그래프는 sampling cost의 시간 변화에 관한 관찰이며, 축은 로그 눈금으로 표시돼.",
+      "Fig. 11–13: ImageNet 32×32, 64×64, 128×128의 non-curated unconditional 샘플 모음이 제시돼. 다양한 사물·동물·장면이 보이지만 개별 이미지의 일부는 흐릿하거나 형태가 불완전해. 샘플 모음만으로 전체 품질 분포를 판단할 수는 없어.",
+      "Fig. 14–15: 각 사례에서 저해상도 입력과 upsampled 이미지가 나란히 제시돼. 확대 결과에서 세부 질감과 윤곽이 보강되지만, 일부 세부는 입력에 없던 생성 정보일 수 있어 시각 자료만으로 원본 충실도를 확인하기 어려워.",
+      "Fig. 16–17: 동일 초기 noise에서 NFE가 증가하는 샘플 예시가 제시돼. 여러 사례에서 낮은 NFE보다 높은 NFE에서 세부 묘사가 선명해지는 경향이 보이지만, 모든 샘플에서 품질이 단조롭게 개선되는지까지는 확인할 수 없어."
+    ],
+    "_input_coverage": {
+      "mode": "pdf",
+      "status": "provided_pdf",
+      "missing": [],
+      "pdf_sha256": "5eeb39ba516396924aba4787452f9d0abdee88467a4d0c264d9f66cad0c5ee14"
+    }
+  }
+}

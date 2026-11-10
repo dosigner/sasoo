@@ -38,6 +38,91 @@ _QUANT_PATTERN = re.compile(
 )
 _SENTENCE_BREAK = re.compile(r"(?<=[\.\?!])\s+")
 
+VISUAL_SOURCE_VERSION = "visual-source-v3-pdf"
+
+
+def select_visual_source(plan: dict, full_text: str, *, limit: int = 16000) -> dict:
+    """Select referenced source pages, keeping formulas and their local definitions."""
+    request = f"{plan.get('title', '')}\n{plan.get('description', '')}"
+    tables = set(re.findall(r"\bTable\s+(\d+|[IVXLCDM]+)\b", request, re.I))
+    equations: set[str] = set()
+    for refs in re.finditer(r"\b(?:equations?|eqs?\.?)\s*([\d(),\s–−-]+)", request, re.I):
+        for match in re.finditer(r"([0-9]+)(?:\s*[-–−]\s*([0-9]+))?", refs[1]):
+            start = int(match[1]); end = int(match[2] or match[1])
+            equations.update(str(i) for i in range(start, min(end, start + 20) + 1))
+    pages = re.split(r"(?m)^--- Page (\d+) ---\s*$", full_text)
+    source_pages = [(int(pages[i]), pages[i + 1]) for i in range(1, len(pages), 2)]
+    if not source_pages:
+        chunks = []; chunk = ""
+        for block in re.split(r"\n\s*\n", full_text):
+            if chunk and len(chunk) + len(block) > 4000 and chunk.count("$$") % 2 == 0:
+                chunks.append((None, chunk)); chunk = ""
+            chunk += ("\n\n" if chunk else "") + block
+        if chunk:
+            chunks.append((None, chunk))
+        source_pages = chunks
+    terms = set(re.findall(r"[A-Za-z][A-Za-z_]{3,}", request.lower())) - {
+        "table", "equation", "equations", "figure", "section", "with", "from", "this", "that",
+    }
+    caption = lambda n: rf"\bTable\s+{n}\s*(?::|\.|\(continued\)|\s+(?-i:[A-Z]{2}))"
+    tag = lambda n: rf"\\tag\{{{n}\}}|(?m:^.*(?:\$|=).*\({n}\)\s*$)"
+    required: set[int] = set()
+    neighbors: set[int] = set()
+    ranked = []
+    for index, (page, text) in enumerate(source_pages):
+        refs = sum(bool(re.search(caption(n), text, re.I)) for n in tables)
+        tags = sum(bool(re.search(tag(n), text)) for n in equations)
+        if refs or tags:
+            required.add(index)
+            if refs and index and re.search(r"(?m)^\|[^\n]*\s*$", source_pages[index - 1][1]):
+                required.add(index - 1)
+            # Keep continued rows and definitions on the next page.
+            if index + 1 < len(source_pages) and (tags or re.match(r"\s*\|", source_pages[index + 1][1])):
+                (required if refs else neighbors).add(index + 1)
+        score = refs * 100 + tags * 80 + sum(term in text.lower() for term in terms)
+        if score:
+            ranked.append((score, index))
+    chosen = sorted(required) + sorted(neighbors - required) + [i for _, i in sorted(ranked, reverse=True) if i not in required | neighbors][:4]
+    if not chosen and not tables and not equations:
+        chosen = list(range(min(4, len(source_pages))))
+    selected = []; size = 0; omitted = []
+    for index in chosen:
+        page, text = source_pages[index]
+        label = f"PDF page {page} (extracted label; position unverified)" if page else "Text excerpt (PDF page unverified)"
+        excerpt = f"--- {label} ---\n{text.strip()}"
+        if size + len(excerpt) + 2 > limit:
+            if index in required:
+                omitted.append(page)
+            continue  # Never cut a formula or a row in the middle.
+        selected.append(excerpt); size += len(excerpt) + 2
+    context = "\n\n".join(selected)
+    missing = []
+    for n in sorted(tables):
+        table_blocks = []
+        for i, (_, text) in enumerate(source_pages):
+            match = re.search(caption(n), text, re.I)
+            if not match or text.strip() not in context:
+                continue
+            preceding = re.search(r"(?m)((?:^\|[^\n]*\n)+)\s*$", text[:match.start()])
+            if preceding:
+                table_blocks.append(preceding[1])
+            elif i and re.match(caption(n), text.strip(), re.I) and source_pages[i - 1][1].strip() in context:
+                table_blocks.append(source_pages[i - 1][1])
+            table_blocks.append(re.split(r"\bTable\s+\d+\s*[:.]", text[match.end():], maxsplit=1, flags=re.I)[0])
+            if i + 1 < len(source_pages):
+                following = source_pages[i + 1][1]
+                if re.match(r"\s*\|", following) and following.strip() in context:
+                    table_blocks.append(following)
+        if not table_blocks or not re.search(r"(?m)^\|", "\n".join(table_blocks)):
+            missing.append(n)
+    missing_equations = sorted(n for n in equations if not re.search(tag(n), context))
+    return {"version": VISUAL_SOURCE_VERSION, "text": context,
+            "signature": source_signature(context), "missing_tables": missing,
+            "missing_equations": missing_equations, "omitted_required_pages": omitted,
+            "transcription_verified": False,
+            "status": "missing_table_evidence" if missing else "incomplete_evidence" if missing_equations or omitted
+            else "selected_text" if context else "unverified"}
+
 
 class InputCoverage(TypedDict):
     mode: Literal["pdf", "text"]
@@ -72,7 +157,7 @@ class CachedPhaseResult:
     model_used: str
     tokens_in: int
     tokens_out: int
-    cost_usd: float
+    cost_usd: float | None
     input_hash: Optional[str]
     # 캐시 소스 행의 analysis_results.id. Evidence 백필·재검증이 LLM 재호출 없이
     # 이 id로 이루어진다(스펙 §결정 4). 조회 실패 시 0.
@@ -137,6 +222,11 @@ async def find_cached_phase_result(
     result_data = parse_result_json(row["result"])
     if isinstance(result_data, dict) and ("_parse_error" in result_data or "error" in result_data):
         return None  # 실패 결과는 캐시로 재사용하지 않는다 — 새 LLM 호출로 대체
+    if phase == "citation":
+        from services.analysis_completion import check_stage_output
+
+        if check_stage_output("citation", row)["status"] != "completed":
+            return None
 
     return CachedPhaseResult(
         result_text=row["result"],
@@ -144,7 +234,7 @@ async def find_cached_phase_result(
         model_used=row.get("model_used") or "",
         tokens_in=row.get("tokens_in") or 0,
         tokens_out=row.get("tokens_out") or 0,
-        cost_usd=row.get("cost_usd") or 0.0,
+        cost_usd=row.get("cost_usd"),
         input_hash=row.get("input_hash"),
         result_id=int(row.get("id") or 0),
     )
@@ -192,6 +282,9 @@ def load_or_build_document_context(
     if not force:
         cached = _read_context(context_path)
         if _context_is_current(cached, pdf_signature=pdf_signature, parser_version=parser_version):
+            cached["phase_inputs"]["citation_references"] = _SECTION_SPLITTER.get_references_text(
+                {**cached["sections"], "full_text": str(cached.get("full_text") or manifest.get("full_text") or "")}
+            )
             return cached
 
     full_text = str(manifest.get("full_text") or "").strip()

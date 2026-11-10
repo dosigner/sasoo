@@ -80,11 +80,13 @@ class DocumentContextTests(unittest.TestCase):
                 sidecar_path = paper_dir / DOCUMENT_CONTEXT_FILENAME
                 cached = json.loads(sidecar_path.read_text(encoding="utf-8"))
                 cached["sentinel"] = "reuse-hit"
+                cached["phase_inputs"]["citation_references"] = "stale reference input"
                 sidecar_path.write_text(json.dumps(cached, ensure_ascii=False), encoding="utf-8")
 
                 second = load_or_build_document_context(paper_dir)
 
             self.assertEqual(second["sentinel"], "reuse-hit")
+            self.assertEqual(second["phase_inputs"]["citation_references"], "")
 
     def test_rebuilds_when_builder_version_changes(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -65,7 +65,7 @@ export const S = {
   levels: {
     elementary: {
       label: '초등학생',
-      preview: '전문용어 없이 일상 비유로 풀어 쓰고, 수식은 말로 설명해요.',
+      preview: '꼭 필요한 영어 용어에 쉬운 한국어 뜻과 일상 비유를 붙이고, 수식은 말로 설명해요.',
     },
     middle: {
       label: '중학생',
@@ -238,9 +238,9 @@ export const S = {
       tablesOnly: (tableCount: number) => `표 ${tableCount}개를 추출했어요. 그림은 찾지 못했어요.`,
       none: '그림과 표를 추출하지 못해 텍스트 분석만으로 진행했어요.',
       figureTabCount: (figureCount: number) => `그림 ${figureCount}개를 추출했어요.`,
-      figureTabNone: '이 논문에서는 그림을 찾지 못했어요.',
+      figureTabNone: '추출한 그림이 없어요. 원문 전체의 부재를 뜻하지 않아요.',
       tableTabCount: (tableCount: number) => `표 ${tableCount}개를 복구했어요.`,
-      tableTabNone: '이 논문에서는 표를 찾지 못했어요.',
+      tableTabNone: '추출한 표가 없어요. 원문 전체의 부재를 뜻하지 않아요.',
     },
     analysisConfirm: {
       titleFirst: '분석을 시작할까요?',
@@ -264,9 +264,9 @@ export const S = {
   readingGuide: {
     title: '읽기 안내',
     emptyTitle: '아직 읽기 안내가 없어요',
-    intro: '논문의 기호와 배경 개념, 각 섹션의 역할을 정리해요.',
-    // 비용은 실측이 아니라 채팅 1회 기준의 정직한 비교로만 말한다.
-    costNotice: '사수 답변 한 번과 비슷한 비용이 들어요. 한 번 만들면 이 기기에 저장돼요.',
+    intro: '논문의 기호와 배경 개념, 각 섹션의 역할을 정리하고 영어 용어 사전도 함께 만들어요.',
+    // Generation is paid; saved lookups do not call the model.
+    costNotice: '생성에는 AI 사용 비용이 들어요. 읽기 안내와 용어 사전을 함께 저장하고, 다시 열거나 뜻을 볼 때는 추가 호출하지 않아요.',
     generate: '읽기 안내 만들기',
     confirmTitle: '읽기 안내를 만들까요?',
     confirmCta: '만들기',
@@ -276,7 +276,7 @@ export const S = {
     cancel: '취소',
     regenerate: '다시 만들기',
     regenerateTitle: '읽기 안내를 다시 만들까요?',
-    regenerateNotice: '지금 저장된 안내는 새로 만든 안내로 대체돼요.',
+    regenerateNotice: '완료되면 저장된 읽기 안내와 용어 사전을 새 결과로 바꿔요. 실패하거나 취소하면 기존 결과를 유지해요.',
     metaLine: (createdAt: string, level: string | null, cost: string | null) =>
       [`${createdAt} 생성`, level ? `설명 수준 ${level}` : null, cost]
         .filter(Boolean)
@@ -385,8 +385,8 @@ export const S = {
     searchPlaceholder: '제목, 저자, DOI, 키워드 검색',
     filters: '분류 도구',
     clearAll: '전체 해제',
-    domain: '분야',
-    allDomains: '모든 분야',
+    domain: '분석 담당',
+    allDomains: '모든 담당',
     year: '연도',
     anyYear: '모든 연도',
     status: '상태',
@@ -556,7 +556,7 @@ export const S = {
     checking: '실행을 점검하고 있어요.',
     passed: '실행 점검: 오류 없이 실행됐어요. 수치는 원문 기준으로 검산하지 않았어요.',
     passedWithInputs: (n: number) =>
-      `실행 점검: 입력 ${n}개를 범위 끝까지 움직여도 오류 없이 출력이 바뀌었어요. 수치는 원문 기준으로 검산하지 않았어요.`,
+      `실행 점검: 입력 ${n}개의 유효값, 빈 값과 적용 가능한 범위 오류를 개별 점검했어요. 상수 출력은 명시된 조건에서 허용해요. 수치는 원문 기준으로 검산하지 않았어요.`,
     failed: '실행 점검에서 오류가 나왔어요. 계산 결과를 믿기 전에 다시 생성해 주세요.',
     timeout: '응답이 없어 실행을 멈췄어요. 계산이 끝나지 않는 코드일 수 있어요.',
     rerun: '다시 실행',
@@ -964,6 +964,7 @@ export const S = {
     statusReady: '준비됨',
     statusPending: '대기',
     readyHint: '논문 맥락으로 바로 질문해요',
+    readingHint: '분석 전에도 질문할 수 있어요. 논문의 주제나 낯선 용어부터 함께 읽어봐요.',
     pendingHint: 'PDF 텍스트를 읽고 있어요',
   },
 

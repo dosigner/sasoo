@@ -29,7 +29,7 @@ export interface VizExportResult {
 // Standalone page around the sandboxed frame. It shows the same execution check
 // as the app: only messages from its own frame with its nonce count, and a frame
 // that never answers is removed so a runaway loop stops.
-function exportedHtmlPage(code: string): string {
+export function exportedHtmlPage(code: string): string {
   const nonce = crypto.randomUUID();
   const frameDoc = htmlVisualizationDocument(code, nonce)
     .replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');

@@ -26,8 +26,8 @@ let hook: Hook;
 let root: ReturnType<typeof createRoot>;
 let node: HTMLDivElement;
 
-function Harness() {
-  hook = useDiscussion('7', true);
+function Harness({ paperId = "7" }: { paperId?: string }) {
+  hook = useDiscussion(paperId, true);
   return null;
 }
 
@@ -101,3 +101,46 @@ it('counts only conversation before the last reset as hidden', () => {
   expect(hasActiveContext(interruptedOnly)).toBe(false);
   expect(hasActiveContext([...interruptedOnly, itemFromRow(row(8, 'user'))])).toBe(true);
 });
+
+it('carries the selection separately and does not call the model on mount', async () => {
+  expect(api.chatWithAgent).not.toHaveBeenCalled();
+  const selected = { text: 'Raw selected sentence', page: 2, end_page: 3 };
+  await act(async () => hook.send('Explain this', selected));
+  expect(api.chatWithAgent.mock.calls[0][6].selection).toEqual(selected);
+});
+
+it('ignores late stream metadata and queued questions from the previous paper', async () => {
+  let finish!: () => void;
+  let lateMeta!: () => void;
+  api.chatWithAgent.mockImplementation((_id, _msg, _history, onToken, onDone, _signal, options) => new Promise<void>((resolve) => {
+    finish = resolve;
+    lateMeta = () => {
+      options.onMeta({ reset: row(99, 'reset') });
+      onToken('OLD PAPER');
+      onDone({ context_tokens: 99999 });
+    };
+  }));
+  await act(async () => hook.send('Old question'));
+  await act(async () => hook.send('Old queued question'));
+  api.getDiscussion.mockResolvedValue({ messages: [], context: { context_tokens: 10, sources: [], budget: 260000 } });
+  await act(async () => root.render(<Harness paperId="8" />));
+  await act(async () => { lateMeta(); finish(); });
+  expect(hook.items).toEqual([]);
+  expect(hook.context?.context_tokens).toBe(10);
+  expect(api.chatWithAgent).toHaveBeenCalledOnce();
+});
+
+for (const action of ['reset', 'remove'] as const) {
+  it(`ignores a late ${action} response after switching papers`, async () => {
+    let finish!: (value?: unknown) => void;
+    const deferred = new Promise((resolve) => { finish = resolve; });
+    (action === 'reset' ? api.resetDiscussion : api.deleteDiscussion).mockReturnValue(deferred);
+    let pending!: Promise<void>;
+    await act(async () => { pending = hook[action](); });
+    api.getDiscussion.mockResolvedValue({ messages: [row(22, 'user', { content: 'NEW PAPER' })], context: { context_tokens: 25 } });
+    await act(async () => root.render(<Harness paperId="8" />));
+    await act(async () => { finish(action === 'reset' ? row(99, 'reset') : undefined); await pending; });
+    expect(hook.items.map((item) => item.content)).toEqual(['NEW PAPER']);
+    expect(hook.context?.context_tokens).toBe(25);
+  });
+}

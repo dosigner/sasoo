@@ -107,12 +107,19 @@ async def _plan_description(viz_target: dict, *, llm_provider: str = "gemini") -
         f"Title: {viz_target.get('title', '')}\n"
         f"Category: {viz_target.get('category', 'conceptual_illustration')}\n"
         f"Purpose: {viz_target.get('diagram_type', 'structure')}\n"
-        f"Context:\n{viz_target.get('description', '')[:6000]}\n\n"
+        f"Layout request:\n{viz_target.get('description', '')[:6000]}\n\n"
+        f"Source facts with locations (preserve equations, values and definitions):\n{viz_target.get('source_context', '')}\n\n"
+        "When the original PDF is supplied, it is authoritative. Extracted text and page labels can contain losses. "
+        "Check equations and table values in the original PDF.\n"
+        "Source facts override conflicting layout claims. A flow map is not a probability density. "
+        "Keep verified text equations in the app's KaTeX view when exact typography is needed. "
+        "If equations must be in the image, preserve their symbols and evaluation positions.\n"
         "Write the final image description now."
     )
     _choice = resolve_model("viz_image_plan", llm_provider)
     result = await call_interaction(
-        prompt,
+        [viz_target["source_pdf_part"], {"type": "text", "text": prompt}]
+        if llm_provider == "openai" and viz_target.get("source_pdf_part") else prompt,
         lane="pipeline",
         model=_choice.model,
         system_instruction=(
@@ -123,6 +130,14 @@ async def _plan_description(viz_target: dict, *, llm_provider: str = "gemini") -
         store=False,
     )
     return str(result.get("text", "")).strip(), usage_record("describe", _choice.model, result)
+
+
+def equation_role_conflicts(description: str, source: str) -> list[str]:
+    """Catch an explicit density/flow-map swap; this is not a full equation proof."""
+    source_has_density = re.search(r"p_?t.*?=\s*\\mathcal\{N\}", source)
+    source_has_map = "\\psi_t" in source or "ψ_t" in source
+    swapped = re.search(r"(?:\\psi|ψ|psi)[^=\n]{0,60}=\s*(?:\\mathcal\{N\}|𝒩|N\s*\(|Gaussian)", description, re.I)
+    return ["flow map was replaced by a Gaussian density"] if source_has_density and source_has_map and swapped else []
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +248,26 @@ def _safe_filename(title: str) -> str:
     return (safe or "illustration")[:80]
 
 
+_render_jobs: set[asyncio.Task] = set()
+
+
+async def _render_image(provider: ImageProvider, description: str) -> bytes:
+    semaphore = RENDER_SEM
+    await semaphore.acquire()
+    job = asyncio.create_task(run_pipeline_blocking(provider.generate, description))
+    _render_jobs.add(job)
+
+    def finished(task):
+        _render_jobs.discard(task)
+        semaphore.release()
+        if not task.cancelled():
+            task.exception()  # Consume a late failure after the caller timed out.
+
+    job.add_done_callback(finished)
+    # Cancelling an await cannot stop the provider thread or free its real slot.
+    return await asyncio.wait_for(asyncio.shield(job), timeout=RENDER_TIMEOUT_S)
+
+
 async def generate_illustration(
     viz_target: dict,
     paper_dir: str,
@@ -257,19 +292,17 @@ async def generate_illustration(
         return FigureGenResult(None, None, round(time.monotonic() - start, 1), None, f"planner: {exc}", failed)
 
     requests = [described]
+    conflicts = equation_role_conflicts(description, str(viz_target.get("source_context") or ""))
+    if conflicts:
+        return FigureGenResult(None, None, round(time.monotonic() - start, 1), records_cost(requests),
+                               "; ".join(conflicts), requests)
     errors: list[str] = []
     for provider in build_providers(preferred_provider, quality, image_model):
         if not provider.available():
             logger.info("figure_gen: provider %s unavailable (no key), skipping", provider.name)
             continue
         try:
-            # The slot is taken outside wait_for so time spent queueing for a
-            # render is not charged against the provider's own timeout.
-            async with RENDER_SEM:
-                png = await asyncio.wait_for(
-                    run_pipeline_blocking(provider.generate, description),
-                    timeout=RENDER_TIMEOUT_S,
-                )
+            png = await _render_image(provider, description)
         except asyncio.TimeoutError:
             # The provider may still bill a request we stopped waiting for.
             requests.append(usage_record("render", provider.cost_key.split(":", 1)[0]))

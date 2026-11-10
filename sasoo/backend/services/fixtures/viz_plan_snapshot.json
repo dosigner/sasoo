@@ -1,0 +1,146 @@
+{
+  "normalized": [
+    {
+      "title": "Structure",
+      "purpose": "structure",
+      "importance": 60,
+      "difficulty": 70,
+      "tool": "paperbanana",
+      "block": "concept",
+      "diagram_type": "structure",
+      "image_model": "gpt-image-2.5-sunburst"
+    },
+    {
+      "title": "Process",
+      "purpose": "process",
+      "importance": 59,
+      "difficulty": 70,
+      "tool": "paperbanana",
+      "block": "method",
+      "diagram_type": "process",
+      "image_model": "gpt-image-2.5-flare"
+    },
+    {
+      "title": "Extra high",
+      "purpose": "additional",
+      "importance": 90,
+      "category": "comparison",
+      "tool": "paperbanana",
+      "block": "result",
+      "diagram_type": "additional",
+      "image_model": "gpt-image-2.5-flare",
+      "difficulty": null
+    },
+    {
+      "title": "Extra boundary",
+      "purpose": "additional",
+      "importance": 60,
+      "tool": "paperbanana",
+      "block": "method",
+      "diagram_type": "additional",
+      "image_model": "gpt-image-2.5-flare",
+      "difficulty": null
+    },
+    {
+      "title": "Sequence",
+      "diagram_type": "sequence",
+      "importance": 10,
+      "tool": "mermaid",
+      "block": "method"
+    },
+    {
+      "title": "High",
+      "diagram_type": "flowchart",
+      "importance": 61,
+      "tool": "mermaid",
+      "block": "method"
+    },
+    {
+      "title": "Boundary",
+      "diagram_type": "flowchart",
+      "importance": 60,
+      "tool": "mermaid",
+      "block": "method"
+    },
+    {
+      "applicable": true,
+      "title": "Calculator",
+      "tool": "html",
+      "block": "result",
+      "diagram_type": "interactive",
+      "category": "parameter_relationship"
+    }
+  ],
+  "gated": [
+    {
+      "title": "Structure",
+      "purpose": "structure",
+      "importance": 60,
+      "difficulty": 70,
+      "tool": "paperbanana",
+      "block": "concept",
+      "diagram_type": "structure",
+      "image_model": "gpt-image-2.5-sunburst"
+    },
+    {
+      "title": "Process",
+      "purpose": "process",
+      "importance": 59,
+      "difficulty": 70,
+      "tool": "paperbanana",
+      "block": "method",
+      "diagram_type": "process",
+      "image_model": "gpt-image-2.5-flare"
+    },
+    {
+      "title": "Extra high",
+      "purpose": "additional",
+      "importance": 90,
+      "category": "comparison",
+      "tool": "paperbanana",
+      "block": "result",
+      "diagram_type": "additional",
+      "image_model": "gpt-image-2.5-flare",
+      "difficulty": null
+    },
+    {
+      "title": "Extra boundary",
+      "purpose": "additional",
+      "importance": 60,
+      "tool": "paperbanana",
+      "block": "method",
+      "diagram_type": "additional",
+      "image_model": "gpt-image-2.5-flare",
+      "difficulty": null
+    },
+    {
+      "title": "Sequence",
+      "diagram_type": "sequence",
+      "importance": 10,
+      "tool": "mermaid",
+      "block": "method"
+    },
+    {
+      "title": "High",
+      "diagram_type": "flowchart",
+      "importance": 61,
+      "tool": "mermaid",
+      "block": "method"
+    },
+    {
+      "title": "Boundary",
+      "diagram_type": "flowchart",
+      "importance": 60,
+      "tool": "mermaid",
+      "block": "method"
+    },
+    {
+      "applicable": true,
+      "title": "Calculator",
+      "tool": "html",
+      "block": "result",
+      "diagram_type": "interactive",
+      "category": "parameter_relationship"
+    }
+  ]
+}

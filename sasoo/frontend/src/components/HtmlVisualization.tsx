@@ -8,15 +8,7 @@ export const HTML_VISUALIZATION_CSP = "default-src 'none'; script-src 'unsafe-in
 export const HTML_CHECK_TYPE = 'sasoo-html-check';
 export const HTML_CHECK_TIMEOUT_MS = 10000;
 
-// Execution check that runs inside the sandboxed frame before the generated code.
-// It reports script errors, failed console.assert, NaN/Infinity in <output> (or
-// [data-output]) elements and inputs that change nothing, after moving every
-// range/number input through its range (and past it for number inputs). Each step
-// waits 80 ms so debounced or animated updates are seen. Pages
-// without output elements are not scanned for NaN: prose may name it. It removes its own element so the
-// generated code cannot read the nonce. This finds accidental faults only: a
-// hostile page could fake a pass. The sandbox and CSP are the security boundary,
-// and nothing here compares results with the paper.
+// Probe each input separately. This checks execution, not scientific correctness.
 function checkScript(nonce: string): string {
   return `<script>(()=>{const N=${JSON.stringify(nonce)},post=parent.postMessage.bind(parent),issues=[];let sent=false,probed=0;
 const send=()=>{sent=true;post({type:${JSON.stringify(HTML_CHECK_TYPE)},nonce:N,status:issues.length?"failed":"passed",issues:issues.slice(),probed},"*")};
@@ -24,21 +16,43 @@ const add=m=>{m=String(m).slice(0,200);if(issues.includes(m)||issues.length>=5)r
 addEventListener("error",e=>add(e.message||"script error"));
 addEventListener("unhandledrejection",e=>add("unhandled rejection: "+((e.reason&&e.reason.message)||e.reason)));
 const assert=console.assert.bind(console);console.assert=(ok,...a)=>{if(!ok)add("assertion failed"+(a.length?": "+a.join(" "):""));assert(ok,...a)};
-const shown=()=>[...document.querySelectorAll("output,[data-output]")].map(e=>e.textContent).join(" ");
+const outputs=()=>[...document.querySelectorAll("output,[data-output]")];
+const shown=()=>outputs().map(e=>e.textContent).join(" ");
+const state=()=>results().map(e=>e.textContent).join(" ")+[...document.querySelectorAll("svg,canvas")].map(e=>e.tagName==="CANVAS"?e.toDataURL():e.outerHTML).join("");
 const bad=()=>/(^|[^A-Za-z0-9_.])(NaN|-?Infinity)(?![A-Za-z0-9_])/.test(shown());
+const results=()=>outputs().filter(e=>!/assert|status|display/i.test(e.id));
+const rejected=()=>results().length>0&&results().every(e=>!/[0-9]/.test(e.textContent||""))&&[...document.querySelectorAll('[role="alert"],.error,[id$="error"]')].some(e=>e.textContent.trim()&&getComputedStyle(e).display!=="none");
 const settle=()=>new Promise(r=>setTimeout(r,80));
 const fire=el=>{el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}))};
-addEventListener("load",async()=>{await settle();if(bad())add("NaN or Infinity is shown");const before=document.body.innerHTML;let changed=false;
-for(const el of document.querySelectorAll("input[type=range],input[type=number]")){const v0=el.value,lo=parseFloat(el.min),hi=parseFloat(el.max);
-const vals=[lo,hi,(lo+hi)/2].filter(Number.isFinite);if(el.type==="number"&&Number.isFinite(lo)&&Number.isFinite(hi))vals.push(lo-(hi-lo||1),hi+(hi-lo||1));if(!vals.length)vals.push(Number(v0)+1);
-for(const v of vals){el.value=String(v);fire(el);await settle();if(bad())add("NaN or Infinity after "+(el.id||el.name||"input")+"="+v);if(document.body.innerHTML!==before)changed=true}
-el.value=v0;fire(el);await settle();probed++}
-if(probed&&!changed)add("changing the inputs updated no output");send()});
+const controls=()=>[...document.querySelectorAll("input[type=range],input[type=number],input[type=text],input:not([type]),textarea,select")];
+const bounds=el=>[el.min===""?NaN:Number(el.min),el.max===""?NaN:Number(el.max)];
+const optional=el=>el.hasAttribute("data-default")&&el.dataset.default.trim()!==""&&(el.tagName==="SELECT"?[...el.options].some(o=>!o.disabled&&o.value===el.dataset.default):Number.isFinite(Number(el.dataset.default)));
+addEventListener("load",async()=>{try{await settle();if(bad())add("NaN or Infinity is shown");
+const initial=controls().map(el=>[el,el.value]);
+for(const [el,v0] of initial){const [lo,hi]=bounds(el),name=el.id||el.name||"input",before=state();let changed=false;
+let vals=[...new Set([lo,hi,(lo+hi)/2,Number(v0),Number(v0)+1])].filter(v=>Number.isFinite(v)&&(!Number.isFinite(lo)||v>=lo)&&(!Number.isFinite(hi)||v<=hi));if(el.tagName==="SELECT")vals=[...el.options].filter(o=>!o.disabled&&o.value!=="").map(o=>o.value);else if(el.type==="text"||el.tagName==="TEXTAREA")vals=[v0,v0.replace(/-?\\d+(?:\\.\\d+)?/,n=>String(Number(n)+1))];
+for(const v of vals){el.value=String(v);fire(el);await settle();if(bad())add("NaN or Infinity after "+name);if(!rejected()&&state()!==before)changed=true}
+if(!changed&&!el.dataset.checkConstant)add(name+": no output change or declared constant condition");
+if(el.type!=="range"){
+const invalid=[""];if((el.type==="text"||el.tagName==="TEXTAREA")&&v0.includes(","))invalid.push(v0+",0",v0+",");if(Number.isFinite(lo))invalid.push(String(lo-(hi-lo||1)));if(Number.isFinite(hi))invalid.push(String(hi+(hi-lo||1)));
+for(const v of invalid){let defaultState;if(v===""&&optional(el)){el.value=el.dataset.default;fire(el);await settle();defaultState=state()}el.value=v;fire(el);await settle();if(v===""&&optional(el)){if(bad()||rejected()||state()!==defaultState)add(name+": optional default failed")}else if(!rejected())add(name+": invalid input accepted or stale output ("+v+")")}}
+for(const [control,value] of initial)control.value=value;for(const [control] of initial)fire(control);await settle();probed++}
+send();
+// Stop invalid user edits before legacy generated handlers can coerce an empty value to zero.
+const warning=document.createElement("p");warning.setAttribute("role","alert");warning.style.color="#b42318";document.body.append(warning);
+const guard=e=>{const el=e.target;if(!controls().includes(el))return;
+if(el.type==="number"&&el.value.trim()===""&&optional(el))el.value=el.dataset.default;
+const invalid=controls().filter(c=>c.type==="number").filter(c=>{const [lo,hi]=bounds(c),v=c.value.trim()===""?NaN:Number(c.value);return !Number.isFinite(v)||(Number.isFinite(lo)&&v<lo)||(Number.isFinite(hi)&&v>hi)});
+controls().forEach(c=>{if(invalid.includes(c))c.setAttribute("aria-invalid","true");else c.removeAttribute("aria-invalid")});
+if(invalid.length){e.stopImmediatePropagation();outputs().forEach(o=>o.textContent="—");document.querySelectorAll("svg,canvas").forEach(o=>o.style.visibility="hidden");warning.textContent="필수 숫자와 유효 범위를 확인하세요. 이전 계산 결과는 무효입니다."}
+else{warning.textContent="";document.querySelectorAll("svg,canvas").forEach(o=>o.style.visibility="")} };
+document.addEventListener("input",guard,true);document.addEventListener("change",guard,true);
+}catch(e){add("input probe failed: "+e.message);send()}});
 document.currentScript.remove()})()</script>`;
 }
 
 export function htmlVisualizationDocument(code: string, nonce: string): string {
-  return `<!doctype html><html lang="ko"><head><meta http-equiv="Content-Security-Policy" content="${HTML_VISUALIZATION_CSP}"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0;padding:16px;font-family:Arial,sans-serif;color:#172033;background:#fff}*{box-sizing:border-box}svg{max-width:100%}input,select,button{font:inherit}</style>${checkScript(nonce)}</head><body>${code}</body></html>`;
+  return `<!doctype html><html lang="ko"><head><meta http-equiv="Content-Security-Policy" content="${HTML_VISUALIZATION_CSP}"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0;padding:16px;font-family:Arial,sans-serif;color:#172033;background:#fff}*{box-sizing:border-box;min-width:0}svg{max-width:100%}input,select,button{font:inherit}</style>${checkScript(nonce)}</head><body>${code}</body></html>`;
 }
 
 /** The check result in a message, or null unless it comes from this frame with this nonce. */

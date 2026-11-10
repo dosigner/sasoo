@@ -13,6 +13,14 @@ export interface GlossaryEntry {
   page: number | null;
 }
 
+export interface TerminologyEntry {
+  term: string;
+  korean: string;
+  definition: string;
+  scope: 'field' | 'paper' | 'legacy';
+  page: number | null;
+}
+
 export interface PrerequisiteEntry {
   name: string;
   primer: string;
@@ -27,6 +35,7 @@ export interface GuideSection {
 
 export interface ReadingGuide {
   glossary: GlossaryEntry[];
+  terminology: TerminologyEntry[];
   prerequisites: PrerequisiteEntry[];
   sections: GuideSection[];
   raw: string;
@@ -35,6 +44,7 @@ export interface ReadingGuide {
 
 export const GUIDE_HEADINGS = {
   glossary: '표기 사전',
+  terminology: '용어 사전',
   prerequisites: '선행 지식',
   sections: '섹션별 직관',
 } as const;
@@ -53,7 +63,7 @@ function levelLabel(level: string | null | undefined): string | null {
  * 안내 생성 프롬프트. 서버가 논문 전문을 붙이므로 본문은 넣지 않는다.
  * 출력 형식을 못 박아야 `parseReadingGuide`가 구조로 되돌릴 수 있다.
  */
-export function buildReadingGuidePrompt(level: string | null | undefined): string {
+export function buildReadingGuidePrompt(level: string | null | undefined, field?: string | null): string {
   const label = levelLabel(level);
   const levelLine = label
     ? `읽는 사람은 ${label}이에요. 용어와 배경 설명을 그 눈높이에 맞춰 주세요.`
@@ -64,7 +74,7 @@ export function buildReadingGuidePrompt(level: string | null | undefined): strin
     levelLine,
     '',
     '규칙',
-    `1. 아래 세 개의 2단계 헤딩만 이 순서로 쓰고, 머리말이나 맺음말, 다른 헤딩은 쓰지 마세요.`,
+    `1. 아래 네 개의 2단계 헤딩만 이 순서로 쓰고, 머리말이나 맺음말, 다른 헤딩은 쓰지 마세요.`,
     '2. 수식 유도는 쓰지 마세요. 무엇을 하려는지와 왜 그렇게 하는지, 직관만 씁니다.',
     '3. 페이지는 논문에 적힌 번호를 쓰고, 확실하지 않으면 괄호를 통째로 빼세요.',
     '4. 해요체로 쓰고, 줄임표나 화살표 기호는 쓰지 마세요.',
@@ -73,6 +83,19 @@ export function buildReadingGuidePrompt(level: string | null | undefined): strin
     '논문에 나오는 기호와 약어를 10개에서 80개 사이로, 처음 정의된 순서대로 적어 주세요.',
     '각 항목은 다음 형식의 한 줄로만 씁니다.',
     '- **기호** (p.3): 뜻을 한 문장으로',
+    '',
+    `## ${GUIDE_HEADINGS.terminology}`,
+    field ? `학술 분야 참고: ${JSON.stringify(field)}. 논문의 실제 내용과 정의를 우선하세요.` : '논문의 실제 내용을 보고 학술 분야를 정하세요.',
+    '해당 분야의 기본 전문용어와 이 논문의 핵심 전문용어를 합쳐 50~100개 이내로 정리하세요.',
+    '확실한 용어가 적으면 적게 쓰세요. 수를 채우려고 용어나 정의를 만들지 마세요.',
+    '핵심 개념, 방법, 모델, 장치와 재료명을 고르고 영어 표기를 유지하세요. 일반 서술어는 제외하세요.',
+    '약어는 논문에서 뜻이 확인될 때만 Full Term (ABC)처럼 함께 적으세요.',
+    '분야 기본 정의와 이 논문의 정의가 다르면 논문의 뜻을 우선하세요. 설명은 한국어 한 문장으로 쓰세요.',
+    '논문에서 정의나 용례를 확인한 항목은 논문, 일반 배경지식은 분야 기본으로 구분하세요.',
+    '페이지는 논문에서 확인한 경우에만 적고 분야 기본 항목에는 붙이지 마세요.',
+    '각 항목은 아래 형식의 한 줄로 쓰세요. 세 칸은 |로 나누며 설명 안에는 |와 수식을 쓰지 마세요.',
+    '- **English term** (p.3): 한국어 용어명 | 뜻을 설명하는 한 문장 | 논문',
+    '- **English term**: 한국어 용어명 | 뜻을 설명하는 한 문장 | 분야 기본',
     '',
     `## ${GUIDE_HEADINGS.prerequisites}`,
     '논문이 설명 없이 전제하는 개념을 3개에서 6개 사이로 골라 주세요.',
@@ -132,8 +155,9 @@ function normalizeHeading(text: string): string {
   return text.replace(/[*_`#:：.]/g, '').replace(/\s+/g, '');
 }
 
-const HEADING_KEYS: Record<string, 'glossary' | 'prerequisites' | 'sections'> = {
+const HEADING_KEYS: Record<string, 'glossary' | 'terminology' | 'prerequisites' | 'sections'> = {
   [normalizeHeading(GUIDE_HEADINGS.glossary)]: 'glossary',
+  [normalizeHeading(GUIDE_HEADINGS.terminology)]: 'terminology',
   [normalizeHeading(GUIDE_HEADINGS.prerequisites)]: 'prerequisites',
   [normalizeHeading(GUIDE_HEADINGS.sections)]: 'sections',
 };
@@ -199,8 +223,9 @@ function parsePrerequisiteLine(line: string): PrerequisiteEntry | null {
 
 export function parseReadingGuide(markdown: string): ReadingGuide {
   const raw = markdown ?? '';
-  const buckets: Record<'glossary' | 'prerequisites' | 'sections', string[]> = {
+  const buckets: Record<'glossary' | 'terminology' | 'prerequisites' | 'sections', string[]> = {
     glossary: [],
+    terminology: [],
     prerequisites: [],
     sections: [],
   };
@@ -225,6 +250,16 @@ export function parseReadingGuide(markdown: string): ReadingGuide {
     .map(parseGlossaryLine)
     .filter((entry): entry is GlossaryEntry => entry !== null);
 
+  const terminology: TerminologyEntry[] = [];
+  for (const line of buckets.terminology) {
+    const entry = parseGlossaryLine(line);
+    if (!entry) continue;
+    const parts = entry.meaning.split('|').map(part => part.trim());
+    if (parts.length !== 3 || !parts[0] || !parts[1] || !['논문', '분야 기본'].includes(parts[2])) continue;
+    terminology.push({ term: entry.symbol, korean: parts[0], definition: parts[1],
+      scope: parts[2] === '논문' ? 'paper' : 'field', page: parts[2] === '논문' ? entry.page : null });
+  }
+
   const prerequisites = buckets.prerequisites
     .map(parsePrerequisiteLine)
     .filter((entry): entry is PrerequisiteEntry => entry !== null);
@@ -247,7 +282,7 @@ export function parseReadingGuide(markdown: string): ReadingGuide {
   }
 
   const parsed =
-    sawHeading && glossary.length + prerequisites.length + sections.length > 0;
+    sawHeading && glossary.length + terminology.length + prerequisites.length + sections.length > 0;
 
-  return { glossary, prerequisites, sections, raw, parsed };
+  return { glossary, terminology, prerequisites, sections, raw, parsed };
 }

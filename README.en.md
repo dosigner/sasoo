@@ -38,7 +38,7 @@ An AI research workbench for understanding a paper, checking its figures and tab
 
 Sasoo keeps the original paper within reach while you read. Start with the summary, follow questions through each section, and open linked figures and tables to check the evidence. PDFs and analysis results stay in a local library so you can return to them later.
 
-> **About the screenshots:** These development-app captures show the interface included in v1.0.1 (September 25, 2026). They use the Korean UI with saved analysis results; actual content depends on the paper and model settings. Download the latest [v1.2.2 release](https://github.com/dosigner/sasoo/releases/tag/v1.2.2).
+> **About the screenshots:** These development-app captures show the interface included in v1.0.1 (September 25, 2026). They use the Korean UI with saved analysis results; actual content depends on the paper and model settings. Download the latest [v1.3.0 release](https://github.com/dosigner/sasoo/releases/tag/v1.3.0).
 
 <p align="center">
   <img src="sasoo/docs/assets/readme-2026-09-25/workbench-light.png" alt="Sasoo development screen with the original Diffusion Policy PDF on the left and its summary on the right" width="1000" />
@@ -98,27 +98,28 @@ Check AI explanations and extracted values against the paper. A completed analys
 
 ### Downloads
 
-The distribution version is **v1.2.2**. See the [release notes and all files](https://github.com/dosigner/sasoo/releases/tag/v1.2.2) for changes and installers.
+The distribution version is **v1.3.0**. See the [release notes and all files](https://github.com/dosigner/sasoo/releases/tag/v1.3.0) for changes and installers.
 
 | Platform | Official release file | Notes |
 | --- | --- | --- |
-| macOS Apple Silicon | [DMG](https://github.com/dosigner/sasoo/releases/download/v1.2.2/Sasoo-1.2.2-arm64.dmg) / [ZIP](https://github.com/dosigner/sasoo/releases/download/v1.2.2/Sasoo-1.2.2-arm64-mac.zip) | Unsigned and unnotarized |
-| Windows x64 | [Installer EXE](https://github.com/dosigner/sasoo/releases/download/v1.2.2/Sasoo-Setup-1.2.2.exe) | Unsigned; SmartScreen may warn |
+| macOS Apple Silicon | [DMG](https://github.com/dosigner/sasoo/releases/download/v1.3.0/Sasoo-1.3.0-arm64.dmg) / [ZIP](https://github.com/dosigner/sasoo/releases/download/v1.3.0/Sasoo-1.3.0-arm64-mac.zip) | Unsigned and unnotarized |
+| Windows x64 | [Installer EXE](https://github.com/dosigner/sasoo/releases/download/v1.3.0/Sasoo-Setup-1.3.0.exe) | Unsigned; SmartScreen may warn |
 
 Official Linux and Intel Mac binaries are not available. A Linux source build command exists, but Linux is outside the distribution support listed above.
 
-### Changes in v1.2.2
+### Changes in v1.3.0
 
-This patch fixes missing visualization cost records and monthly cost attribution.
+This minor release expands paper reading, selection-aware chat, and analysis completion checks.
 
-- Paid request records survive empty Mermaid responses and failures to save generated image files.
-- Legacy standalone Mermaid generation and repair requests are recorded in the cost ledger. Requests with unavailable usage remain unknown.
-- Later regenerations count toward the month the request ran (UTC). The cost dashboard and monthly budget use the same attribution rules.
-- The monthly cost API now includes unknown request counts by model.
+- Use a terminology dictionary and contextual definitions alongside the reading guide. Hovering over a term does not send an AI request.
+- Send selected PDF text and page ranges to chat, and ask questions before analysis when source text is ready.
+- Check required stage outputs and visualization plan identity, while distinguishing partial results, failures, and unknown costs.
+- Preserve table and equation context, and check image descriptions for swapped equation roles and HTML for incomplete responses.
+- Separate report assembly and visualization selection rules into modules with contract tests.
 
-Existing records without request timestamps still count toward the month they were first saved. Token and paper counts also keep their existing row-month attribution.
+Saved results remain available, but older outputs that do not satisfy the new completion checks can appear as partial or failed. Visualization cache identity now includes source and PDF evidence, so an explicit regeneration request can make new paid requests instead of reusing older caches. Completion does not establish scientific correctness.
 
-See the [detailed release notes](sasoo/docs/03-release/v1.2.2.md), the earlier visualization fixes in [v1.2.1](sasoo/docs/03-release/v1.2.1.md), and the mixed visualization features in [v1.2.0](sasoo/docs/03-release/v1.2.0.md).
+See the [detailed release notes](sasoo/docs/03-release/v1.3.0.md). Earlier cost-recording fixes are described in [v1.2.2](sasoo/docs/03-release/v1.2.2.md).
 
 <details>
 <summary>If macOS blocks the app</summary>
@@ -149,7 +150,7 @@ Choose OpenAI or Gemini in Settings. If only one provider has a saved key, the a
 | OpenAI | [OpenAI API keys](https://platform.openai.com/api-keys) | Paper analysis, chat, figure explanations, concept illustrations |
 | Gemini | [Google AI Studio](https://aistudio.google.com/apikey) | Paper analysis, chat, figure explanations |
 
-v1.2.2 defaults to OpenAI with `gpt-6-luna` for text analysis. Images in mixed visualizations use OpenAI `gpt-image-2.5-flare` and `gpt-image-2.5-sunburst` regardless of the analysis provider, so an OpenAI API key is required. See the [model registry](sasoo/backend/services/model_registry.py) for stage assignments and reasoning levels, and [model IDs](sasoo/backend/services/models.py) for the exact configuration.
+v1.3.0 defaults to OpenAI with `gpt-6-luna` for text analysis. Images in mixed visualizations use OpenAI `gpt-image-2.5-flare` and `gpt-image-2.5-sunburst` regardless of the analysis provider, so an OpenAI API key is required. See the [model registry](sasoo/backend/services/model_registry.py) for stage assignments and reasoning levels, and [model IDs](sasoo/backend/services/models.py) for the exact configuration.
 
 Costs shown in Settings are **estimates** based on reported usage and the rates registered in the app. They may differ from provider invoices. Missing usage does not mean a request was free.
 

@@ -16,6 +16,8 @@ from models.database import get_db
 from models.evidence_anchors import anchor_versions, fetch_anchors, upsert_anchors
 from services.concurrency import run_pipeline_blocking
 from services.evidence_verifier import (
+    verify_recipe_reproduction,
+    REPRODUCTION_VERIFIER_VERSION,
     EVIDENCE_NORMALIZER_VERSION,
     EVIDENCE_VERIFIER_VERSION,
     count_recipe_parameters,
@@ -23,6 +25,20 @@ from services.evidence_verifier import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def build_recipe_reproduction_payload(recipe: dict, pdf_path) -> dict:
+    """Read the PDF locally without changing stored responses or adding paid calls."""
+    def check():
+        import fitz
+        try:
+            with fitz.open(pdf_path) as doc:
+                pages = [page.get_text() for page in doc]
+            return verify_recipe_reproduction(recipe, pages)
+        except Exception:
+            return {"version": REPRODUCTION_VERIFIER_VERSION, "status": "unverified", "items": [],
+                    "scope": "원본 PDF 텍스트를 확인하지 못했습니다."}
+    return await run_pipeline_blocking(check)
 
 _CURRENT_VERSION_TAG = f"{EVIDENCE_VERIFIER_VERSION}/{EVIDENCE_NORMALIZER_VERSION}"
 

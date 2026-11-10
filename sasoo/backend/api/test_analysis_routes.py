@@ -16,6 +16,7 @@ I/O(파일·DB·LLM 호출)는 ambient 스텁이 아니라 각 테스트에서 p
 모듈 더블이 필요하면 patch.dict(sys.modules, ...)로 테스트 스코프 안에서만 갈아끼운다.
 """
 
+import asyncio
 import base64
 import contextlib
 import json
@@ -30,7 +31,7 @@ from unittest.mock import AsyncMock, patch
 
 from api import analysis_routes, figure_service
 from services import analysis_execution
-from models.schemas import AnalysisStatus
+from models.schemas import AnalysisPhase, AnalysisStatus, PhaseStatus
 from services.model_registry import resolve as resolve_model
 from services.models import MODEL_FLASH_HQ, MODEL_FLASH_LITE
 
@@ -114,6 +115,9 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         )
         self._active_provider_patch.start()
         self.addCleanup(self._active_provider_patch.stop)
+        chat_settings = patch("api.analysis_routes.get_raw_settings", new=AsyncMock(return_value={}))
+        chat_settings.start()
+        self.addCleanup(chat_settings.stop)
         stage_provider = patch("services.analysis_execution.active_provider", new=AsyncMock(return_value="gemini"))
         stage_provider.start()
         self.addCleanup(stage_provider.stop)
@@ -466,7 +470,8 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
             patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value=latest_rows)) as read_results,
         ):
             result = await analysis_routes.get_analysis_results(7)
-        self.assertEqual(result.status.progress_pct, 20.0)
+        self.assertEqual(result.status.progress_pct, 0.0)
+        self.assertEqual(result.status.overall_status, "error")
         read_paper.assert_awaited_once()
         read_results.assert_awaited_once()
 
@@ -657,7 +662,8 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
 
         recipe_phase = next(p for p in status.phases if p.phase.value == "recipe")
         self.assertIsNone(recipe_phase.stale_model)
-        self.assertEqual(recipe_phase.status, "completed")
+        self.assertEqual(recipe_phase.status, "error")
+        self.assertIn("필수 산출물", recipe_phase.error_message)
 
     async def test_insert_analysis_result_stores_config_hash(self):
         # config_hash가 실제로 INSERT에 실려야 나중에 stage-1 조회가 성립한다.
@@ -937,7 +943,10 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_cached_phase_lookup_records_cache_event(self):
         cached = types.SimpleNamespace(
-            result_text='{"summary":"cached"}',
+            result_text=json.dumps({"domain": "ai_ml", "summary": "cached", "key_topics": [],
+                                    "relevance_score": 0.5, "is_experimental": False,
+                                    "methodology_type": "theoretical", "recipe_applicable": True,
+                                    "deep_dive_applicable": True}),
             model_used="gemini-cache",
             tokens_in=12,
             tokens_out=34,
@@ -1380,6 +1389,7 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with (
+            patch("services.analysis_execution._run_synthesis", new=AsyncMock()),
             patch(
                 "services.analysis_execution._get_cached_phase_result",
                 new=AsyncMock(return_value={"text": stale_partial_payload}),
@@ -1401,7 +1411,8 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         # short-circuiting with the stale cached items.
         plan_mock.assert_awaited_once()
         self.assertEqual(result, [])
-        store_mock.assert_awaited_once()
+        self.assertEqual(store_mock.await_count, 2)
+        self.assertFalse(store_mock.await_args_list[0].kwargs["done"])
         self.assertEqual(store_mock.call_args.kwargs.get("done"), True)  # done=True final save
 
     async def test_screening_uses_interactions_stateless(self):
@@ -3265,6 +3276,7 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
             "services.agents": agents_stub,
             "api.settings": settings_stub,
         }))
+        stack.enter_context(patch("services.analysis_execution.get_latest_completed_phase_rows", new=AsyncMock(return_value={})))
         stack.enter_context(patch("services.analysis_execution.fetch_one", new=AsyncMock(return_value=paper)))
         stack.enter_context(patch("services.analysis_execution.fetch_all", new=AsyncMock(side_effect=[figures, tables])))
         stack.enter_context(patch("services.analysis_execution.get_paper_dir", return_value="/tmp/paper"))
@@ -3312,6 +3324,83 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
                                       new=AsyncMock(return_value=visual_result)))
         with stack:
             yield sys_instruction_calls
+
+    async def test_ready_visual_overlaps_citation_and_preserves_context_order(self):
+        citation_started, visual_started, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+        async def citation(*args, **kwargs):
+            citation_started.set()
+            await release.wait()
+            return {"text": "CITATION"}
+
+        async def visual(*args, **kwargs):
+            self.assertEqual(kwargs["visual_snapshot"][1][0]["figure_num"], "Figure 1")
+            visual_started.set()
+            await release.wait()
+            return {"text": "VISUAL", "interaction_id": "visual-parent"}
+
+        with self._orchestration_patches(cache_fake=AsyncMock(return_value=None), call_fake=AsyncMock()):
+            with (
+                patch.object(analysis_execution, "_run_citation", new=citation),
+                patch.object(analysis_execution, "_run_visual", new=visual),
+                patch.object(analysis_execution, "_run_recipe", new=AsyncMock(return_value={"text": "RECIPE"})) as recipe,
+                patch.object(analysis_execution, "_run_deep_dive", new=AsyncMock(return_value={"text": "DEEP"})),
+                patch.object(analysis_execution, "_run_visualizations", new=AsyncMock()),
+            ):
+                task = asyncio.create_task(analysis_execution.run_full_analysis(7))
+                try:
+                    await asyncio.wait_for(asyncio.gather(citation_started.wait(), visual_started.wait()), 2)
+                    recipe.assert_not_awaited()
+                finally:
+                    release.set()
+                    await asyncio.wait_for(task, 2)
+                self.assertEqual(recipe.call_args.kwargs["previous_results"][:3], [self._SCREENING_TEXT, "CITATION", "VISUAL"])
+                self.assertEqual(recipe.call_args.kwargs["previous_interaction_id"], "visual-parent")
+
+    async def test_unready_visual_keeps_original_citation_wait(self):
+        citation_started, release = asyncio.Event(), asyncio.Event()
+
+        async def citation(*args, **kwargs):
+            citation_started.set()
+            await release.wait()
+            return {"text": "CITATION"}
+
+        for state, refreshing in (("running", False), ("ready", True)):
+            with self.subTest(state=state, refreshing=refreshing):
+                citation_started.clear()
+                release.clear()
+                contract = {"visual_state": state, "visual_ready": state == "ready"}
+                with self._orchestration_patches(cache_fake=AsyncMock(return_value=None), call_fake=AsyncMock()):
+                    with (
+                        patch.object(analysis_execution, "_get_visual_contract", new=AsyncMock(return_value=(contract, 1, 0))),
+                        patch.object(analysis_execution, "is_artifact_refresh_running", return_value=refreshing),
+                        patch.object(analysis_execution, "_run_citation", new=citation),
+                        patch.object(analysis_execution, "_run_visual", new=AsyncMock(return_value={"text": "VISUAL"})) as visual,
+                        patch.object(analysis_execution, "_run_recipe", new=AsyncMock(return_value={"text": "RECIPE"})),
+                        patch.object(analysis_execution, "_run_deep_dive", new=AsyncMock(return_value={"text": "DEEP"})),
+                        patch.object(analysis_execution, "_run_visualizations", new=AsyncMock()),
+                    ):
+                        task = asyncio.create_task(analysis_execution.run_full_analysis(7))
+                        try:
+                            await asyncio.wait_for(citation_started.wait(), 2)
+                            visual.assert_not_awaited()
+                        finally:
+                            release.set()
+                            await asyncio.wait_for(task, 2)
+                        self.assertIsNone(visual.call_args.kwargs["visual_snapshot"])
+
+    async def test_parallel_failure_does_not_mark_completed_sibling_as_error(self):
+        status = AnalysisStatus(paper_id=7, phases=[
+            PhaseStatus(phase=AnalysisPhase.CITATION, status="running"),
+            PhaseStatus(phase=AnalysisPhase.VISUAL, status="completed"),
+        ])
+
+        async def fail():
+            raise ValueError("citation failed")
+
+        with self.assertRaisesRegex(ValueError, "citation failed"):
+            await analysis_execution._run_named_phase(AnalysisPhase.CITATION, status, fail())
+        self.assertEqual([phase.status for phase in status.phases], ["error", "completed"])
 
     async def test_cancel_after_screening_stops_later_stages(self):
         async def cancel_screening(paper_id, *args, **kwargs):
@@ -3609,6 +3698,30 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(deep_dive["previous_interaction_id"])
         self.assertIn("체인 재시작으로 복원", deep_dive["contents"][1]["text"])
         self.assertEqual(viz["previous_interaction_id"], recipe["interaction_id"])
+
+
+    async def test_finalization_uses_saved_deliverables_and_never_completes_failed_visualization(self):
+        from services.test_analysis_completion import complete_rows
+        for variant in ("complete", "missing_synthesis", "visualization_failure"):
+            with self.subTest(variant=variant):
+                rows = complete_rows()
+                if variant == "missing_synthesis":
+                    rows.pop("synthesis")
+                viz = AsyncMock(side_effect=RuntimeError("planning failed")) if variant == "visualization_failure" else AsyncMock(return_value=[])
+                with self._orchestration_patches(
+                    cache_fake=AsyncMock(return_value=None),
+                    call_fake=AsyncMock(return_value={"text": self._VISUAL_CACHED_TEXT, "model": "g", "tokens_in": 1, "tokens_out": 1}),
+                ), patch.object(analysis_execution, "get_latest_completed_phase_rows", new=AsyncMock(return_value=rows)), \
+                   patch.object(analysis_execution, "_run_recipe", new=AsyncMock(return_value={"text": rows["recipe"]["result"]})), \
+                   patch.object(analysis_execution, "_run_deep_dive", new=AsyncMock(return_value={"text": rows["deep_dive"]["result"]})), \
+                   patch.object(analysis_execution, "_run_visualizations", new=viz):
+                    await analysis_execution.run_full_analysis(7)
+                    current = analysis_routes._running_analyses[7]
+                    self.assertEqual(current.overall_status, "completed" if variant == "complete" else "error")
+                    self.assertEqual(len(current.completion_checks), 7)
+                    if variant != "complete":
+                        self.assertLess(current.progress_pct, 100)
+                    self.assertEqual(analysis_execution.execute_update.await_args.args[1][0], current.overall_status)
 
 
 class CitationPromptTests(unittest.IsolatedAsyncioTestCase):
@@ -4044,7 +4157,9 @@ class NativePdfValidationTests(unittest.IsolatedAsyncioTestCase):
                 "api.analysis_routes.load_or_build_document_context", return_value={"phase_inputs": {"chat": "context"}}
             ), patch("api.analysis_routes.get_latest_completed_phase_rows", new=AsyncMock(return_value={})), patch(
                 "api.analysis_routes.stream_interaction", new=stream
-            ), patch("api.analysis_routes.active_provider", new=AsyncMock(return_value="openai")):
+            ), patch("api.analysis_routes.active_provider", new=AsyncMock(return_value="openai")), patch(
+                "api.analysis_routes.get_raw_settings", new=AsyncMock(return_value={})
+            ):
                 response = await analysis_routes._chat_with_agent_impl(7, _FakeRequest({"message": "question", "persist": False}))
                 body = "".join([chunk async for chunk in response.body_iterator])
             self.assertEqual(len(calls), 1)
@@ -4265,7 +4380,7 @@ class IntegrationNullableReportTests(unittest.IsolatedAsyncioTestCase):
         for name in ("screening", "recipe"):
             self.assertEqual(phases[name]["cost_usd"], 0.0)
             self.assertEqual(phases[name]["tokens_in"], 0)
-            self.assertEqual(phases[name]["status"], "completed")
+            self.assertEqual(phases[name]["status"], "error")
         report = await self._request("report", rows)
         self.assertIn("**Total Cost:** $0.0000", report.json()["markdown"])
 
@@ -4291,3 +4406,40 @@ class IntegrationNullableReportTests(unittest.IsolatedAsyncioTestCase):
             if unknown != "tokens_out":
                 self.assertIn("**Total Tokens Out:** 10", markdown)
             self.assertIn("미확인 1개 단계", markdown)
+
+class ParallelProgressTests(unittest.IsolatedAsyncioTestCase):
+    async def test_plan_and_partial_visualizations_do_not_report_completion(self):
+        from services.test_analysis_completion import complete_rows
+        valid = complete_rows()
+        main = {stage: row for stage, row in valid.items() if stage not in {"synthesis", "visualization"}}
+        cases = [
+            ({}, 500 / 7),
+            ({"viz_plan": _row("viz_plan", '{"visualizations": []}')}, 500 / 7),
+            ({"visualization": _row("visualization", '{"complete": false, "items": []}')}, 500 / 7),
+            ({"visualization": _row("visualization", '{"complete": true, "items": []}')}, 500 / 7),
+            ({"visualization": valid["visualization"]}, 600 / 7),
+        ]
+        with (
+            patch.dict(analysis_routes._running_analyses, {}, clear=True),
+            patch.object(analysis_routes, "_subprocess_mode", return_value=False),
+            patch.object(analysis_routes, "active_provider", new=AsyncMock(return_value=None)),
+        ):
+            for extra, expected in cases:
+                with self.subTest(extra=list(extra)):
+                    status = await analysis_routes._build_analysis_status(7, {"status": "analyzing"}, {**main, **extra})
+                    self.assertAlmostEqual(status.progress_pct, expected)
+                    self.assertEqual(status.overall_status, "analyzing")
+            incomplete = await analysis_routes._build_analysis_status(7, {"status": "completed"}, main)
+            self.assertEqual(incomplete.overall_status, "error")
+            self.assertLess(incomplete.progress_pct, 100)
+            completed = await analysis_routes._build_analysis_status(7, {"status": "completed"}, valid)
+            self.assertEqual(completed.progress_pct, 100.0)
+            self.assertEqual(completed.overall_status, "completed")
+
+    def test_running_heartbeat_cannot_restore_premature_100_percent(self):
+        result = analysis_routes._overlay_run_status(
+            {"overall_status": "analyzing", "progress_pct": 100.0, "current_phase": None},
+            {"status": "running", "progress_pct": 100.0, "current_phase": "deep_dive"},
+        )
+        self.assertEqual(result["progress_pct"], 99.0)
+        self.assertEqual(result["overall_status"], "running")

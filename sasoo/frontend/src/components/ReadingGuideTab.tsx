@@ -4,7 +4,7 @@ import { ChevronDown } from 'lucide-react';
 import { Markdown } from '@/components/Markdown';
 import { AppIcon } from '@/components/icons';
 import { ContentState, Modal } from '@/components/ui';
-import { useReadingGuide } from '@/hooks/useReadingGuide';
+import { useSharedReadingGuide } from '@/lib/readingGuideContext';
 import { S } from '@/lib/strings';
 import { findSectionAnswerIndex, type SectionAnswer } from '@/lib/summaryContent';
 import {
@@ -19,7 +19,6 @@ const INLINE_MARKDOWN = { p: ({ children }: { children?: ReactNode }) => <>{chil
 
 interface ReadingGuideTabProps {
   paperId: string | null;
-  level?: string | null;
   onJumpToPage?: (page: number) => void;
   onSearchInPdf?: (term: string, page: number | null) => void;
   sectionAnswers?: readonly SectionAnswer[];
@@ -100,10 +99,10 @@ function GlossaryList({
                   style={{ borderRadius: 'var(--radius-control)' }}
                 >
                   <span className="max-w-full font-mono text-sm font-[650] text-fg">
-                    <Markdown components={INLINE_MARKDOWN}>{entry.symbol}</Markdown>
+                    <Markdown terminology={false} components={INLINE_MARKDOWN}>{entry.symbol}</Markdown>
                   </span>
                   <span className="min-w-0 flex-1 font-normal text-fg">
-                    <Markdown components={INLINE_MARKDOWN}>{entry.meaning}</Markdown>
+                    <Markdown terminology={false} components={INLINE_MARKDOWN}>{entry.meaning}</Markdown>
                   </span>
                   {entry.page !== null && (
                     <span className="shrink-0 text-sm text-fg-muted tabular-nums">
@@ -221,17 +220,16 @@ function SectionAccordion({
 
 export default function ReadingGuideTab({
   paperId,
-  level,
   onJumpToPage,
   onSearchInPdf,
   sectionAnswers,
   onOpenSummary,
 }: ReadingGuideTabProps) {
-  const { status, guide, meta, streamText, error, levelMismatch, generate, cancel } =
-    useReadingGuide(paperId, level);
+  const { status, guide, meta, streamText, error, errorType, reload, levelMismatch, generate, cancel } =
+    useSharedReadingGuide();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const isRegenerate = status === 'ready';
+  const isRegenerate = Boolean(guide);
   const confirmModal = (
     <Modal open={confirmOpen} onClose={() => setConfirmOpen(false)} title={isRegenerate ? S.readingGuide.regenerateTitle : S.readingGuide.confirmTitle}>
       <h3 className="mb-2 text-lg font-[650] text-fg">
@@ -301,7 +299,7 @@ export default function ReadingGuideTab({
           title={S.readingGuide.errorTitle}
           description={error ?? undefined}
           actionLabel={S.readingGuide.retry}
-          onAction={() => void generate()}
+          onAction={errorType === 'load' ? reload : () => setConfirmOpen(true)}
           tone="error"
         />
       </>

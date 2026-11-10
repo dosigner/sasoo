@@ -1,0 +1,30 @@
+{
+  "original_entries": 23428,
+  "unchanged_original_entries": 23426,
+  "changed_original_entries": [
+    "docs/superpowers/plans/2026-11-10-sasoo-refactor-readable-roadmap.md",
+    "sasoo/backend/services/analysis_execution.py"
+  ],
+  "removed_original_entries": [],
+  "added_entries": [
+    "docs/validation/2026-11-10-modular-refactor-r3-visualization-policy.md",
+    "docs/validation/assets/refactor-r3-20261110/after-boundaries.log",
+    "docs/validation/assets/refactor-r3-20261110/after-compile.log",
+    "docs/validation/assets/refactor-r3-20261110/after-focused.log",
+    "docs/validation/assets/refactor-r3-20261110/after-full.log",
+    "docs/validation/assets/refactor-r3-20261110/before-focused.log",
+    "docs/validation/assets/refactor-r3-20261110/before-full.log",
+    "docs/validation/assets/refactor-r3-20261110/before-probe.log",
+    "docs/validation/assets/refactor-r3-20261110/r3.patch",
+    "docs/validation/assets/refactor-r3-20261110/run_checks.py",
+    "docs/validation/assets/refactor-r3-20261110/sandbox.sb",
+    "docs/validation/assets/refactor-r3-20261110/source-move-check.json",
+    "docs/validation/assets/refactor-r3-20261110/verify_boundaries.py",
+    "docs/validation/assets/refactor-r3-20261110/workspace-preservation.json",
+    "sasoo/backend/services/visualization_policy.py"
+  ],
+  "tested_product_bytes_match_workspace": true,
+  "all_original_tests_and_fixtures_unchanged": true,
+  "R1_product_and_evidence_files_unchanged": true,
+  "note": "The added-entry list includes this preservation report. File modes and symlink targets were also compared."
+}

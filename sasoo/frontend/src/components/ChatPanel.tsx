@@ -25,6 +25,7 @@ import { withRoJosa } from '@/lib/josa';
 import { getAgentMeta } from '@/lib/agents';
 import { detectCitations, type CitationType } from '@/lib/citations';
 import { S } from '@/lib/strings';
+import type { ChatSelection } from '@/lib/selectionExplain';
 
 // 런처가 원형으로 접힌 채 유지되는 기본 시간(첫 ready 전환 시 확장 카드를 보여주는 시간).
 const LAUNCHER_INTRO_MS = 3000;
@@ -104,6 +105,7 @@ function DiscussionOrb({ state, className = '' }: { state: OrbState; className?:
 
 interface ChatPanelProps {
   paperId: string;
+  selection?: ChatSelection;
   agentName?: string;
   /** 카드 부제. 없으면 담당 에이전트의 domain_display를 쓴다. */
   fieldLabel?: string;
@@ -119,6 +121,7 @@ interface ChatPanelProps {
 
 export default function ChatPanel({
   paperId,
+  selection,
   agentName,
   fieldLabel,
   open,
@@ -267,8 +270,8 @@ export default function ChatPanel({
     stickToBottomRef.current = true;
     setAtBottom(true);
     setContextOpen(false);
-    send(text);
-  }, [canSend, onDraftChange, send]);
+    send(text, selection);
+  }, [canSend, onDraftChange, send, selection]);
 
   const handleSend = useCallback(() => {
     enqueue(draft);
@@ -489,7 +492,7 @@ export default function ChatPanel({
                       // 전송(비용 발생)은 사용자가 직접 한다.
                       <div className="chat-empty-state">
                         <p className="text-xs text-fg-secondary">
-                          논문을 읽으면서 바로 질문해 보세요.
+                          {S.chat.readingHint}
                         </p>
                         {starters.length > 0 && (
                           <div className="mt-3 flex flex-wrap gap-2">

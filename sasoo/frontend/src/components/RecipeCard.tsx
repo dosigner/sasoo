@@ -16,6 +16,7 @@ import {
   summarizeAnchoredEvidence,
 } from '@/lib/evidence';
 import { generateCsvFromRecipe } from '@/lib/recipeCsv';
+import { formatMetricValue } from '@/lib/synthesisBlocks';
 import { stripRecipeStepNumber } from '@/lib/recipeSteps';
 
 // ---------------------------------------------------------------------------
@@ -111,6 +112,10 @@ export default function RecipeCard({
   const steps = (data.steps as string[]) || [];
   const criticalNotes = (data.critical_notes as string[]) || [];
   const missingInfo = (data.missing_info as string[]) || [];
+  const conditionLabels: Record<string, string> = {
+    preprocessing: '전처리/정규화', sampling: '입력 분포와 sampling',
+    target_loss: '학습 target/loss', evaluation: '평가식과 단위 보정', solver: 'solver와 허용오차',
+  };
   const confidence = data.confidence as number | undefined;
   const reproducibilityScore = data.reproducibility_score as number | undefined;
 
@@ -180,6 +185,17 @@ export default function RecipeCard({
       )}
 
       {/* Materials */}
+      <details className="card p-3 mb-3">
+        <summary className="text-xs font-medium">재현 조건 점검: {recipe.reproduction_check?.status === 'needs_review' ? '원문 대조 필요' : '완전성 미검증'}</summary>
+        <p className="mt-2 text-xs text-fg-muted">파라미터 인용 검사와 별개입니다. 원문 조건 검색은 누락 후보를 찾으며, 검색 실패로 저자의 미보고를 확정하지 않습니다.</p>
+        {recipe.reproduction_check?.items.map((item) => (
+          <div key={item.topic} className="mt-2 text-xs">
+            <p>{conditionLabels[item.topic] ?? item.topic}: {item.status === 'source_not_located' ? '원문 조건을 찾지 못함, 적용 여부 미검증' : item.status === 'text_present' ? '같은 텍스트 확인, 의미 미검증' : '누락 또는 미보고 충돌 후보, 대조 필요'}</p>
+            {item.conflicts.map((c) => <p key={c.path} className="text-danger">{c.path}: {c.claim}</p>)}
+            {item.evidence.filter((e) => e.status === 'needs_review').map((e, i) => <pre key={i} className="mt-1 whitespace-pre-wrap break-words text-fg-muted">PDF p.{e.page}: {e.quote}</pre>)}
+          </div>
+        ))}
+      </details>
       {materials.length > 0 && (
         <CascadeIn index={2}>
         <div className="card p-3 mb-3">
@@ -235,8 +251,7 @@ export default function RecipeCard({
                         )}
                       </td>
                       <td className="px-3 py-2 align-top font-mono text-sm tabular-nums">
-                        <span className="text-accent">{row.value || '-'}</span>
-                        {row.unit && <span className="ml-1 text-fg-muted">{row.unit}</span>}
+                        <span className="text-accent">{formatMetricValue(row) || '-'}</span>
                       </td>
                       <td className="px-3 py-2 align-top">
                         <div className="flex min-w-[136px] flex-col items-start gap-1.5 whitespace-nowrap">
@@ -333,6 +348,7 @@ export default function RecipeCard({
         <CascadeIn index={6}>
         <div className="card p-3 mb-3 border-danger/20 bg-danger/5">
           <h4 className="mb-1.5 text-2xs font-medium uppercase tracking-wide text-danger-fg">{S.recipe.missingInfo}</h4>
+          <p className="mb-2 text-xs text-danger-fg">분석이 확인하지 못한 항목입니다. 저자가 보고하지 않았다는 판단은 검증되지 않았습니다.</p>
           <ul className="space-y-1">
             {missingInfo.map((info, index) => (
               <li key={index} className="text-xs text-danger-fg flex items-start gap-1.5">

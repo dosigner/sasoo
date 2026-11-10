@@ -13,6 +13,7 @@ import { type Paper, type PaperStatus } from '@/lib/api';
 import { getAllAgents } from '@/lib/agents';
 import { LEVEL_LABELS, type LevelKey } from '@/components/LevelSlider';
 import { S } from '@/lib/strings';
+import { paperFieldLabel } from '@/lib/workbenchSummaries';
 import { useToast } from '@/components/Toast';
 import { ContentState, Modal, Select } from '@/components/ui';
 import { AppIcon } from '@/components/icons';
@@ -169,7 +170,7 @@ function PaperTableRow({ paper, onOpen, onDelete }: PaperTableRowProps) {
           {statusLabel(paper.status)}
         </span>
       </td>
-      <td className="whitespace-nowrap">{paper.domain || '—'}</td>
+      <td className="whitespace-nowrap">{paperFieldLabel(paper)}</td>
       <td className="whitespace-nowrap">{explanationLevelLabel(paper)}</td>
       <td className="library-cell-num">{paper.year || '—'}</td>
       <td className="library-cell-num">{activityLabel(paper)}</td>
@@ -204,7 +205,7 @@ function PaperArchiveCard({ paper, onOpen, onDelete }: PaperTableRowProps) {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="text-2xs text-fg-muted">
-          {paper.year || '연도 미상'} · {paper.domain}
+          {paper.year || '연도 미상'}, {paperFieldLabel(paper)}
         </div>
         <span className="library-soft-pill">
           <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
@@ -475,7 +476,7 @@ export default function Library() {
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-2xs uppercase tracking-[0.16em] text-fg-muted">분류 기준</div>
-              <div className="mt-1 text-sm leading-6 text-fg-secondary">분야와 상태로 먼저 좁히고, 연도와 태그는 보조 기준으로 쓰세요.</div>
+              <div className="mt-1 text-sm leading-6 text-fg-secondary">분석 담당과 상태로 먼저 좁히고, 연도와 태그는 보조 기준으로 쓰세요. 표시된 학술 분야와 분석 담당은 다를 수 있어요.</div>
             </div>
             {hasActiveFilters && (
               <button
@@ -649,7 +650,7 @@ export default function Library() {
                   onSort={toggleSort}
                 />
                 <th scope="col">{S.library.status}</th>
-                <th scope="col">분류</th>
+                <th scope="col">학술 분야</th>
                 <th scope="col">설명 수준</th>
                 <SortableTh
                   label={S.library.year}

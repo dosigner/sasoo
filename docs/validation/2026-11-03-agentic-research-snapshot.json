@@ -1,0 +1,256 @@
+{
+  "observed_at_utc": "2026-11-03T10:56:27.467135+00:00",
+  "requested_window": "2026-10-01 to 2026-11-03 inclusive",
+  "ranking_scope": "Manually screened scientific research and deep research workflow candidates, not an exhaustive global ranking",
+  "metric": "GitHub cumulative stargazers_count at observation; not monthly growth or paper citations",
+  "queries": [
+    "research agent created:2026-10-01..2026-11-03 archived:false",
+    "deep-research created:2026-10-01..2026-11-03 archived:false",
+    "scientific created:2026-10-01..2026-11-03 archived:false"
+  ],
+  "repos": [
+    {
+      "full_name": "SakanaAI/AI-Scientist-v3",
+      "html_url": "https://github.com/SakanaAI/AI-Scientist-v3",
+      "stargazers_count": 607,
+      "forks_count": 80,
+      "created_at": "2026-10-11T13:20:48Z",
+      "pushed_at": "2026-10-18T18:03:02Z",
+      "description": "The Agentic Scientist: Orchestrating Coding Agents for Automated Scientific (Co-)Discovery",
+      "license": {
+        "key": "apache-2.0",
+        "name": "Apache License 2.0",
+        "spdx_id": "Apache-2.0",
+        "url": "https://api.github.com/licenses/apache-2.0",
+        "node_id": "MDc6TGljZW5zZTI="
+      },
+      "archived": false
+    },
+    {
+      "full_name": "BakeLab/Epi-results",
+      "html_url": "https://github.com/BakeLab/Epi-results",
+      "stargazers_count": 12,
+      "forks_count": 0,
+      "created_at": "2026-09-07T03:57:36Z",
+      "pushed_at": "2026-09-14T08:28:23Z",
+      "description": "Final research artifacts from Épi: 106 improved constructions, 15 mathematical results, and their certificates.",
+      "license": null,
+      "archived": false
+    },
+    {
+      "full_name": "liuqi6777/OpenSaC",
+      "html_url": "https://github.com/liuqi6777/OpenSaC",
+      "stargazers_count": 4,
+      "forks_count": 0,
+      "created_at": "2026-08-18T12:18:41Z",
+      "pushed_at": "2026-10-10T15:10:27Z",
+      "description": "An open, inspectable Search-as-Code runtime for search agents.",
+      "license": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "archived": false
+    },
+    {
+      "full_name": "roychowdhuryresearch/panini-dr",
+      "html_url": "https://github.com/roychowdhuryresearch/panini-dr",
+      "stargazers_count": 4,
+      "forks_count": 0,
+      "created_at": "2026-10-16T19:51:08Z",
+      "pushed_at": "2026-10-16T22:04:37Z",
+      "description": "PANINI-DR: controlled deep research through Generative Semantic Workspaces - Official Codebase",
+      "license": {
+        "key": "apache-2.0",
+        "name": "Apache License 2.0",
+        "spdx_id": "Apache-2.0",
+        "url": "https://api.github.com/licenses/apache-2.0",
+        "node_id": "MDc6TGljZW5zZTI="
+      },
+      "archived": false
+    },
+    {
+      "full_name": "DingyangLyu/MatOS",
+      "html_url": "https://github.com/DingyangLyu/MatOS",
+      "stargazers_count": 12,
+      "forks_count": 1,
+      "created_at": "2026-10-25T08:02:07Z",
+      "pushed_at": "2026-10-25T10:43:07Z",
+      "description": "MatOS: an agent operating system for materials research, with a layered scientific asset graph, stateful adaptive workflows and evidence-driven asset evolution.",
+      "license": {
+        "key": "other",
+        "name": "Other",
+        "spdx_id": "NOASSERTION",
+        "url": null,
+        "node_id": "MDc6TGljZW5zZTA="
+      },
+      "archived": false
+    },
+    {
+      "full_name": "DAGroup-PKU/ResearchBoost-Agent",
+      "html_url": "https://github.com/DAGroup-PKU/ResearchBoost-Agent",
+      "stargazers_count": 208,
+      "forks_count": 9,
+      "created_at": "2026-10-18T18:50:51Z",
+      "pushed_at": "2026-11-02T09:35:10Z",
+      "description": "An autonomous agent that profiles, optimizes, and validates AI training code.",
+      "license": null,
+      "archived": false
+    },
+    {
+      "full_name": "chutingyean/Agent-Cockpit",
+      "html_url": "https://github.com/chutingyean/Agent-Cockpit",
+      "stargazers_count": 207,
+      "forks_count": 4,
+      "created_at": "2026-10-26T18:44:46Z",
+      "pushed_at": "2026-10-26T18:46:20Z",
+      "description": "Evidence-chain whiteboard + MCP server for AI research agents: every claim traces back to the run and code that produced it. 讓 AI agent 做研究時，每個結論都能追到產生它的程式碼。Claude Code · Codex · Cursor · Gemini CLI",
+      "license": {
+        "key": "agpl-3.0",
+        "name": "GNU Affero General Public License v3.0",
+        "spdx_id": "AGPL-3.0",
+        "url": "https://api.github.com/licenses/agpl-3.0",
+        "node_id": "MDc6TGljZW5zZTE="
+      },
+      "archived": false
+    },
+    {
+      "full_name": "appletea233/OneSearch-VL",
+      "html_url": "https://github.com/appletea233/OneSearch-VL",
+      "stargazers_count": 193,
+      "forks_count": 11,
+      "created_at": "2026-10-08T12:52:29Z",
+      "pushed_at": "2026-10-11T22:41:38Z",
+      "description": "A unified multimodal deep research agent for images and videos, with open models, datasets, and training and evaluation code.",
+      "license": {
+        "key": "apache-2.0",
+        "name": "Apache License 2.0",
+        "spdx_id": "Apache-2.0",
+        "url": "https://api.github.com/licenses/apache-2.0",
+        "node_id": "MDc6TGljZW5zZTI="
+      },
+      "archived": false
+    },
+    {
+      "full_name": "zzp1221/Research-Assistant-Agent",
+      "html_url": "https://github.com/zzp1221/Research-Assistant-Agent",
+      "stargazers_count": 115,
+      "forks_count": 4,
+      "created_at": "2026-10-23T08:29:39Z",
+      "pushed_at": "2026-11-03T05:28:02Z",
+      "description": "Multi-agent research execution system: paper reproduction, benchmark evaluation, AutoResearch and claim-evidence graphs",
+      "license": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "archived": false
+    },
+    {
+      "full_name": "SakanaAI/AutoIllustrate",
+      "html_url": "https://github.com/SakanaAI/AutoIllustrate",
+      "stargazers_count": 121,
+      "forks_count": 13,
+      "created_at": "2026-10-14T07:06:38Z",
+      "pushed_at": "2026-10-15T04:17:04Z",
+      "description": "Generate publication-ready, editable draw.io figures for research papers from a methods section, using LLM agents.",
+      "license": {
+        "key": "apache-2.0",
+        "name": "Apache License 2.0",
+        "spdx_id": "Apache-2.0",
+        "url": "https://api.github.com/licenses/apache-2.0",
+        "node_id": "MDc6TGljZW5zZTI="
+      },
+      "archived": false
+    },
+    {
+      "full_name": "weir36/deep-research-langgraph",
+      "html_url": "https://github.com/weir36/deep-research-langgraph",
+      "stargazers_count": 35,
+      "forks_count": 0,
+      "created_at": "2026-11-02T08:22:43Z",
+      "pushed_at": "2026-11-02T08:22:50Z",
+      "description": "基于 LangGraph 的多 Agent 深度研究助手：可中断恢复、按依赖并行、引用治理与评测，成本降低 45%",
+      "license": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "archived": false
+    },
+    {
+      "full_name": "cloudcell/gnosislab",
+      "html_url": "https://github.com/cloudcell/gnosislab",
+      "stargazers_count": 21,
+      "forks_count": 8,
+      "created_at": "2026-10-02T05:34:22Z",
+      "pushed_at": "2026-11-02T11:21:07Z",
+      "description": "A scientific-method runtime for AI agents: hypotheses, experiments, evidence, provenance, reproducibility, and auditable conclusions.",
+      "license": {
+        "key": "apache-2.0",
+        "name": "Apache License 2.0",
+        "spdx_id": "Apache-2.0",
+        "url": "https://api.github.com/licenses/apache-2.0",
+        "node_id": "MDc6TGljZW5zZTI="
+      },
+      "archived": false
+    },
+    {
+      "full_name": "ry0narushima/bettersearch",
+      "html_url": "https://github.com/ry0narushima/bettersearch",
+      "stargazers_count": 40,
+      "forks_count": 4,
+      "created_at": "2026-10-18T12:55:04Z",
+      "pushed_at": "2026-10-18T12:55:11Z",
+      "description": "Deep research for any AI agent on DeepSeek's new Search API. Subagents, fact-checking, and a clean HTML report.",
+      "license": {
+        "key": "mit",
+        "name": "MIT License",
+        "spdx_id": "MIT",
+        "url": "https://api.github.com/licenses/mit",
+        "node_id": "MDc6TGljZW5zZTEz"
+      },
+      "archived": false
+    },
+    {
+      "full_name": "gihanpanapitiya/optimist_research",
+      "html_url": "https://github.com/gihanpanapitiya/optimist_research",
+      "stargazers_count": 0,
+      "forks_count": 0,
+      "created_at": "2026-10-16T10:31:47Z",
+      "pushed_at": "2026-10-24T14:30:35Z",
+      "description": null,
+      "license": {
+        "key": "apache-2.0",
+        "name": "Apache License 2.0",
+        "spdx_id": "Apache-2.0",
+        "url": "https://api.github.com/licenses/apache-2.0",
+        "node_id": "MDc6TGljZW5zZTI="
+      },
+      "archived": false
+    },
+    {
+      "full_name": "humanfia/hoa",
+      "html_url": "https://github.com/humanfia/hoa",
+      "stargazers_count": 19,
+      "forks_count": 0,
+      "created_at": "2026-07-20T16:06:30Z",
+      "pushed_at": "2026-10-19T20:15:42Z",
+      "description": "HOA (Humanfia Olympiad Agents): PutnamBench and olympiad problems (IMO, IOI, IPhO, IChO, IBO) solved by agents, checked in Lean 4 where possible",
+      "license": {
+        "key": "apache-2.0",
+        "name": "Apache License 2.0",
+        "spdx_id": "Apache-2.0",
+        "url": "https://api.github.com/licenses/apache-2.0",
+        "node_id": "MDc6TGljZW5zZTI="
+      },
+      "archived": false
+    }
+  ]
+}

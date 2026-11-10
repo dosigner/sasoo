@@ -1,6 +1,7 @@
 import type { Paper } from '@/lib/api';
 import { getAgentMeta } from '@/lib/agents';
 import { S } from '@/lib/strings';
+import { paperFieldLabel } from '@/lib/workbenchSummaries';
 import { AppIcon } from '@/components/icons';
 
 export function formatPaperDate(dateStr: string | null): string {
@@ -85,7 +86,7 @@ export default function RecentPaperRow({
             {paper.title}
           </h3>
           <p className="mt-1.5 line-clamp-1 text-sm leading-5 text-fg-muted">
-            {paper.authors || paper.journal || paper.domain}
+            {paper.authors || paper.journal || paperFieldLabel(paper)}
           </p>
         </div>
         <span className="mt-0.5 shrink-0 rounded-full bg-surface/70 p-2 text-fg-muted transition-colors group-hover:text-fg">
@@ -96,7 +97,7 @@ export default function RecentPaperRow({
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm leading-5 text-fg-muted">
         <span>{metaLabel} {metaValue}</span>
         <span className="h-1 w-1 rounded-full bg-border" />
-        <span>{paper.domain}</span>
+        <span>{paperFieldLabel(paper)}</span>
         {agent && (
           <>
             <span className="h-1 w-1 rounded-full bg-border" />

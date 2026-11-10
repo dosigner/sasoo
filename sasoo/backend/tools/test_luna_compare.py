@@ -260,8 +260,8 @@ def test_actual_qa_product_paths_and_response_chain(campaign_env, monkeypatch, t
     async def generate_stage(prompt, **kwargs):
         sent.append((prompt, kwargs))
         return {**generate.return_value, "interaction_id": f"response-{len(sent)}"}
-    async def stream(prompt, *, lane, model, system_instruction, thinking_level, store, max_output_tokens, single_attempt, service_tier):
-        sent.append((prompt, {"model": model, "max_output_tokens": max_output_tokens, "single_attempt": single_attempt}))
+    async def stream(prompt, **kwargs):
+        sent.append((prompt, kwargs))
         yield {"type": "token", "text": "answer"}
         yield {"type": "done", **generate.return_value}
     monkeypatch.setattr(openai_client, "call_interaction", generate_stage)
@@ -277,6 +277,6 @@ def test_actual_qa_product_paths_and_response_chain(campaign_env, monkeypatch, t
         assert isinstance(sent[1][0], str)
         assert [call.kwargs["thinking_level"] for call in count.call_args_list[-3:]] == ["low", "medium", "high"]
     else:
-        assert sent[0][0][0]["type"] == "image"
+        assert any(part["type"] == "image" for part in sent[0][0])
     execute(paid(options), journal)
     assert len(sent) == expected_calls

@@ -1,0 +1,160 @@
+--- before/sasoo/backend/api/analysis_routes.py
++++ after/sasoo/backend/api/analysis_routes.py
+@@ -81,6 +81,7 @@
+ from services.model_registry import active_provider, resolve as resolve_model
+ from services.provider_state import key_env_for
+ from api.report_service import (
++    build_report_markdown,
+     _format_phase_data,
+     _generate_paperbanana_image,
+ )
+@@ -1080,71 +1081,7 @@
+             detail=f"No analysis results found for paper {paper_id}. Run analysis first.",
+         )
+ 
+-    # Build report sections
+-    sections: list[str] = []
+-    sections.append(f"# Analysis Report: {paper['title']}\n")
+-    sections.append(f"**Authors:** {paper.get('authors', 'N/A')}")
+-    sections.append(f"**Year:** {paper.get('year', 'N/A')}")
+-    sections.append(f"**Journal:** {paper.get('journal', 'N/A')}")
+-    sections.append(f"**DOI:** {paper.get('doi', 'N/A')}")
+-    sections.append(f"**Domain:** {paper.get('domain', 'N/A')}")
+-    sections.append(f"**Agent:** {paper.get('agent_used', 'N/A')}")
+-    sections.append(f"**Analyzed:** {paper.get('analyzed_at', 'N/A')}")
+-    sections.append("")
+-
+-    phase_titles = {
+-        "screening": "Phase 1: Screening",
+-        "citation": "Phase 2: Citation Analysis",
+-        "visual": "Phase 3: Visual Verification",
+-        "recipe": "Phase 4: Recipe Extraction",
+-        "deep_dive": "Phase 5: Deep Dive Analysis",
+-    }
+-
+-    ordered_rows = [
+-        latest_results[phase]
+-        for phase in ["screening", "citation", "visual", "recipe", "deep_dive"]
+-        if phase in latest_results
+-    ]
+-
+-    for r in ordered_rows:
+-        phase = r["phase"]
+-        title = phase_titles.get(phase, phase.title())
+-        sections.append(f"## {title}\n")
+-        tokens_in = r.get("tokens_in", 0)
+-        tokens_out = r.get("tokens_out", 0)
+-        cost = r.get("cost_usd", 0.0)
+-        input_label = "미확인" if tokens_in is None else f"{tokens_in:,}"
+-        output_label = "미확인" if tokens_out is None else f"{tokens_out:,}"
+-        cost_label = "미확인" if cost is None else f"${cost:.4f}"
+-        sections.append(f"*Model: {r.get('model_used', 'N/A')} | "
+-                        f"Tokens: {input_label} in / {output_label} out | "
+-                        f"Cost: {cost_label}*\n")
+-
+-        parsed = r.get("parsed_result")
+-        sections.append(
+-            _format_phase_data(
+-                phase,
+-                parsed if isinstance(parsed, dict) else {"raw_text": r.get("result")},
+-            )
+-        )
+-
+-        sections.append("")
+-
+-    sections.append("## Cost Summary\n")
+-    for key, label, format_spec, prefix in (
+-        ("cost_usd", "Total Cost", ".4f", "$"),
+-        ("tokens_in", "Total Tokens In", ",", ""),
+-        ("tokens_out", "Total Tokens Out", ",", ""),
+-    ):
+-        known = [r.get(key, 0) for r in ordered_rows if r.get(key, 0) is not None]
+-        unknown_count = len(ordered_rows) - len(known)
+-        total_label = f"{prefix}{sum(known):{format_spec}}"
+-        if unknown_count:
+-            subtotal = f"확인된 합계: {total_label}; " if known else ""
+-            total_label = f"미확인 ({subtotal}미확인 {unknown_count}개 단계)"
+-        sections.append(f"- **{label}:** {total_label}")
+-
+-    markdown = "\n".join(sections)
++    markdown = build_report_markdown(paper, latest_results)
+ 
+     return ReportResponse(
+         paper_id=paper_id,
+--- before/sasoo/backend/api/report_service.py
++++ after/sasoo/backend/api/report_service.py
+@@ -11,6 +11,74 @@
+ # ---------------------------------------------------------------------------
+ # Helper functions
+ # ---------------------------------------------------------------------------
++
++def build_report_markdown(paper: dict, latest_results: dict[str, dict]) -> str:
++    """Build report Markdown from paper data and ordered phase results."""
++    sections: list[str] = []
++    sections.append(f"# Analysis Report: {paper['title']}\n")
++    sections.append(f"**Authors:** {paper.get('authors', 'N/A')}")
++    sections.append(f"**Year:** {paper.get('year', 'N/A')}")
++    sections.append(f"**Journal:** {paper.get('journal', 'N/A')}")
++    sections.append(f"**DOI:** {paper.get('doi', 'N/A')}")
++    sections.append(f"**Domain:** {paper.get('domain', 'N/A')}")
++    sections.append(f"**Agent:** {paper.get('agent_used', 'N/A')}")
++    sections.append(f"**Analyzed:** {paper.get('analyzed_at', 'N/A')}")
++    sections.append("")
++
++    phase_titles = {
++        "screening": "Phase 1: Screening",
++        "citation": "Phase 2: Citation Analysis",
++        "visual": "Phase 3: Visual Verification",
++        "recipe": "Phase 4: Recipe Extraction",
++        "deep_dive": "Phase 5: Deep Dive Analysis",
++    }
++
++    ordered_rows = [
++        latest_results[phase]
++        for phase in ["screening", "citation", "visual", "recipe", "deep_dive"]
++        if phase in latest_results
++    ]
++
++    for r in ordered_rows:
++        phase = r["phase"]
++        title = phase_titles.get(phase, phase.title())
++        sections.append(f"## {title}\n")
++        tokens_in = r.get("tokens_in", 0)
++        tokens_out = r.get("tokens_out", 0)
++        cost = r.get("cost_usd", 0.0)
++        input_label = "미확인" if tokens_in is None else f"{tokens_in:,}"
++        output_label = "미확인" if tokens_out is None else f"{tokens_out:,}"
++        cost_label = "미확인" if cost is None else f"${cost:.4f}"
++        sections.append(f"*Model: {r.get('model_used', 'N/A')} | "
++                        f"Tokens: {input_label} in / {output_label} out | "
++                        f"Cost: {cost_label}*\n")
++
++        parsed = r.get("parsed_result")
++        sections.append(
++            _format_phase_data(
++                phase,
++                parsed if isinstance(parsed, dict) else {"raw_text": r.get("result")},
++            )
++        )
++
++        sections.append("")
++
++    sections.append("## Cost Summary\n")
++    for key, label, format_spec, prefix in (
++        ("cost_usd", "Total Cost", ".4f", "$"),
++        ("tokens_in", "Total Tokens In", ",", ""),
++        ("tokens_out", "Total Tokens Out", ",", ""),
++    ):
++        known = [r.get(key, 0) for r in ordered_rows if r.get(key, 0) is not None]
++        unknown_count = len(ordered_rows) - len(known)
++        total_label = f"{prefix}{sum(known):{format_spec}}"
++        if unknown_count:
++            subtotal = f"확인된 합계: {total_label}; " if known else ""
++            total_label = f"미확인 ({subtotal}미확인 {unknown_count}개 단계)"
++        sections.append(f"- **{label}:** {total_label}")
++
++    return "\n".join(sections)
++
+ 
+ def _format_phase_data(phase: str, data: dict) -> str:
+     """Format phase result data as readable markdown."""

@@ -126,8 +126,9 @@ describe('ReadingCodeBlock', () => {
 
   it('avoids delayed state work when a pending clipboard write completes after unmount', async () => {
     // Given
-    const pending = Promise.withResolvers<void>();
-    writeText.mockReturnValue(pending.promise);
+    let resolvePending!: () => void;
+    const pending = new Promise<void>((resolve) => { resolvePending = resolve; });
+    writeText.mockReturnValue(pending);
     const container = renderCode();
     act(() => container.querySelector('button')?.click());
     expect(container.querySelector('button')?.disabled).toBe(true);
@@ -135,7 +136,7 @@ describe('ReadingCodeBlock', () => {
     root = null;
 
     // When
-    await act(async () => pending.resolve());
+    await act(async () => resolvePending());
 
     // Then
     expect(vi.getTimerCount()).toBe(0);

@@ -23,7 +23,7 @@ interface SynthesisViewProps {
   deepDive: Record<string, unknown> | null;
   figures: Figure[];
   recipe: Recipe | null;
-  /** deep_dive가 아직 도는 중. 종합은 그 뒤에 자동으로 도착한다. */
+  /** The full analysis is active, including synthesis and visualization. */
   analysisRunning: boolean;
   onRefreshSynthesis?: () => Promise<void>;
   onOpenFigure: (anchor: string) => void;
@@ -121,7 +121,7 @@ export function SynthesisView({
             <h2 className="flex items-center gap-2 text-lg font-semibold text-fg">
               <Sparkles className="h-4 w-4 text-accent" />{T.viewTitle}
             </h2>
-            <p className="mt-1 break-keep text-xs leading-relaxed text-fg-muted">{T.createGuide}</p>
+            <p className="mt-1 break-keep text-xs leading-relaxed text-fg-muted">{analysisRunning ? T.loading : T.createGuide}</p>
           </div>
           {!analysisRunning && (
             <button className="btn-primary px-3 py-1.5 text-xs" disabled={building || !pid} onClick={() => void build()}>

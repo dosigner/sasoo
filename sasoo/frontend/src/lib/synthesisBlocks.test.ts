@@ -69,6 +69,13 @@ describe('assignBlocks', () => {
 });
 
 describe('formatMetricValue', () => {
+  it('keeps existing units and preserves different unit boundaries', () => {
+    expect(formatMetricValue({ value: '60%', unit: '%' })).toBe('60%');
+    expect(formatMetricValue({ value: '30°C', unit: '°C' })).toBe('30°C');
+    expect(formatMetricValue({ value: '42 dB', unit: 'dB' })).toBe('42 dB');
+    expect(formatMetricValue({ value: '60 ms', unit: 's' })).toBe('60 ms s');
+    expect(formatMetricValue({ value: '10 kg', unit: 'g' })).toBe('10 kg g');
+  });
   it('unit이 "-"이거나 비면 value만, 그 외에는 "value unit"', () => {
     expect(formatMetricValue({ value: '42', unit: '-' })).toBe('42');
     expect(formatMetricValue({ value: '42', unit: '' })).toBe('42');

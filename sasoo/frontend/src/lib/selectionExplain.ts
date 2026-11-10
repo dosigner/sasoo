@@ -6,6 +6,13 @@
  */
 import { S } from '@/lib/strings';
 
+export interface ChatSelection {
+  text: string;
+  /** Physical PDF pages, one-based. */
+  page: number;
+  end_page: number;
+}
+
 export const SELECTION_MAX_CHARS = 2000;
 
 /**
@@ -33,10 +40,10 @@ function levelLabel(level: string | null | undefined): string | null {
  * (`lib/readingGuide.ts`의 `buildReadingGuidePrompt`)와 같은 방식으로 눈높이 한 줄을
  * 넣지만, 그 파일은 건드리지 않는다.
  */
-export function buildExplainPrompt(page: number, text: string, level?: string | null): string {
+export function buildExplainPrompt(page: number, text: string, level?: string | null, endPage = page): string {
   const label = levelLabel(level);
   const lines = [
-    `p.${page}의 다음 부분을 설명해 주세요. 직관을 먼저 한 단락으로, 수식 유도가 필요하면 그 아래에 '유도' 소제목으로 접어서(details 태그) 써 주세요. 표기는 논문 것을 그대로 쓰세요.`,
+    `PDF p.${page}${endPage > page ? `–${endPage}` : ''}(파일 순서)의 다음 부분을 설명해 주세요. 직관을 먼저 한 단락으로, 수식 유도가 필요하면 그 아래에 '유도' 소제목으로 접어서(details 태그) 써 주세요. 표기는 논문 것을 그대로 쓰세요.`,
   ];
   if (label) {
     lines.push(`읽는 사람은 ${label}이에요. 용어와 배경 설명을 그 눈높이에 맞춰 주세요.`);

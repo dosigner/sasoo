@@ -27,6 +27,19 @@ RENDER_USAGE = {"input_tokens": 500, "output_tokens": 4000,
                 "input_tokens_details": {"text_tokens": 500, "image_tokens": 0}}
 
 
+def test_duplicate_request_id_has_one_cost_in_checkpoint_and_restored_ledger():
+    from services.analysis_execution import _viz_cost_totals
+    from services.pricing import ledger_entries
+
+    request = {"id": "request-1", "model": "model", "cost_usd": 0.25}
+    items = [{"requests": [request]}]
+    payload = {"items": items, "prior_requests": [request], "cost_unknown_count": 0}
+    assert _viz_cost_totals(items, [request]) == (0.25, 0)
+    assert ledger_entries({"phase": "visualization", "result": json.dumps(payload)}) == [("model", 0.25, "")]
+    conflict = {**request, "cost_usd": 0.5}
+    assert _viz_cost_totals(items, [conflict]) == (0.0, 1)
+
+
 def _reply(text=None, tokens_in=1000, tokens_out=200):
     reply = {"model": "gpt-6-luna", "tokens_in": tokens_in, "tokens_out": tokens_out,
              "tokens_cached": 0, "tokens_cache_write": 0}

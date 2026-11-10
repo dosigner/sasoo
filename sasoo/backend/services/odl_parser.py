@@ -870,11 +870,6 @@ def _resolve_stage_engine(stage: str, engine_override: str | None = None) -> str
     return _normalize_engine(os.environ.get("SASOO_PDF_TEXT_ENGINE"), default=DEFAULT_TEXT_ENGINE)
 
 
-def _resolve_pdf_engine(engine: str | None) -> str:
-    """하위호환 별칭: 명시 인자 > 전역 SASOO_PDF_ENGINE > "odl" (스테이지 무관)."""
-    return _resolve_stage_engine("text", engine)
-
-
 def _run_convert(
     pdf_path: Path,
     output_dir: Path,

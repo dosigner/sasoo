@@ -1,4 +1,4 @@
-import { Children, useMemo, type ReactNode } from 'react';
+import { Children, useContext, useMemo, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -12,6 +12,9 @@ import { rehypeHeadingIds } from '@/lib/rehypeHeadingIds';
 import { detectCitations, type CitationTarget } from '@/lib/citations';
 import { withRoJosa } from '@/lib/josa';
 import { ReadingCodeBlock } from './ReadingCodeBlock';
+import { TerminologyContext } from '@/lib/readingGuideContext';
+import { rehypeTerminology } from '@/lib/rehypeTerminology';
+import Tooltip from './ui/Tooltip';
 
 // 앱 전체의 유일한 마크다운/수식 렌더 경로. figure 해석·보고서 분석·표·
 // 질문도우미가 모두 이 컴포넌트를 쓰므로 수식 렌더 설정이 한 곳에 모인다.
@@ -102,6 +105,7 @@ interface MarkdownProps {
   /** 있으면 텍스트 노드에서 "Fig. 3" / "표 2" / "p.12" 같은 참조를 채팅과 같은 인용 칩으로 치환한다. */
   citations?: MarkdownCitationOptions;
   codeTools?: boolean;
+  terminology?: boolean;
 }
 
 export function Markdown({
@@ -111,12 +115,35 @@ export function Markdown({
   headingAnchors,
   citations,
   codeTools = false,
+  terminology = true,
 }: MarkdownProps) {
   const source = normalizeMathDelimiters(children);
+  const dictionary = useContext(TerminologyContext);
+  const terms = useMemo(() => terminology ? dictionary : [], [dictionary, terminology]);
 
   const resolvedComponents = useMemo<Components | undefined>(() => {
     const readingComponents = codeTools ? READING_COMPONENTS : undefined;
-    if (!citations && !codeTools) return components;
+    const termComponents: Components = terms.length ? {
+      span: ({ node, children: termChildren, ...props }) => {
+        const term = node?.properties['data-terminology'];
+        const entry = terms.find(item => item.term === term);
+        if (!entry) return <span {...props}>{termChildren}</span>;
+        return <Tooltip content={<span className="block max-w-xs whitespace-normal text-xs leading-relaxed">
+          {entry.korean && <strong className="mb-1 block font-semibold">{entry.korean}</strong>}
+          {entry.definition}
+          <span className="mt-1 block text-fg-secondary">
+            {entry.scope === 'field' ? '분야 기본 용어' : entry.scope === 'paper' ? '이 논문의 용어' : '표기 사전'}
+            {entry.page !== null ? ` / p.${entry.page}` : ''}
+          </span>
+        </span>}>
+          <span tabIndex={0} data-terminology={entry.term}
+            className="cursor-help underline decoration-dotted decoration-fg-muted/60 underline-offset-4 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-accent">
+            {termChildren}
+          </span>
+        </Tooltip>;
+      },
+    } : {};
+    if (!citations && !codeTools) return { ...termComponents, ...components };
     const wrap =
       (Tag: CitationTag) =>
       ({ node: _node, children: tagChildren, ...props }: { node?: unknown; children?: ReactNode }) => (
@@ -135,13 +162,18 @@ export function Markdown({
       h3: wrap('h3'),
       h4: wrap('h4'),
       ...readingComponents,
+      ...termComponents,
       ...components,
     };
-  }, [citations, components, codeTools]);
+  }, [citations, components, codeTools, terms]);
 
-  const rehypePlugins = codeTools
+  const basePlugins = codeTools
     ? headingAnchors ? READING_REHYPE_PLUGINS_WITH_IDS : READING_REHYPE_PLUGINS
     : headingAnchors ? REHYPE_PLUGINS_WITH_IDS : REHYPE_PLUGINS;
+  const rehypePlugins = useMemo(() => {
+    const termPlugin = [rehypeTerminology, terms] satisfies [typeof rehypeTerminology, typeof terms];
+    return terms.length ? [...basePlugins, termPlugin] : basePlugins;
+  }, [basePlugins, terms]);
 
   const markdown = (
     <ReactMarkdown

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/dongj/dev/논문_사수_개발중/sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.ko.json",
+  "output": "/Users/dongj/dev/논문_사수_개발중/sasoo/docs/assets/architecture-2026-09-25/analysis-pipeline.ko.html",
+  "specification": {
+    "sha256": "bbe52e62e6a32d75f2663069957f1300a88b4c2b66c39c0a6f571ac9c7816010",
+    "bytes": 2027
+  },
+  "artifact": {
+    "sha256": "47ba18597a2085512173b0c15abd01f51ede6ff5c97b99189beb0b86072da1a8",
+    "bytes": 701759
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  }
+}

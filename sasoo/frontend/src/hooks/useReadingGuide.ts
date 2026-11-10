@@ -4,6 +4,7 @@ import { chatWithAgent } from '@/lib/api';
 import { createTokenBuffer } from '@/lib/tokenBuffer';
 import { getGuide, setGuide, type GuideRecord } from '@/lib/guideCache';
 import { buildReadingGuidePrompt, parseReadingGuide, type ReadingGuide } from '@/lib/readingGuide';
+import { dictionaryTerms } from '@/lib/terminology';
 import { S } from '@/lib/strings';
 
 export type ReadingGuideStatus = 'loading' | 'empty' | 'generating' | 'ready' | 'error';
@@ -21,6 +22,8 @@ export interface UseReadingGuideResult {
   meta: ReadingGuideMeta | null;
   streamText: string;
   error: string | null;
+  errorType: 'load' | 'generate' | null;
+  reload: () => void;
   /** 캐시된 안내가 지금 설명 수준과 다른 수준으로 만들어졌는지. */
   levelMismatch: boolean;
   generate: () => Promise<void>;
@@ -34,12 +37,15 @@ export interface UseReadingGuideResult {
 export function useReadingGuide(
   paperId: string | null,
   level: string | null | undefined,
+  field?: string | null,
 ): UseReadingGuideResult {
   const [status, setStatus] = useState<ReadingGuideStatus>('loading');
   const [markdown, setMarkdown] = useState('');
   const [meta, setMeta] = useState<ReadingGuideMeta | null>(null);
   const [streamText, setStreamText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [errorType, setErrorType] = useState<'load' | 'generate' | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
 
   // 논문이 바뀌면 진행 중인 생성을 끊고 그 논문의 캐시를 다시 읽는다.
@@ -50,6 +56,7 @@ export function useReadingGuide(
     setMeta(null);
     setStreamText('');
     setError(null);
+    setErrorType(null);
 
     if (!paperId) {
       setStatus('empty');
@@ -59,7 +66,6 @@ export function useReadingGuide(
     let cancelled = false;
     setStatus('loading');
     void getGuide(paperId)
-      .catch(() => null)
       .then((record) => {
         if (cancelled) return;
         if (!record) {
@@ -69,6 +75,11 @@ export function useReadingGuide(
         setMarkdown(record.markdown);
         setMeta({ createdAt: record.createdAt, level: record.level, costUsd: record.costUsd });
         setStatus('ready');
+      }).catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : '저장된 읽기 안내를 불러오지 못했어요.');
+        setErrorType('load');
+        setStatus('error');
       });
 
     return () => {
@@ -76,7 +87,7 @@ export function useReadingGuide(
       abortRef.current?.abort();
       abortRef.current = null;
     };
-  }, [paperId]);
+  }, [paperId, reloadKey]);
 
   const generate = useCallback(async () => {
     if (!paperId) return;
@@ -89,22 +100,29 @@ export function useReadingGuide(
     setStatus('generating');
     setStreamText('');
     setError(null);
+    setErrorType(null);
 
     let text = '';
     const buffer = createTokenBuffer((chunk) => {
-      setStreamText((prev) => prev + chunk);
+      if (!controller.signal.aborted) setStreamText((prev) => prev + chunk);
     });
 
     try {
       await chatWithAgent(
         paperId,
-        buildReadingGuidePrompt(level),
+        buildReadingGuidePrompt(level, field),
         [],
         (token) => {
+          if (controller.signal.aborted) return;
           text += token;
           buffer.push(token);
         },
         (done) => {
+          if (controller.signal.aborted) return;
+          const parsed = parseReadingGuide(text);
+          if (!parsed.parsed || !parsed.terminology.length || !dictionaryTerms(parsed).length) {
+            throw new Error('용어 사전 형식을 확인하지 못했어요. 기존 결과는 유지했어요.');
+          }
           buffer.end();
           const record: GuideRecord = {
             markdown: text,
@@ -134,11 +152,12 @@ export function useReadingGuide(
         return;
       }
       setError(err instanceof Error ? err.message : S.readingGuide.errorTitle);
+      setErrorType('generate');
       setStatus('error');
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
     }
-  }, [level, markdown, paperId]);
+  }, [field, level, markdown, paperId]);
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();
@@ -154,6 +173,8 @@ export function useReadingGuide(
     meta,
     streamText,
     error,
+    errorType,
+    reload: () => setReloadKey(key => key + 1),
     levelMismatch,
     generate,
     cancel,

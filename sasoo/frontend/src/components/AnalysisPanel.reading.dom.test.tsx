@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import type { AnalysisResults, AnalysisStatus, ArtifactStatus, FigureListResponse, TableListResponse } from '@/lib/api';
 import type { CitationTarget } from '@/lib/citations';
 import AnalysisPanel, { type CitationFocus } from './AnalysisPanel';
+import ReadingGuideProvider from './ReadingGuideProvider';
 
 const { chatWithAgent, getGuide } = vi.hoisted(() => ({ chatWithAgent: vi.fn(), getGuide: vi.fn() }));
 vi.mock('@/lib/api', () => ({ chatWithAgent }));
@@ -77,10 +78,10 @@ function panel(
     citation: { total_references: 1, summary: '인용 본문\n\n### First source\n\n첫 근거\n\n### Second source\n\n둘째 근거' },
     visual: null, recipe: null, deep_dive: payload,
   };
-  return <AnalysisPanel status={currentStatus} results={results} paperId={paperId} figures={options.figures ?? null}
+  return <ReadingGuideProvider paperId={paperId}><AnalysisPanel status={currentStatus} results={results} paperId={paperId} figures={options.figures ?? null}
     tables={options.tables ?? null} recipe={null} mermaid={null} visualizations={null} isRunning={false}
     citationFocus={citationFocus} onCitationClick={onCitationClick}
-    artifactStatus={options.artifactStatus} terminalState={options.terminalState} />;
+    artifactStatus={options.artifactStatus} terminalState={options.terminalState} /></ReadingGuideProvider>;
 }
 
 async function render(payload: Record<string, unknown> = data, options: Parameters<typeof panel>[4] = {}) {
@@ -114,6 +115,22 @@ function phase(container: HTMLElement, name: string): HTMLButtonElement {
 }
 
 describe('AnalysisPanel summary reading', () => {
+  it('shows saved deliverables and failure reasons without claiming scientific validation', async () => {
+    const container = await render(data, { status: {
+      ...status, overall_status: 'error', progress_pct: 500 / 7,
+      completion_checks: [
+        { stage: 'synthesis', label: '종합', status: 'missing', reason: '저장된 산출물이 없습니다.', required: [], result_id: null },
+        { stage: 'visualization', label: '시각화', status: 'partial', reason: '성공한 결과는 보존됩니다.', required: [], result_id: 9 },
+      ],
+    } });
+    expect(container.querySelector('[data-status-compact]')).toBeNull();
+    const details = [...container.querySelectorAll('details')].find((node) => node.textContent?.includes('단계별 산출물 확인'));
+    expect(details?.textContent).toContain('종합: 산출물 없음');
+    expect(details?.textContent).toContain('시각화: 일부만 준비됨');
+    expect(details?.textContent).toContain('과학적 정확성은 원문과 별도로');
+    expect(details?.textContent).toContain('성공한 결과는 보존됩니다.');
+  });
+
   it('shows a single compact status for a complete analysis', async () => {
     const container = await render();
     expect(container.querySelector('[data-status-compact]')?.textContent).toContain('완료 5');

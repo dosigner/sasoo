@@ -1,0 +1,128 @@
+"""Pure selection rules for paper visualizations before generation."""
+
+from services.models import MODEL_IMAGE_OPENAI, MODEL_IMAGE_SUNBURST
+
+
+# Diagram types the render pipeline (prompt rules, sanitize, repair) is built
+# for. LLMs sometimes plan/emit timeline, gantt, journey, etc. despite the
+# planner prompt no longer listing them — coerce anything outside this set to
+# flowchart so generation stays on a structurally supported type.
+# mindmap은 스펙 §5.5로 빠졌다(구획 배정에 쓸 수 없고 스타일 규칙도 안 받는다).
+_MERMAID_RENDERABLE_TYPES = {"flowchart", "sequence"}
+
+
+_VIZ_CORE_PURPOSES = ("structure", "process", "comparison")
+
+
+def _viz_score(value) -> int | None:
+    """A 0~100 integer score. Integral floats count; bool, NaN, inf and text do not."""
+    return int(value) if type(value) in (int, float) and 0 <= value <= 100 and value == int(value) else None
+
+
+def _viz_plan_shape_error(plan) -> str | None:
+    """Why a new planner response does not match _VIZ_PLAN_SCHEMA, or None."""
+    if not isinstance(plan, dict):
+        return "plan is not an object"
+    for key, kind in (("illustrations", list), ("diagrams", list), ("interactive_html", dict)):
+        if not isinstance(plan.get(key), kind):
+            return f"{key} is missing or malformed"
+    if not all(isinstance(it, dict) for it in plan["illustrations"] + plan["diagrams"]):
+        return "plan item is not an object"
+    if type(plan["interactive_html"].get("applicable")) is not bool:
+        return "interactive_html.applicable is not a boolean"
+    if type(plan.get("diagram_count")) is not int:
+        return "diagram_count is not an integer"
+    return None
+
+
+def _normalize_viz_plan(plan_data: dict) -> list[dict]:
+    """Enforce purpose limits and the 60-point gate before paid generation.
+
+    The planner's diagram_count is not trusted; the item count is what is generated.
+    """
+    def importance(item):
+        return _viz_score(item.get("importance")) or 0
+
+    images = [it for it in plan_data.get("illustrations") or []
+              if isinstance(it, dict) and str(it.get("title") or "").strip()]
+    items = []
+    for purpose, block in (("structure", "concept"), ("process", "method"), ("comparison", "result")):
+        item = next((it for it in images if it.get("purpose") == purpose), None)
+        if item:
+            items.append({**item, "tool": "paperbanana", "block": block, "diagram_type": purpose})
+    extras = sorted((it for it in images if it.get("purpose") == "additional" and importance(it) >= 60),
+                    key=importance, reverse=True)[:2]
+    for item in extras:
+        block = "result" if item.get("category") == "comparison" else "method"
+        items.append({**item, "tool": "paperbanana", "block": block, "diagram_type": "additional"})
+
+    candidates = []
+    for item in items:
+        item["image_model"] = MODEL_IMAGE_OPENAI
+        item["importance"] = importance(item)
+        difficulty = item["difficulty"] = _viz_score(item.get("difficulty"))
+        if difficulty is not None and item["diagram_type"] != "additional" and difficulty >= 70 and importance(item) >= 60:
+            candidates.append(item)
+    if candidates:
+        hardest = max(candidates, key=lambda item: (item["difficulty"], importance(item)))
+        hardest["image_model"] = MODEL_IMAGE_SUNBURST
+
+    diagrams = [it for it in plan_data.get("diagrams") or []
+                if isinstance(it, dict) and str(it.get("title") or "").strip()
+                and it.get("diagram_type") in _MERMAID_RENDERABLE_TYPES]
+    primary = next((it for it in diagrams if it.get("diagram_type") == "sequence"), None)
+    selected = [primary] if primary else []
+    selected.extend(sorted((it for it in diagrams if it is not primary and importance(it) >= 60),
+                           key=importance, reverse=True)[:2])
+    for item in selected:
+        block = item.get("block") if item.get("block") in ("method", "result") else "method"
+        items.append({**item, "tool": "mermaid", "block": block, "importance": importance(item)})
+
+    interactive = plan_data.get("interactive_html")
+    if isinstance(interactive, dict) and interactive.get("applicable") is True and str(interactive.get("title") or "").strip():
+        items.append({**interactive, "tool": "html", "block": "result", "diagram_type": "interactive",
+                      "category": "parameter_relationship"})
+    return items
+
+
+def _gate_viz_items(items: list[dict]) -> list[dict]:
+    """Last check before paid generation: 5 images, 3 Mermaid, 1 HTML, one Sunburst.
+
+    Fresh plans already pass. Cached plans saved before this check (or by the
+    removed legacy schema path) are cut here instead of being generated.
+    """
+    kept: list[dict] = []
+    core_seen: set[str] = set()
+    extra_images = extra_diagrams = html = 0
+    primary_sequence = sunburst = False
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        tool, kind = item.get("tool"), item.get("diagram_type")
+        importance = _viz_score(item.get("importance")) or 0
+        if tool == "paperbanana":
+            if kind in _VIZ_CORE_PURPOSES and kind not in core_seen:
+                core_seen.add(kind)
+            elif kind == "additional" and importance >= 60 and extra_images < 2:
+                extra_images += 1
+            else:
+                continue
+            item = dict(item)
+            eligible = kind in _VIZ_CORE_PURPOSES and importance >= 60 and (_viz_score(item.get("difficulty")) or 0) >= 70
+            if item.get("image_model") == MODEL_IMAGE_SUNBURST and eligible and not sunburst:
+                sunburst = True
+            else:
+                item["image_model"] = MODEL_IMAGE_OPENAI
+        elif tool == "mermaid" and kind in _MERMAID_RENDERABLE_TYPES:
+            if kind == "sequence" and not primary_sequence:
+                primary_sequence = True
+            elif importance >= 60 and extra_diagrams < 2:
+                extra_diagrams += 1
+            else:
+                continue
+        elif tool == "html" and html < 1:
+            html += 1
+        else:
+            continue
+        kept.append(item)
+    return kept

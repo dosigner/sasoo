@@ -210,23 +210,6 @@ async def get_raw_settings() -> dict:
     return await _get_all_settings()
 
 
-async def _set_setting(key: str, value: str) -> None:
-    """Upsert a single setting."""
-    db = await get_db()
-    existing = await fetch_one("SELECT key FROM settings WHERE key = ?", (key,))
-    if existing:
-        await db.execute(
-            "UPDATE settings SET value = ?, updated_at = ? WHERE key = ?",
-            (value, datetime.utcnow().isoformat(), key),
-        )
-    else:
-        await db.execute(
-            "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
-            (key, value, datetime.utcnow().isoformat()),
-        )
-    await db.commit()
-
-
 async def _set_settings(values: dict[str, str]) -> None:
     if not values:
         return

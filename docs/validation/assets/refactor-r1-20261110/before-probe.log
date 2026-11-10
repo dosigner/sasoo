@@ -1,0 +1,5 @@
+OS external connection denied: 1
+OS loopback allowed
+OS Unix socket allowed
+OS write outside task root denied
+Versions: 3.14.6 0.141.1 2.13.5
