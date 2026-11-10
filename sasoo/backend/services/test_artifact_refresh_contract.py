@@ -78,6 +78,7 @@ def test_table_failure_keeps_committed_figure_id_description_and_files(tmp_path)
 
 def test_fake_engine_artifact_files_and_text_bytes(tmp_path):
     import hashlib
+    import os
     import fitz
     from services.test_odl_parser import _parser_env, _stage_convert_side_effect
 
@@ -102,5 +103,12 @@ def test_fake_engine_artifact_files_and_text_bytes(tmp_path):
         "paper.md": "216a3ff3cd287372f69fe429838bf0d1d263b552e563a1badcaaa51eb9f09802",
         "paper.odl-reference.md": "4212e405e326466dc09fcf284465eaaef37bbccc672daf201f1d07cd4ed6e88d",
     }
-    assert {name: hashlib.sha256((tmp_path / name).read_bytes()).hexdigest() for name in expected} == expected
+    actual = {}
+    for name in expected:
+        raw = (tmp_path / name).read_bytes()
+        canonical = raw.replace(b"\r\n", b"\n")
+        # Check the frozen content and the platform's native byte form separately.
+        assert raw == canonical.replace(b"\n", os.linesep.encode("ascii"))
+        actual[name] = hashlib.sha256(canonical).hexdigest()
+    assert actual == expected
     assert (tmp_path / ".page_rasters/page_1.png").stat().st_size > 0
