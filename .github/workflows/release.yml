@@ -85,7 +85,7 @@ jobs:
           # Windows는 미서명으로 배포한다(설치 시 SmartScreen 경고). 코드서명 인증서를
           # WIN_CSC_LINK/WIN_CSC_KEY_PASSWORD 시크릿으로 넣으면 아래 게이트가 자동으로
           # 서명 빌드 + Authenticode 검증으로 전환된다(워크플로 수정 불필요).
-          - os: macos-14
+          - os: macos-15
             builder_flag: --mac
           - os: windows-latest
             builder_flag: --win
