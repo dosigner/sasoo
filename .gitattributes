@@ -1,0 +1,2 @@
+# Keep the report byte fixture stable across checkout platforms.
+sasoo/backend/api/fixtures/report_snapshot.md text eol=lf

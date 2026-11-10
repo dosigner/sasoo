@@ -92,7 +92,7 @@ def test_fake_engine_artifact_files_and_text_bytes(tmp_path):
         odl, "active_provider", new=AsyncMock(return_value="gemini")
     ):
         odl.ensure_visual_artifacts(tmp_path, mode="java", extraction_pipeline_version="legacy", force=True)
-    files = sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*") if path.is_file())
+    files = sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*") if path.is_file())
     assert files == [
         ".odl_manifest.json", ".page_rasters/page_1.png", ".text_cache.meta.json", ".text_cache.txt",
         "paper.json", "paper.md", "paper.odl-reference.md", "paper.pdf",
