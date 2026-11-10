@@ -1,0 +1,134 @@
+--- current/sasoo/backend/services/odl_parser.py
++++ before/sasoo/backend/services/odl_parser.py
+@@ -868,6 +868,11 @@
+     if stage == "visual":
+         return _normalize_engine(os.environ.get("SASOO_PDF_VISUAL_ENGINE"), default=DEFAULT_VISUAL_ENGINE)
+     return _normalize_engine(os.environ.get("SASOO_PDF_TEXT_ENGINE"), default=DEFAULT_TEXT_ENGINE)
++
++
++def _resolve_pdf_engine(engine: str | None) -> str:
++    """하위호환 별칭: 명시 인자 > 전역 SASOO_PDF_ENGINE > "odl" (스테이지 무관)."""
++    return _resolve_stage_engine("text", engine)
+ 
+ 
+ def _run_convert(
+--- current/sasoo/backend/api/settings.py
++++ before/sasoo/backend/api/settings.py
+@@ -210,6 +210,23 @@
+     return await _get_all_settings()
+ 
+ 
++async def _set_setting(key: str, value: str) -> None:
++    """Upsert a single setting."""
++    db = await get_db()
++    existing = await fetch_one("SELECT key FROM settings WHERE key = ?", (key,))
++    if existing:
++        await db.execute(
++            "UPDATE settings SET value = ?, updated_at = ? WHERE key = ?",
++            (value, datetime.utcnow().isoformat(), key),
++        )
++    else:
++        await db.execute(
++            "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
++            (key, value, datetime.utcnow().isoformat()),
++        )
++    await db.commit()
++
++
+ async def _set_settings(values: dict[str, str]) -> None:
+     if not values:
+         return
+--- current/sasoo/backend/api/test_settings.py
++++ before/sasoo/backend/api/test_settings.py
+@@ -73,7 +73,7 @@
+         with (
+             patch("api.settings._ensure_defaults", new=AsyncMock()) as ensure_defaults,
+             patch("api.settings.fetch_all", new=AsyncMock(return_value=rows)),
+-            patch("api.settings._set_settings", new=AsyncMock()),
++            patch("api.settings._set_setting", new=AsyncMock()),
+             patch("api.settings.get_library_root", return_value=Path(platform_root)),
+         ):
+             response = await settings.get_settings()
+@@ -93,7 +93,7 @@
+         with (
+             patch("api.settings._ensure_defaults", new=AsyncMock()),
+             patch("api.settings.fetch_all", new=AsyncMock(return_value=rows)),
+-            patch("api.settings._set_settings", new=AsyncMock()),
++            patch("api.settings._set_setting", new=AsyncMock()),
+             patch("api.settings.get_library_root", return_value=Path(platform_root)),
+         ):
+             response = await settings.get_settings()
+@@ -212,7 +212,7 @@
+         with (
+             patch("api.settings._ensure_defaults", new=AsyncMock()),
+             patch("api.settings.fetch_all", new=AsyncMock(return_value=rows)),
+-            patch("api.settings._set_settings", new=AsyncMock()),
++            patch("api.settings._set_setting", new=AsyncMock()),
+             patch("api.settings.get_library_root", return_value=Path(platform_root)),
+         ):
+             response = await settings.get_settings()
+@@ -236,7 +236,7 @@
+                 "api.settings.encrypt_value",
+                 side_effect=CryptoKeyStoreError("credential store unavailable"),
+             ),
+-            patch("api.settings._set_settings", new=AsyncMock()) as set_setting,
++            patch("api.settings._set_setting", new=AsyncMock()) as set_setting,
+         ):
+             response = await settings.get_settings()
+ 
+@@ -335,7 +335,7 @@
+ 
+         with patch("api.settings._ensure_defaults", new=AsyncMock()):
+             with patch("api.settings.fetch_all", new=AsyncMock(return_value=rows)):
+-                with patch("api.settings._set_settings", new=AsyncMock()):
++                with patch("api.settings._set_setting", new=AsyncMock()):
+                     response = await settings.get_settings()
+ 
+         self.assertEqual(response.research_context, "")
+@@ -396,7 +396,7 @@
+         with (
+             patch("api.settings._ensure_defaults", new=AsyncMock()),
+             patch("api.settings.fetch_all", new=AsyncMock(return_value=rows)),
+-            patch("api.settings._set_settings", new=AsyncMock()),
++            patch("api.settings._set_setting", new=AsyncMock()),
+         ):
+             response = await settings.get_settings()
+ 
+--- current/sasoo/frontend/src/lib/api.ts
++++ before/sasoo/frontend/src/lib/api.ts
+@@ -799,6 +799,11 @@
+   return request<Recipe>(`/analysis/${paperId}/recipe`);
+ }
+ 
++export async function getMermaid(paperId: string): Promise<MermaidDiagram> {
++  return request<MermaidDiagram>(`/analysis/${paperId}/mermaid`);
++}
++
++
+ export interface MermaidRepairRequest {
+   mermaid_code: string;
+   error_message: string;
+--- current/sasoo/frontend/src/hooks/requestEfficiency.test.js
++++ before/sasoo/frontend/src/hooks/requestEfficiency.test.js
+@@ -47,7 +47,7 @@
+   ApiError: class extends Error {},
+   getPapers: vi.fn(), getPaper: vi.fn(), deletePaper: vi.fn(), updatePaper: vi.fn(),
+   runAnalysis: vi.fn(), getAnalysisStatus: vi.fn(), getAnalysisResults: vi.fn(),
+-  getFigures: vi.fn(), getTables: vi.fn(), getRecipe: vi.fn(), getVisualizations: vi.fn(),
++  getFigures: vi.fn(), getTables: vi.fn(), getRecipe: vi.fn(), getMermaid: vi.fn(), getVisualizations: vi.fn(),
+   getSynthesis: vi.fn(),
+ }));
+ vi.mock('@/lib/guideCache', () => ({ deleteGuide: vi.fn() }));
+@@ -145,10 +145,12 @@
+ it.each(['empty', 'failed'])('does not generate a legacy diagram when saved visualizations are %s', async (state) => {
+   api.getAnalysisStatus.mockResolvedValue(status(['screening', 'deep_dive'], 'completed'));
+   api.getAnalysisResults.mockResolvedValue({ paper_id: 1, deep_dive: { detailed_analysis: 'saved summary' } });
++  api.getMermaid.mockResolvedValue({ mermaid_code: 'flowchart TD\nA-->B' });
+   if (state === 'failed') api.getVisualizations.mockRejectedValue(new Error('offline'));
+   hooks.mount(() => useAnalysis('1'));
+   const analysis = await hooks.flush();
+   expect(analysis.results.deep_dive.detailed_analysis).toBe('saved summary');
++  expect(api.getMermaid).not.toHaveBeenCalled();
+   expect(api.runAnalysis).not.toHaveBeenCalled();
+ });
+ 

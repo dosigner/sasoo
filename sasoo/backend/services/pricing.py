@@ -289,6 +289,26 @@ def records_cost(records: list[dict]) -> float | None:
     return None if any(cost is None for cost in costs) else float(sum(costs))
 
 
+def deduplicate_usage_records(records: list[dict]) -> list[dict]:
+    """Count an identified request once; conflicting costs remain unknown."""
+    result: list[dict] = []
+    indexes: dict[str, int] = {}
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        identifier = record.get("id")
+        if not identifier:
+            result.append(dict(record))
+            continue
+        key = str(identifier)
+        if key not in indexes:
+            indexes[key] = len(result)
+            result.append(dict(record))
+        elif result[indexes[key]].get("cost_usd") != record.get("cost_usd"):
+            result[indexes[key]]["cost_usd"] = None
+    return result
+
+
 def item_usage_records(item: Mapping[str, object]) -> list[dict]:  # noqa: OBJECT_OK - Stored item JSON.
     """Request records behind one stored visualization item.
 
@@ -326,6 +346,7 @@ def ledger_entries(row: Mapping[str, object]) -> list[tuple[str, float | None, s
         if isinstance(data, dict) and "cost_unknown_count" in data:
             records = [r for it in data.get("items") or [] if isinstance(it, dict) for r in item_usage_records(it)]
             records += [r for r in data.get("prior_requests") or [] if isinstance(r, dict)]
+            records = deduplicate_usage_records(records)
             return [(str(r.get("model") or "unknown"), r.get("cost_usd"), str(r.get("at") or row_month)[:7])
                     for r in records]
     return [(str(row.get("model_used") or "unknown"), row.get("cost_usd"), row_month)]

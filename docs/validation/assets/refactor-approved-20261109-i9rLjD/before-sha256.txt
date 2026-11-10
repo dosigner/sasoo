@@ -1,0 +1,5 @@
+274159e113c6519035387daf63f4fec8932b7bda853d0e04f863e2105389b799  sasoo/backend/services/odl_parser.py
+9b411d48de45e3a79db0331dc68f6067eaa26fc9ffa20a425ba12712cc903b75  sasoo/backend/api/settings.py
+8d77a2a9e350efd15de9b44a0bc0c34f8dffb6563696c3b92550583c14c02c45  sasoo/backend/api/test_settings.py
+cfc21a701b3a49e553607990fd91d18737ae4df634daffb37e4cf00a4b3e3cbc  sasoo/frontend/src/lib/api.ts
+992716d5761f12ea4f84564a507be3b30817134bbf2967a2bee3727952e09c9c  sasoo/frontend/src/hooks/requestEfficiency.test.js

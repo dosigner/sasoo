@@ -1,0 +1,4 @@
+Policy imports without database, settings, parser, or execution modules.
+warning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.
+Four policy functions and two constants keep the same objects at both import paths.
+Cache assembly, planning calls, and generation remain in analysis_execution.

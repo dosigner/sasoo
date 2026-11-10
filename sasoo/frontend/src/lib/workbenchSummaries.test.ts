@@ -1,7 +1,21 @@
 import { describe, it, expect } from 'vitest';
 
-import { buildAnalysisConfirmCopy, buildPhaseSummary, buildWorkbenchStatusSummary, qualitySummaryContradictsCounts } from './workbenchSummaries';
+import { buildAnalysisConfirmCopy, buildChatStarterPrompts, buildPhaseSummary, buildWorkbenchStatusSummary, paperFieldLabel, qualitySummaryContradictsCounts } from './workbenchSummaries';
 import type { AnalysisResults, AnalysisStatus, CostSummary, EvidenceAnchor, PhaseInfo, PhaseStatusValue, Recipe } from '@/lib/api';
+
+describe('paperFieldLabel', () => {
+  it('shows the academic field regardless of the analysis domain', () => {
+    expect(paperFieldLabel({ domain: 'general', openalex_field: 'Materials Science' })).toBe('Materials Science');
+    expect(paperFieldLabel({ domain: 'ai_ml', openalex_field: 'Computer Science' })).toBe('Computer Science');
+  });
+
+  it('uses legacy domain labels when no academic field is available', () => {
+    expect(paperFieldLabel({ domain: 'optics' })).toBe('광학');
+    expect(paperFieldLabel({ domain: 'general', openalex_field: null })).toBe('일반');
+    expect(paperFieldLabel({ domain: 'custom', openalex_field: '  ' })).toBe('custom');
+    expect(paperFieldLabel({ domain: '' })).toBe('—');
+  });
+});
 
 function makePhases(statuses: PhaseStatusValue[]): PhaseInfo[] {
   const phaseNames: AnalysisStatus['phases'][number]['phase'][] = [
@@ -37,7 +51,41 @@ function makeStatus(statuses: PhaseStatusValue[], overallStatus: string, current
   };
 }
 
+describe('buildChatStarterPrompts', () => {
+  it('starts with reading questions before any analysis exists', () => {
+    expect(buildChatStarterPrompts({ results: null, figures: [], recipe: null })).toEqual([
+      '무슨 문제를 해결하는 논문이야?', '읽기 전에 알아야 할 개념은?', '어디부터 읽으면 좋을까?',
+    ]);
+  });
+
+  it('keeps reading questions while the first phase is running', () => {
+    const results: AnalysisResults = {
+      paper_id: 1, status: makeStatus(['running', 'pending', 'pending', 'pending', 'pending'], 'running', 'screening'),
+      screening: null, citation: null, visual: null, recipe: null, deep_dive: null,
+    };
+    expect(buildChatStarterPrompts({ results, figures: [], recipe: null })).toContain('어디부터 읽으면 좋을까?');
+    results.screening = { summary: 'first result' };
+    expect(buildChatStarterPrompts({ results, figures: [], recipe: null })).toContain('이 논문의 핵심 기여는?');
+  });
+});
+
 describe('buildWorkbenchStatusSummary — progressRatio', () => {
+  it('includes missing synthesis and partial visualization in completion progress', () => {
+    const status = makeStatus(['completed', 'completed', 'completed', 'completed', 'completed'], 'error', null);
+    status.completion_checks = [
+      ...status.phases.map((phase) => ({ stage: phase.phase, label: phase.phase, status: 'completed' as const,
+        reason: '산출물 확인', required: [], result_id: 1 })),
+      { stage: 'synthesis', label: '종합', status: 'missing', reason: '산출물 없음', required: [], result_id: null },
+      { stage: 'visualization', label: '시각화', status: 'partial', reason: '중간 저장', required: [], result_id: 2 },
+    ];
+    const summary = buildWorkbenchStatusSummary({ status, figures: [], tables: [], recipe: null, visualizations: null });
+    expect(summary.runStateLabel).toBe('부분 완료');
+    expect(summary.completedCount).toBe(5);
+    expect(summary.totalCount).toBe(7);
+    expect(summary.progressRatio).toBe(5 / 7);
+    expect(summary.nextActionLabel).toContain('단계별 산출물');
+  });
+
   it('완료 5/5: progressRatio는 1이다', () => {
     const status = makeStatus(['completed', 'completed', 'completed', 'completed', 'completed'], 'completed', null);
     const summary = buildWorkbenchStatusSummary({

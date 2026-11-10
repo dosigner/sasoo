@@ -42,6 +42,8 @@ export interface PdfSearchRequest {
 export interface PdfTextSelection {
   text: string;
   page: number;
+  endPage: number;
+  rawText: string;
   rect: DOMRect;
 }
 
@@ -569,13 +571,10 @@ export default function PdfViewer({
       }
 
       const range = sel.getRangeAt(0);
-      const ancestor = range.commonAncestorContainer;
-      const ancestorEl = (
-        ancestor.nodeType === Node.TEXT_NODE ? ancestor.parentElement : ancestor
-      ) as Element | null;
-      // 공통 조상이 이 뷰어의 textLayer 안에 있어야 한다(다른 패널 선택, 툴바 선택은 무시).
-      const textLayer = ancestorEl?.closest('.textLayer');
-      if (!textLayer || !container.contains(textLayer)) {
+      const elementOf = (node: Node) => (node.nodeType === Node.TEXT_NODE ? node.parentElement : node) as Element | null;
+      const startLayer = elementOf(range.startContainer)?.closest('.textLayer');
+      const endLayer = elementOf(range.endContainer)?.closest('.textLayer');
+      if (!startLayer || !endLayer || !container.contains(startLayer) || !container.contains(endLayer)) {
         emitNullOnce();
         return;
       }
@@ -593,12 +592,14 @@ export default function PdfViewer({
       ) as Element | null;
       const pageEl = startEl?.closest('.page[data-page-number]') as HTMLElement | null;
       const page = pageEl ? Number.parseInt(pageEl.dataset.pageNumber ?? '', 10) : NaN;
-      if (!Number.isFinite(page)) {
+      const endPageEl = endLayer.closest('.page[data-page-number]') as HTMLElement | null;
+      const endPage = Number.parseInt(endPageEl?.dataset.pageNumber ?? '', 10);
+      if (!Number.isFinite(page) || !Number.isFinite(endPage)) {
         return;
       }
 
       firedNullRef.current = false;
-      callback({ text, page, rect: range.getBoundingClientRect() });
+      callback({ text, rawText: sel.toString(), page, endPage, rect: range.getBoundingClientRect() });
     };
 
     const handleMouseUp = () => emit();

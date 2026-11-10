@@ -1,0 +1,116 @@
+................................................................. [  4%]
+........................................................................ [ 10%]
+................................F.F....F................................ [ 15%]
+...................................................... [ 19%]
+..........................................ssss.................... [ 24%]
+.............................................. [ 27%]
+...............sss...................................................... [ 32%]
+.......................................... [ 35%]
+.................................................. [ 39%]
+........................................................................ [ 44%]
+.......................................................... [ 48%]
+......................................................................................................................................................... [ 60%]
+.......................................................................................................................... [ 69%]
+........................................................................ [ 74%]
+.............................................................. [ 78%]
+.............................................................. [ 83%]
+........................................................................ [ 88%]
+................................................................ [ 93%]
+........................................................................ [ 98%]
+..................                                                       [100%]
+=================================== FAILURES ===================================
+_______ test_table_payload_reaches_description_without_prefix_truncation _______
+
+    def test_table_payload_reaches_description_without_prefix_truncation():
+        item = {'title': 'FM OT comparison', 'description': 'Table 1 CIFAR-10 NLL FID NFE', 'diagram_type': 'additional'}
+>       old_prompt = json.loads((OLD / '61bf2b13fb704fe8832a2cdfb85e8045-request.json').read_text())['prompt']
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+services/test_analysis_quality_followup.py:22: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:787: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/private/tmp/sasoo-refactor-r1-okytt635/before/docs/validation/assets/parallel-live-20261011/61bf2b13fb704fe8832a2cdfb85e8045-request.json')
+mode = 'r', buffering = -1, encoding = 'locale', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: '/private/tmp/sasoo-refactor-r1-okytt635/before/docs/validation/assets/parallel-live-20261011/61bf2b13fb704fe8832a2cdfb85e8045-request.json'
+
+/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:771: FileNotFoundError
+__________ test_density_flow_swap_from_actual_description_is_detected __________
+
+    def test_density_flow_swap_from_actual_description_is_detected():
+>       description = json.loads((OLD / '65ed3f5fbe0a48628bc4b9adfeb83cf5-response.json').read_text())['text']
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+services/test_analysis_quality_followup.py:46: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:787: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/private/tmp/sasoo-refactor-r1-okytt635/before/docs/validation/assets/parallel-live-20261011/65ed3f5fbe0a48628bc4b9adfeb83cf5-response.json')
+mode = 'r', buffering = -1, encoding = 'locale', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: '/private/tmp/sasoo-refactor-r1-okytt635/before/docs/validation/assets/parallel-live-20261011/65ed3f5fbe0a48628bc4b9adfeb83cf5-response.json'
+
+/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:771: FileNotFoundError
+_____ test_bad_description_stops_render_and_keeps_known_description_spend ______
+
+    def test_bad_description_stops_render_and_keeps_known_description_spend():
+>       description = json.loads((OLD / '65ed3f5fbe0a48628bc4b9adfeb83cf5-response.json').read_text())['text']
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+services/test_analysis_quality_followup.py:104: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:787: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/private/tmp/sasoo-refactor-r1-okytt635/before/docs/validation/assets/parallel-live-20261011/65ed3f5fbe0a48628bc4b9adfeb83cf5-response.json')
+mode = 'r', buffering = -1, encoding = 'locale', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: '/private/tmp/sasoo-refactor-r1-okytt635/before/docs/validation/assets/parallel-live-20261011/65ed3f5fbe0a48628bc4b9adfeb83cf5-response.json'
+
+/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:771: FileNotFoundError
+External socket attempts blocked: 2
+=========================== short test summary info ============================
+FAILED services/test_analysis_quality_followup.py::test_table_payload_reaches_description_without_prefix_truncation
+FAILED services/test_analysis_quality_followup.py::test_density_flow_swap_from_actual_description_is_detected
+FAILED services/test_analysis_quality_followup.py::test_bad_description_stops_render_and_keeps_known_description_spend
+3 failed, 1356 passed, 7 skipped, 44 warnings, 236 subtests passed in 31.53s
+<sys>:0: DeprecationWarning: builtin type swigvarlink has no __module__ attribute

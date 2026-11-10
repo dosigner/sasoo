@@ -1,0 +1,8 @@
+{
+  "token": "contract-token",
+  "health": "7723551a40c4ab8b1b68febd7dda4bb0524572253842d2172c55aa96852ac5c2",
+  "assets": {
+    "/static/library/paper/example.png": "9bf619e0a7d97535fbcf0d1d574019577f62f664eebce5045dc25229ef1a5267",
+    "/api/papers/7/pdf": "6141c12d87466947916324efb4add4ecb040fb38ae877388ef6582e37d8f0c3b"
+  }
+}

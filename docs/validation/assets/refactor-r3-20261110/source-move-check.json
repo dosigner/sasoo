@@ -1,0 +1,17 @@
+{
+  "moved_functions": [
+    "_gate_viz_items",
+    "_normalize_viz_plan",
+    "_viz_plan_shape_error",
+    "_viz_score"
+  ],
+  "moved_constants": [
+    "_MERMAID_RENDERABLE_TYPES",
+    "_VIZ_CORE_PURPOSES"
+  ],
+  "moved_function_source_bytes_unchanged": true,
+  "moved_definitions_ast_unchanged": true,
+  "remaining_analysis_execution_ast_unchanged_except_reexport_import": true,
+  "cache_function_source_unchanged": true,
+  "cache_function_sha256": "9310ab5bd9f8778fd05df17921d5feaa2a954f086c829f310274a941332cb5bb"
+}

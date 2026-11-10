@@ -349,6 +349,7 @@ def isolated_product(qa: QAInput | None) -> Iterator[None]:
             stack.enter_context(patch.object(figure_service, "ensure_text_artifacts_async", AsyncMock()))
             stack.enter_context(patch.object(figure_service, "ensure_paper_artifacts", AsyncMock(side_effect=ComparisonError("Automatic extraction prohibited"))))
             stack.enter_context(patch.object(analysis_routes, "_CHAT_MAX_ATTEMPTS", 1))
+            stack.enter_context(patch.object(analysis_routes, "get_raw_settings", AsyncMock(return_value={})))
         yield
 
 
@@ -382,14 +383,14 @@ async def invoke_product(context, gate) -> JsonValue:
                 return await execution._run_recipe(1, "", status, **common)
             case "figure_explain":
                 from api import figure_service
-                stack.enter_context(patch.object(figure_service, "call_interaction", gate.capture))
+                stack.enter_context(patch.object(figure_service, "stream_interaction", gate.stream_capture))
                 stack.enter_context(patch.object(figure_service, "resolve_model", choice))
                 return (await figure_service.explain_figure_handler(int(qa.paper["id"]), int(qa.figures[0]["id"]))).model_dump()
             case "chat":
                 from api import analysis_routes
                 from starlette.requests import Request
                 async def receive():
-                    return {"type": "http.request", "body": b'{"message":"Explain the paper method and its limits.","history":[]}'}
+                    return {"type": "http.request", "body": b'{"message":"Explain the paper method and its limits.","history":[],"persist":false}'}
                 request = Request({"type": "http", "method": "POST", "path": "/chat", "headers": []}, receive)
                 stack.enter_context(patch.object(analysis_routes, "stream_interaction", gate.stream_capture))
                 stack.enter_context(patch.object(analysis_routes, "resolve_model", choice))

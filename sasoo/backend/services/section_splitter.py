@@ -486,11 +486,31 @@ class SectionSplitter:
         Returns:
             References section text, or empty string if not found
         """
-        candidates = self._extract_reference_entries(self._compose_reference_source_text(sections))
+        source = sections.get("full_text") or self._compose_reference_source_text(sections)
+        heading = re.search(
+            r'(?im)^[ \t]*(?:#{1,6}[ \t]*)?(?:(?:\d+(?:\.\d+)*|[IVX]+)[.)]?[ \t]+)?'
+            r'(?:references?|bibliography|citations?)[ \t]*$', source,
+        )
+        if heading:
+            source = source[heading.end():]
+        # A real heading prevents prose mentioning references from becoming a bibliography.
+        terminator = (
+            r'(?im)^[ \t]*(?:#{1,6}[ \t]+)?(?:Appendix\b|Supplementary\b|Acknowledg(?:e)?ments?\b)'
+            r'|^[ \t]*#{1,6}[ \t]+(?-i:[A-Z]\.?[ \t]+[A-Z])'
+        )
+        source = re.split(terminator, source, maxsplit=1)[0]
+        candidates = self._extract_reference_entries(source)
         if len(candidates) >= 3:
             return "\n".join(f"{num}. {entry}" for num, entry in candidates)
 
-        return self._get_section(sections, [SectionType.REFERENCES.value])
+        text = source if heading else self._get_section(sections, [SectionType.REFERENCES.value])
+        text = re.split(terminator, text, maxsplit=1)[0]
+        text = self._PAGE_MARKER_PATTERN.sub("\n", text)
+        # Drop page furniture only when the whole paragraph is a page label.
+        paragraphs = re.split(r'\n\s*\n', text)
+        return "\n\n".join(p for p in paragraphs if not re.fullmatch(
+            r'\s*(?:\d+\s*)?(?:Preprint)?\s*', p, re.IGNORECASE,
+        )).strip()
 
     def get_body_text_without_references(self, sections: dict[str, str]) -> str:
         """

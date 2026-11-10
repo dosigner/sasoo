@@ -36,6 +36,7 @@ import RecipeCard from './RecipeCard';
 import { stripRecipeStepNumber } from '@/lib/recipeSteps';
 import ExperimentPlanTab from './ExperimentPlanTab';
 import ReadingGuideTab from './ReadingGuideTab';
+import TerminologyTab from './TerminologyTab';
 import { DeepDiveSummary } from './DeepDiveSummary';
 import ReportExport from './ReportExport';
 import { ContentState } from '@/components/ui';
@@ -61,7 +62,6 @@ interface AnalysisPanelProps {
   onRefreshSynthesis?: () => Promise<void>;
   isRunning: boolean;
   paperId?: string;
-  paperLevel?: string | null;
   onJumpToFigurePage?: (figure: Figure) => void;
   onJumpToTablePage?: (table: Table) => void;
   onJumpToEvidence?: (anchor: EvidenceAnchor) => void;
@@ -572,8 +572,9 @@ function formatPhaseAsMarkdown(phase: AnalysisPhase, data: Record<string, unknow
     }
   } else if (phase === 'visual') {
     if (data.quality_summary) lines.push(`${data.quality_summary}\n`);
-    if (data.figure_count != null) lines.push(`**${md.figures}:** ${data.figure_count}`);
-    if (data.tables_found != null) lines.push(`**${md.tables}:** ${data.tables_found}`);
+    if (data.figure_count != null) lines.push(`**추출 그림 수:** ${data.extracted_figure_count ?? data.figure_count}`);
+    if (data.tables_found != null) lines.push(`**추출 표 수:** ${data.extracted_table_count ?? data.tables_found}`);
+    lines.push('원문 전체 그림/표 개수는 확인되지 않았습니다.');
     if (data.equations_found != null) lines.push(`**${md.equations}:** ${data.equations_found}`);
     const types = data.diagram_types as string[] | undefined;
     if (types?.length) lines.push(`**${md.diagramTypes}:** ${types.join(', ')}`);
@@ -700,7 +701,6 @@ export default function AnalysisPanel({
   onRefreshSynthesis,
   isRunning,
   paperId,
-  paperLevel,
   onJumpToFigurePage,
   onJumpToTablePage,
   onJumpToEvidence,
@@ -710,7 +710,7 @@ export default function AnalysisPanel({
   onCitationClick,
   terminalState,
 }: AnalysisPanelProps) {
-  const [activeTab, setActiveTab] = useState<'summary' | 'synthesis' | 'guide' | 'figures' | 'tables' | 'recipe'>('summary');
+  const [activeTab, setActiveTab] = useState<'summary' | 'synthesis' | 'guide' | 'terminology' | 'figures' | 'tables' | 'recipe'>('summary');
   const [deepDiveExpanded, setDeepDiveExpanded] = useState(true);
   const [screeningExpanded, setScreeningExpanded] = useState(true);
   const [citationExpanded, setCitationExpanded] = useState(false);
@@ -912,6 +912,7 @@ export default function AnalysisPanel({
     { key: 'summary', label: S.workbench.summaryTab },
     { key: 'synthesis', label: S.synthesis.tabLabel },
     { key: 'guide', label: S.workbench.guideTab },
+    { key: 'terminology', label: '용어 사전' },
     { key: 'figures', label: S.workbench.figuresTab },
     { key: 'tables', label: S.workbench.tablesTab },
     { key: 'recipe', label: S.workbench.recipeTab },
@@ -958,7 +959,7 @@ export default function AnalysisPanel({
                   aria-label={S.workbench.statusRailTitle}
                   aria-valuemin={0}
                   aria-valuemax={Math.max(workbenchStatus.totalCount, 1)}
-                  aria-valuenow={workbenchStatus.completedCount}
+                  aria-valuenow={Math.round(workbenchStatus.progressRatio * workbenchStatus.totalCount)}
                 >
                   <div
                     className="h-[3px] rounded-full bg-accent transition-[width] duration-500 ease-out"
@@ -977,6 +978,23 @@ export default function AnalysisPanel({
               </div>
             )}
           </div>}
+
+          {Boolean(status?.completion_checks?.length) && (
+            <details className="mt-2 rounded-surface border border-border/60 px-3 py-2 text-xs">
+              <summary className="cursor-pointer text-fg-secondary focus-visible:outline-2 focus-visible:outline-accent">
+                단계별 산출물 확인 ({status?.completion_checks?.filter((check) => check.status === 'completed' || check.status === 'skipped').length}/{status?.completion_checks?.length})
+              </summary>
+              <p className="mt-2 text-fg-muted">저장된 결과의 필수 항목과 파일을 확인합니다. 과학적 정확성은 원문과 별도로 검토해 주세요.</p>
+              <ul className="mt-2 max-h-64 space-y-2 overflow-y-auto overscroll-contain focus-visible:outline-2 focus-visible:outline-accent" aria-label="단계별 산출물 상태" tabIndex={0}>
+                {status?.completion_checks?.map((check) => (
+                  <li key={check.stage} className="min-w-0 break-words">
+                    <span className="font-medium text-fg">{check.label}: {{ completed: '산출물 확인됨', skipped: '건너뜀', partial: '일부만 준비됨', missing: '산출물 없음', error: '검증 실패' }[check.status]}</span>
+                    <p className="mt-0.5 text-fg-muted">{check.reason}</p>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
 
           <div className={compactCompleted ? 'mt-2.5' : 'mt-4'}>
             <div className="segmented-control flex-wrap">
@@ -1074,7 +1092,7 @@ export default function AnalysisPanel({
               deepDive={(results?.deep_dive as Record<string, unknown> | null) ?? null}
               figures={figureList}
               recipe={recipe}
-              analysisRunning={getPhaseStatus('deep_dive') === 'running'}
+              analysisRunning={isRunning}
               onRefreshSynthesis={onRefreshSynthesis}
               onOpenFigure={openFigureFromSynthesis}
               onOpenRecipe={() => selectTab('recipe')}
@@ -1086,12 +1104,15 @@ export default function AnalysisPanel({
           <ReadingGuideTab
             key={paperId}
             paperId={paperId ?? null}
-            level={paperLevel}
             onJumpToPage={onGuideJumpToPage}
             onSearchInPdf={onGuideSearchInPdf}
             sectionAnswers={extensions?.kind === 'current' ? extensions.sectionAnswers : undefined}
             onOpenSummary={openSummary}
           />
+        </div>
+
+        <div hidden={activeTab !== 'terminology'} className="reading-panel-content">
+          <TerminologyTab key={paperId} paperId={paperId ?? null} onSearchInPdf={onGuideSearchInPdf} />
         </div>
 
         {activeTab === 'figures' && (

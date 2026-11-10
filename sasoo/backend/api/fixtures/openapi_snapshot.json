@@ -1,0 +1,4248 @@
+{
+  "components": {
+    "schemas": {
+      "AgentType": {
+        "enum": [
+          "photon",
+          "cell",
+          "neural",
+          "circuit"
+        ],
+        "title": "AgentType",
+        "type": "string"
+      },
+      "AnalysisPhase": {
+        "enum": [
+          "screening",
+          "citation",
+          "visual",
+          "recipe",
+          "deep_dive"
+        ],
+        "title": "AnalysisPhase",
+        "type": "string"
+      },
+      "AnalysisStatus": {
+        "description": "Aggregate status of all 4 analysis phases.",
+        "properties": {
+          "completion_checks": {
+            "items": {
+              "$ref": "#/components/schemas/StageCompletion"
+            },
+            "title": "Completion Checks",
+            "type": "array"
+          },
+          "current_phase": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisPhase"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "overall_status": {
+            "default": "pending",
+            "title": "Overall Status",
+            "type": "string"
+          },
+          "paper_id": {
+            "title": "Paper Id",
+            "type": "integer"
+          },
+          "phases": {
+            "items": {
+              "$ref": "#/components/schemas/PhaseStatus"
+            },
+            "title": "Phases",
+            "type": "array"
+          },
+          "progress_pct": {
+            "default": 0.0,
+            "title": "Progress Pct",
+            "type": "number"
+          },
+          "total_cost_usd": {
+            "default": 0.0,
+            "title": "Total Cost Usd",
+            "type": "number"
+          },
+          "total_tokens_in": {
+            "default": 0,
+            "title": "Total Tokens In",
+            "type": "integer"
+          },
+          "total_tokens_out": {
+            "default": 0,
+            "title": "Total Tokens Out",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "paper_id"
+        ],
+        "title": "AnalysisStatus",
+        "type": "object"
+      },
+      "Body_upload_paper_api_papers_upload_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_paper_api_papers_upload_post",
+        "type": "object"
+      },
+      "DomainType": {
+        "enum": [
+          "optics",
+          "bio",
+          "ai_ml",
+          "ee",
+          "general"
+        ],
+        "title": "DomainType",
+        "type": "string"
+      },
+      "FigureExplanationResponse": {
+        "description": "Detailed expert explanation of a figure.",
+        "properties": {
+          "caption": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "cost_usd": {
+            "default": 0.0,
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "figure_id": {
+            "title": "Figure Id",
+            "type": "integer"
+          },
+          "figure_num": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figure Num"
+          },
+          "model_used": {
+            "title": "Model Used",
+            "type": "string"
+          },
+          "paper_id": {
+            "title": "Paper Id",
+            "type": "integer"
+          },
+          "tokens_cache_write": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tokens Cache Write"
+          },
+          "tokens_cached": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tokens Cached"
+          },
+          "tokens_in": {
+            "default": 0,
+            "title": "Tokens In",
+            "type": "integer"
+          },
+          "tokens_out": {
+            "default": 0,
+            "title": "Tokens Out",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "figure_id",
+          "paper_id",
+          "explanation",
+          "model_used"
+        ],
+        "title": "FigureExplanationResponse",
+        "type": "object"
+      },
+      "FigureInfo": {
+        "description": "Metadata for an extracted figure.",
+        "properties": {
+          "ai_analysis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Analysis"
+          },
+          "bbox": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "caption": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "classifier_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classifier Label"
+          },
+          "classifier_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classifier Model"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "detailed_explanation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detailed Explanation"
+          },
+          "extraction_engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extraction Engine"
+          },
+          "extraction_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extraction Status"
+          },
+          "figure_num": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figure Num"
+          },
+          "file_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Path"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "is_composite": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Composite"
+          },
+          "page_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Number"
+          },
+          "paper_id": {
+            "title": "Paper Id",
+            "type": "integer"
+          },
+          "parent_figure_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Figure Id"
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality"
+          },
+          "resolver_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolver Version"
+          }
+        },
+        "required": [
+          "paper_id"
+        ],
+        "title": "FigureInfo",
+        "type": "object"
+      },
+      "FigureListResponse": {
+        "description": "List of figures for a paper.",
+        "properties": {
+          "artifacts_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifacts Error"
+          },
+          "artifacts_ready": {
+            "default": false,
+            "title": "Artifacts Ready",
+            "type": "boolean"
+          },
+          "figures": {
+            "items": {
+              "$ref": "#/components/schemas/FigureInfo"
+            },
+            "title": "Figures",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "visual_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visual Error"
+          },
+          "visual_state": {
+            "$ref": "#/components/schemas/VisualState",
+            "default": "partial"
+          }
+        },
+        "required": [
+          "figures",
+          "total"
+        ],
+        "title": "FigureListResponse",
+        "type": "object"
+      },
+      "FullAnalysisResponse": {
+        "description": "Complete analysis results across all phases.",
+        "properties": {
+          "citation": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Citation"
+          },
+          "deep_dive": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deep Dive"
+          },
+          "paper_id": {
+            "title": "Paper Id",
+            "type": "integer"
+          },
+          "recipe": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipe"
+          },
+          "screening": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Screening"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AnalysisStatus"
+          },
+          "visual": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visual"
+          }
+        },
+        "required": [
+          "paper_id",
+          "status"
+        ],
+        "title": "FullAnalysisResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HtmlCheckReport": {
+        "description": "Execution check result of one HTML explainer, measured in the app's sandboxed frame.",
+        "properties": {
+          "html_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Html Sha256",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "title": "Issues",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "integer"
+          },
+          "run_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Token"
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "failed",
+              "timeout"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "html_sha256"
+        ],
+        "title": "HtmlCheckReport",
+        "type": "object"
+      },
+      "MermaidRepairRequest": {
+        "description": "Client-reported parse failure asking the LLM to fix the diagram code.",
+        "properties": {
+          "error_message": {
+            "title": "Error Message",
+            "type": "string"
+          },
+          "mermaid_code": {
+            "title": "Mermaid Code",
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "run_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Token"
+          },
+          "viz_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viz Id"
+          }
+        },
+        "required": [
+          "mermaid_code",
+          "error_message"
+        ],
+        "title": "MermaidRepairRequest",
+        "type": "object"
+      },
+      "MermaidResult": {
+        "description": "Mermaid diagram generated for a paper's process flow.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "diagram_type": {
+            "default": "flowchart",
+            "title": "Diagram Type",
+            "type": "string"
+          },
+          "mermaid_code": {
+            "title": "Mermaid Code",
+            "type": "string"
+          },
+          "paper_id": {
+            "title": "Paper Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "paper_id",
+          "mermaid_code"
+        ],
+        "title": "MermaidResult",
+        "type": "object"
+      },
+      "PaperBananaRequest": {
+        "description": "Request to generate a PaperBanana visual summary.",
+        "properties": {
+          "include_figures": {
+            "default": true,
+            "title": "Include Figures",
+            "type": "boolean"
+          },
+          "include_recipe": {
+            "default": true,
+            "title": "Include Recipe",
+            "type": "boolean"
+          },
+          "language": {
+            "default": "ko",
+            "title": "Language",
+            "type": "string"
+          },
+          "style": {
+            "default": "default",
+            "title": "Style",
+            "type": "string"
+          }
+        },
+        "title": "PaperBananaRequest",
+        "type": "object"
+      },
+      "PaperBananaResponse": {
+        "description": "PaperBanana generation result.",
+        "properties": {
+          "height": {
+            "default": 0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "image_path": {
+            "title": "Image Path",
+            "type": "string"
+          },
+          "image_url": {
+            "title": "Image Url",
+            "type": "string"
+          },
+          "paper_id": {
+            "title": "Paper Id",
+            "type": "integer"
+          },
+          "width": {
+            "default": 0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "paper_id",
+          "image_path",
+          "image_url"
+        ],
+        "title": "PaperBananaResponse",
+        "type": "object"
+      },
+      "PaperListResponse": {
+        "description": "Paginated list of papers.",
+        "properties": {
+          "completed_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed Count"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "papers": {
+            "items": {
+              "$ref": "#/components/schemas/PaperResponse"
+            },
+            "title": "Papers",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "papers",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "PaperListResponse",
+        "type": "object"
+      },
+      "PaperResponse": {
+        "description": "Full paper record returned from the API.",
+        "properties": {
+          "agent_used": {
+            "default": "photon",
+            "title": "Agent Used",
+            "type": "string"
+          },
+          "analysis_focus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Focus"
+          },
+          "analyzed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analyzed At"
+          },
+          "artifacts_ready": {
+            "default": false,
+            "title": "Artifacts Ready",
+            "type": "boolean"
+          },
+          "authors": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authors"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "doi": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doi"
+          },
+          "domain": {
+            "default": "optics",
+            "title": "Domain",
+            "type": "string"
+          },
+          "explanation_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explanation Level"
+          },
+          "folder_name": {
+            "title": "Folder Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "journal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Journal"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "openalex_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openalex Field"
+          },
+          "openalex_subfield_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openalex Subfield Id"
+          },
+          "pdf_file_expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pdf File Expires At"
+          },
+          "pdf_file_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pdf File Uri"
+          },
+          "status": {
+            "default": "pending",
+            "title": "Status",
+            "type": "string"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "text_ready": {
+            "default": false,
+            "title": "Text Ready",
+            "type": "boolean"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "visual_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visual Error"
+          },
+          "visual_ready": {
+            "default": false,
+            "title": "Visual Ready",
+            "type": "boolean"
+          },
+          "visual_state": {
+            "$ref": "#/components/schemas/VisualState",
+            "default": "partial"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "folder_name"
+        ],
+        "title": "PaperResponse",
+        "type": "object"
+      },
+      "PaperStatus": {
+        "enum": [
+          "pending",
+          "analyzing",
+          "completed",
+          "error"
+        ],
+        "title": "PaperStatus",
+        "type": "string"
+      },
+      "PaperUpdate": {
+        "description": "Fields that can be patched on an existing paper.",
+        "properties": {
+          "agent_used": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "analysis_focus": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Focus"
+          },
+          "authors": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authors"
+          },
+          "doi": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Doi"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DomainType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "explanation_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explanation Level"
+          },
+          "journal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Journal"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaperStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "title": "PaperUpdate",
+        "type": "object"
+      },
+      "PhaseStatus": {
+        "description": "Status of a single analysis phase.",
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usd"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "model_used": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Used"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/AnalysisPhase"
+          },
+          "stale_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale Model"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "default": "pending",
+            "title": "Status",
+            "type": "string"
+          },
+          "tokens_in": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tokens In"
+          },
+          "tokens_out": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tokens Out"
+          }
+        },
+        "required": [
+          "phase"
+        ],
+        "title": "PhaseStatus",
+        "type": "object"
+      },
+      "ReportResponse": {
+        "description": "Integrated markdown report.",
+        "properties": {
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "markdown": {
+            "title": "Markdown",
+            "type": "string"
+          },
+          "paper_id": {
+            "title": "Paper Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "paper_id",
+          "title",
+          "markdown",
+          "generated_at"
+        ],
+        "title": "ReportResponse",
+        "type": "object"
+      },
+      "SettingsModel": {
+        "description": "Application settings.",
+        "properties": {
+          "active_provider": {
+            "anyOf": [
+              {
+                "enum": [
+                  "openai",
+                  "gemini"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Provider"
+          },
+          "ai_provider": {
+            "default": "openai",
+            "enum": [
+              "openai",
+              "gemini"
+            ],
+            "title": "Ai Provider",
+            "type": "string"
+          },
+          "auto_analyze": {
+            "default": true,
+            "title": "Auto Analyze",
+            "type": "boolean"
+          },
+          "default_domain": {
+            "$ref": "#/components/schemas/DomainType",
+            "default": "optics"
+          },
+          "default_explanation_level": {
+            "default": "masters",
+            "title": "Default Explanation Level",
+            "type": "string"
+          },
+          "extraction_pipeline_version": {
+            "default": "resolver_v1",
+            "title": "Extraction Pipeline Version",
+            "type": "string"
+          },
+          "field_expertise": {
+            "default": "major",
+            "title": "Field Expertise",
+            "type": "string"
+          },
+          "gemini_api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gemini Api Key"
+          },
+          "gemini_key_unreadable": {
+            "default": false,
+            "title": "Gemini Key Unreadable",
+            "type": "boolean"
+          },
+          "image_provider": {
+            "default": "openai",
+            "enum": [
+              "openai",
+              "gemini"
+            ],
+            "title": "Image Provider",
+            "type": "string"
+          },
+          "image_quality": {
+            "default": "high",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Image Quality",
+            "type": "string"
+          },
+          "language": {
+            "default": "ko",
+            "title": "Language",
+            "type": "string"
+          },
+          "library_path": {
+            "default": "./library",
+            "title": "Library Path",
+            "type": "string"
+          },
+          "max_concurrent_analyses": {
+            "default": 3,
+            "title": "Max Concurrent Analyses",
+            "type": "integer"
+          },
+          "openai_api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openai Api Key"
+          },
+          "openai_key_unreadable": {
+            "default": false,
+            "title": "Openai Key Unreadable",
+            "type": "boolean"
+          },
+          "pdf_parser_mode": {
+            "default": "java",
+            "title": "Pdf Parser Mode",
+            "type": "string"
+          },
+          "pdf_visual_engine": {
+            "default": "gemini",
+            "title": "Pdf Visual Engine",
+            "type": "string"
+          },
+          "reading_experience": {
+            "default": "regular",
+            "title": "Reading Experience",
+            "type": "string"
+          },
+          "research_areas": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Research Areas",
+            "type": "array"
+          },
+          "research_context": {
+            "default": "",
+            "title": "Research Context",
+            "type": "string"
+          },
+          "research_role": {
+            "default": "grad_student",
+            "title": "Research Role",
+            "type": "string"
+          },
+          "switched_to": {
+            "anyOf": [
+              {
+                "enum": [
+                  "openai",
+                  "gemini"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Switched To"
+          },
+          "theme": {
+            "default": "light",
+            "title": "Theme",
+            "type": "string"
+          }
+        },
+        "title": "SettingsModel",
+        "type": "object"
+      },
+      "SettingsUpdate": {
+        "description": "Partial settings update.",
+        "properties": {
+          "ai_provider": {
+            "anyOf": [
+              {
+                "enum": [
+                  "openai",
+                  "gemini"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Provider"
+          },
+          "auto_analyze": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Analyze"
+          },
+          "default_domain": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DomainType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "default_explanation_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Explanation Level"
+          },
+          "extraction_pipeline_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extraction Pipeline Version"
+          },
+          "field_expertise": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field Expertise"
+          },
+          "gemini_api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gemini Api Key"
+          },
+          "image_provider": {
+            "anyOf": [
+              {
+                "enum": [
+                  "openai",
+                  "gemini"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Provider"
+          },
+          "image_quality": {
+            "anyOf": [
+              {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Quality"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "library_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Library Path"
+          },
+          "max_concurrent_analyses": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Concurrent Analyses"
+          },
+          "openai_api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openai Api Key"
+          },
+          "pdf_parser_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pdf Parser Mode"
+          },
+          "pdf_visual_engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pdf Visual Engine"
+          },
+          "reading_experience": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reading Experience"
+          },
+          "research_areas": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Areas"
+          },
+          "research_context": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Context"
+          },
+          "research_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Role"
+          },
+          "theme": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Theme"
+          }
+        },
+        "title": "SettingsUpdate",
+        "type": "object"
+      },
+      "StageCompletion": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "required": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required",
+            "type": "array"
+          },
+          "result_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Id"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "label",
+          "status",
+          "reason",
+          "required"
+        ],
+        "title": "StageCompletion",
+        "type": "object"
+      },
+      "SynthesisEquation": {
+        "description": "수식 체인의 항목 하나. 순서는 논문 번호가 아니라 유도 순서다.",
+        "properties": {
+          "latex": {
+            "default": "",
+            "title": "Latex",
+            "type": "string"
+          },
+          "meaning": {
+            "default": "",
+            "title": "Meaning",
+            "type": "string"
+          },
+          "paper_number": {
+            "default": "",
+            "title": "Paper Number",
+            "type": "string"
+          },
+          "symbols": {
+            "items": {
+              "$ref": "#/components/schemas/SynthesisSymbol"
+            },
+            "title": "Symbols",
+            "type": "array"
+          }
+        },
+        "title": "SynthesisEquation",
+        "type": "object"
+      },
+      "SynthesisFigureRef": {
+        "properties": {
+          "figure_num": {
+            "default": "",
+            "title": "Figure Num",
+            "type": "string"
+          },
+          "interpretation": {
+            "default": "",
+            "title": "Interpretation",
+            "type": "string"
+          }
+        },
+        "title": "SynthesisFigureRef",
+        "type": "object"
+      },
+      "SynthesisMetric": {
+        "description": "요약 구획의 핵심 수치 타일 하나.",
+        "properties": {
+          "evidence": {
+            "default": "",
+            "title": "Evidence",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "unit": {
+            "default": "",
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "default": "",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "title": "SynthesisMetric",
+        "type": "object"
+      },
+      "SynthesisParameter": {
+        "properties": {
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "title": "SynthesisParameter",
+        "type": "object"
+      },
+      "SynthesisResponse": {
+        "description": "종합 스테이지 결과. 필드 이름은 프론트 종합 뷰가 그대로 쓴다.",
+        "properties": {
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usd"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "dropped": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Dropped",
+            "type": "object"
+          },
+          "equation_count": {
+            "default": 0,
+            "title": "Equation Count",
+            "type": "integer"
+          },
+          "equations": {
+            "items": {
+              "$ref": "#/components/schemas/SynthesisEquation"
+            },
+            "title": "Equations",
+            "type": "array"
+          },
+          "key_metrics": {
+            "items": {
+              "$ref": "#/components/schemas/SynthesisMetric"
+            },
+            "title": "Key Metrics",
+            "type": "array"
+          },
+          "key_parameters": {
+            "items": {
+              "$ref": "#/components/schemas/SynthesisParameter"
+            },
+            "title": "Key Parameters",
+            "type": "array"
+          },
+          "method_sentence": {
+            "default": "",
+            "title": "Method Sentence",
+            "type": "string"
+          },
+          "model_used": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Used"
+          },
+          "paper_id": {
+            "title": "Paper Id",
+            "type": "integer"
+          },
+          "problem_sentence": {
+            "default": "",
+            "title": "Problem Sentence",
+            "type": "string"
+          },
+          "result_figures": {
+            "items": {
+              "$ref": "#/components/schemas/SynthesisFigureRef"
+            },
+            "title": "Result Figures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "paper_id"
+        ],
+        "title": "SynthesisResponse",
+        "type": "object"
+      },
+      "SynthesisSymbol": {
+        "properties": {
+          "meaning": {
+            "default": "",
+            "title": "Meaning",
+            "type": "string"
+          },
+          "symbol": {
+            "default": "",
+            "title": "Symbol",
+            "type": "string"
+          }
+        },
+        "title": "SynthesisSymbol",
+        "type": "object"
+      },
+      "TableInfo": {
+        "description": "Metadata for an extracted table.",
+        "properties": {
+          "bbox": {
+            "anyOf": [
+              {
+                "maxItems": 4,
+                "minItems": 4,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bbox"
+          },
+          "caption": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "classifier_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classifier Model"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "csv_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Csv Path"
+          },
+          "extraction_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extraction Status"
+          },
+          "html_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Html Path"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "markdown_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Markdown Text"
+          },
+          "page_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Number"
+          },
+          "paper_id": {
+            "title": "Paper Id",
+            "type": "integer"
+          },
+          "parse_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parse Method"
+          },
+          "repair_attempted": {
+            "default": false,
+            "title": "Repair Attempted",
+            "type": "boolean"
+          },
+          "repair_confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repair Confidence"
+          },
+          "repair_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repair Reason"
+          },
+          "resolver_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolver Version"
+          },
+          "review_required": {
+            "default": false,
+            "title": "Review Required",
+            "type": "boolean"
+          },
+          "table_num": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table Num"
+          }
+        },
+        "required": [
+          "paper_id"
+        ],
+        "title": "TableInfo",
+        "type": "object"
+      },
+      "TableListResponse": {
+        "description": "List of extracted tables for a paper.",
+        "properties": {
+          "artifacts_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifacts Error"
+          },
+          "artifacts_ready": {
+            "default": false,
+            "title": "Artifacts Ready",
+            "type": "boolean"
+          },
+          "tables": {
+            "items": {
+              "$ref": "#/components/schemas/TableInfo"
+            },
+            "title": "Tables",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "visual_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visual Error"
+          },
+          "visual_state": {
+            "$ref": "#/components/schemas/VisualState",
+            "default": "partial"
+          }
+        },
+        "required": [
+          "tables",
+          "total"
+        ],
+        "title": "TableListResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VisualState": {
+        "enum": [
+          "ready",
+          "running",
+          "error",
+          "partial"
+        ],
+        "title": "VisualState",
+        "type": "string"
+      },
+      "VisualizationItem": {
+        "description": "One planned image, Mermaid diagram, or HTML explainer.",
+        "properties": {
+          "block": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block"
+          },
+          "category": {
+            "default": "",
+            "title": "Category",
+            "type": "string"
+          },
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usd"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "diagram_type": {
+            "default": "flowchart",
+            "title": "Diagram Type",
+            "type": "string"
+          },
+          "difficulty": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difficulty"
+          },
+          "duration_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration S"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "execution_check": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Check"
+          },
+          "html_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Html Code"
+          },
+          "id": {
+            "default": 0,
+            "title": "Id",
+            "type": "integer"
+          },
+          "image_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Model"
+          },
+          "image_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Path"
+          },
+          "image_quality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Quality"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "importance": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importance"
+          },
+          "mermaid_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mermaid Code"
+          },
+          "model_used": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Used"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "status": {
+            "default": "pending",
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "tool": {
+            "default": "mermaid",
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "VisualizationItem",
+        "type": "object"
+      },
+      "VisualizationPlanResponse": {
+        "description": "Mixed image, Mermaid, and interactive HTML visualizations.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VisualizationItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "model_used": {
+            "default": "",
+            "title": "Model Used",
+            "type": "string"
+          },
+          "paper_id": {
+            "title": "Paper Id",
+            "type": "integer"
+          },
+          "planned_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned At"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "run_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Token"
+          },
+          "total_count": {
+            "default": 0,
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "paper_id"
+        ],
+        "title": "VisualizationPlanResponse",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Backend API for Sasoo, an AI Co-Scientist desktop application that analyzes research papers using a 4-phase engineering analysis strategy (Screening -> Visual Verification -> Recipe Extraction -> Deep Dive) powered by the Gemini API (Interactions).",
+    "title": "Sasoo - AI Co-Scientist",
+    "version": "1.3.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Root",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/agents": {
+      "get": {
+        "description": "List all agents (bundled + custom).",
+        "operationId": "list_agents_api_agents_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Agents",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/agents/{name}": {
+      "get": {
+        "description": "Get agent detail including raw .md content.",
+        "operationId": "get_agent_api_agents__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Agent",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/cancel": {
+      "post": {
+        "description": "Cancel a running analysis for a paper.",
+        "operationId": "cancel_analysis_api_analysis__paper_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Analysis",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/chat": {
+      "post": {
+        "description": "Stream a chat response from the agent about this paper via SSE.",
+        "operationId": "chat_with_agent_api_analysis__paper_id__chat_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Chat With Agent",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/discussion": {
+      "delete": {
+        "operationId": "delete_discussion_api_analysis__paper_id__discussion_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Discussion",
+        "tags": [
+          "analysis"
+        ]
+      },
+      "get": {
+        "description": "토의 기록과 맥락 막대 정보. 출처별 토큰은 실제 입력 토큰을 글자 수로 나눈 추정값이다.",
+        "operationId": "get_discussion_api_analysis__paper_id__discussion_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Discussion",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/discussion/reset": {
+      "post": {
+        "operationId": "reset_discussion_api_analysis__paper_id__discussion_reset_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Discussion",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/experiment-plan": {
+      "get": {
+        "description": "Get the most recent experiment plan for a paper.",
+        "operationId": "get_experiment_plan_api_analysis__paper_id__experiment_plan_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Experiment Plan",
+        "tags": [
+          "analysis"
+        ]
+      },
+      "post": {
+        "description": "Generate an experiment reproduction guide from the Recipe Card.",
+        "operationId": "generate_experiment_plan_api_analysis__paper_id__experiment_plan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Experiment Plan",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/figures": {
+      "get": {
+        "description": "Get all extracted figures for a paper with AI analysis.",
+        "operationId": "get_figures_api_analysis__paper_id__figures_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FigureListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Figures",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/figures/{figure_id}/explain": {
+      "post": {
+        "description": "Generate a detailed expert-level explanation of a specific figure.\nUses LLM to analyze the figure in context of the full paper text.\nReturns cached explanation if already generated.",
+        "operationId": "explain_figure_api_analysis__paper_id__figures__figure_id__explain_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "figure_id",
+            "required": true,
+            "schema": {
+              "title": "Figure Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FigureExplanationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Explain Figure",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/figures/{figure_id}/explain/stream": {
+      "post": {
+        "operationId": "explain_figure_stream_api_analysis__paper_id__figures__figure_id__explain_stream_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "figure_id",
+            "required": true,
+            "schema": {
+              "title": "Figure Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Explain Figure Stream",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/mermaid": {
+      "get": {
+        "description": "Generate a Mermaid diagram for the paper's experimental process flow.\nUses Gemini for fast diagram generation.",
+        "operationId": "get_mermaid_api_analysis__paper_id__mermaid_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MermaidResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Mermaid",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/mermaid/repair": {
+      "post": {
+        "description": "Self-heal a Mermaid diagram that failed to parse in the renderer.\n\nThe client sends the failing code plus the parser error message; Gemini\nfixes the code while keeping the content and styling. When viz_id is\ngiven, the repaired code is persisted into the stored visualization row.",
+        "operationId": "repair_mermaid_api_analysis__paper_id__mermaid_repair_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MermaidRepairRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MermaidResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Repair Mermaid",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/paperbanana": {
+      "post": {
+        "description": "Generate a PaperBanana visual summary image for a paper.",
+        "operationId": "generate_paperbanana_api_analysis__paper_id__paperbanana_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaperBananaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperBananaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Paperbanana",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/recipe": {
+      "get": {
+        "description": "Get the extracted recipe card for a paper.",
+        "operationId": "get_recipe_api_analysis__paper_id__recipe_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Recipe",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/report": {
+      "get": {
+        "description": "Generate an integrated markdown report combining all analysis phases.",
+        "operationId": "get_report_api_analysis__paper_id__report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Report",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/results": {
+      "get": {
+        "description": "Get full analysis results across all phases.",
+        "operationId": "get_analysis_results_api_analysis__paper_id__results_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FullAnalysisResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Analysis Results",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/run": {
+      "post": {
+        "description": "Start the 4-phase analysis pipeline for a paper.\nRuns in background. Poll /status for progress.",
+        "operationId": "run_analysis_api_analysis__paper_id__run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Analysis",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/status": {
+      "get": {
+        "description": "Get current analysis progress for a paper.",
+        "operationId": "get_analysis_status_api_analysis__paper_id__status_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Analysis Status",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/synthesis": {
+      "get": {
+        "description": "저장된 최신 종합 결과를 돌려준다(스펙 §5.3). 없으면 404 — 프론트는 그때\n기존 갤러리를 그리고 \"종합 뷰 만들기\" 버튼을 보인다(§7).",
+        "operationId": "get_synthesis_api_analysis__paper_id__synthesis_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynthesisResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Synthesis",
+        "tags": [
+          "analysis"
+        ]
+      },
+      "post": {
+        "description": "종합 스테이지만 다시 실행한다. 다이어그램은 건드리지 않는다(스펙 §7).\n\n컨텍스트는 regenerate_visualization과 같은 방식으로 다시 조립한다 — 이 경로는\n체인 밖이라 서버측 대화 상태가 없고, 폴백 프롬프트(Phase 1~4 결과 + 문서 요약)로\n돈다. 캐시는 우회한다: \"다시 만들기\"가 같은 결과를 돌려주면 버튼이 거짓말이 된다.",
+        "operationId": "run_synthesis_api_analysis__paper_id__synthesis_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynthesisResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Synthesis",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/tables": {
+      "get": {
+        "description": "Get all extracted tables for a paper.",
+        "operationId": "get_tables_api_analysis__paper_id__tables_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TableListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Tables",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/visualizations": {
+      "get": {
+        "description": "Get the visualization plan and generated diagrams/figures for a paper.\nGemini Pro 3 plans up to 10 visualizations (Mermaid + PaperBanana mix).",
+        "operationId": "get_visualizations_api_analysis__paper_id__visualizations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisualizationPlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Visualizations",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/visualizations/{viz_id}/html-check": {
+      "post": {
+        "description": "Store the app's execution check of one HTML explainer in its run.\n\nThe hash must match the stored code, so a check of replaced code is refused.\nA failed or timed-out explainer is then not reused by a cached reanalysis.",
+        "operationId": "report_html_check_api_analysis__paper_id__visualizations__viz_id__html_check_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "viz_id",
+            "required": true,
+            "schema": {
+              "title": "Viz Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HtmlCheckReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisualizationItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Report Html Check",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/analysis/{paper_id}/visualizations/{viz_id}/regenerate": {
+      "post": {
+        "description": "Regenerate a single Mermaid visualization item with the current prompt\n(styling rules included) and persist it, without re-running the analysis.\n\nrun_id is the plan's run the client is showing. A stale id is refused before\nany paid call; the result is saved only into the row read here.",
+        "operationId": "regenerate_visualization_api_analysis__paper_id__visualizations__viz_id__regenerate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "viz_id",
+            "required": true,
+            "schema": {
+              "title": "Viz Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisualizationItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Regenerate Visualization",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/papers": {
+      "get": {
+        "description": "List papers with filtering, sorting, and pagination.",
+        "operationId": "list_papers_api_papers_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "domain",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Domain"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_by",
+            "required": false,
+            "schema": {
+              "default": "created_at",
+              "title": "Sort By",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_order",
+            "required": false,
+            "schema": {
+              "default": "desc",
+              "title": "Sort Order",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Papers",
+        "tags": [
+          "papers"
+        ]
+      }
+    },
+    "/api/papers/upload": {
+      "post": {
+        "description": "Upload a PDF file.\n1. Save the PDF to the library.\n2. Extract metadata (title, authors, year, DOI, domain).\n3. Extract figures.\n4. Insert record into the database.\n5. Return the paper record.",
+        "operationId": "upload_paper_api_papers_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_paper_api_papers_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Paper",
+        "tags": [
+          "papers"
+        ]
+      }
+    },
+    "/api/papers/{paper_id}": {
+      "delete": {
+        "description": "Delete a paper and all associated files/records.\n- Remove analysis_results rows\n- Remove figures rows and files\n- Remove paper folder from disk\n- Remove paper row",
+        "operationId": "delete_paper_api_papers__paper_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Paper",
+        "tags": [
+          "papers"
+        ]
+      },
+      "get": {
+        "description": "Get a single paper by ID.",
+        "operationId": "get_paper_api_papers__paper_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Paper",
+        "tags": [
+          "papers"
+        ]
+      },
+      "patch": {
+        "description": "Update paper metadata (tags, notes, title, etc.).",
+        "operationId": "update_paper_api_papers__paper_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaperUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaperResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Paper",
+        "tags": [
+          "papers"
+        ]
+      }
+    },
+    "/api/papers/{paper_id}/pdf": {
+      "get": {
+        "description": "Serve the PDF file for a given paper.",
+        "operationId": "get_paper_pdf_api_papers__paper_id__pdf_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "paper_id",
+            "required": true,
+            "schema": {
+              "title": "Paper Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Paper Pdf",
+        "tags": [
+          "papers"
+        ]
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "description": "Get current application settings.\nAPI keys are masked for security.",
+        "operationId": "get_settings_api_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Settings",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "description": "Update application settings.\nOnly non-None fields in the request body are updated.\nAPI keys are stored as-is but returned masked.",
+        "operationId": "update_settings_api_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/cost": {
+      "get": {
+        "description": "Get usage & cost data including monthly trends, token usage,\nmodel breakdown, and per-paper costs.\n\nHistorical usage view: these aggregates intentionally reflect cumulative\nanalysis_results history rather than latest-per-phase semantics.",
+        "operationId": "get_cost_summary_api_settings_cost_get",
+        "parameters": [
+          {
+            "description": "Month in YYYY-MM format. Defaults to current month.",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Month in YYYY-MM format. Defaults to current month.",
+              "title": "Month"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Cost Summary",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health Check",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/shutdown": {
+      "post": {
+        "description": "Graceful shutdown endpoint (called by Electron on app quit).\nRequires X-Shutdown-Token header matching SASOO_SHUTDOWN_TOKEN env var.",
+        "operationId": "shutdown_shutdown_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-shutdown-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Shutdown-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Shutdown",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}

@@ -109,6 +109,40 @@ class PipelineCase(IsolatedDbCase):
 
 
 class PartialRetryTests(PipelineCase):
+    async def test_inconsistent_total_is_not_a_completed_cache_hit(self):
+        os.environ["OPENAI_API_KEY"] = "sk-dummy"
+        self.html_fails = False
+        await self.run_pipeline()
+        row = (await self.viz_rows())[0]
+        payload = json.loads(row["result"])
+        old_token = payload["run_token"]
+        payload["total_count"] = 99
+        await self.conn.execute("UPDATE analysis_results SET result = ? WHERE id = ?", (json.dumps(payload), row["id"]))
+        await self.conn.commit()
+        calls = dict(self.calls)
+        await self.run_pipeline()
+        saved = json.loads((await self.viz_rows())[0]["result"])
+        self.assertNotEqual(saved["run_token"], old_token)
+        self.assertEqual(saved["total_count"], len(saved["items"]))
+        self.assertEqual(self.calls, calls)
+
+    async def test_complete_cache_missing_planned_item_is_not_reused_or_regenerated(self):
+        os.environ["OPENAI_API_KEY"] = "sk-dummy"
+        self.html_fails = False
+        await self.run_pipeline()
+        row = (await self.viz_rows())[0]
+        payload = json.loads(row["result"])
+        payload["items"].pop()
+        payload["total_count"] = len(payload["items"])
+        raw = json.dumps(payload)
+        await self.conn.execute("UPDATE analysis_results SET result = ? WHERE id = ?", (raw, row["id"]))
+        await self.conn.commit()
+        calls = dict(self.calls)
+        with self.assertRaisesRegex(ValueError, "계획"):
+            await self.run_pipeline()
+        self.assertEqual(self.calls, calls)
+        self.assertEqual((await self.viz_rows())[0]["result"], raw)
+
     async def test_failed_items_are_retried_and_successes_are_not_replayed(self):
         first = {it["id"]: it for it in await self.run_pipeline()}
         self.assertEqual([first[i]["status"] for i in (1, 2, 3)], ["error", "completed", "error"])
@@ -128,6 +162,9 @@ class PartialRetryTests(PipelineCase):
         stored = json.loads(rows[0]["result"])
         self.assertTrue(stored["complete"])
         self.assertEqual([it["status"] for it in stored["items"]], ["completed"] * 3)
+        self.assertEqual(stored["planned_items"], [{"id": 1, "tool": "paperbanana"},
+                                                   {"id": 2, "tool": "mermaid"},
+                                                   {"id": 3, "tool": "html"}])
 
         # A third analysis is a pure cache hit.
         await self.run_pipeline()
@@ -151,21 +188,50 @@ class PartialRetryTests(PipelineCase):
         original = figure_gen.generate_illustration
 
         async def crash(*_args, **_kwargs):
-            raise _WorkerDied  # the worker dies after the Mermaid checkpoint
+            raise _WorkerDied
 
         with patch("services.viz.figure_gen.generate_illustration", new=crash):
             with self.assertRaises(_WorkerDied):
                 await self.run_pipeline()
         checkpoint = json.loads((await self.viz_rows())[0]["result"])
         self.assertFalse(checkpoint["complete"])
-        self.assertEqual([it["id"] for it in checkpoint["items"]], [2])
+        self.assertEqual(checkpoint["planned_items"], [{"id": 1, "tool": "paperbanana"},
+                                                       {"id": 2, "tool": "mermaid"},
+                                                       {"id": 3, "tool": "html"}])
+        # HTML can finish alongside Mermaid before the image worker stops.
+        self.assertEqual([it["id"] for it in checkpoint["items"]], [2, 3])
 
         with patch("services.viz.figure_gen.generate_illustration", new=original):
             items = await self.run_pipeline()
 
         self.assertEqual([it["status"] for it in items], ["completed"] * 3)
         self.assertEqual(self.calls["mermaid"], 1)
+        self.assertEqual(self.calls["html"], 1)
         self.assertEqual(self.calls["plan"], 1)
+
+    async def test_cancel_keeps_plan_and_resume_reuses_finished_items(self):
+        import asyncio
+        os.environ["OPENAI_API_KEY"] = "sk-dummy"
+        self.html_fails = False
+        hold = self.html_hold = asyncio.Event()
+        cancel = asyncio.Event()
+        with patch.dict(ae._cancel_events, {7: cancel}):
+            task = asyncio.create_task(self.run_pipeline())
+            for _ in range(500):
+                if self.calls["html"]:
+                    break
+                await asyncio.wait({task}, timeout=0.01)
+            self.assertTrue(self.calls["html"])
+            self.assertEqual(len(json.loads((await self.viz_rows())[0]["result"])["planned_items"]), 3)
+            cancel.set()
+            hold.set()
+            await task
+        saved = json.loads((await self.viz_rows())[0]["result"])
+        self.assertFalse(saved["complete"])
+        calls = dict(self.calls)
+        await self.run_pipeline()
+        self.assertEqual(self.calls["plan"], calls["plan"])
+        self.assertTrue(json.loads((await self.viz_rows())[0]["result"])["complete"])
 
     async def test_saved_empty_run_without_a_plan_marker_is_planned_again(self):
         # v1.2.0 saved a failed plan as a completed run with no items.

@@ -12,6 +12,74 @@ logger = logging.getLogger(__name__)
 # Helper functions
 # ---------------------------------------------------------------------------
 
+def build_report_markdown(paper: dict, latest_results: dict[str, dict]) -> str:
+    """Build report Markdown from paper data and ordered phase results."""
+    sections: list[str] = []
+    sections.append(f"# Analysis Report: {paper['title']}\n")
+    sections.append(f"**Authors:** {paper.get('authors', 'N/A')}")
+    sections.append(f"**Year:** {paper.get('year', 'N/A')}")
+    sections.append(f"**Journal:** {paper.get('journal', 'N/A')}")
+    sections.append(f"**DOI:** {paper.get('doi', 'N/A')}")
+    sections.append(f"**Domain:** {paper.get('domain', 'N/A')}")
+    sections.append(f"**Agent:** {paper.get('agent_used', 'N/A')}")
+    sections.append(f"**Analyzed:** {paper.get('analyzed_at', 'N/A')}")
+    sections.append("")
+
+    phase_titles = {
+        "screening": "Phase 1: Screening",
+        "citation": "Phase 2: Citation Analysis",
+        "visual": "Phase 3: Visual Verification",
+        "recipe": "Phase 4: Recipe Extraction",
+        "deep_dive": "Phase 5: Deep Dive Analysis",
+    }
+
+    ordered_rows = [
+        latest_results[phase]
+        for phase in ["screening", "citation", "visual", "recipe", "deep_dive"]
+        if phase in latest_results
+    ]
+
+    for r in ordered_rows:
+        phase = r["phase"]
+        title = phase_titles.get(phase, phase.title())
+        sections.append(f"## {title}\n")
+        tokens_in = r.get("tokens_in", 0)
+        tokens_out = r.get("tokens_out", 0)
+        cost = r.get("cost_usd", 0.0)
+        input_label = "미확인" if tokens_in is None else f"{tokens_in:,}"
+        output_label = "미확인" if tokens_out is None else f"{tokens_out:,}"
+        cost_label = "미확인" if cost is None else f"${cost:.4f}"
+        sections.append(f"*Model: {r.get('model_used', 'N/A')} | "
+                        f"Tokens: {input_label} in / {output_label} out | "
+                        f"Cost: {cost_label}*\n")
+
+        parsed = r.get("parsed_result")
+        sections.append(
+            _format_phase_data(
+                phase,
+                parsed if isinstance(parsed, dict) else {"raw_text": r.get("result")},
+            )
+        )
+
+        sections.append("")
+
+    sections.append("## Cost Summary\n")
+    for key, label, format_spec, prefix in (
+        ("cost_usd", "Total Cost", ".4f", "$"),
+        ("tokens_in", "Total Tokens In", ",", ""),
+        ("tokens_out", "Total Tokens Out", ",", ""),
+    ):
+        known = [r.get(key, 0) for r in ordered_rows if r.get(key, 0) is not None]
+        unknown_count = len(ordered_rows) - len(known)
+        total_label = f"{prefix}{sum(known):{format_spec}}"
+        if unknown_count:
+            subtotal = f"확인된 합계: {total_label}; " if known else ""
+            total_label = f"미확인 ({subtotal}미확인 {unknown_count}개 단계)"
+        sections.append(f"- **{label}:** {total_label}")
+
+    return "\n".join(sections)
+
+
 def _format_phase_data(phase: str, data: dict) -> str:
     """Format phase result data as readable markdown."""
     parts: list[str] = []
@@ -44,8 +112,9 @@ def _format_phase_data(phase: str, data: dict) -> str:
                 parts.append(f"- {t}")
 
     elif phase == "visual":
-        parts.append(f"**Figures:** {data.get('figure_count', 0)}")
-        parts.append(f"**Tables:** {data.get('tables_found', 0)}")
+        parts.append(f"**추출 그림 수:** {data.get('extracted_figure_count', data.get('figure_count', 0))}")
+        parts.append(f"**추출 표 수:** {data.get('extracted_table_count', data.get('tables_found', 0))}")
+        parts.append("원문 전체 그림/표 개수는 확인되지 않았습니다.")
         parts.append(f"**Equations:** {data.get('equations_found', 0)}")
         parts.append(f"\n**Quality:** {data.get('quality_summary', 'N/A')}")
         types = data.get("diagram_types", [])
@@ -58,6 +127,7 @@ def _format_phase_data(phase: str, data: dict) -> str:
                 parts.append(f"- {f}")
 
     elif phase == "recipe":
+        parts.append("재현 조건 완전성은 미검증입니다. 파라미터 인용 검사는 steps/missing_info 전체를 검증하지 않습니다.")
         parts.append(f"**Title:** {data.get('title', 'N/A')}")
         parts.append(f"**Objective:** {data.get('objective', 'N/A')}")
         parts.append(f"**Confidence:** {data.get('confidence', 'N/A')}")

@@ -1,3 +1,4 @@
+import type { ChatSelection } from '@/lib/selectionExplain';
 // Sasoo API Client
 // Communicates with FastAPI backend
 
@@ -95,10 +96,20 @@ export interface PhaseInfo {
   stale_model?: string | null;
 }
 
+export interface StageCompletion {
+  stage: AnalysisPhase | 'synthesis' | 'visualization';
+  label: string;
+  status: 'completed' | 'skipped' | 'partial' | 'missing' | 'error';
+  reason: string;
+  required: string[];
+  result_id: number | null;
+}
+
 export interface AnalysisStatus {
   paper_id: number;
   overall_status: string; // pending | running | completed | error
   phases: PhaseInfo[];
+  completion_checks?: StageCompletion[];
   progress_pct: number; // 0-100
   current_phase: AnalysisPhase | null;
   total_cost_usd: number;
@@ -267,6 +278,12 @@ export interface Recipe {
   created_at: string | null;
   /** null이면 "검증 기록 없음"이지 "검증됨"이 아니다. */
   evidence?: RecipeEvidence | null;
+  reproduction_check?: {
+    status: string;
+    scope?: string;
+    items: { topic: string; status: string; evidence: { page: number; quote: string; status: string }[];
+      conflicts: { path: string; claim: string; status: string }[] }[];
+  };
 }
 
 // Mermaid diagram types
@@ -295,6 +312,8 @@ export interface VisualizationItem {
   difficulty?: number | null;
   model_used?: string | null;
   provider?: string | null;
+  scientific_validation?: string | null;
+  source_evidence?: { status: string; version: string; signature: string; text: string; missing_tables: string[] } | null;
   cost_usd?: number | null;
   duration_s?: number | null;
   /** Last in-frame execution check reported by the app; absent until one ran. */
@@ -780,11 +799,6 @@ export async function getRecipe(paperId: string): Promise<Recipe> {
   return request<Recipe>(`/analysis/${paperId}/recipe`);
 }
 
-export async function getMermaid(paperId: string): Promise<MermaidDiagram> {
-  return request<MermaidDiagram>(`/analysis/${paperId}/mermaid`);
-}
-
-
 export interface MermaidRepairRequest {
   mermaid_code: string;
   error_message: string;
@@ -955,6 +969,7 @@ export interface ChatStartMeta {
 }
 
 export interface ChatOptions {
+  selection?: ChatSelection;
   /** false면 토의 기록에 남기지 않고 history를 그대로 보낸다(읽기 안내). 기본 true. */
   persist?: boolean;
   onMeta?: (meta: ChatStartMeta) => void;
@@ -1043,6 +1058,7 @@ export async function chatWithAgent(
     body: JSON.stringify({
       message,
       persist: options.persist ?? true,
+      selection: options.selection,
       history: history.map((m) => ({
         role: m.role === 'agent' ? 'model' : 'user',
         content: m.content,

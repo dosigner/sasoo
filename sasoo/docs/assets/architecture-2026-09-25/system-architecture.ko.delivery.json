@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/dongj/dev/논문_사수_개발중/sasoo/docs/assets/architecture-2026-09-25/system-architecture.ko.json",
+  "output": "/Users/dongj/dev/논문_사수_개발중/sasoo/docs/assets/architecture-2026-09-25/system-architecture.ko.html",
+  "specification": {
+    "sha256": "5846fcbe4bd6c1ea898fcb297c98c8a22544b70f01c5764f0ac5dd6e11d7ce77",
+    "bytes": 2677
+  },
+  "artifact": {
+    "sha256": "54f10e5b5a3ee04ad88e3efa4689a7cd26f9a520c54ac2ede1fd8f68057ea035",
+    "bytes": 706613
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  }
+}

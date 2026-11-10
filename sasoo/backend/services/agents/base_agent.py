@@ -159,7 +159,7 @@ class BaseAgent(ABC):
     _OUTPUT_LANG_INSTRUCTION = (
         "[OUTPUT LANGUAGE] Always respond in casual Korean (반말). "
         "Use a conversational, senior-researcher tone. "
-        "Technical terms may remain in English.\n\n"
+        "Keep core technical terms in their original English spelling and explain their meaning in Korean.\n\n"
     )
 
     def get_system_prompt(self, phase: str) -> str:

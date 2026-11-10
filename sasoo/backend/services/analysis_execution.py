@@ -16,18 +16,29 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 from models.database import execute_insert, execute_update, fetch_all, fetch_one, get_paper_dir
-from models.schemas import AnalysisPhase, AnalysisStatus, PhaseStatus
-from services.odl_parser import schedule_paper_artifacts_refresh
-from services.analysis_results import parse_phase_row
+from models.schemas import AnalysisPhase, AnalysisStatus, PhaseStatus, StageCompletion
+from services.odl_parser import is_artifact_refresh_running, schedule_paper_artifacts_refresh
+from services.analysis_results import parse_phase_row, get_latest_completed_phase_rows
+from services.analysis_completion import build_completion_checks, check_stage_output, completion_progress, visualization_plan_matches, STAGE_OUTPUTS, SETTLED
 from services.summary_contract import (
     _SECTION_ANSWER_SCHEMA,
     _TRANSFER_CHECK_SCHEMA,
     parse_summary_json,
     validate_summary_extensions,
 )
+from services.visualization_policy import (
+    _MERMAID_RENDERABLE_TYPES,
+    _VIZ_CORE_PURPOSES,
+    _gate_viz_items,
+    _normalize_viz_plan,
+    _viz_plan_shape_error,
+    _viz_score,
+)
 from services.artifact_status import resolve_artifact_status_contract, get_visual_row_counts
 from services.concurrency import run_pipeline_blocking
 from services.document_context import (
+    select_visual_source,
+    VISUAL_SOURCE_VERSION,
     build_visual_partial_cache_input,
     compute_input_hash,
     find_cached_phase_result,
@@ -39,7 +50,7 @@ from services.evidence_repo import ensure_recipe_anchors
 # 종합 스테이지의 핵심 수치 검증은 값 가드(#48)와 같은 수치 동치 판정을 쓴다 —
 # 리터럴 대조를 새로 짜면 "1,550"과 "1550"이 다른 값이 된다.
 from services.evidence_verifier import _numeric_tokens, normalize_text
-from services.pricing import PricingUsageError, calc_result_cost, item_usage_records, records_cost, usage_record
+from services.pricing import PricingUsageError, calc_result_cost, deduplicate_usage_records, item_usage_records, records_cost, usage_record
 from services.llm.interactions_client import call_interaction
 from services.llm.openai_client import load_pdf_part
 
@@ -75,6 +86,42 @@ def _utcnow_iso() -> str:
     return _utcnow().isoformat()
 
 
+async def _run_parallel(*coroutines, cancel_event: asyncio.Event) -> list:
+    """Settle normal work; task cancellation revokes this worker's ownership."""
+    tasks = [asyncio.create_task(coroutine) for coroutine in coroutines]
+    group = asyncio.gather(*tasks, return_exceptions=True)
+    try:
+        results = await asyncio.shield(group)
+    except asyncio.CancelledError:
+        cancel_event.set()
+        # User cancellation uses the event. A lost worker fence must stop writes.
+        for task in tasks:
+            task.cancel()
+        await asyncio.shield(group)
+        raise
+    for result in results:
+        if isinstance(result, BaseException):
+            raise result
+    return results
+
+
+async def _run_named_phase(phase: AnalysisPhase, status: AnalysisStatus, coroutine) -> dict:
+    try:
+        return await coroutine
+    except Exception as exc:
+        # A sibling may have appended its phase after this one started.
+        for item in status.phases:
+            if item.phase == phase and item.status == "running":
+                item.status = "error"
+                item.error_message = f"{type(exc).__name__}: {exc}"
+                item.completed_at = _utcnow_iso()
+        raise
+
+
+def _completion_checks(rows: dict, folder_name: str) -> list[dict]:
+    return build_completion_checks(rows, item_available=lambda item: _viz_item_reusable(item, folder_name))
+
+
 async def _get_cached_phase_result(
     paper_id: int,
     phase: str,
@@ -83,12 +130,18 @@ async def _get_cached_phase_result(
     provider: str | None = None,
     model: str | None = None,
     effort: str | None = None,
+    allow_checkpoint: bool = False,
 ) -> Optional[dict]:
     cached = await find_cached_phase_result(
         paper_id, phase, input_text, provider=provider, model=model, effort=effort,
     )
     if cached is None:
         return None
+    if phase in STAGE_OUTPUTS and not allow_checkpoint:
+        check = check_stage_output(phase, {"id": cached.result_id, "result": cached.result_text,
+                                           "model_used": cached.model_used})
+        if check["status"] not in SETTLED:
+            return None
     fallback_hash = compute_input_hash(input_text, provider=provider, model=model, effort=effort)
     await execute_insert(
         """
@@ -101,7 +154,7 @@ async def _get_cached_phase_result(
             phase,
             cached.input_hash or fallback_hash,
             cached.model_used or "cached",
-            cached.cost_usd or 0.0,
+            cached.cost_usd,
             cached.tokens_in or 0,
             cached.tokens_out or 0,
         ),
@@ -254,6 +307,8 @@ def _visualization_cache_input(
     image_provider: str,
     image_quality: str,
     analysis_provider: str = "gemini",
+    source_text: str = "",
+    source_pdf_sha256: str | None = None,
 ) -> str:
     """시각화 phase의 캐시 키.
 
@@ -266,6 +321,9 @@ def _visualization_cache_input(
         {
             "chain_version": _CHAIN_CACHE_VERSION,
             "visualization_policy": "images-124-sequence-3-html-5-v2-sunburst",
+            "source_evidence_version": VISUAL_SOURCE_VERSION,
+            "source_evidence_signature": source_signature(source_text),
+            "source_pdf_sha256": source_pdf_sha256,
             "visualization_input": visualization_input,
             "previous_results": previous_results,
             "recipe_result": recipe_result,
@@ -281,6 +339,7 @@ def _visualization_cache_input(
             "resolved_plan_model": resolve_model("viz_planning", analysis_provider).model,
             "resolved_mermaid_model": resolve_model("mermaid", analysis_provider).model,
             "html_model": resolve_model("viz_image_plan", analysis_provider).model,
+            "html_prompt_version": "compact-html-v1",
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -501,6 +560,21 @@ async def _get_visual_contract(
         "artifacts_error": artifact_status.visual_error,
     }, figure_count, table_count
 
+
+async def _load_visual_snapshot(paper_id: int, paper_dir: Path, *, schedule_refresh: bool) -> tuple:
+    contract, _, _ = await _get_visual_contract(paper_id, paper_dir, schedule_refresh=schedule_refresh)
+    figures = await fetch_all(
+        "SELECT * FROM figures WHERE paper_id = ? "
+        "AND COALESCE(extraction_status, 'resolved') != 'rejected'",
+        (paper_id,),
+    )
+    tables = await fetch_all(
+        "SELECT * FROM tables WHERE paper_id = ? "
+        "AND COALESCE(extraction_status, 'resolved') != 'rejected'",
+        (paper_id,),
+    )
+    return contract, figures, tables
+
 # ---------------------------------------------------------------------------
 # Phase execution functions
 # ---------------------------------------------------------------------------
@@ -640,7 +714,7 @@ async def _run_screening(
         phase_status.tokens_out = cached["tokens_out"]
         phase_status.cost_usd = cached["cost_usd"]
         status.progress_pct = max(status.progress_pct, 16.0)
-        status.total_cost_usd += cached["cost_usd"]
+        status.total_cost_usd += cached["cost_usd"] or 0.0
         status.total_tokens_in += cached["tokens_in"]
         status.total_tokens_out += cached["tokens_out"]
         return cached
@@ -669,7 +743,9 @@ async def _run_screening(
                 "screening %s (tokens_out=%s); 잘린 앞부분을 살려 재시도를 건너뛴다",
                 defect, result.get("tokens_out"),
             )
-            result["text"] = salvaged
+            payload = json.loads(salvaged)
+            payload["_partial"] = "잘린 응답에서 복구한 일부 결과입니다."
+            result["text"] = json.dumps(payload, ensure_ascii=False)
         else:
             logger.warning(
                 "screening %s (tokens_out=%s); retrying once",
@@ -901,7 +977,7 @@ async def _run_citation(
             phase_status.tokens_out = cached["tokens_out"]
             phase_status.cost_usd = cached["cost_usd"]
             status.progress_pct = max(status.progress_pct, 16.0)
-            status.total_cost_usd += cached["cost_usd"]
+            status.total_cost_usd += cached["cost_usd"] or 0.0
             status.total_tokens_in += cached["tokens_in"]
             status.total_tokens_out += cached["tokens_out"]
             return cached
@@ -925,10 +1001,12 @@ async def _run_citation(
                 raise ValueError("인용 분석 응답이 완료되지 않았습니다")
             cleaned_text = _clean_llm_json(result["text"])
 
-            try:
-                llm_data = json.loads(cleaned_text)
-            except json.JSONDecodeError:
-                llm_data = {}
+            llm_data = json.loads(cleaned_text)
+            from jsonschema import Draft202012Validator
+
+            if (not Draft202012Validator(_CITATION_SCHEMA).is_valid(llm_data)
+                    or not llm_data["summary"].strip()):
+                raise ValueError("인용 분석의 필수 해석이 없거나 형식이 잘못됐습니다")
 
             # Merge LLM analysis into local_result (ref_id 포맷 드리프트 허용)
             ref_analyses = llm_data.get("ref_analyses", [])
@@ -951,6 +1029,7 @@ async def _run_citation(
             local_result["citation_balance"] = llm_data.get("citation_balance", "")
             local_result["key_influences"] = llm_data.get("key_influences", [])
             local_result["citation_limitations"] = llm_data.get("limitations", "")
+            local_result["interpretation_status"] = "completed"
 
             phase_status.model_used = result["model"]
             phase_status.tokens_in = result["tokens_in"]
@@ -962,6 +1041,7 @@ async def _run_citation(
 
         except Exception as exc:
             logger.warning("Citation LLM analysis failed: %s. Using local results only.", exc)
+            local_result["interpretation_status"] = "failed"
             local_result["summary"] = f"LLM 분석 실패 ({exc}). 로컬 파싱 결과만 제공됩니다."
             # 최상위 error 키를 남겨 이 열화 결과가 캐시로 재사용되지 않게 한다.
             # (find_cached_phase_result가 _parse_error/error 키를 가진 행을 캐시 미스로 처리)
@@ -978,6 +1058,7 @@ async def _run_citation(
 
     else:
         local_result["summary"] = ""
+        local_result["interpretation_status"] = "local_only"
         cost = 0.0
 
     input_hash_source = (
@@ -1008,7 +1089,7 @@ async def _run_citation(
             phase_status.tokens_out = cached["tokens_out"]
             phase_status.cost_usd = cached["cost_usd"]
             status.progress_pct = max(status.progress_pct, 16.0)
-            status.total_cost_usd += cached["cost_usd"]
+            status.total_cost_usd += cached["cost_usd"] or 0.0
             status.total_tokens_in += cached["tokens_in"]
             status.total_tokens_out += cached["tokens_out"]
             return cached
@@ -1638,7 +1719,9 @@ async def _run_chain_stage(
                 "chain stage %s %s (tokens_out=%s); 잘린 앞부분을 살려 재시도를 건너뛴다",
                 phase, defect, result.get("tokens_out"),
             )
-            result["text"] = salvaged
+            payload = json.loads(salvaged)
+            payload["_partial"] = "잘린 응답에서 복구한 일부 결과입니다."
+            result["text"] = json.dumps(payload, ensure_ascii=False)
             return result
         logger.warning(
             "chain stage %s %s (tokens_out=%s); retrying once",
@@ -1666,7 +1749,9 @@ async def _run_chain_stage(
                     "chain stage %s 재시도도 %s; 오염 필드를 떨어내고 나머지를 저장한다",
                     phase, retry_defect,
                 )
-                result["text"] = pruned
+                payload = json.loads(pruned)
+                payload["_partial"] = "반복 출력으로 손상된 필드를 제외한 일부 결과입니다."
+                result["text"] = json.dumps(payload, ensure_ascii=False)
             else:
                 # 오염된 값이 required라 떨어내면 빈 껍데기가 된다. 기존 경로에 맡긴다.
                 logger.warning(
@@ -1692,6 +1777,7 @@ async def _run_visual(
     provider: str = "gemini",
     single_attempt: bool = False,
     max_output_tokens: int | None = None,
+    visual_snapshot: tuple | None = None,
 ) -> dict:
     """Phase 3: Visual verification - analyze figures, assess quality.
 
@@ -1709,26 +1795,8 @@ async def _run_visual(
     source_text = doc_text or visual_input
     choice = _stage_choice("visual", provider)
     paper_dir = get_paper_dir(folder_name)
-    visual_contract, figure_count, table_count = await _get_visual_contract(
-        paper_id,
-        paper_dir,
-        schedule_refresh=True,
-    )
-
-    # Get existing figures from DB
-    figures = await fetch_all(
-        """
-        SELECT * FROM figures
-        WHERE paper_id = ? AND COALESCE(extraction_status, 'resolved') != 'rejected'
-        """,
-        (paper_id,),
-    )
-    tables = await fetch_all(
-        """
-        SELECT * FROM tables
-        WHERE paper_id = ? AND COALESCE(extraction_status, 'resolved') != 'rejected'
-        """,
-        (paper_id,),
+    visual_contract, figures, tables = visual_snapshot or await _load_visual_snapshot(
+        paper_id, paper_dir, schedule_refresh=True,
     )
     figure_count = len(figures)
     table_count = len(tables)
@@ -1748,6 +1816,9 @@ async def _run_visual(
         partial_result = {
             "figure_count": figure_count,
             "tables_found": table_count,
+            "extracted_figure_count": figure_count,
+            "extracted_table_count": table_count,
+            "source_total_counts_status": "unverified",
             "equations_found": 0,
             "diagram_types": [],
             "quality_summary": quality_summary,
@@ -1770,6 +1841,7 @@ async def _run_visual(
         ) + "\n" + source_signature(source_text)
         cached = await _get_cached_phase_result(
             paper_id, "visual", partial_hash_source, provider=provider, model=choice.model, effort=choice.effort,
+            allow_checkpoint=True,
         )
         if cached is None:
             await _insert_analysis_result(
@@ -1838,7 +1910,7 @@ async def _run_visual(
         phase_status.tokens_out = cached["tokens_out"]
         phase_status.cost_usd = cached["cost_usd"]
         status.progress_pct = max(status.progress_pct, 32.0)
-        status.total_cost_usd += cached["cost_usd"]
+        status.total_cost_usd += cached["cost_usd"] or 0.0
         status.total_tokens_in += cached["tokens_in"]
         status.total_tokens_out += cached["tokens_out"]
         return cached
@@ -1865,8 +1937,13 @@ async def _run_visual(
         parsed = json.loads(cleaned_text)
         if not _is_error_result(cleaned_text):
             parsed["_input_coverage"] = input_coverage(source_text, pdf_sha256=source_hash, text_limit=_OPENAI_DOC_TEXT_CHAR_LIMIT)
+        parsed["reported_figure_count"] = parsed.get("figure_count")
+        parsed["reported_table_count"] = parsed.get("tables_found")
         parsed["figure_count"] = figure_count
         parsed["tables_found"] = table_count
+        parsed["extracted_figure_count"] = figure_count
+        parsed["extracted_table_count"] = table_count
+        parsed["source_total_counts_status"] = "unverified"
         result["text"] = json.dumps(parsed, ensure_ascii=False)
     except json.JSONDecodeError as exc:
         logger.warning("Phase 2 JSON validation failed: %s", exc)
@@ -2021,6 +2098,14 @@ voltages, currents, frequencies, distances, speeds, sizes, ratios, percentages, 
 12. name은 아래 DOMAIN-SPECIFIC PARAMETERS 목록에 있는 항목이면 그 표기를 그대로 쓰고,
     목록에 없으면 축약 없는 소문자 snake_case 전체 명칭으로 써(예: aperture가 아니라
     aperture_diameter). 같은 물리량에 임의의 다른 이름을 만들지 마.
+13. 논문 유형에 적용되는 재현 조건을 steps에도 연결해: 전처리/정규화, 입력 분포와 sampling,
+    학습 target/loss, 평가식과 단위/Jacobian 보정, solver/허용오차. 적용되지 않는 조건은 강제하지 마.
+    원문에 좌표 변환이 있으면 입력 변환과 역변환, 밀도를 평가하는 좌표를 구분해.
+    '보정 적용'이라는 지시만 쓰지 말고 원문에 보고된 보정식의 부호, 차원, 상수항을
+    평가식에 명시해. 원문에 없는 보정값은 만들지 마.
+14. missing_info는 '제공된 원문에서 확인하지 못함'이라고 쓰고 저자의 미보고를 단정하지 마.
+    부록과 식의 보고값이 steps 또는 missing_info의 부재 주장과 충돌하지 않는지 확인해.
+    seed, 작은 안정화 상수나 장비 설정은 확인한 실제 값만 써. 평가 표본 seed와 학습 seed를 구분해.
 {domain_hint}
 
 출력 필드: title(레시피 제목, 한국어), objective(실험 목적), materials(재료 리스트, 규격 포함),
@@ -2063,7 +2148,7 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
         phase_status.tokens_out = cached["tokens_out"]
         phase_status.cost_usd = cached["cost_usd"]
         status.progress_pct = max(status.progress_pct, 48.0)
-        status.total_cost_usd += cached["cost_usd"]
+        status.total_cost_usd += cached["cost_usd"] or 0.0
         status.total_tokens_in += cached["tokens_in"]
         status.total_tokens_out += cached["tokens_out"]
         return cached
@@ -2234,7 +2319,7 @@ async def _run_deep_dive(
         phase_status.tokens_out = cached["tokens_out"]
         phase_status.cost_usd = cached["cost_usd"]
         status.progress_pct = max(status.progress_pct, 64.0)
-        status.total_cost_usd += cached["cost_usd"]
+        status.total_cost_usd += cached["cost_usd"] or 0.0
         status.total_tokens_in += cached["tokens_in"]
         status.total_tokens_out += cached["tokens_out"]
         return cached
@@ -2315,7 +2400,7 @@ _MERMAID_SYNTAX_RULES = """CRITICAL RULES (Mermaid v10.x compatibility):
 4. ALWAYS wrap labels containing special characters in double quotes: A["레이저 소스 (1064nm)"].
 5. Special characters that MUST be quoted: parentheses (), colons :, semicolons ;, pipes |, angles <>.
 6. For edge labels use: A -->|"label text"| B
-7. Keep labels concise (under 30 chars). Use Korean for all labels.
+7. Keep labels concise (under 30 chars). Use Korean descriptions, keeping core technical terms in their original English spelling.
 8. Do NOT use HTML tags except <br/> for line breaks.
 9. NEVER use the `A & B --> C` multi-link shorthand — write each edge on its own line.
 10. Return ONLY the Mermaid code. No markdown fences, no explanation."""
@@ -2487,123 +2572,6 @@ def _sanitize_mermaid_code(raw: str) -> str:
     return _filter_out_of_range_linkstyles(code.strip()).strip()
 
 
-_VIZ_CORE_PURPOSES = ("structure", "process", "comparison")
-
-
-def _viz_score(value) -> int | None:
-    """A 0~100 integer score. Integral floats count; bool, NaN, inf and text do not."""
-    return int(value) if type(value) in (int, float) and 0 <= value <= 100 and value == int(value) else None
-
-
-def _viz_plan_shape_error(plan) -> str | None:
-    """Why a new planner response does not match _VIZ_PLAN_SCHEMA, or None."""
-    if not isinstance(plan, dict):
-        return "plan is not an object"
-    for key, kind in (("illustrations", list), ("diagrams", list), ("interactive_html", dict)):
-        if not isinstance(plan.get(key), kind):
-            return f"{key} is missing or malformed"
-    if not all(isinstance(it, dict) for it in plan["illustrations"] + plan["diagrams"]):
-        return "plan item is not an object"
-    if type(plan["interactive_html"].get("applicable")) is not bool:
-        return "interactive_html.applicable is not a boolean"
-    if type(plan.get("diagram_count")) is not int:
-        return "diagram_count is not an integer"
-    return None
-
-
-def _normalize_viz_plan(plan_data: dict) -> list[dict]:
-    """Enforce purpose limits and the 60-point gate before paid generation.
-
-    The planner's diagram_count is not trusted; the item count is what is generated.
-    """
-    def importance(item):
-        return _viz_score(item.get("importance")) or 0
-
-    images = [it for it in plan_data.get("illustrations") or []
-              if isinstance(it, dict) and str(it.get("title") or "").strip()]
-    items = []
-    for purpose, block in (("structure", "concept"), ("process", "method"), ("comparison", "result")):
-        item = next((it for it in images if it.get("purpose") == purpose), None)
-        if item:
-            items.append({**item, "tool": "paperbanana", "block": block, "diagram_type": purpose})
-    extras = sorted((it for it in images if it.get("purpose") == "additional" and importance(it) >= 60),
-                    key=importance, reverse=True)[:2]
-    for item in extras:
-        block = "result" if item.get("category") == "comparison" else "method"
-        items.append({**item, "tool": "paperbanana", "block": block, "diagram_type": "additional"})
-
-    candidates = []
-    for item in items:
-        item["image_model"] = MODEL_IMAGE_OPENAI
-        item["importance"] = importance(item)
-        difficulty = item["difficulty"] = _viz_score(item.get("difficulty"))
-        if difficulty is not None and item["diagram_type"] != "additional" and difficulty >= 70 and importance(item) >= 60:
-            candidates.append(item)
-    if candidates:
-        hardest = max(candidates, key=lambda item: (item["difficulty"], importance(item)))
-        hardest["image_model"] = MODEL_IMAGE_SUNBURST
-
-    diagrams = [it for it in plan_data.get("diagrams") or []
-                if isinstance(it, dict) and str(it.get("title") or "").strip()
-                and it.get("diagram_type") in _MERMAID_RENDERABLE_TYPES]
-    primary = next((it for it in diagrams if it.get("diagram_type") == "sequence"), None)
-    selected = [primary] if primary else []
-    selected.extend(sorted((it for it in diagrams if it is not primary and importance(it) >= 60),
-                           key=importance, reverse=True)[:2])
-    for item in selected:
-        block = item.get("block") if item.get("block") in ("method", "result") else "method"
-        items.append({**item, "tool": "mermaid", "block": block, "importance": importance(item)})
-
-    interactive = plan_data.get("interactive_html")
-    if isinstance(interactive, dict) and interactive.get("applicable") is True and str(interactive.get("title") or "").strip():
-        items.append({**interactive, "tool": "html", "block": "result", "diagram_type": "interactive",
-                      "category": "parameter_relationship"})
-    return items
-
-
-def _gate_viz_items(items: list[dict]) -> list[dict]:
-    """Last check before paid generation: 5 images, 3 Mermaid, 1 HTML, one Sunburst.
-
-    Fresh plans already pass. Cached plans saved before this check (or by the
-    removed legacy schema path) are cut here instead of being generated.
-    """
-    kept: list[dict] = []
-    core_seen: set[str] = set()
-    extra_images = extra_diagrams = html = 0
-    primary_sequence = sunburst = False
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        tool, kind = item.get("tool"), item.get("diagram_type")
-        importance = _viz_score(item.get("importance")) or 0
-        if tool == "paperbanana":
-            if kind in _VIZ_CORE_PURPOSES and kind not in core_seen:
-                core_seen.add(kind)
-            elif kind == "additional" and importance >= 60 and extra_images < 2:
-                extra_images += 1
-            else:
-                continue
-            item = dict(item)
-            eligible = kind in _VIZ_CORE_PURPOSES and importance >= 60 and (_viz_score(item.get("difficulty")) or 0) >= 70
-            if item.get("image_model") == MODEL_IMAGE_SUNBURST and eligible and not sunburst:
-                sunburst = True
-            else:
-                item["image_model"] = MODEL_IMAGE_OPENAI
-        elif tool == "mermaid" and kind in _MERMAID_RENDERABLE_TYPES:
-            if kind == "sequence" and not primary_sequence:
-                primary_sequence = True
-            elif importance >= 60 and extra_diagrams < 2:
-                extra_diagrams += 1
-            else:
-                continue
-        elif tool == "html" and html < 1:
-            html += 1
-        else:
-            continue
-        kept.append(item)
-    return kept
-
-
 async def _plan_visualizations(
     paper_id: int,
     visualization_input: str,
@@ -2766,14 +2734,6 @@ diagram_count는 illustrations와 diagrams, applicable인 HTML의 합이다.
     return items
 
 
-# Diagram types the render pipeline (prompt rules, sanitize, repair) is built
-# for. LLMs sometimes plan/emit timeline, gantt, journey, etc. despite the
-# planner prompt no longer listing them — coerce anything outside this set to
-# flowchart so generation stays on a structurally supported type.
-# mindmap은 스펙 §5.5로 빠졌다(구획 배정에 쓸 수 없고 스타일 규칙도 안 받는다).
-_MERMAID_RENDERABLE_TYPES = {"flowchart", "sequence"}
-
-
 class VizGenerationError(ValueError):
     """A visualization request failed; requests keeps what was (maybe) spent."""
 
@@ -2788,7 +2748,7 @@ def _viz_cost_totals(items: list[dict], prior_requests: list[dict]) -> tuple[flo
     prior_requests holds attempts no longer shown by an item (failed tries that were
     retried, replaced regenerations, stale regenerations, Mermaid repairs).
     """
-    records = [record for item in items for record in item_usage_records(item)] + list(prior_requests)
+    records = deduplicate_usage_records([record for item in items for record in item_usage_records(item)] + prior_requests)
     known = sum(record["cost_usd"] for record in records if record.get("cost_usd") is not None)
     return float(known), sum(1 for record in records if record.get("cost_usd") is None)
 
@@ -2823,7 +2783,7 @@ async def _generate_single_mermaid(
 
 {_MERMAID_STYLE_RULES}
 
-추가 규칙: 모든 노드 레이블과 엣지 레이블을 반드시 한국어로 작성해.
+추가 규칙: 노드와 엣지의 설명은 한국어로 쓰고, 핵심 전문용어는 원문 영어 표기를 유지해.
 추가 규칙: 노드·엣지·subgraph 레이블에 이모지를 쓰지 마.
 추가 규칙: 실제 신호 전달과 통신 메시지를 구분해. 관측만 하는 장비에 원문에 없는
 요청이나 제어 메시지를 추가하지 마. 구조 그림과 HTML에서 설명할 수식과 파라미터를
@@ -2863,6 +2823,7 @@ async def _generate_single_paperbanana(
     deep_dive_result: str,
     *,
     llm_provider: str = "gemini",
+    openai_pdf_part: dict[str, str] | None = None,
 ) -> dict:
     """
     Generate a PaperBanana illustration for a single visualization item.
@@ -2875,14 +2836,15 @@ async def _generate_single_paperbanana(
     title = viz_item.get("title", "Illustration")
     description = viz_item.get("description", "")
     enriched_item = dict(viz_item)
-    context_parts = [description]
-    if recipe_result:
-        context_parts.append(f"Recipe context: {recipe_result[:1800]}")
-    if deep_dive_result:
-        context_parts.append(f"Deep dive context: {deep_dive_result[:1800]}")
-    if visualization_input:
-        context_parts.append(f"Paper context: {visualization_input[:2200]}")
-    enriched_item["description"] = "\n\n".join(part for part in context_parts if part)
+    source = select_visual_source(viz_item, visualization_input)
+    if llm_provider == "openai" and openai_pdf_part:
+        source.update(status="provided_pdf", pdf_sha256=openai_pdf_part["sha256"])
+        enriched_item["source_pdf_part"] = openai_pdf_part
+    if source["status"] in {"missing_table_evidence", "incomplete_evidence", "unverified"}:
+        return {"error": f"원문 근거를 확보하지 못했습니다: {source['status']}",
+                "requests": [], "source_evidence": source}
+    enriched_item["description"] = description
+    enriched_item["source_context"] = source["text"]
 
     from services.viz.figure_gen import generate_illustration
     from api.settings import _get_all_settings
@@ -2919,27 +2881,44 @@ async def _generate_single_paperbanana(
             "image_quality": quality,
             "model_used": image_model if mixed_image else resolve_model("image", llm_provider).model,
             "requests": result.requests,
+            "source_evidence": source,
+            "scientific_validation": "description_role_check_only; image_content_unverified",
         }
     _logger.warning("figure_gen failed for '%s': %s", title, result.error)
-    return {"error": result.error or "generation failed", "requests": result.requests}
+    return {"error": result.error or "generation failed", "requests": result.requests, "source_evidence": source}
 
 
-async def _generate_single_html(viz_item: dict, visualization_input: str, *, provider: str) -> dict:
+async def _generate_single_html(viz_item: dict, visualization_input: str, *, provider: str,
+                                openai_pdf_part: dict[str, str] | None = None) -> dict:
     """Generate a self-contained parameter explainer for a sandboxed frame."""
+    source = select_visual_source(viz_item, visualization_input)
+    if provider == "openai" and openai_pdf_part:
+        source.update(status="provided_pdf", pdf_sha256=openai_pdf_part["sha256"])
+    if source["status"] in {"missing_table_evidence", "incomplete_evidence", "unverified"}:
+        raise VizGenerationError(f"HTML 원문 근거를 확보하지 못했습니다: {source['status']}", [])
     prompt = f"""논문 변수와 결과의 관계를 조작하며 확인할 수 있는 작은 HTML 설명을 만들어.
 제목: {viz_item.get('title', '')}
 기획 및 검산 예: {viz_item.get('description', '')}
-논문 근거: {visualization_input[:10000]}
+원문 근거 (기획과 별개이며 아래 식/값/정의가 우선): {source['text']}
+원본 PDF가 제공되면 원본이 기준이야. 추출 텍스트와 페이지 표기는 손실이나 오류가 있을 수 있으므로 표와 식을 원본에서 대조해.
 
 HTML body 조각만 반환해. inline style과 script, SVG, 기본 JavaScript만 사용해.
+출력 상한 8,000 tokens에는 reasoning도 포함돼. body 조각은 9,000자 이내를 목표로 간결하게 작성해.
+장식, 중복 CSS와 동일한 수식 설명의 반복을 줄여. 입력, 출력, 작은 SVG, 가정/출처와 검산 예는 모두 유지해.
 외부 리소스, CDN, 네트워크 요청, iframe, 링크, eval, 저장소, 부모 창 접근은 금지해.
-한국어 레이블, 단위, 범위, 기본값, 적용 가정, 원문 근거와 검산 예를 화면에 표시해.
+한국어 설명 레이블(핵심 전문용어는 원문 영어 유지), 단위, 범위, 기본값, 적용 가정, 원문 근거와 검산 예를 화면에 표시해.
 핵심 조작부, 현재 출력값, 그래프를 위쪽에 간결하게 배치하고 자세한 가정과 근거는
 details로 펼치게 해. 좁은 화면에서도 입력을 조작하며 출력값을 확인할 수 있게 해.
 변수 사이의 종속관계를 유지해. 종속 변수도 표시값을 갱신하고, 고정 조건과 독립 변수
 설정이 충돌하면 안 돼. 기본 조건과 조작 후 조건을 구분해.
 슬라이더 또는 숫자 입력을 바꾸면 값과 SVG 그래프가 함께 갱신되어야 해.
 입력 범위를 검증하고 NaN, Infinity를 출력하지 마. 반응형, 키보드 접근, 충분한 대비를 지켜.
+필수 숫자는 trim()한 빈 문자열/공백을 Number()로 바꾸기 전에 거부해. vector의 빈 성분과 차원 불일치도 거부해.
+선택 입력만 data-default에 유효한 기본값을 명시하고 화면에도 정책을 설명해. 숫자 입력은 기본적으로 필수야.
+무효 입력에서는 모든 계산 output을 비우고 role="alert"로 오류를 표시하며 이전 그래프도 숨겨.
+입력별 출력 반응을 확인해. 의도된 상수 출력이면 입력의 data-check-constant에 수학적 이유를 적어.
+독립 변수와 파생 변수, 식을 평가하는 위치를 명시해. 고정 위치 field와 flow map 위의 field를 혼동하지 마.
+확률밀도와 좌표를 변환하는 flow map은 다른 대상이야. 원문의 식/정의가 없으면 식을 추측하지 마.
 현재 출력값은 각각 <output> 요소에 표시해.
 논문의 식이나 제공된 데이터만 사용해. 임의 계수나 실험 성능을 만들지 마.
 제공된 검산 예를 JavaScript assert로 확인해. 결과는 설명용 계산이며 실험 재현과 구분해.
@@ -2947,7 +2926,8 @@ details로 펼치게 해. 좁은 화면에서도 입력을 조작하며 출력�
     choice = resolve_model("viz_image_plan", provider)
     try:
         result = await call_interaction(
-            prompt, lane="pipeline", model=choice.model, thinking_level=choice.effort, store=False,
+            [openai_pdf_part, {"type": "text", "text": prompt}] if provider == "openai" and openai_pdf_part else prompt,
+            lane="pipeline", model=choice.model, thinking_level=choice.effort, store=False,
             max_output_tokens=8000,
         )
     except Exception as exc:
@@ -2960,7 +2940,8 @@ details로 펼치게 해. 좁은 화면에서도 입력을 조작하며 출력�
         raise VizGenerationError("HTML generation did not complete", requests)
     if len(code) > 100000 or "<script" not in code.lower() or not re.search(r"<(input|button|select)\b", code, re.I):
         raise VizGenerationError("HTML explainer has no valid interactive controls", requests)
-    return {"html_code": code, "cost_usd": records_cost(requests), "model_used": choice.model, "requests": requests}
+    return {"html_code": code, "cost_usd": records_cost(requests), "model_used": choice.model, "requests": requests,
+            "source_evidence": source, "scientific_validation": "unverified"}
 
 
 def _viz_item_reusable(item: dict, folder_name: str) -> bool:
@@ -2992,18 +2973,8 @@ def _item_key(item: dict) -> str:
 
 
 def _merge_records(*groups: list[dict]) -> list[dict]:
-    """Union of request records; the same record (by id) is kept once."""
-    seen: set[str] = set()
-    merged: list[dict] = []
-    for group in groups:
-        for record in group:
-            if not isinstance(record, dict):
-                continue
-            key = str(record.get("id") or _item_key(record))
-            if key not in seen:
-                seen.add(key)
-                merged.append(record)
-    return merged
+    """Merge request records without inventing identities for legacy entries."""
+    return deduplicate_usage_records([record for group in groups for record in group])
 
 
 async def _claim_visualization_row(row_id: int, run_token: str) -> Optional[dict]:
@@ -3036,6 +3007,7 @@ async def _store_visualization_progress(
     paper_id: int, items: list[dict], cache_input: str, done: bool, *, provider: str = "gemini",
     planned_empty: bool = False, prior_requests: list[dict] | None = None,
     run_token: str | None = None, written: dict[int, str] | None = None,
+    planned_items: list[dict] | None = None,
 ) -> list[dict]:
     """항목이 하나 끝날 때마다 visualization 행을 갱신한다 (중간 사망 시 유실 방지).
 
@@ -3072,6 +3044,8 @@ async def _store_visualization_progress(
                 current = json.loads(row["result"])
             except (TypeError, json.JSONDecodeError):
                 current = None
+            if isinstance(current, dict) and current.get("run_token") not in (None, run_token):
+                raise RuntimeError("Visualization run was replaced before checkpoint")
             if isinstance(current, dict) and current.get("run_token") == run_token:
                 stored = {it.get("id"): it for it in current.get("items") or [] if isinstance(it, dict)}
                 replaced: list[dict] = []
@@ -3100,6 +3074,7 @@ async def _store_visualization_progress(
                 "cost_unknown_count": unknown_count,
                 "prior_requests": merged_prior,
                 "planned_empty": planned_empty,
+                "planned_items": planned_items,
                 "run_token": run_token,
             },
             ensure_ascii=False,
@@ -3378,6 +3353,12 @@ async def _run_synthesis(
             raise TypeError("synthesis 결과가 dict가 아님")
     except (json.JSONDecodeError, TypeError) as err:
         logger.warning("synthesis parse failed for paper %d: %s", paper_id, err)
+        await _insert_analysis_result(
+            paper_id, "synthesis", json.dumps({"_raw": result["text"], "_parse_error": str(err)}),
+            result["model"], result.get("tokens_in"), result.get("tokens_out"), cost, cache_key,
+            interaction_id=result.get("interaction_id"), provider=provider,
+            model=choice.model, effort=choice.effort,
+        )
         return None
 
     validated, dropped = _validate_synthesis(parsed, body_text, figure_nums, param_names)
@@ -3418,34 +3399,65 @@ async def _run_visualizations(
     pdf_sha256: str | None = None,
     provider: str = "gemini",
 ) -> list[dict]:
-    """
-    Full visualization pipeline:
-    0. 종합 스테이지(_run_synthesis)를 먼저 돌려 저장한다
-    1. Plan up to five images, three Mermaid diagrams, and one HTML explainer.
-    2. Render images in sequence; generate Mermaid and HTML separately.
-    3. Store results in DB
-    """
-    # 0. 종합 먼저(스펙 §7): 종합이 도착하면 프론트가 구획 5개 뼈대를 즉시 그리고
-    #    다이어그램 자리는 스켈레톤으로 채운다. 다이어그램 생성은 수 분이 걸린다.
-    #    실패는 삼킨다 — 종합이 없어도 다이어그램은 그대로 나와야 한다.
-    try:
-        await _run_synthesis(
-            paper_id,
-            visualization_input,
-            previous_results,
-            status,
-            recipe_result=recipe_result,
-            body_text=body_text,
+    """Share the same analysis context while synthesis and visualization run."""
+    cancel_event = _cancel_events.get(paper_id) or asyncio.Event()
+    if cancel_event.is_set():
+        return []
+
+    async def synthesize():
+        try:
+            await _run_synthesis(
+                paper_id, visualization_input, previous_results, status,
+                recipe_result=recipe_result, body_text=body_text,
+                system_instruction=system_instruction,
+                previous_interaction_id=previous_interaction_id,
+                pdf_uri=pdf_uri, doc_text=doc_text, openai_pdf_part=openai_pdf_part,
+                pdf_sha256=pdf_sha256, provider=provider,
+            )
+        except Exception as exc:
+            # Synthesis failure must not cancel paid visualization work.
+            logger.warning("synthesis stage failed for paper %d: %s", paper_id, exc)
+            await _insert_analysis_result(
+                paper_id, "synthesis", json.dumps({"error": f"종합 단계 실패: {exc}"}, ensure_ascii=False),
+                "system", None, None, None, visualization_input,
+            )
+
+    _, items = await _run_parallel(
+        synthesize(),
+        _run_visualization_items(
+            paper_id, visualization_input, folder_name, previous_results,
+            recipe_result, deep_dive_result, status,
             system_instruction=system_instruction,
             previous_interaction_id=previous_interaction_id,
-            pdf_uri=pdf_uri,
-            doc_text=doc_text,
-            openai_pdf_part=openai_pdf_part,
-            pdf_sha256=pdf_sha256,
-            provider=provider,
-        )
-    except Exception as synthesis_err:
-        logger.warning("synthesis stage failed for paper %d: %s", paper_id, synthesis_err)
+            pdf_uri=pdf_uri, doc_text=doc_text, openai_pdf_part=openai_pdf_part,
+            pdf_sha256=pdf_sha256, provider=provider, cancel_event=cancel_event,
+            source_text=body_text or doc_text or visualization_input,
+        ),
+        cancel_event=cancel_event,
+    )
+    return items
+
+
+async def _run_visualization_items(
+    paper_id: int,
+    visualization_input: str,
+    folder_name: str,
+    previous_results: list[str],
+    recipe_result: str,
+    deep_dive_result: str,
+    status: AnalysisStatus,
+    *,
+    system_instruction: str,
+    previous_interaction_id: Optional[str],
+    pdf_uri: Optional[str],
+    doc_text: str,
+    openai_pdf_part: dict[str, str] | None,
+    pdf_sha256: str | None,
+    provider: str,
+    cancel_event: asyncio.Event,
+    source_text: str = "",
+) -> list[dict]:
+    """Generate independent item types and serialize their checkpoints."""
 
     _image_settings = await _get_all_settings()
     visualization_cache_input = _visualization_cache_input(
@@ -3456,11 +3468,13 @@ async def _run_visualizations(
         image_provider="openai",
         image_quality=_image_settings.get("image_quality", "high"),
         analysis_provider=provider,
+        source_text=source_text or doc_text or visualization_input,
+        source_pdf_sha256=openai_pdf_part.get("sha256") if openai_pdf_part else None,
     )
     # A cached run is returned only when every item really succeeded. Otherwise its
     # successful items are reused by id and only failed, missing or unfinished items
     # are generated again (paid results are not replayed).
-    cached = await _get_cached_phase_result(paper_id, "visualization", visualization_cache_input)
+    cached = await _get_cached_phase_result(paper_id, "visualization", visualization_cache_input, allow_checkpoint=True)
     reusable: dict[int, dict] = {}
     cached_items: list[dict] = []
     prior_requests: list[dict] = []
@@ -3480,8 +3494,15 @@ async def _run_visualizations(
         # An empty run counts only with the planned_empty marker: v1.2.0 saved planning
         # failures as complete runs with no items.
         finished = cached_data.get("complete", True) is not False
-        if finished and len(reusable) == len(cached_items) and (cached_items or cached_data.get("planned_empty")):
-            status.progress_pct = 100.0
+        if finished and not visualization_plan_matches(cached_data):
+            raise ValueError("저장된 시각화가 계획과 다릅니다. 기존 결과를 보존합니다.")
+        cache_check = check_stage_output(
+            "visualization", {"result": cached["text"]},
+            item_available=lambda item: _viz_item_reusable(item, folder_name),
+            allow_legacy_plan_reuse=True,
+        )
+        if finished and cache_check["status"] == "completed":
+            status.progress_pct = max(status.progress_pct, 98.0)
             return cached_items
         # Re-read under a claim: app edits saved before it are reused, later ones are merged.
         claimed = await _claim_visualization_row(cached["result_id"], run_token) if cached.get("result_id") else None
@@ -3492,6 +3513,9 @@ async def _run_visualizations(
         # Spend of the attempts this run replaces stays in the run total.
         prior_requests = list(cached_data.get("prior_requests") or [])
         prior_requests += [r for it in cached_items if it.get("id") not in reusable for r in item_usage_records(it)]
+
+    if cancel_event.is_set():
+        return cached_items
 
     # Step 1: Plan (final stage of the stateful chain), then the paid-generation gate
     viz_plan = _gate_viz_items(await _plan_visualizations(
@@ -3507,6 +3531,8 @@ async def _run_visualizations(
         pdf_sha256=pdf_sha256,
         provider=provider,
     ))
+    if cancel_event.is_set():
+        return cached_items
 
     # Successful items of the cached run that the plan still contains are served
     # again; the others were paid for, so their records join prior_requests now.
@@ -3525,9 +3551,14 @@ async def _run_visualizations(
         return await _store_visualization_progress(
             paper_id, done_items + pending, visualization_cache_input, done=done, provider=provider,
             planned_empty=not viz_plan, prior_requests=prior_requests, run_token=run_token, written=written,
+            planned_items=[{"id": idx + 1, "tool": item.get("tool", "mermaid")} for idx, item in enumerate(viz_plan)],
         )
 
-    # Step 2: Generate all in parallel
+    # Persist the approved plan before starting any generation request.
+    expected_tools = {idx + 1: item.get("tool", "mermaid") for idx, item in enumerate(viz_plan)}
+    await checkpoint([item for item in cached_items if expected_tools.get(item.get("id")) == item.get("tool")])
+
+    # Step 2: The collector below is the only checkpoint writer.
     async def generate_one(idx: int, item: dict) -> dict:
         previous = reuse.get(idx + 1)
         if previous is not None:
@@ -3562,15 +3593,18 @@ async def _run_visualizations(
                 pb_result = await _generate_single_paperbanana(
                     paper_id,
                     {**item, "id": idx + 1},
-                    visualization_input,
+                    source_text or doc_text or visualization_input,
                     folder_name,
                     recipe_result,
                     deep_dive_result,
                     llm_provider=provider,
+                    **({"openai_pdf_part": openai_pdf_part} if openai_pdf_part else {}),
                 )
                 result_item["image_url"] = pb_result.get("image_url")
                 result_item["image_path"] = pb_result.get("image_path")
                 result_item["requests"] = pb_result.get("requests") or []
+                result_item["source_evidence"] = pb_result.get("source_evidence")
+                result_item["scientific_validation"] = pb_result.get("scientific_validation", "unverified")
                 if pb_result.get("image_path"):
                     result_item["status"] = "completed"
                     if pb_result.get("provider"):
@@ -3584,7 +3618,8 @@ async def _run_visualizations(
                     result_item["status"] = "error"
                     result_item["error_message"] = pb_result.get("error", "generation failed")
             elif tool == "html":
-                result_item.update(await _generate_single_html(item, visualization_input, provider=provider))
+                result_item.update(await _generate_single_html(item, source_text or doc_text or visualization_input, provider=provider,
+                                  **({"openai_pdf_part": openai_pdf_part} if openai_pdf_part else {})))
                 result_item["status"] = "completed"
             else:
                 result_item["status"] = "error"
@@ -3596,50 +3631,64 @@ async def _run_visualizations(
             result_item["error_message"] = str(e)
         return result_item
 
-    # Separate mermaid (can run in parallel) from paperbanana (run sequentially to avoid rate limits)
-    mermaid_items = [(i, item) for i, item in enumerate(viz_plan) if item.get("tool") == "mermaid"]
+    parallel_items = [(i, item) for i, item in enumerate(viz_plan) if item.get("tool") != "paperbanana"]
     paperbanana_items = [(i, item) for i, item in enumerate(viz_plan) if item.get("tool") == "paperbanana"]
-    other_items = [(i, item) for i, item in enumerate(viz_plan)
-                   if item.get("tool") not in ("mermaid", "paperbanana")]
-
-    # Accumulates completed items so far, so a mid-run crash doesn't lose progress.
     accumulated: list[dict] = []
+    finished: asyncio.Queue = asyncio.Queue()
+    stopped = asyncio.Event()
 
-    # Run mermaid generations in parallel
-    mermaid_tasks = [generate_one(i, item) for i, item in mermaid_items]
-    mermaid_results = await asyncio.gather(*mermaid_tasks, return_exceptions=False) if mermaid_tasks else []
-    if mermaid_results:
-        accumulated.extend(mermaid_results)
-        await checkpoint(accumulated)
+    async def produce(items, *, images=False):
+        try:
+            for index, (item_index, item) in enumerate(items):
+                if cancel_event.is_set() or stopped.is_set():
+                    break
+                result = await generate_one(item_index, item)
+                finished.put_nowait(result)
+                if images and index < len(items) - 1 and result is not reuse.get(item_index + 1):
+                    # Preserve the image request gap while allowing prompt cancellation.
+                    try:
+                        await asyncio.wait_for(cancel_event.wait(), timeout=2.0)
+                    except TimeoutError:
+                        pass
+        except BaseException as exc:
+            stopped.set()
+            finished.put_nowait(exc)
+        finally:
+            finished.put_nowait(None)
 
-    # Run paperbanana generations sequentially to avoid API rate limits
-    paperbanana_results = []
-    for idx, (i, item) in enumerate(paperbanana_items):
-        result = await generate_one(i, item)
-        paperbanana_results.append(result)
-        accumulated.append(result)
-        await checkpoint(accumulated)
-        # Small delay between PaperBanana calls to avoid rate limiting
-        if idx < len(paperbanana_items) - 1 and result is not reuse.get(i + 1):
-            await asyncio.sleep(2.0)
+    producers = [asyncio.create_task(produce([item])) for item in parallel_items]
+    if paperbanana_items:
+        producers.append(asyncio.create_task(produce(paperbanana_items, images=True)))
+    remaining = len(producers)
+    failure: BaseException | None = None
+    try:
+        while remaining:
+            result = await finished.get()
+            if result is None:
+                remaining -= 1
+            elif isinstance(result, BaseException):
+                failure = failure or result
+            else:
+                accumulated.append(result)
+                try:
+                    await checkpoint(accumulated)
+                except Exception as exc:
+                    # Retain already issued sibling results even if one save fails.
+                    failure = failure or exc
+                    stopped.set()
+    finally:
+        stopped.set()
+        for producer in producers:
+            producer.cancel()
+        await asyncio.gather(*producers, return_exceptions=True)
 
-    # Run other tool types in parallel
-    other_tasks = [generate_one(i, item) for i, item in other_items]
-    other_results = await asyncio.gather(*other_tasks, return_exceptions=False) if other_tasks else []
-    if other_results:
-        accumulated.extend(other_results)
-        await checkpoint(accumulated)
-
-    # Combine and sort by original index
-    all_results = list(mermaid_results) + paperbanana_results + list(other_results)
-    generated_items = sorted(all_results, key=lambda x: x.get("id", 0))
-
-    # Step 3: Store all visualization results in DB (final, complete=True)
-    stored = await checkpoint(generated_items, done=True)
-
-    # Visualization complete — set progress to 100%
-    status.progress_pct = 100.0
-
+    stored = await checkpoint(
+        sorted(accumulated, key=lambda item: item["id"]),
+        done=failure is None and not cancel_event.is_set(),
+    )
+    if failure is not None:
+        raise failure
+    status.progress_pct = max(status.progress_pct, 98.0)
     return stored
 
 
@@ -3810,38 +3859,40 @@ async def run_full_analysis(paper_id: int, *, single_attempt: bool = False) -> N
         # 교차검증에 쓸 수 있다. 현재는 analyze_citations 로컬 파서 의미가 바뀌고 오프라인 검증이
         # 불가해 배선하지 않는다 — 인용 정확도 개선 작업 시 여기서 물린다.
         paper_authors = paper.get("authors", "") or ""
-        r_cit = await _run_citation(
-            paper_id,
-            sections=sections,
-            citation_body=str(phase_inputs.get("citation_body", "")),
-            citation_references=str(phase_inputs.get("citation_references", "")),
-            paper_authors=paper_authors,
-            status=status,
-            provider=provider,
-        )
 
-        # Check for cancellation
+        async def citation():
+            return await _run_named_phase(AnalysisPhase.CITATION, status, _run_citation(
+                paper_id, sections=sections,
+                citation_body=str(phase_inputs.get("citation_body", "")),
+                citation_references=str(phase_inputs.get("citation_references", "")),
+                paper_authors=paper_authors, status=status, provider=provider,
+            ))
+
+        async def visual(snapshot=None):
+            return await _run_named_phase(AnalysisPhase.VISUAL, status, _run_visual(
+                paper_id, str(phase_inputs.get("visual", "")), folder_name, status,
+                system_instruction=visual_system_instruction,
+                previous_interaction_id=chain_prev_id, pdf_uri=pdf_uri, doc_text=doc_text,
+                openai_pdf_part=openai_pdf_part, pdf_sha256=pdf_sha256,
+                single_attempt=single_attempt, figure_parts=figure_parts, provider=provider,
+                visual_snapshot=snapshot,
+            ))
+
+        snapshot = await _load_visual_snapshot(paper_id, paper_dir, schedule_refresh=False)
         if cancel_event.is_set():
             status.overall_status = "cancelled"
             await execute_update("UPDATE papers SET status = ? WHERE id = ?", ("cancelled", paper_id))
             return
-
-        # Phase 3: Visual Verification (첫 체인 호출 — PDF 직접 입력)
-        r2 = await _run_visual(
-            paper_id,
-            str(phase_inputs.get("visual", "")),
-            folder_name,
-            status,
-            system_instruction=visual_system_instruction,
-            previous_interaction_id=chain_prev_id,
-            pdf_uri=pdf_uri,
-            doc_text=doc_text,
-            openai_pdf_part=openai_pdf_part,
-            pdf_sha256=pdf_sha256,
-            single_attempt=single_attempt,
-            figure_parts=figure_parts,
-            provider=provider,
-        )
+        if snapshot[0]["visual_state"] == "ready" and not is_artifact_refresh_running(paper_id):
+            r_cit, r2 = await _run_parallel(citation(), visual(snapshot), cancel_event=cancel_event)
+        else:
+            # Keep the original wait when extraction can still change visual input.
+            r_cit = await citation()
+            if cancel_event.is_set():
+                status.overall_status = "cancelled"
+                await execute_update("UPDATE papers SET status = ? WHERE id = ?", ("cancelled", paper_id))
+                return
+            r2 = await visual()
         if pdf_uri or doc_text or openai_pdf_part:
             chain_prev_id = r2.get("interaction_id")
 
@@ -3971,11 +4022,12 @@ async def run_full_analysis(paper_id: int, *, single_attempt: bool = False) -> N
                     provider=provider,
                 )
             except Exception as viz_err:
-                # Visualization failure should NOT block the analysis from completing
+                # Keep successful checkpoints, but do not report full completion.
                 import logging
                 logging.getLogger(__name__).warning(
                     "Visualization generation failed for paper %d: %s", paper_id, viz_err
                 )
+                status.overall_status = "error"
 
         # Check for cancellation one last time
         if cancel_event.is_set():
@@ -3983,12 +4035,23 @@ async def run_full_analysis(paper_id: int, *, single_attempt: bool = False) -> N
             await execute_update("UPDATE papers SET status = ? WHERE id = ?", ("cancelled", paper_id))
             return
 
-        # Mark paper as completed
+        # Execution and API reads share the same saved-output completion contract.
+        rows = await get_latest_completed_phase_rows(paper_id)
+        checks = _completion_checks(rows, folder_name)
+        for phase in status.phases:
+            check = next(item for item in checks if item["stage"] == phase.phase.value)
+            phase.status = check["status"] if check["status"] in SETTLED else "error"
+            phase.error_message = check["reason"] if check["status"] != "completed" else None
+        complete = status.overall_status != "error" and all(check["status"] in SETTLED for check in checks)
+        status.completion_checks = [StageCompletion(**check) for check in checks]
+        status.progress_pct = completion_progress(checks)
+        if not complete:
+            status.progress_pct = min(status.progress_pct, 99.0)
         await execute_update(
             "UPDATE papers SET status = ?, analyzed_at = ? WHERE id = ?",
-            ("error" if any(phase.status == "error" for phase in status.phases) else "completed", _utcnow_iso(), paper_id),
+            ("completed" if complete else "error", _utcnow_iso(), paper_id),
         )
-        status.overall_status = "error" if any(phase.status == "error" for phase in status.phases) else "completed"
+        status.overall_status = "completed" if complete else "error"
 
     except Exception as e:
         # Mark as error
@@ -3999,10 +4062,11 @@ async def run_full_analysis(paper_id: int, *, single_attempt: bool = False) -> N
         )
         status.overall_status = "error"
 
-        # Record error in the current phase
-        if status.phases:
-            status.phases[-1].status = "error"
-            status.phases[-1].error_message = error_msg
+        # A completed sibling must not inherit another phase's error.
+        for phase in status.phases:
+            if phase.status == "running":
+                phase.status = "error"
+                phase.error_message = error_msg
 
         # Store error as analysis result for debugging
         await execute_insert(

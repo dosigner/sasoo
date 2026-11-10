@@ -5,6 +5,7 @@ import type {
   AnalysisStatus,
   CostSummary,
   Figure,
+  Paper,
   Recipe,
   Table,
   VisualizationPlan,
@@ -75,6 +76,10 @@ export const DOMAIN_LABELS: Record<string, string> = {
   ee: '전기·전자',
   general: '일반',
 };
+
+export function paperFieldLabel(paper: Pick<Paper, 'domain' | 'openalex_field'>): string {
+  return paper.openalex_field?.trim() || DOMAIN_LABELS[paper.domain] || paper.domain || '—';
+}
 
 export type WorkbenchStatusTone = 'accent' | 'success' | 'danger';
 
@@ -209,13 +214,9 @@ export function buildPhaseSummary(
 
   if (phase === 'visual') {
     const figureCount =
-      typeof visual.figure_count === 'number' && visual.figure_count > 0
-        ? visual.figure_count
-        : figures.length;
+      Number(visual.extracted_figure_count ?? visual.figure_count ?? figures.length);
     const tableCount =
-      typeof visual.tables_found === 'number' && visual.tables_found > 0
-        ? visual.tables_found
-        : tables.length;
+      Number(visual.extracted_table_count ?? visual.tables_found ?? tables.length);
 
     // 첫 줄은 앱이 확실히 아는 사실(figureCount/tableCount)로만 만든다. 모델의
     // quality_summary는 이 개수와 모순될 수 있어(예: 실제로 뽑았는데 "추출 못함"이라고
@@ -255,11 +256,12 @@ export function buildPhaseSummary(
       figureLine,
       tableLine,
       collapsedMeta: [
-        figureCount > 0 ? `Figure ${figureCount}개` : 'Figure 없음',
-        tableCount > 0 ? `표 ${tableCount}개` : '표 없음',
+        `추출 그림 ${figureCount}개`,
+        `추출 표 ${tableCount}개`,
         typeof visual.equations_found === 'number' ? `수식 ${visual.equations_found}` : '',
       ].filter(Boolean),
       expandedMeta: [
+        '원문 전체 개수는 확인되지 않았어요.',
         countList(visual.diagram_types) > 0 ? `유형 ${countList(visual.diagram_types)}개` : '',
         countList(visual.key_findings_from_visuals) > 0 ? `핵심 발견 ${countList(visual.key_findings_from_visuals)}개` : '',
       ].filter(Boolean),
@@ -342,6 +344,16 @@ export function buildChatStarterPrompts({
   figures: Figure[];
   recipe: Recipe | null;
 }): string[] {
+  const hasAnalysis = results && [
+    results.screening, results.citation, results.visual, results.recipe, results.deep_dive,
+  ].some(Boolean);
+  if (!hasAnalysis && !recipe) {
+    return [
+      '무슨 문제를 해결하는 논문이야?',
+      '읽기 전에 알아야 할 개념은?',
+      '어디부터 읽으면 좋을까?',
+    ];
+  }
   const prompts = ['이 논문의 핵심 기여는?'];
 
   if (figures.length > 0) {
@@ -411,11 +423,12 @@ function buildWorkbenchStatusSummaryCore({
   visualizations: VisualizationPlan | null;
   terminalState?: 'cancelled' | null;
 }): Omit<WorkbenchStatusSummary, 'displayStatusLabel' | 'statusTone'> {
-  const totalCount = status?.phases.length ?? 5;
-  const completedCount = status?.phases.filter((phase) => phase.status === 'completed').length ?? 0;
+  const completionStates = status?.completion_checks?.length ? status.completion_checks : status?.phases;
+  const totalCount = completionStates?.length ?? 5;
+  const completedCount = completionStates?.filter((phase) => phase.status === 'completed').length ?? 0;
   const staleModel = status?.phases.find((phase) => Boolean(phase.stale_model))?.stale_model ?? null;
   // 건너뛴 단계도 끝난 단계다. 분자에서 빼면 하나만 건너뛰어도 완료 후 막대가 80%에 멈춘다.
-  const settledCount = completedCount + (status?.phases.filter((phase) => phase.status === 'skipped').length ?? 0);
+  const settledCount = completedCount + (completionStates?.filter((phase) => phase.status === 'skipped').length ?? 0);
   const progressRatio = totalCount > 0 ? settledCount / totalCount : 0;
   const currentPhase = status?.current_phase;
   const currentPhaseLabel = currentPhase ? PHASE_LABELS[currentPhase] : '분석 대기';
@@ -587,7 +600,9 @@ function buildWorkbenchStatusSummaryCore({
     return {
       runStateLabel: completedCount > 0 ? '부분 완료' : '분석 실패',
       trustStateLabel,
-      nextActionLabel: completedCount > 0 ? '남아 있는 결과를 검토한 뒤 재분석하세요.' : '설정을 확인한 뒤 다시 분석을 시작하세요.',
+      nextActionLabel: status.completion_checks?.length
+        ? '단계별 산출물 확인에서 부족한 결과를 확인하세요. 저장된 결과는 계속 읽을 수 있어요.'
+        : completedCount > 0 ? '남아 있는 결과를 검토한 뒤 재분석하세요.' : '설정을 확인한 뒤 다시 분석을 시작하세요.',
       currentPhaseLabel,
       completedCount,
       totalCount,

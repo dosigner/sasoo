@@ -63,7 +63,7 @@ it('shows execution status without claiming a check against the paper', () => {
   expect(container.textContent).toContain('실행을 점검하고 있어요');
 
   post(frame.contentWindow, { type: 'sasoo-html-check', nonce, status: 'passed', issues: [], probed: 1 });
-  expect(container.textContent).toContain('입력 1개를 범위 끝까지 움직여도 오류 없이');
+  expect(container.textContent).toContain('입력 1개의 유효값, 빈 값과 적용 가능한 범위 오류를 개별 점검');
   expect(container.textContent).toContain('수치는 원문 기준으로 검산하지 않았어요');
 
   post(frame.contentWindow, { type: 'sasoo-html-check', nonce, status: 'failed', issues: ['assertion failed: y=2x'], probed: 1 });

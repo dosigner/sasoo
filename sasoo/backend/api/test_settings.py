@@ -73,7 +73,7 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch("api.settings._ensure_defaults", new=AsyncMock()) as ensure_defaults,
             patch("api.settings.fetch_all", new=AsyncMock(return_value=rows)),
-            patch("api.settings._set_setting", new=AsyncMock()),
+            patch("api.settings._set_settings", new=AsyncMock()),
             patch("api.settings.get_library_root", return_value=Path(platform_root)),
         ):
             response = await settings.get_settings()
@@ -93,7 +93,7 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch("api.settings._ensure_defaults", new=AsyncMock()),
             patch("api.settings.fetch_all", new=AsyncMock(return_value=rows)),
-            patch("api.settings._set_setting", new=AsyncMock()),
+            patch("api.settings._set_settings", new=AsyncMock()),
             patch("api.settings.get_library_root", return_value=Path(platform_root)),
         ):
             response = await settings.get_settings()
@@ -212,7 +212,7 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch("api.settings._ensure_defaults", new=AsyncMock()),
             patch("api.settings.fetch_all", new=AsyncMock(return_value=rows)),
-            patch("api.settings._set_setting", new=AsyncMock()),
+            patch("api.settings._set_settings", new=AsyncMock()),
             patch("api.settings.get_library_root", return_value=Path(platform_root)),
         ):
             response = await settings.get_settings()
@@ -236,7 +236,7 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
                 "api.settings.encrypt_value",
                 side_effect=CryptoKeyStoreError("credential store unavailable"),
             ),
-            patch("api.settings._set_setting", new=AsyncMock()) as set_setting,
+            patch("api.settings._set_settings", new=AsyncMock()) as set_setting,
         ):
             response = await settings.get_settings()
 
@@ -335,7 +335,7 @@ class SettingsRouteTests(unittest.IsolatedAsyncioTestCase):
 
         with patch("api.settings._ensure_defaults", new=AsyncMock()):
             with patch("api.settings.fetch_all", new=AsyncMock(return_value=rows)):
-                with patch("api.settings._set_setting", new=AsyncMock()):
+                with patch("api.settings._set_settings", new=AsyncMock()):
                     response = await settings.get_settings()
 
         self.assertEqual(response.research_context, "")
@@ -396,7 +396,7 @@ class PdfVisualEngineSettingTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch("api.settings._ensure_defaults", new=AsyncMock()),
             patch("api.settings.fetch_all", new=AsyncMock(return_value=rows)),
-            patch("api.settings._set_setting", new=AsyncMock()),
+            patch("api.settings._set_settings", new=AsyncMock()),
         ):
             response = await settings.get_settings()
 

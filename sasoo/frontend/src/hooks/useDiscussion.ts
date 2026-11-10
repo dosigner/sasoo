@@ -9,6 +9,7 @@ import {
   type DiscussionRow,
 } from '@/lib/api';
 import { createTokenBuffer } from '@/lib/tokenBuffer';
+import type { ChatSelection } from '@/lib/selectionExplain';
 
 // 토의 한 줄. 서버 행(discussion_messages)과 아직 저장 전인 대기 질문을 같은 모양으로 둔다.
 // user: pending(대기) → complete, sasoo: streaming → complete | interrupted, reset: complete.
@@ -21,6 +22,8 @@ export interface DiscussionItem {
   resetReason?: DiscussionResetReason;
   createdAt?: string;
   costUsd?: number;
+  selection?: ChatSelection;
+  paperId?: string;
 }
 
 let itemSeq = 0;
@@ -64,6 +67,7 @@ export function useDiscussion(paperId: string, open: boolean) {
   // Aborts the turn currently on the wire; queued turns have not started yet.
   const abortRef = useRef<AbortController | null>(null);
   const runningRef = useRef(false);
+  const generationRef = useRef(0);
   // 불러오기 도중 보내기, 초기화, 삭제, 논문 전환이 일어나면 늦게 온 기록을 버린다.
   const loadSeqRef = useRef(0);
 
@@ -72,9 +76,11 @@ export function useDiscussion(paperId: string, open: boolean) {
   busyRef.current = busy;
 
   useEffect(() => {
+    generationRef.current += 1;
     abortRef.current?.abort();
     abortRef.current = null;
     runningRef.current = false;
+    busyRef.current = false;
     loadSeqRef.current += 1;
     setItems([]);
     setContext(null);
@@ -82,7 +88,7 @@ export function useDiscussion(paperId: string, open: boolean) {
     setError(null);
   }, [paperId]);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(() => () => { generationRef.current += 1; abortRef.current?.abort(); }, []);
 
   const refresh = useCallback(async () => {
     if (busyRef.current) return;
@@ -109,6 +115,8 @@ export function useDiscussion(paperId: string, open: boolean) {
   // Runs one queued question to completion. Turns are serialized so each one
   // sees the previous answer, which the backend now reads from the saved discussion.
   const runTurn = useCallback(async (pending: DiscussionItem) => {
+    const generation = generationRef.current;
+    const isCurrent = () => generation === generationRef.current;
     runningRef.current = true;
     const answerId = nextItemId();
     const controller = new AbortController();
@@ -126,12 +134,13 @@ export function useDiscussion(paperId: string, open: boolean) {
     // message list; the buffer is drained before any status transition so a
     // bubble never turns 'complete' or 'interrupted' with text still in flight.
     const tokenBuffer = createTokenBuffer((chunk) => {
+      if (!isCurrent()) return;
       setItems((prev) =>
         prev.map((item) => (item.id === answerId ? { ...item, content: item.content + chunk } : item)),
       );
     });
     const setAnswer = (patch: Partial<DiscussionItem>) =>
-      setItems((prev) => prev.map((item) => (item.id === answerId ? { ...item, ...patch } : item)));
+      isCurrent() && setItems((prev) => prev.map((item) => (item.id === answerId ? { ...item, ...patch } : item)));
 
     try {
       await chatWithAgent(
@@ -140,6 +149,7 @@ export function useDiscussion(paperId: string, open: boolean) {
         [],
         (token) => tokenBuffer.push(token),
         (meta) => {
+          if (!isCurrent()) return;
           tokenBuffer.end();
           setAnswer({ status: 'complete', costUsd: meta.cost_usd });
           const tokens = meta.context_tokens;
@@ -147,8 +157,9 @@ export function useDiscussion(paperId: string, open: boolean) {
         },
         controller.signal,
         {
+          selection: pending.selection,
           onMeta: ({ reset }) => {
-            if (!reset) return;
+            if (!isCurrent() || !reset) return;
             setItems((prev) => {
               const at = prev.findIndex((item) => item.id === pending.id);
               const next = [...prev];
@@ -179,21 +190,21 @@ export function useDiscussion(paperId: string, open: boolean) {
         ),
       );
       if (abortRef.current === controller) abortRef.current = null;
-      runningRef.current = false;
+      if (isCurrent()) runningRef.current = false;
     }
   }, [paperId]);
 
   // Drains the queue: picks up the next pending question whenever one is idle.
   useEffect(() => {
     if (runningRef.current) return;
-    const pending = items.find((item) => item.kind === 'user' && item.status === 'pending');
+    const pending = items.find((item) => item.kind === 'user' && item.status === 'pending' && item.paperId === paperId);
     if (pending) void runTurn(pending);
-  }, [items, runTurn]);
+  }, [items, runTurn, paperId]);
 
-  const send = useCallback((text: string) => {
+  const send = useCallback((text: string, selection?: ChatSelection) => {
     loadSeqRef.current += 1;
-    setItems((prev) => [...prev, { id: nextItemId(), kind: 'user', content: text, status: 'pending' }]);
-  }, []);
+    setItems((prev) => [...prev, { id: nextItemId(), kind: 'user', content: text, selection, paperId, status: 'pending' }]);
+  }, [paperId]);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -201,24 +212,30 @@ export function useDiscussion(paperId: string, open: boolean) {
 
   const reset = useCallback(async () => {
     loadSeqRef.current += 1;
+    const generation = generationRef.current;
     try {
       const row = await resetDiscussion(paperId);
+      if (generation !== generationRef.current) return;
       setItems((prev) => [...prev, itemFromRow(row)]);
       setContext((prev) => (prev ? { ...prev, context_tokens: null } : prev));
       setError(null);
     } catch (err) {
+      if (generation !== generationRef.current) return;
       setError(err instanceof Error ? err.message : '맥락을 새로 시작하지 못했어요.');
     }
   }, [paperId]);
 
   const remove = useCallback(async () => {
     loadSeqRef.current += 1;
+    const generation = generationRef.current;
     try {
       await deleteDiscussion(paperId);
+      if (generation !== generationRef.current) return;
       setItems([]);
       setContext((prev) => (prev ? { ...prev, context_tokens: null } : prev));
       setError(null);
     } catch (err) {
+      if (generation !== generationRef.current) return;
       setError(err instanceof Error ? err.message : '토의를 삭제하지 못했어요.');
     }
   }, [paperId]);

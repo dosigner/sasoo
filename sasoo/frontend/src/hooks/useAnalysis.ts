@@ -65,6 +65,7 @@ const VISUAL_REFRESH_RETRY_MS = 1500;
 function resultsKey(status: AnalysisStatus): string {
   return JSON.stringify([
     status.overall_status === 'completed',
+    status.completion_checks?.map((check) => [check.stage, check.status, check.result_id]),
     status.phases.filter((phase) => phase.status === 'completed')
       .map((phase) => [phase.phase, phase.completed_at]),
   ]);
@@ -196,7 +197,9 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
       if (!isSessionActive(sessionId)) return;
       const load = (async () => {
         const completedPhases = phaseStatus.phases
-          .filter((p) => p.status === 'completed')
+          .filter((p) => p.status === 'completed' || phaseStatus.completion_checks?.some(
+            (check) => check.stage === p.phase && check.status === 'partial' && check.result_id !== null,
+          ))
           .map((p) => p.phase);
 
         // Record only successful loads so the next poll retries failures.
@@ -254,7 +257,7 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
         // 종합은 시각화보다 먼저 읽는다. 아래 시각화 블록은 항목을 받으면 return으로
         // 빠져나가므로 뒤에 두면 저장된 종합이 있어도 영영 읽히지 않는다.
         if (
-          completedPhases.includes('deep_dive') &&
+          (completedPhases.includes('deep_dive') || phaseStatus.completion_checks?.some((check) => check.stage === 'synthesis' && check.result_id !== null)) &&
           !fetchedPhases.current.has('synthesis')
         ) {
           try {
@@ -270,7 +273,7 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
         }
 
         // Fetch visualizations after deep_dive completes (they generate in parallel)
-        if (completedPhases.includes('deep_dive')) {
+        if (completedPhases.includes('deep_dive') || phaseStatus.completion_checks?.some((check) => check.stage === 'visualization' && check.result_id !== null)) {
           try {
             const viz = await getVisualizations(targetPaperId);
             if (!isSessionActive(sessionId)) return;
@@ -346,7 +349,7 @@ export function useAnalysis(paperId: string | undefined): UseAnalysisReturn {
             (p: PhaseInfo) => p.status === 'error'
           );
           setError(
-            errorPhase?.error_message || S.error.occurred
+            errorPhase?.error_message || s.completion_checks?.find((check) => !['completed', 'skipped'].includes(check.status))?.reason || S.error.occurred
           );
       } else {
         setError(null);

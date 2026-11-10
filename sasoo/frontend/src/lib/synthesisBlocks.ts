@@ -70,6 +70,12 @@ export function assignBlocks(items: VisualizationItem[]): AssignedBlocks {
 export function formatMetricValue(m: { value: string; unit: string }): string {
   const unit = m.unit?.trim();
   if (!unit || unit === '-') return m.value;
+  const value = m.value.trimEnd();
+  if (value.endsWith(unit)) {
+    const prefix = value.slice(0, -unit.length);
+    // A matching suffix alone could be a different unit, such as ms versus s.
+    if (!prefix || /[\s\d.)\]]$/.test(prefix)) return m.value;
+  }
   // 퍼센트와 각도는 숫자에 붙여 쓴다(60%, 30°).
   return /^[%‰°]/.test(unit) ? `${m.value}${unit}` : `${m.value} ${unit}`;
 }

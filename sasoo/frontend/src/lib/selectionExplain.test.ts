@@ -28,3 +28,7 @@ describe('isSelectionTooLong', () => {
     expect(isSelectionTooLong('a'.repeat(SELECTION_MAX_CHARS + 1))).toBe(true);
   });
 });
+
+it('labels a cross-page selection with physical PDF page bounds', () => {
+  expect(buildExplainPrompt(2, 'across pages', 'phd', 3)).toContain('PDF p.2–3(파일 순서)');
+});

@@ -20,18 +20,20 @@ import {
   buildAnalysisConfirmCopy,
   buildChatStarterPrompts,
   buildWorkbenchStatusSummary,
+  paperFieldLabel,
 } from '@/lib/workbenchSummaries';
 import WorkbenchHeader from '@/components/workbench/WorkbenchHeader';
 import type { CitationFocus } from '@/components/AnalysisPanel';
 import type { CitationTarget } from '@/components/ChatPanel';
 import type { PdfSearchRequest, PdfTextSelection } from '@/components/PdfViewer';
 import SelectionExplainPopover from '@/components/workbench/SelectionExplainPopover';
-import { buildExplainPrompt, isSelectionTooLong } from '@/lib/selectionExplain';
+import { buildExplainPrompt, isSelectionTooLong, type ChatSelection } from '@/lib/selectionExplain';
 import { ContentState, Modal } from '@/components/ui';
 import { useWorkbenchLayout } from '@/hooks/useWorkbenchLayout';
 import { useWorkbenchAnalysisControls } from '@/hooks/useWorkbenchAnalysisControls';
 import { getAgentMeta, getAllAgents, type AgentMeta } from '@/lib/agents';
 import { AppIcon } from '@/components/icons';
+import ReadingGuideProvider from '@/components/ReadingGuideProvider';
 
 const PdfViewer = lazy(() => import('@/components/PdfViewer'));
 const AnalysisPanel = lazy(() => import('@/components/AnalysisPanel'));
@@ -66,6 +68,7 @@ export default function Workbench() {
   const pdfAreaRef = useRef<HTMLDivElement>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatDraft, setChatDraft] = useState('');
+  const [chatSelection, setChatSelection] = useState<ChatSelection | undefined>();
   const [agentChanging, setAgentChanging] = useState(false);
   const [confirmSettings, setConfirmSettings] = useState<Settings | null>(null);
   const [confirmCostSummary, setConfirmCostSummary] = useState<CostSummary | null>(null);
@@ -144,6 +147,26 @@ export default function Workbench() {
     };
   }, [id]);
 
+  useEffect(() => {
+    if (!id || paper?.id !== Number(id) || paper?.text_ready) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const pollText = async () => {
+      let ready = false;
+      try {
+        const updated = await getPaper(id);
+        if (cancelled) return;
+        setPaper(updated);
+        ready = updated.text_ready;
+      } catch {
+        // Keep the last known state and retry while text is being prepared.
+      }
+      if (!cancelled && !ready) timer = setTimeout(pollText, 1500);
+    };
+    timer = setTimeout(pollText, 1500);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [id, paper?.id, paper?.text_ready]);
+
   // 분석 확인 모달에 실제 공급사·실측 비용을 보여주기 위해 모달을 열 때 한 번 조회한다.
   // 실패해도 상태를 덮어쓰지 않아 이전에 불러온 값이 있으면 그대로 유지되고, 없으면
   // buildAnalysisConfirmCopy가 null을 받아 해당 줄을 조용히 숨긴다.
@@ -166,16 +189,20 @@ export default function Workbench() {
   useEffect(() => {
     setChatOpen(false);
     setChatDraft('');
+    setChatSelection(undefined);
     setCitationFocus(null);
     setSearchRequest(null);
+    setNavigationRequest(null);
     setSelection(null);
-  }, [paper?.id]);
+  }, [id]);
 
   // 선택 팝오버의 "이 부분 설명": 채팅 패널의 draft만 채우고 연다. ChatPanel의 보내기
   // 버튼(handleSend → enqueue)을 사용자가 직접 눌러야 실제 전송(비용 발생)이 나간다.
   const handleExplainSelection = useCallback(() => {
     if (!selection || isSelectionTooLong(selection.text)) return;
-    setChatDraft(buildExplainPrompt(selection.page, selection.text, paper?.explanation_level));
+    setChatDraft(buildExplainPrompt(selection.page, selection.text, paper?.explanation_level, selection.endPage));
+    setChatSelection({ text: selection.rawText.length <= 2000 ? selection.rawText : selection.text,
+      page: selection.page, end_page: selection.endPage });
     setChatOpen(true);
     setSelection(null);
     window.getSelection()?.removeAllRanges();
@@ -268,7 +295,7 @@ export default function Workbench() {
     }
   }, [handleCancelAnalysis, toast]);
 
-  if (paperLoading) {
+  if (paperLoading || (paper && String(paper.id) !== id)) {
     return (
       <div className="flex h-full items-center justify-center p-6">
         <ContentState
@@ -326,6 +353,7 @@ export default function Workbench() {
   });
 
   return (
+    <ReadingGuideProvider key={paperId} paperId={paperId} level={paper.explanation_level} field={paper.openalex_field}>
     <div className="flex h-full flex-col">
       <Modal open={showAnalysisConfirm} onClose={() => setShowAnalysisConfirm(false)} title={analysisConfirmCopy.title}>
         <h3 className="mb-2 text-lg font-semibold text-fg">{analysisConfirmCopy.title}</h3>
@@ -355,7 +383,7 @@ export default function Workbench() {
 
       <WorkbenchHeader
         title={paper.title}
-        domain={paper.domain}
+        domain={paperFieldLabel(paper)}
         agentLabel={agentMeta?.name || paper.agent_used}
         agentColor={agentMeta?.color}
         agents={getAllAgents()}
@@ -461,7 +489,6 @@ export default function Workbench() {
                 onRefreshSynthesis={refreshSynthesis}
                 isRunning={isRunning}
                 paperId={paperId}
-                paperLevel={paper.explanation_level}
                 terminalState={terminalState}
                 citationFocus={citationFocus}
                 onCitationClick={handleCitationClick}
@@ -508,7 +535,9 @@ export default function Workbench() {
         }
       >
         <ChatPanel
+          key={paperId}
           paperId={paperId}
+          selection={chatSelection}
           agentName={paper.agent_used}
           // 전문 사수가 없는 분야(일반 에이전트)는 OpenAlex 대분야명을 보인다.
           fieldLabel={paper.agent_used === 'general' ? paper.openalex_field ?? undefined : undefined}
@@ -518,10 +547,16 @@ export default function Workbench() {
           draft={chatDraft}
           starters={chatStarters}
           onToggleOpen={() => setChatOpen((prev) => !prev)}
-          onDraftChange={setChatDraft}
+          onDraftChange={(value) => {
+            setChatDraft(value);
+            if (!value || (chatSelection && !value.includes(chatSelection.text.replace(/\s+/g, ' ').trim()))) {
+              setChatSelection(undefined);
+            }
+          }}
           onCitationClick={handleCitationClick}
         />
       </Suspense>
     </div>
+    </ReadingGuideProvider>
   );
 }

@@ -28,6 +28,60 @@ EVIDENCE_VERIFIER_VERSION = "ev2"
 EVIDENCE_NORMALIZER_VERSION = "norm-v2"
 EVIDENCE_CORPUS_PDF_TEXT = "pdf_text"
 
+REPRODUCTION_VERIFIER_VERSION = "reproduction-v2"
+_REPRO_TOPICS = {
+    "preprocessing": (r"preprocess|dequantiz|pixel|transformed data|(?:input|data|image).{0,60}normaliz|normaliz.{0,60}(?:input|data|image)", r"전처리.*(?:미보고|명시|보고|확인)|픽셀|pixel|dequantiz|입력.*정규화"),
+    "sampling": (r"(?:t\s*(?:\\sim|∼|~)\s*(?:\\mathcal\{U\}|U)|uniform.*(?:time|sampling)|sampling.*distribution)", r"시간.*(?:sampling|샘플|분포)|time.*sampling|sampling.*time|t\s*[~∼]"),
+    "target_loss": (r"loss|objective|regression target|training target", r"loss|target|손실|목표|회귀"),
+    "evaluation": (r"bits.per.dimension|BPD|Jacobian|log.density", r"BPD|bits.per.dimension|Jacobian|density|likelihood|NLL|우도"),
+    "solver": (r"tolerance|atol|rtol|dopri|ODE solver", r"solver|허용오차|tolerance|atol|rtol|dopri"),
+}
+
+
+def verify_recipe_reproduction(recipe: dict, pages: list[str]) -> dict:
+    """Surface source conditions to review; keyword absence never proves non-reporting."""
+    parts = [str(item) for key in ("steps", "critical_notes") for item in recipe.get(key, [])]
+    parts += [str(p.get(key, "")) for p in recipe.get("parameters", []) if isinstance(p, dict)
+              for key in ("name", "value", "unit", "notes")]
+    content = normalize_text(" ".join(parts))
+    claims = [(f"missing_info[{i}]", str(item)) for i, item in enumerate(recipe.get("missing_info", []))]
+    claims += [(f"{key}[{i}]", str(item)) for key in ("steps", "critical_notes")
+               for i, item in enumerate(recipe.get(key, []))
+               if re.search(r"미보고|명시되지|보고하지|not (?:reported|specified)", str(item), re.I)]
+    items = []
+    for topic, (source_pattern, claim_pattern) in _REPRO_TOPICS.items():
+        candidates = []
+        for page, text in enumerate(pages, 1):
+            blocks = re.split(r"\n\s*\n", text)
+            for i, block in enumerate(blocks):
+                if not re.search(source_pattern, block, re.I):
+                    continue
+                # Include adjacent equations instead of matching prose keywords alone.
+                neighborhood = "\n\n".join(blocks[max(0, i - 1):i + 3])
+                formulas = re.findall(r"\$\$(.*?)\$\$", neighborhood, re.S)
+                candidates.append((page, block.strip()))
+                if formulas:
+                    for formula in formulas:
+                        formula = re.sub(r"\\tag\{\d+\}", "", formula).strip()
+                        candidates.append((page, formula))
+        dedup = list(dict.fromkeys(candidates))
+        evidence = [{"page": p, "quote": q,
+                     "status": "text_present" if normalize_text(q) in content else "needs_review"}
+                    for p, q in dedup]
+        conflicts = [{"path": path, "claim": claim, "status": "source_conflict_candidate"}
+                     for path, claim in claims if any(re.search(claim_pattern, e["quote"], re.I) for e in evidence)
+                     and any(re.search(claim_pattern, part, re.I)
+                             and not re.search(r"seed|random|GPU|hardware|U-Net|가중치|weight", part, re.I)
+                             for part in re.split(r"[,;]", claim))]
+        items.append({"topic": topic, "status": "needs_review" if any(e["status"] == "needs_review" for e in evidence) or conflicts
+                      else "text_present" if evidence else "source_not_located",
+                      "evidence": evidence, "conflicts": conflicts})
+    return {"version": REPRODUCTION_VERIFIER_VERSION,
+            "scope": "Local source-condition search; semantic completeness and absence are unverified.",
+            "status": "needs_review" if any(i["status"] == "needs_review" for i in items) else "unverified",
+            "items": items,
+            "missing_info_claims": [{"path": path, "claim": claim, "status": "absence_unverified"} for path, claim in claims]}
+
 QUOTE_STATUSES = frozenset(
     {
         "verified_exact",

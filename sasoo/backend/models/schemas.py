@@ -267,11 +267,21 @@ class PhaseStatus(BaseModel):
     stale_model: Optional[str] = None
 
 
+class StageCompletion(BaseModel):
+    stage: str
+    label: str
+    status: str
+    reason: str
+    required: list[str]
+    result_id: Optional[int] = None
+
+
 class AnalysisStatus(BaseModel):
     """Aggregate status of all 4 analysis phases."""
     paper_id: int
     overall_status: str = "pending"  # pending | running | completed | error
     phases: list[PhaseStatus] = Field(default_factory=list)
+    completion_checks: list[StageCompletion] = Field(default_factory=list)
     progress_pct: float = 0.0  # 0..100
     current_phase: Optional[AnalysisPhase] = None
     total_cost_usd: float = 0.0

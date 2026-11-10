@@ -89,6 +89,9 @@ export function DiagramCard({
         </div>
       </header>
       {regenerateError && <p className="px-4 pb-2 text-2xs text-danger">{regenerateError}</p>}
+      {item.scientific_validation && (
+        <p className="px-4 pb-2 text-2xs text-fg-muted">생성 완료와 원문 정확성 검증은 별개입니다. 수식과 수치는 원문 및 텍스트 수식으로 확인하세요.</p>
+      )}
       {(item.image_quality || item.importance != null) && (
         <p className="px-4 pb-2 text-2xs text-fg-muted">
           {item.tool === 'paperbanana' && imageModel && `${imageModel === 'gpt-image-2.5-sunburst' ? 'Sunburst' : imageModel === 'gpt-image-2.5-flare' ? 'Flare' : imageModel} / `}

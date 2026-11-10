@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/dongj/dev/논문_사수_개발중/sasoo/docs/assets/architecture-2026-09-25/reading-workflow.en.json",
+  "output": "/Users/dongj/dev/논문_사수_개발중/sasoo/docs/assets/architecture-2026-09-25/reading-workflow.en.html",
+  "specification": {
+    "sha256": "4f00b4c358be74ee09c84886460ae13443b43ef3fcbb75f7708ac91479711180",
+    "bytes": 2514
+  },
+  "artifact": {
+    "sha256": "56c92f523a2260eba774ac89cb04fc066b420b4ab81357cbf30e41d891dbb1f9",
+    "bytes": 708128
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  }
+}

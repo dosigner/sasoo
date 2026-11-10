@@ -10,6 +10,7 @@ import {
 } from '@/lib/evidence';
 import { S } from '@/lib/strings';
 import { stripRecipeStepNumber } from '@/lib/recipeSteps';
+import { formatMetricValue } from '@/lib/synthesisBlocks';
 
 // 열 순서가 이 파일의 계약이고, 이름 자체는 strings.ts가 쥔다(사용자가 읽는 문자열이라서).
 // 이름은 검증 여부를 단정하지 않는다 — (verified) 같은 도장이 이름에 붙어 있으면 미검증 행을
@@ -62,6 +63,12 @@ export function generateCsvFromRecipe(recipe: Recipe): string {
   }
 
   rows.push(plainRow('Info', 'Title', String(data.title || '')));
+  rows.push(plainRow('Meta', 'Reproduction completeness', '미검증. 원문 조건 검색은 의미 검증이나 부재 증명이 아닙니다.'));
+  recipe.reproduction_check?.items.forEach((item) => {
+    rows.push(plainRow('Reproduction Check', item.topic, item.status));
+    item.evidence.forEach((e) => rows.push(plainRow('Source Condition', `${item.topic} PDF p.${e.page}`, `${e.status}: ${e.quote}`)));
+    item.conflicts.forEach((c) => rows.push(plainRow('Absence Conflict', c.path, c.claim)));
+  });
   rows.push(plainRow('Info', 'Objective', String(data.objective || '')));
   rows.push(plainRow('Info', 'Confidence', data.confidence != null ? `${(Number(data.confidence) * 100).toFixed(0)}%` : ''));
   rows.push(plainRow('Info', 'Reproducibility', data.reproducibility_score != null ? `${(Number(data.reproducibility_score) * 100).toFixed(0)}%` : ''));
@@ -80,7 +87,7 @@ export function generateCsvFromRecipe(recipe: Recipe): string {
     rows.push([
       'Parameter',
       row.name,
-      `${row.value || ''}${row.unit ? ' ' + row.unit : ''}${row.notes ? ' (' + row.notes + ')' : ''}`,
+      `${formatMetricValue(row)}${row.notes ? ' (' + row.notes + ')' : ''}`,
       evidenceBadge(status).label,
       evidenceMethodLabel(anchor?.match_method),
       found ? anchor?.matched_quote ?? '' : '',

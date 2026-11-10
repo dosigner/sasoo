@@ -47,7 +47,7 @@ vi.mock('@/lib/api', () => ({
   ApiError: class extends Error {},
   getPapers: vi.fn(), getPaper: vi.fn(), deletePaper: vi.fn(), updatePaper: vi.fn(),
   runAnalysis: vi.fn(), getAnalysisStatus: vi.fn(), getAnalysisResults: vi.fn(),
-  getFigures: vi.fn(), getTables: vi.fn(), getRecipe: vi.fn(), getMermaid: vi.fn(), getVisualizations: vi.fn(),
+  getFigures: vi.fn(), getTables: vi.fn(), getRecipe: vi.fn(), getVisualizations: vi.fn(),
   getSynthesis: vi.fn(),
 }));
 vi.mock('@/lib/guideCache', () => ({ deleteGuide: vi.fn() }));
@@ -102,6 +102,22 @@ it('fetches one result update when a new phase completes', async () => {
   await vi.advanceTimersByTimeAsync(4000); await hooks.flush();
   expect(api.getAnalysisResults).toHaveBeenCalledTimes(2);
 });
+it('keeps partial recipes readable and refetches when their stored result changes', async () => {
+  const state = {
+    ...status([], 'error'), phases: [{ phase: 'recipe', status: 'error' }],
+    completion_checks: [{ stage: 'recipe', status: 'partial', result_id: 11, reason: '복구한 일부 결과' }],
+  };
+  api.getAnalysisStatus.mockResolvedValue(state);
+  api.getRecipe.mockResolvedValue({ title: '보존된 레시피' });
+  hooks.mount(() => useAnalysis('1'));
+  const analysis = await hooks.flush();
+  expect(analysis.recipe.title).toBe('보존된 레시피');
+  expect(api.getAnalysisResults).toHaveBeenCalledTimes(1);
+  state.completion_checks[0].result_id = 12;
+  await analysis.refresh(); await hooks.flush();
+  expect(api.getAnalysisResults).toHaveBeenCalledTimes(2);
+  expect(api.runAnalysis).not.toHaveBeenCalled();
+});
 it('retries failed results at the next poll', async () => {
   api.getAnalysisResults.mockRejectedValueOnce(new Error('offline'));
   hooks.mount(() => useAnalysis('1'));
@@ -129,12 +145,10 @@ it('continues refreshing visualization progress without refetching results', asy
 it.each(['empty', 'failed'])('does not generate a legacy diagram when saved visualizations are %s', async (state) => {
   api.getAnalysisStatus.mockResolvedValue(status(['screening', 'deep_dive'], 'completed'));
   api.getAnalysisResults.mockResolvedValue({ paper_id: 1, deep_dive: { detailed_analysis: 'saved summary' } });
-  api.getMermaid.mockResolvedValue({ mermaid_code: 'flowchart TD\nA-->B' });
   if (state === 'failed') api.getVisualizations.mockRejectedValue(new Error('offline'));
   hooks.mount(() => useAnalysis('1'));
   const analysis = await hooks.flush();
   expect(analysis.results.deep_dive.detailed_analysis).toBe('saved summary');
-  expect(api.getMermaid).not.toHaveBeenCalled();
   expect(api.runAnalysis).not.toHaveBeenCalled();
 });
 
