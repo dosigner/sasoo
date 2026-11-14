@@ -19,7 +19,7 @@ from models.database import execute_insert, execute_update, fetch_all, fetch_one
 from models.schemas import AnalysisPhase, AnalysisStatus, PhaseStatus, StageCompletion
 from services.odl_parser import is_artifact_refresh_running, schedule_paper_artifacts_refresh
 from services.analysis_results import parse_phase_row, get_latest_completed_phase_rows
-from services.analysis_completion import build_completion_checks, check_stage_output, completion_progress, visualization_plan_matches, STAGE_OUTPUTS, SETTLED
+from services.analysis_completion import build_completion_checks, check_stage_output, completion_progress, visualization_plan_matches, STAGE_OUTPUTS, SETTLED, REVIEW_SKIP_REASON
 from services.summary_contract import (
     _SECTION_ANSWER_SCHEMA,
     _TRANSFER_CHECK_SCHEMA,
@@ -346,6 +346,14 @@ def _visualization_cache_input(
     )
 
 
+def _paper_type(screening: dict) -> str:
+    """스크리닝 결과의 논문 유형. paper_type이 없는 과거 행이나 모델 누락은 methodology_type으로 판단한다."""
+    value = screening.get("paper_type")
+    if value in {"article", "letter", "review"}:
+        return value
+    return "review" if screening.get("methodology_type") == "review" else "article"
+
+
 def _screening_gate_decision(
     screening_result_text: Optional[str], phase: str = "recipe"
 ) -> tuple[bool, str]:
@@ -371,6 +379,10 @@ def _screening_gate_decision(
 
     if relevance < 0.35:
         return (True, "low_relevance_screening")
+
+    # Review는 그림 중심 deep_dive 대신 review_map을 돌린다(_run_deep_dive가 이어서 실행).
+    if phase == "deep_dive" and _paper_type(payload) == "review":
+        return (True, REVIEW_SKIP_REASON)
 
     applicable = payload.get(f"{phase}_applicable")
     if applicable is False:
@@ -408,7 +420,11 @@ async def _store_skipped_phase_result(
         {
             "skipped": True,
             "reason": reason,
-            "message": f"{title} 단계는 스크리닝 신호가 약해 자동 실행을 건너뛰었습니다.",
+            "message": (
+                f"Review 논문이라 {title} 대신 리뷰 지도를 만들었습니다."
+                if reason == REVIEW_SKIP_REASON
+                else f"{title} 단계는 스크리닝 신호가 약해 자동 실행을 건너뛰었습니다."
+            ),
         },
         ensure_ascii=False,
     )
@@ -453,14 +469,21 @@ def _build_chain_restart_context(
     return "\n\n".join(parts)
 
 
-def _result_was_skipped(result: Optional[dict]) -> bool:
+def _skip_reason(result: Optional[dict]) -> str:
+    """skip 행이면 reason(없으면 "skipped"), 아니면 빈 문자열."""
     if not result or not result.get("text"):
-        return False
+        return ""
     try:
         payload = json.loads(_clean_llm_json(str(result["text"])))
     except (TypeError, json.JSONDecodeError):
-        return False
-    return bool(payload.get("skipped"))
+        return ""
+    if not isinstance(payload, dict) or not payload.get("skipped"):
+        return ""
+    return str(payload.get("reason") or "skipped")
+
+
+def _result_was_skipped(result: Optional[dict]) -> bool:
+    return bool(_skip_reason(result))
 
 
 async def _insert_analysis_result(
@@ -590,6 +613,8 @@ _SCREENING_SCHEMA = {
         "applicability_reason": {"type": "string"},
         "key_topics": {"type": "array", "items": {"type": "string"}},
         "methodology_type": {"type": "string", "enum": ["experimental", "computational", "theoretical", "review"]},
+        # required가 아니다: 넣으면 paper_type 없는 기존 행이 partial로 바뀐다. 누락은 _paper_type이 메운다.
+        "paper_type": {"type": "string", "enum": ["article", "letter", "review"]},
         "summary": {"type": "string"},
         "is_experimental": {"type": "boolean"},
         "has_figures": {"type": "boolean"},
@@ -683,13 +708,15 @@ async def _run_screening(
 - applicability_reason: 위 두 판정의 근거 1문장 (한국어)
 - key_topics: 핵심 주제 리스트
 - methodology_type: experimental|computational|theoretical|review 중 하나
+- paper_type: article|letter|review 중 하나. review는 여러 선행 연구를 모아 한 분야를 정리하는 논문,
+  letter는 Letter·Communication처럼 짧은 속보형 원저 논문, 그 밖의 원저 연구는 article
 - summary: 2-3문장 요약 (한국어)
 - is_experimental: 실험 논문 여부 / has_figures: 그림 포함 여부
 - estimated_complexity: low|medium|high 중 하나
 - confidence: 이 스크리닝 판정 자체의 확신도 (0.0~1.0)
 
 경계 예시:
-- 리뷰 논문: recipe_applicable=false, deep_dive_applicable=true
+- 리뷰 논문: paper_type=review, recipe_applicable=false, deep_dive_applicable=true
 - 실험 세부가 없는 사설·초록만 있는 문서: 둘 다 false 가능
 불확실하면 applicable을 성급히 false로 두지 말고 confidence를 낮춰.
 """
@@ -1128,6 +1155,8 @@ _PHASE_TO_ROLE = {
     "visual": "visual",
     "recipe": "recipe",
     "deep_dive": "deep_dive",
+    # Review의 deep_dive 대체 단계라 같은 모델과 effort를 쓴다.
+    "review_map": "deep_dive",
     "visualization": "viz_planning",
     "synthesis": "synthesis",
 }
@@ -1146,7 +1175,7 @@ _PHASE_TO_ROLE = {
 # $0.26에서 $0.06으로 막는 것을 실증했다.
 # 잠금: api/test_recipe_output_bounds.py, api/test_deep_dive_schema.py,
 #      services/test_model_pins.py
-_STAGE_MAX_OUTPUT_TOKENS = {"recipe": 24_000, "deep_dive": 16_000}
+_STAGE_MAX_OUTPUT_TOKENS = {"recipe": 24_000, "deep_dive": 16_000, "review_map": 16_000}
 
 # _STAGE_THINKING과 _STAGE_MODELS는 model_registry가 대체했다(provider x role).
 # 스테이지의 모델/effort는 _stage_choice()로만 구한다 — 두 출처를 두면 provider가
@@ -1351,6 +1380,74 @@ _DEEP_DIVE_INSTRUCTION = """이 논문에 대한 심층 분석을 해줘. 전문
 - 임상 연구는 연구 대상, 측정 지표, 연구 설계와 일반화 범위를 설명해.
 - 이론과 리뷰에는 실험 조건이나 as-is/to-be를 강요하지 말고, 가정, 문헌 선정 범위,
   적용 가능한 문제 조건을 설명해. 혼합 연구는 필요한 관점만 함께 사용해."""
+
+# Review 논문 전용. deep_dive를 대신한다. 배열 상한과 마지막 숫자 속성은 deep_dive·recipe
+# 폭주 대책(DEC-014: 마지막 자유서술 필드가 폭주의 근원)을 그대로 따른다.
+_REVIEW_MAP_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "field_overview": {"type": "string"},
+        "parts": {
+            "type": "array",
+            "maxItems": 14,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "page": {"type": "integer"},
+                    "subfield": {"type": "string"},
+                    "summary": {"type": "string"},
+                    "development": {"type": "string"},
+                    "takeaway": {"type": "string"},
+                },
+                "required": ["title", "subfield", "summary", "development", "takeaway"],
+            },
+        },
+        "future_directions": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+                "type": "object",
+                "properties": {"need": {"type": "string"}, "research": {"type": "string"}},
+                "required": ["need", "research"],
+            },
+        },
+        "reading_paths": {
+            "type": "array",
+            "maxItems": 4,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "goal": {"type": "string"},
+                    "order": {"type": "array", "maxItems": 14, "items": {"type": "string"}},
+                },
+                "required": ["goal", "order"],
+            },
+        },
+        "part_count": {"type": "integer"},
+    },
+    "required": ["field_overview", "parts", "future_directions", "reading_paths", "part_count"],
+}
+
+_REVIEW_MAP_INSTRUCTION = """이 논문은 Review 논문이야. 그림을 하나씩 해설하지 말고, 독자가 이 리뷰로
+분야 전체의 지도를 얻도록 정리해줘. 선배 연구자가 후배에게 설명하듯 해요체 한국어로 써.
+
+규칙:
+- 논문 PDF(또는 논문 텍스트)가 유일한 근거야. 논문에 없는 연구, 수치, 연도, 출처를 만들지 마.
+- field_overview: 이 리뷰가 다루는 대분야와 그 범위, 리뷰가 그 분야를 어떤 축으로 나눴는지 2-4문장.
+- parts: 논문의 실제 최상위 본문 섹션을 원문 순서대로 하나씩 담아. 서론, 결론, 참고문헌,
+  감사의 글은 넣지 마. 하위 섹션은 따로 항목을 만들지 말고 summary 안에서 다뤄.
+  - title: 원문 섹션 제목 그대로. page: 섹션이 시작하는 논문 페이지 번호(확실할 때만).
+  - subfield: 이 섹션이 대분야 안에서 맡은 세부 분야 이름 한 줄.
+  - summary: 섹션이 다루는 내용 요약 2-4문장.
+  - development: 이 세부 분야가 어떤 단계를 거쳐 발전했는지, 리뷰가 제시한 흐름대로 2-4문장.
+  - takeaway: 독자가 이 섹션에서 꼭 이해하고 가져가야 할 핵심 1-2문장.
+- future_directions: 리뷰가 제시한 대분야의 미래 과제. need는 무엇이 부족하거나 필요한지,
+  research는 그래서 어떤 연구를 해야 하는지. 리뷰가 말하지 않은 과제는 만들지 마.
+- reading_paths: 독자 목적별 읽는 순서 2-4개. 예: 분야 입문, 특정 세부 분야 파악, 최신 동향 파악.
+  order에는 parts의 title을 읽을 순서대로 적어.
+- part_count: parts 배열의 항목 수.
+- JSON 객체의 각 키는 한 번만 써. 같은 문장을 여러 필드에 반복하지 마."""
 
 
 def _stateless_digest(screening_result_text: str, citation_result_text: str) -> str:
@@ -2226,6 +2323,92 @@ missing_info(논문에 없어 재현에 걸림돌이 되는 항목), reproducibi
     return result
 
 
+async def _run_review_map(
+    paper_id: int,
+    status: AnalysisStatus,
+    *,
+    system_instruction: str,
+    previous_interaction_id: Optional[str],
+    pdf_uri: Optional[str],
+    doc_text: str,
+    source_text: str,
+    source_hash: str | None,
+    openai_pdf_part: dict[str, str] | None,
+    provider: str,
+    single_attempt: bool,
+) -> None:
+    """Review 논문의 deep_dive 대체 단계. 실패해도 분석 전체를 멈추지 않고 오류 행을 남긴다(synthesis와 같은 관례)."""
+    choice = _stage_choice("review_map", provider)
+    instruction = _REVIEW_MAP_INSTRUCTION
+    prompt_chain = f"{instruction}\n\n{_doc_reference_phrase(provider, pdf_provided=bool(openai_pdf_part))}를 바탕으로 리뷰 지도를 만들어줘."
+    prompt_fallback = f"논문 텍스트:\n{source_text}\n\n{instruction}"
+    cache_key = _phase_cache_key(
+        model=choice.model,
+        thinking=choice.effort or "",
+        system_instruction=system_instruction,
+        prompt=prompt_fallback,
+        source_signature=source_signature(
+            source_text, pdf_sha256=source_hash,
+            detail=openai_pdf_part.get("detail", "high") if openai_pdf_part else "high",
+        ),
+        max_output_tokens=_STAGE_MAX_OUTPUT_TOKENS["review_map"],
+    )
+    cached = await _get_cached_phase_result(
+        paper_id, "review_map", cache_key, provider=provider, model=choice.model, effort=choice.effort,
+    )
+    if cached is not None:
+        status.total_cost_usd += cached["cost_usd"] or 0.0
+        status.total_tokens_in += cached["tokens_in"] or 0
+        status.total_tokens_out += cached["tokens_out"] or 0
+        return
+
+    try:
+        result = await _run_chain_stage(
+            phase="review_map",
+            prompt_chain=prompt_chain,
+            prompt_fallback=prompt_fallback,
+            system_instruction=system_instruction,
+            previous_interaction_id=previous_interaction_id,
+            pdf_uri=pdf_uri,
+            doc_text=doc_text,
+            openai_pdf_part=openai_pdf_part,
+            single_attempt=single_attempt,
+            max_output_tokens=None,
+            response_schema=_REVIEW_MAP_SCHEMA,
+            restart_context="",
+            provider=provider,
+        )
+    except Exception as exc:  # noqa: BLE001 - 리뷰 지도 실패가 앞 단계 결과를 지우면 안 된다
+        logger.warning("Review map failed for paper %s: %s", paper_id, exc)
+        await _insert_analysis_result(
+            paper_id, "review_map", json.dumps({"error": f"리뷰 지도를 만들지 못했어요: {type(exc).__name__}"}, ensure_ascii=False),
+            choice.model, 0, 0, 0.0, cache_key, provider=provider, model=choice.model, effort=choice.effort,
+        )
+        return
+
+    cleaned_text = _clean_llm_json(result["text"])
+    try:
+        if result.get("incomplete") or result.get("response_status") in {"incomplete", "failed", "cancelled"}:
+            raise ValueError("리뷰 지도 응답이 출력 상한에 걸렸거나 완료되지 않았습니다")
+        payload = parse_summary_json(cleaned_text)
+        if not payload.get("parts"):
+            raise ValueError("리뷰 지도에 파트가 없습니다")
+        payload["_input_coverage"] = input_coverage(source_text, pdf_sha256=source_hash, text_limit=_OPENAI_DOC_TEXT_CHAR_LIMIT)
+        result["text"] = json.dumps(payload, ensure_ascii=False)
+    except ValueError as exc:
+        logger.warning("Review map response validation failed: %s", exc)
+        result["text"] = json.dumps({"_raw": result.get("raw_text", cleaned_text), "_parse_error": str(exc)})
+
+    cost = _result_cost(result)
+    await _insert_analysis_result(
+        paper_id, "review_map", result["text"], result["model"], result["tokens_in"], result["tokens_out"], cost,
+        cache_key, interaction_id=result.get("interaction_id"), provider=provider, model=choice.model, effort=choice.effort,
+    )
+    status.total_cost_usd += cost or 0.0
+    status.total_tokens_in += result["tokens_in"] or 0
+    status.total_tokens_out += result["tokens_out"] or 0
+
+
 async def _run_deep_dive(
     paper_id: int,
     deep_dive_input: str,
@@ -2258,7 +2441,7 @@ async def _run_deep_dive(
 
     should_skip, skip_reason = _screening_gate_decision(screening_result_text, phase="deep_dive")
     if should_skip:
-        return await _store_skipped_phase_result(
+        skipped = await _store_skipped_phase_result(
             paper_id=paper_id,
             phase="deep_dive",
             phase_status=phase_status,
@@ -2267,6 +2450,22 @@ async def _run_deep_dive(
             reason=skip_reason,
             title="Deep Dive",
         )
+        if skip_reason == REVIEW_SKIP_REASON:
+            await _run_review_map(
+                paper_id,
+                status,
+                system_instruction=system_instruction,
+                previous_interaction_id=previous_interaction_id,
+                pdf_uri=pdf_uri,
+                doc_text=doc_text,
+                source_text=source_text,
+                source_hash=source_hash,
+                openai_pdf_part=openai_pdf_part,
+                provider=provider,
+                single_attempt=single_attempt,
+            )
+        # 반환은 skip 결과 그대로다. 그래야 synthesis·시각화 생략 게이트가 바뀌지 않는다.
+        return skipped
 
     prev_context = "\n\n".join(previous_results[:4]) if previous_results else ""
 
@@ -4002,7 +4201,8 @@ async def run_full_analysis(paper_id: int, *, single_attempt: bool = False) -> N
         if r4.get("text") and not _is_error_result(r4["text"]):
             all_results.append(r4["text"])
 
-        if not (_result_was_skipped(r3) and _result_was_skipped(r4)):
+        # Review는 recipe를 돌렸더라도 그림 중심 synthesis·시각화를 만들지 않는다.
+        if not (_result_was_skipped(r3) and _result_was_skipped(r4)) and _skip_reason(r4) != REVIEW_SKIP_REASON:
             try:
                 await _run_visualizations(
                     paper_id,

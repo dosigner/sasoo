@@ -35,7 +35,8 @@ def test_all_deliverables_and_intentionally_empty_outputs_complete():
     rows = complete_rows()
     original = deepcopy(rows)
     checks = build_completion_checks(rows)
-    assert len(checks) == 7 and all(check["status"] == "completed" for check in checks)
+    assert len(checks) == 8 and all(check["status"] in {"completed", "skipped"} for check in checks)
+    assert checks[7]["stage"] == "review_map" and checks[7]["status"] == "skipped"
     assert completion_progress(checks) == 100
     assert rows == original
 
@@ -115,7 +116,7 @@ def test_only_explicit_system_gate_skips_optional_downstream_stages():
     for stage in ("recipe", "deep_dive"):
         rows[stage] = {"model_used": "system", "result": '{"skipped":true,"reason":"not applicable"}'}
     checks = build_completion_checks(rows)
-    assert [check["status"] for check in checks[3:]] == ["skipped"] * 4
+    assert [check["status"] for check in checks[3:]] == ["skipped"] * 5
     assert all(check["result_id"] is None for check in checks[5:])
     rows["recipe"]["model_used"] = "llm"
     assert build_completion_checks(rows)[3]["status"] == "partial"
@@ -304,3 +305,63 @@ def test_legacy_visualization_plan_is_not_invented():
     assert check["status"] == "partial"
     assert "계획" in check["reason"] and "확인할 수 없습니다" in check["reason"]
     assert check_stage_output("visualization", row, allow_legacy_plan_reuse=True)["status"] == "completed"
+
+
+REVIEW_SKIP = {"model_used": "system", "result": json.dumps(
+    {"skipped": True, "reason": "review_paper", "message": "Review 논문이라 리뷰 지도로 대체했습니다."})}
+REVIEW_MAP = {"field_overview": "대분야", "parts": [{"title": "2. A", "subfield": "a", "summary": "s",
+              "development": "d", "takeaway": "t"}], "future_directions": [], "reading_paths": [], "part_count": 1}
+
+
+def test_review_paper_settles_with_review_map_and_skips_figure_stages():
+    rows = complete_rows()
+    rows["deep_dive"] = REVIEW_SKIP
+    rows.pop("synthesis"), rows.pop("visualization")
+    rows["review_map"] = {"id": 9, "model_used": "fixture", "result": json.dumps(REVIEW_MAP)}
+    checks = build_completion_checks(rows)
+    assert [check["status"] for check in checks[4:]] == ["skipped", "skipped", "skipped", "completed"]
+    assert completion_progress(checks) == 100
+
+
+def test_review_paper_without_review_map_is_not_complete():
+    rows = complete_rows()
+    rows["deep_dive"] = REVIEW_SKIP
+    assert build_completion_checks(rows)[7]["status"] == "missing"
+    rows["review_map"] = {"id": 9, "model_used": "fixture", "result": json.dumps({"field_overview": "대분야"})}
+    assert build_completion_checks(rows)[7]["status"] == "partial"
+
+
+def test_review_map_is_not_counted_while_deep_dive_is_missing_or_failed():
+    rows = complete_rows()
+    rows.pop("deep_dive")
+    assert build_completion_checks(rows)[7]["status"] == "missing"
+    rows["deep_dive"] = {"model_used": "fixture", "result": json.dumps({"_parse_error": "bad"})}
+    assert build_completion_checks(rows)[7]["status"] == "missing"
+
+
+def test_review_map_runner_stores_validated_result_and_error_row():
+    from services import analysis_execution as ae
+    from models.schemas import AnalysisStatus
+
+    stored = []
+
+    async def insert(paper_id, phase, text, *args, **kwargs):
+        stored.append((phase, json.loads(text)))
+        return 1
+
+    kwargs = dict(system_instruction="", previous_interaction_id=None, pdf_uri="files/pdf", doc_text="",
+                  source_text="본문", source_hash="sha", openai_pdf_part=None, provider="gemini", single_attempt=True)
+    reply = {"text": json.dumps(REVIEW_MAP, ensure_ascii=False), "model": "m", "tokens_in": 10, "tokens_out": 5}
+    with patch.object(ae, "_get_cached_phase_result", AsyncMock(return_value=None)), \
+            patch.object(ae, "_insert_analysis_result", side_effect=insert), \
+            patch.object(ae, "_result_cost", return_value=0.01), \
+            patch.object(ae, "_run_chain_stage", AsyncMock(return_value=reply)) as chain:
+        status = AnalysisStatus(paper_id=1)
+        asyncio.run(ae._run_review_map(1, status, **kwargs))
+        assert chain.await_args.kwargs["response_schema"] is ae._REVIEW_MAP_SCHEMA
+        chain.side_effect = RuntimeError("provider down")
+        asyncio.run(ae._run_review_map(1, status, **kwargs))
+    assert stored[0][0] == "review_map" and stored[0][1]["parts"][0]["title"] == "2. A"
+    assert check_stage_output("review_map", {"result": json.dumps(stored[0][1])})["status"] == "completed"
+    assert stored[1][0] == "review_map" and "error" in stored[1][1]
+    assert status.total_cost_usd == pytest.approx(0.01)

@@ -299,7 +299,7 @@ async def get_analysis_status(paper_id: int):
 
     latest_results = await get_latest_completed_phase_rows(
         paper_id,
-        phases=["screening", "citation", "visual", "recipe", "deep_dive", "synthesis", "visualization", "viz_plan"],
+        phases=["screening", "citation", "visual", "recipe", "deep_dive", "synthesis", "visualization", "viz_plan", "review_map"],
     )
 
     return await _build_analysis_status(paper_id, paper, latest_results)
@@ -428,7 +428,7 @@ async def get_analysis_results(paper_id: int):
 
     latest_results = await get_latest_completed_phase_rows(
         paper_id,
-        phases=["screening", "citation", "visual", "recipe", "deep_dive", "synthesis", "visualization", "viz_plan"],
+        phases=["screening", "citation", "visual", "recipe", "deep_dive", "synthesis", "visualization", "viz_plan", "review_map"],
     )
 
     # Build status
@@ -456,6 +456,7 @@ async def get_analysis_results(paper_id: int):
         visual=phase_data["visual"],
         recipe=phase_data["recipe"],
         deep_dive=phase_data["deep_dive"],
+        review_map=(latest_results.get("review_map") or {}).get("parsed_result"),
     )
 
 

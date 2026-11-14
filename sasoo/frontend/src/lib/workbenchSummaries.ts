@@ -65,6 +65,12 @@ const METHODOLOGY_LABELS = {
   nonExperimental: '비실험 논문',
 } as const;
 
+const PAPER_TYPE_LABELS: Record<string, string> = {
+  article: 'Article',
+  letter: 'Letter',
+  review: 'Review',
+};
+
 // M1: screening.domain 표시용 한국어 라벨. 백엔드 enum(api/analysis_routes.py의
 // SCREENING 스키마 "optics"|"bio"|"ai_ml"|"ee"|"general")에 맞춘 전용 맵이다.
 // S.areas(연구자 프로필 관심 분야, optics_photonics 등)는 키 체계가 달라 재사용할 수 없다.
@@ -169,10 +175,16 @@ export function buildPhaseSummary(
         : screening.is_experimental === false
           ? METHODOLOGY_LABELS.nonExperimental
           : null;
+    // 백엔드 _paper_type과 같은 대체 규칙. 단, 과거 행을 Article로 단정하지 않는다.
+    const paperType = typeof screening.paper_type === 'string'
+      ? screening.paper_type
+      : screening.methodology_type === 'review' ? 'review' : null;
+    const paperTypeLabel = paperType ? PAPER_TYPE_LABELS[paperType] ?? null : null;
     const complexityLabel =
       typeof screening.estimated_complexity === 'string' ? COMPLEXITY_LABELS[screening.estimated_complexity] ?? null : null;
     const metaItems: MetaItem[] = [
       rawDomain ? { label: '분야', value: rawDomain } : null,
+      paperTypeLabel ? { label: '유형', value: paperTypeLabel } : null,
       relevance ? { label: '관련도', value: relevance, accent: true } : null,
       methodologyLabel ? { label: '방법론', value: methodologyLabel } : null,
       complexityLabel ? { label: '복잡도', value: complexityLabel } : null,

@@ -187,6 +187,18 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(skip_recipe)
         self.assertEqual(reason, "not_applicable_recipe")
 
+    def test_review_paper_replaces_deep_dive_but_article_and_letter_do_not(self):
+        base = '"relevance_score":0.8,"domain":"optics","key_topics":["광학"],"deep_dive_applicable":true'
+        gate = analysis_execution._screening_gate_decision
+        self.assertEqual(gate('{' + base + ',"paper_type":"review"}', phase="deep_dive"), (True, "review_paper"))
+        # paper_type을 빠뜨린 응답과 과거 행은 methodology_type으로 판단한다.
+        self.assertEqual(gate('{' + base + ',"methodology_type":"review"}', phase="deep_dive"), (True, "review_paper"))
+        for kind in ("article", "letter"):
+            self.assertEqual(gate('{' + base + f',"paper_type":"{kind}"}}', phase="deep_dive"), (False, ""))
+        # paper_type이 methodology_type보다 우선한다. recipe 게이트는 유형을 보지 않는다.
+        self.assertEqual(gate('{' + base + ',"paper_type":"article","methodology_type":"review"}', phase="deep_dive"), (False, ""))
+        self.assertEqual(gate('{' + base + ',"paper_type":"review","recipe_applicable":true}', phase="recipe"), (False, ""))
+
     def test_citation_cache_key_ignores_prompt_wording_but_tracks_version(self):
         local_result = {"total_references": 12, "citation_style": "numbered",
                         "self_citation_count": 1, "self_citation_ratio": 0.08,
@@ -3718,7 +3730,7 @@ class FullAnalysisChainOrchestrationTests(unittest.IsolatedAsyncioTestCase):
                     await analysis_execution.run_full_analysis(7)
                     current = analysis_routes._running_analyses[7]
                     self.assertEqual(current.overall_status, "completed" if variant == "complete" else "error")
-                    self.assertEqual(len(current.completion_checks), 7)
+                    self.assertEqual(len(current.completion_checks), 8)
                     if variant != "complete":
                         self.assertLess(current.progress_pct, 100)
                     self.assertEqual(analysis_execution.execute_update.await_args.args[1][0], current.overall_status)
@@ -4413,11 +4425,11 @@ class ParallelProgressTests(unittest.IsolatedAsyncioTestCase):
         valid = complete_rows()
         main = {stage: row for stage, row in valid.items() if stage not in {"synthesis", "visualization"}}
         cases = [
-            ({}, 500 / 7),
-            ({"viz_plan": _row("viz_plan", '{"visualizations": []}')}, 500 / 7),
-            ({"visualization": _row("visualization", '{"complete": false, "items": []}')}, 500 / 7),
-            ({"visualization": _row("visualization", '{"complete": true, "items": []}')}, 500 / 7),
-            ({"visualization": valid["visualization"]}, 600 / 7),
+            ({}, 600 / 8),
+            ({"viz_plan": _row("viz_plan", '{"visualizations": []}')}, 600 / 8),
+            ({"visualization": _row("visualization", '{"complete": false, "items": []}')}, 600 / 8),
+            ({"visualization": _row("visualization", '{"complete": true, "items": []}')}, 600 / 8),
+            ({"visualization": valid["visualization"]}, 700 / 8),
         ]
         with (
             patch.dict(analysis_routes._running_analyses, {}, clear=True),

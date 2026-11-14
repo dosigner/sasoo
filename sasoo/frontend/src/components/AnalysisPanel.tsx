@@ -36,6 +36,7 @@ import RecipeCard from './RecipeCard';
 import { stripRecipeStepNumber } from '@/lib/recipeSteps';
 import ExperimentPlanTab from './ExperimentPlanTab';
 import ReadingGuideTab from './ReadingGuideTab';
+import ReviewMapView from './ReviewMapView';
 import TerminologyTab from './TerminologyTab';
 import { DeepDiveSummary } from './DeepDiveSummary';
 import ReportExport from './ReportExport';
@@ -710,7 +711,7 @@ export default function AnalysisPanel({
   onCitationClick,
   terminalState,
 }: AnalysisPanelProps) {
-  const [activeTab, setActiveTab] = useState<'summary' | 'synthesis' | 'guide' | 'terminology' | 'figures' | 'tables' | 'recipe'>('summary');
+  const [activeTab, setActiveTab] = useState<'summary' | 'review' | 'synthesis' | 'guide' | 'terminology' | 'figures' | 'tables' | 'recipe'>('summary');
   const [deepDiveExpanded, setDeepDiveExpanded] = useState(true);
   const [screeningExpanded, setScreeningExpanded] = useState(true);
   const [citationExpanded, setCitationExpanded] = useState(false);
@@ -761,8 +762,12 @@ export default function AnalysisPanel({
     };
   }, [onCitationClick, figures?.figures, tables?.tables]);
 
+  // 결과가 논문 전환보다 늦게 오므로, 논문마다 한 번만 리뷰 지도 탭을 연다.
+  const reviewOpenedFor = useRef<string | null>(null);
   useLayoutEffect(() => {
     setActiveTab('summary');
+    // 리셋이 자동 열림보다 늦게 와도 리뷰 지도 탭을 다시 열 수 있게 기록을 지운다.
+    reviewOpenedFor.current = null;
     setDeepDiveExpanded(true);
     setScreeningExpanded(true);
     setCitationExpanded(false);
@@ -773,6 +778,19 @@ export default function AnalysisPanel({
     handledSummaryToken.current = 0;
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [paperId]);
+
+  // Review 논문은 deep_dive skip 이유로 판정한다(백엔드 REVIEW_SKIP_REASON). 리뷰 지도 실패도 탭에서 알린다.
+  const isReview = results?.deep_dive?.reason === 'review_paper';
+  const reviewMap = results?.review_map && Array.isArray(results.review_map.parts) && results.review_map.parts.length > 0
+    ? results.review_map
+    : null;
+  useEffect(() => {
+    // results가 이전 논문 것이면 열지 않는다.
+    if (!reviewMap || !paperId || String(results?.paper_id) !== String(paperId)) return;
+    if (reviewOpenedFor.current === String(paperId)) return;
+    reviewOpenedFor.current = String(paperId);
+    setActiveTab('review');
+  }, [paperId, reviewMap, results?.paper_id]);
 
   const selectTab = useCallback((tab: typeof activeTab) => {
     if (activeTab === 'summary' && scrollRef.current) summaryScrollTop.current = scrollRef.current.scrollTop;
@@ -910,6 +928,7 @@ export default function AnalysisPanel({
 
   const tabs: Array<{ key: typeof activeTab; label: string; disabled?: boolean }> = [
     { key: 'summary', label: S.workbench.summaryTab },
+    ...(isReview ? [{ key: 'review' as const, label: S.reviewMap.tabLabel }] : []),
     { key: 'synthesis', label: S.synthesis.tabLabel },
     { key: 'guide', label: S.workbench.guideTab },
     { key: 'terminology', label: '용어 사전' },
@@ -1097,6 +1116,14 @@ export default function AnalysisPanel({
               onOpenFigure={openFigureFromSynthesis}
               onOpenRecipe={() => selectTab('recipe')}
             />
+          </div>
+        )}
+
+        {activeTab === 'review' && isReview && (
+          <div className="reading-panel-content">
+            {reviewMap
+              ? <ReviewMapView reviewMap={reviewMap} onJumpToPage={onGuideJumpToPage} />
+              : <p className="text-sm text-fg-muted">{S.reviewMap.unavailable}</p>}
           </div>
         )}
 

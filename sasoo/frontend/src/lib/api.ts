@@ -97,7 +97,7 @@ export interface PhaseInfo {
 }
 
 export interface StageCompletion {
-  stage: AnalysisPhase | 'synthesis' | 'visualization';
+  stage: AnalysisPhase | 'synthesis' | 'visualization' | 'review_map';
   label: string;
   status: 'completed' | 'skipped' | 'partial' | 'missing' | 'error';
   reason: string;
@@ -125,6 +125,24 @@ export interface AnalysisResults {
   visual: Record<string, unknown> | null;
   recipe: Record<string, unknown> | null;
   deep_dive: Record<string, unknown> | null;
+  /** Review 논문만. deep_dive를 대신한다. 과거 백엔드 응답에는 키가 없다. */
+  review_map?: ReviewMap | null;
+}
+
+export interface ReviewMapPart {
+  title: string;
+  page?: number | null;
+  subfield: string;
+  summary: string;
+  development: string;
+  takeaway: string;
+}
+
+export interface ReviewMap {
+  field_overview: string;
+  parts: ReviewMapPart[];
+  future_directions: Array<{ need: string; research: string }>;
+  reading_paths: Array<{ goal: string; order: string[] }>;
 }
 
 // Figure types
