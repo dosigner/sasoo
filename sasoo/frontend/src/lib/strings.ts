@@ -859,6 +859,25 @@ export const S = {
     generationFailed: '만들지 못했어요',
   },
 
+  // ── Review 논문 전용 리뷰 지도 (deep_dive 대체) ──
+  reviewMap: {
+    tabLabel: '리뷰 지도',
+    intro: 'Review 논문이라 그림별 심층 분석 대신 분야 지도를 만들었어요.',
+    fieldTitle: '대분야',
+    partsTitle: '파트별 지도',
+    subfield: '세부 분야',
+    summary: '요약',
+    development: '발전 흐름',
+    takeaway: '읽는 법',
+    futureTitle: '앞으로의 과제',
+    need: '필요한 것',
+    research: '연구할 것',
+    pathsTitle: '읽는 순서',
+    pageLabel: (page: number) => `p.${page}`,
+    pageJump: (page: number) => `${page}쪽으로 이동`,
+    unavailable: '리뷰 지도를 읽지 못했어요. 다시 분석하면 새로 만들어요.',
+  },
+
   // ── Synthesis (Phase 5 종합 뷰) ──
   synthesis: {
     tabLabel: '종합',

@@ -511,6 +511,18 @@
             ],
             "title": "Recipe"
           },
+          "review_map": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Map"
+          },
           "screening": {
             "anyOf": [
               {

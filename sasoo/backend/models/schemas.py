@@ -298,6 +298,7 @@ class FullAnalysisResponse(BaseModel):
     visual: Optional[dict] = None
     recipe: Optional[dict] = None
     deep_dive: Optional[dict] = None
+    review_map: Optional[dict] = None  # Review 논문만. deep_dive를 대신한다.
 
 
 # ---------------------------------------------------------------------------

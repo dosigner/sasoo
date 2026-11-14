@@ -18,7 +18,11 @@ STAGE_OUTPUTS = {
     "synthesis": ("종합", {"problem_sentence": str, "method_sentence": str, "key_metrics": list,
                           "equations": list, "result_figures": list, "key_parameters": list}),
     "visualization": ("시각화", {"items": list}),
+    # 맨 끝에 둔다: build_completion_checks가 앞 7개의 인덱스를 고정해서 쓴다.
+    "review_map": ("리뷰 지도", {"field_overview": str, "parts": list, "future_directions": list,
+                                "reading_paths": list}),
 }
+REVIEW_SKIP_REASON = "review_paper"
 SETTLED = {"completed", "skipped"}
 
 
@@ -80,7 +84,7 @@ def check_stage_output(stage: str, row: dict | None, *, item_available: Callable
             return result("partial", "인용 해석 상태를 확인할 수 없습니다.")
         if interpretation == "completed" and not str(payload.get("summary") or "").strip():
             return result("partial", "인용 해석 결과가 없습니다.")
-    if stage in {"screening", "visual", "recipe", "deep_dive", "synthesis"}:
+    if stage in {"screening", "visual", "recipe", "deep_dive", "synthesis", "review_map"}:
         # The provider schemas also describe nested items and optional fields.
         from jsonschema import Draft202012Validator
         from services import analysis_execution
@@ -145,12 +149,28 @@ def build_completion_checks(rows: dict[str, dict], *, item_available: Callable[[
         if failed:
             checks[6] = {**checks[6], "status": "partial" if visualization else "error",
                          "reason": "새 시각화 계획을 완료하지 못했습니다. 이전에 저장한 결과는 유지됩니다."}
-    # The existing screening gate omits both downstream stages in this case.
-    if all(check["status"] == "skipped" for check in checks[3:5]):
+    deep_dive_reason = _skip_reason(rows.get("deep_dive"))
+    review = deep_dive_reason == REVIEW_SKIP_REASON
+    # The existing screening gate omits both downstream stages in this case. Reviews omit them too.
+    if review or all(check["status"] == "skipped" for check in checks[3:5]):
         for index in (5, 6):
             checks[index] = {**checks[index], "status": "skipped", "result_id": None,
-                             "reason": "레시피와 심층 분석을 모두 건너뛰어 이번 실행 대상이 아닙니다."}
+                             "reason": "Review 논문이라 리뷰 지도로 대체했습니다." if review
+                             else "레시피와 심층 분석을 모두 건너뛰어 이번 실행 대상이 아닙니다."}
+    # review_map 행이 없을 때: deep_dive가 Review가 아닌 쪽으로 정상 끝났을 때만 대상 아님(skipped)이다.
+    # Review 판정, deep_dive 미실행, deep_dive 실패는 missing을 유지해 진행률을 부풀리지 않는다.
+    if rows.get("review_map") is None and not review and checks[4]["status"] in SETTLED:
+        checks[7] = {**checks[7], "status": "skipped", "result_id": None,
+                     "reason": "Review 논문이 아니라 이번 실행 대상이 아닙니다."}
     return checks
+
+
+def _skip_reason(row: dict | None) -> str:
+    try:
+        payload = parse_summary_json((row or {}).get("result") or "")
+    except (ValueError, TypeError):
+        return ""
+    return str(payload.get("reason") or "") if payload.get("skipped") is True else ""
 
 
 def completion_progress(checks: list[dict]) -> float:
