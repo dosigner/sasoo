@@ -2,9 +2,10 @@ use crate::{
     analysis::pricing::KnownUsage,
     types::{Hash256, Json, LocalRequestId, ProviderId, UtcMillis},
 };
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NewRequestSpec {
     pub provider: ProviderId,
     pub model: String,
@@ -25,18 +26,18 @@ pub struct RequestSpec {
     pub new: NewRequestSpec,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProviderInput {
     pub parts: Vec<InputPart>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum InputPart {
     Text(String),
     Pdf(PdfPart),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum PdfPart {
     Inline {
         source_sha256: Hash256,
@@ -45,7 +46,7 @@ pub enum PdfPart {
     File(ProviderFileRef),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProviderFileRef {
     pub provider: ProviderId,
     pub uri: String,
