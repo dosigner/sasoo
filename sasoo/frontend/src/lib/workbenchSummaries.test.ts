@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { buildAnalysisConfirmCopy, buildChatStarterPrompts, buildPhaseSummary, buildWorkbenchStatusSummary, paperFieldLabel, qualitySummaryContradictsCounts } from './workbenchSummaries';
+import { artifactsPending, buildAnalysisConfirmCopy, buildChatStarterPrompts, buildPhaseSummary, buildWorkbenchStatusSummary, paperFieldLabel, qualitySummaryContradictsCounts } from './workbenchSummaries';
 import type { AnalysisResults, AnalysisStatus, CostSummary, EvidenceAnchor, PhaseInfo, PhaseStatusValue, Recipe } from '@/lib/api';
 
 describe('paperFieldLabel', () => {
@@ -642,5 +642,19 @@ describe('buildAnalysisConfirmCopy — 4가지 최초/재분석 x 이력유무 �
     });
     expect(copy.providerLine).toBeNull();
     expect(copy.costLine).toBe('첫 분석이라 추정값이에요. 예상 비용은 논문당 $0.01 ~ $0.05예요.');
+  });
+});
+
+describe('artifactsPending', () => {
+  it('keeps polling while text or visual sync is still running', () => {
+    expect(artifactsPending({ text_ready: false, visual_ready: false, visual_state: 'running' })).toBe(true);
+    expect(artifactsPending({ text_ready: true, visual_ready: false, visual_state: 'running' })).toBe(true);
+  });
+
+  it('stops polling once artifacts are ready or failed', () => {
+    expect(artifactsPending({ text_ready: true, visual_ready: true, visual_state: 'ready' })).toBe(false);
+    expect(artifactsPending({ text_ready: true, visual_ready: false, visual_state: 'error' })).toBe(false);
+    expect(artifactsPending({ text_ready: true, visual_ready: false, visual_state: 'partial' })).toBe(false);
+    expect(artifactsPending(null)).toBe(false);
   });
 });

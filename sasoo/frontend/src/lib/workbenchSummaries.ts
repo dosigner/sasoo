@@ -384,6 +384,11 @@ export function buildChatStarterPrompts({
 // 본문·시각 artifact가 아직 정리 중이거나 일부만 준비됐는지. trustStateLabel이 '결과 준비됨'
 // 계열 폴백이 아닌 경고 라벨을 고르는 조건과 같다. 라벨 문자열 비교로 판정하면 문구만 바꿔도
 // 조용히 깨지므로 상태값으로 판정한다.
+// 서버가 아직 준비 중인 상태. error와 partial은 다시 불러와도 스스로 바뀌지 않으므로 제외한다.
+export function artifactsPending(artifactStatus?: ArtifactStatus | null): boolean {
+  return artifactStatus?.text_ready === false || artifactStatus?.visual_state === 'running';
+}
+
 export function artifactsUnsettled(artifactStatus?: ArtifactStatus | null): boolean {
   const visualState = artifactStatus?.visual_state;
   return artifactStatus?.text_ready === false
