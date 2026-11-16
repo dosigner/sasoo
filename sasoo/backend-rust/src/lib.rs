@@ -6,3 +6,4 @@ pub mod pdf;
 pub mod runtime;
 pub mod storage;
 pub mod types;
+pub mod providers;

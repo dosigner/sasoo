@@ -13,6 +13,7 @@ name = "pdf_probe"
 required-features = ["pdf-xberg-native"]
 
 [dependencies]
+reqwest = { version = "=0.12.28", default-features = false, features = ["rustls-tls", "json", "stream"] }
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "json", "tokio", "multipart"] }
 tokio = { version = "=1.54.1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "fs", "io-util"] }
 serde = { version = "=1.0.228", features = ["derive"] }
