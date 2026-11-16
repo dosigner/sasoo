@@ -929,7 +929,8 @@ export default function AnalysisPanel({
   const tabs: Array<{ key: typeof activeTab; label: string; disabled?: boolean }> = [
     { key: 'summary', label: S.workbench.summaryTab },
     ...(isReview ? [{ key: 'review' as const, label: S.reviewMap.tabLabel }] : []),
-    { key: 'synthesis', label: S.synthesis.tabLabel },
+    // Review는 synthesis를 만들지 않는다(리뷰 지도로 대체).
+    ...(isReview ? [] : [{ key: 'synthesis' as const, label: S.synthesis.tabLabel }]),
     { key: 'guide', label: S.workbench.guideTab },
     { key: 'terminology', label: '용어 사전' },
     { key: 'figures', label: S.workbench.figuresTab },

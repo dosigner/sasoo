@@ -841,6 +841,26 @@ class AnalysisRouteSemanticTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"skipped": true', result["text"])
         insert_mock.assert_awaited_once()
 
+    async def test_run_recipe_skip_message_names_review_papers(self):
+        screenings = {
+            "review": '{"relevance_score":0.8,"paper_type":"review","recipe_applicable":false,"confidence":0.9}',
+            "article": '{"relevance_score":0.8,"paper_type":"article","recipe_applicable":false,"confidence":0.9}',
+        }
+        messages = {}
+        for kind, screening in screenings.items():
+            status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)
+            with (
+                patch("services.analysis_execution._insert_analysis_result", new=AsyncMock()),
+                patch("services.analysis_execution.call_interaction", new=AsyncMock(side_effect=AssertionError("LLM call should be skipped"))),
+            ):
+                result = await analysis_execution._run_recipe(7, "Recipe context body", status, screening_result_text=screening)
+            payload = json.loads(result["text"])
+            self.assertEqual(payload["reason"], "not_applicable_recipe")
+            messages[kind] = payload["message"]
+
+        self.assertEqual(messages["review"], "Review 논문이라 재현 레시피를 만들지 않았습니다.")
+        self.assertEqual(messages["article"], "Recipe 단계는 스크리닝 신호가 약해 자동 실행을 건너뛰었습니다.")
+
     async def test_run_recipe_anchors_evidence_with_inserted_row_id(self):
         """검증은 recipe row 저장 직후, phase completed 노출 전에 동기 실행된다."""
         status = AnalysisStatus(paper_id=7, overall_status="running", phases=[], progress_pct=0.0)

@@ -62,6 +62,7 @@ describe('AnalysisPanel review map', () => {
   it('opens the review map tab with field, parts, future, and reading order for review papers', async () => {
     const container = await render({ deep_dive: reviewSkip, review_map: reviewMap });
     expect(tabLabels(container)).toContain('리뷰 지도');
+    expect(tabLabels(container)).not.toContain('종합');
     const text = container.textContent ?? '';
     for (const expected of ['대분야', '자유공간 광통신 전체를 다룬다.', '파트별 지도', '2. Channel models', '대기 채널',
       '발전 흐름', '경험 모델에서 물리 모델로', '읽는 법', '앞으로의 과제', '장거리 실험', '읽는 순서', '분야 입문', 'p.3']) {
@@ -72,6 +73,7 @@ describe('AnalysisPanel review map', () => {
   it('hides the tab for article papers and explains a failed review map', async () => {
     const article = await render({ deep_dive: { problem_definition: '문제', section_answers: [], transfer_checks: [] } });
     expect(tabLabels(article)).not.toContain('리뷰 지도');
+    expect(tabLabels(article)).toContain('종합');
     act(() => root?.unmount());
     document.body.innerHTML = '';
 

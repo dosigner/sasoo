@@ -415,12 +415,13 @@ async def _store_skipped_phase_result(
     progress_pct: float,
     reason: str,
     title: str,
+    message: str | None = None,
 ) -> dict:
     result_text = json.dumps(
         {
             "skipped": True,
             "reason": reason,
-            "message": (
+            "message": message or (
                 f"Review 논문이라 {title} 대신 리뷰 지도를 만들었습니다."
                 if reason == REVIEW_SKIP_REASON
                 else f"{title} 단계는 스크리닝 신호가 약해 자동 실행을 건너뛰었습니다."
@@ -2113,6 +2114,10 @@ async def _run_recipe(
 
     should_skip, skip_reason = _screening_gate_decision(screening_result_text, phase="recipe")
     if should_skip:
+        # skip이면 게이트가 이미 JSON 객체로 파싱한 텍스트다.
+        review = skip_reason == "not_applicable_recipe" and _paper_type(
+            json.loads(_clean_llm_json(screening_result_text))
+        ) == "review"
         return await _store_skipped_phase_result(
             paper_id=paper_id,
             phase="recipe",
@@ -2121,6 +2126,7 @@ async def _run_recipe(
             progress_pct=48.0,
             reason=skip_reason,
             title="Recipe",
+            message="Review 논문이라 재현 레시피를 만들지 않았습니다." if review else None,
         )
 
     # --------------- Domain-specific parameter hints ---------------
