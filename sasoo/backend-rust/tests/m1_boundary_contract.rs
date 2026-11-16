@@ -70,6 +70,7 @@ impl PhaseExecutor for ReplayExecutor {
                     input: ProviderInput { parts: vec![] },
                     instructions: None,
                     schema: None,
+                    strict_schema: false,
                     effort: None,
                     previous_id: None,
                     store: false,

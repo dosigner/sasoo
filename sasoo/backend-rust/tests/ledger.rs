@@ -61,6 +61,7 @@ fn spec() -> NewRequestSpec {
         input: ProviderInput { parts: vec![] },
         instructions: Some("system".into()),
         schema: None,
+        strict_schema: false,
         effort: Some("low".into()),
         previous_id: None,
         store: false,
