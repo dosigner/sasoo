@@ -9,23 +9,21 @@
 3. 문서 문맥 `analysis/document_context.rs`(합성 19건, 코퍼스 17편 일치), 단계 공통 도우미 `analysis/stage.rs`, screening, visual, recipe, deep_dive, review_map 실행기. 커밋 `146977c`.
 4. F04/F05 `agents.rs`, `selection.rs`, 지시문 조립 `prompts.rs`. 커밋 `9dabe88`.
 5. citation 실행기와 `citation_analyzer.rs`(32 단계 케이스). 커밋 `29b5b13`.
-6. 재시도 후 무효 JSON의 `_parse_error`를 CPython 문구로 맞춤(`stage::json_error_message`).
-
-## 진행 중 (백그라운드 에이전트)
-
-- `analysis/synthesis.rs`: `_run_synthesis` + evidence_verifier 수치 비교 이식, 테스트 `tests/stage_synthesis.rs`.
+6. 재시도 후 무효 JSON의 `_parse_error`를 CPython 문구로 맞춤(`stage::json_error_message`). 커밋 `d3d31b9`.
+7. synthesis 실행기와 `evidence_numeric.rs`(수치 59, 검증 9, 단계 25케이스). 전체 테스트 188 통과.
 
 ## 남은 것
 
-1. synthesis(에이전트 진행 중).
-2. recipe evidence 앵커(`_ensure_recipe_evidence`)는 이식하지 않았다.
-3. 응답 기록(유료, 사용자 승인 필요).
+1. recipe evidence 앵커(`_ensure_recipe_evidence`)는 이식하지 않았다.
+2. 응답 기록(유료, 사용자 승인 필요).
+3. 그래프 연결(W06, Codex)과 실제 실행 검증.
 
 ## Codex 요청 목록 (PR 설명에 넣는다)
 
 1. `analysis/mod.rs`에 `document_context`, `stage` 등록. 지금은 `screening.rs`의 `#[path]` 두 줄로 붙어 있다. 등록 후 그 두 줄을 지운다.
 2. `flate2`를 직접 의존성으로 추가(이미 Cargo.lock에 1.1.11). 반복 출력 zlib 검사(`stage::zlib_says_degenerate`)가 지금은 false 고정이다.
 3. 실행기 입력 경로: 실행기는 단계별 입력(phase_inputs 등)을 구조체 필드로 받는다. 실행마다 `PipelineDeps`를 조립하는 쪽이 document context에서 채운다. `RunContext.document`(DocumentArtifact)에서 Python과 같은 `full_text`를 얻는 방법은 PDF 흐름과 정해야 한다.
+5. 체인 ID: deep_dive가 다른 공급사로 돌면(체인 밖) 그 결과의 `remote_id`를 비워 `PriorStage`에 넣어야 synthesis가 Python처럼 recipe의 ID를 잇는다. Review 논문이면 deep_dive 뒤에 ReviewMap을 실행하고, recipe와 deep_dive가 모두 건너뛰거나 Review이면 synthesis를 실행하지 않는다(`run_full_analysis` 게이트).
 4. gateway 재시도: Python 실효 시도 횟수는 OpenAI 9회(어댑터 3 x SDK 3), Gemini 12회(3 x 4). Rust `generate`는 1회 시도이고 `is_retryable`, `RETRY_DELAYS_SECS`를 제공한다.
 
 ## 알려진 차이
