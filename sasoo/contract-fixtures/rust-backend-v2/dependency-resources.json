@@ -1,0 +1,358 @@
+{
+  "format_version": 1,
+  "download_policy": "forbidden",
+  "source": "docs/superpowers/plans/2026-11-13-sasoo-rust-backend-implementation-plan.md section 5",
+  "source_verification": "plan declarations only; no native/model file downloaded or loaded",
+  "engine_selection": "retain_legacy",
+  "xberg": {
+    "version": "1.3.10",
+    "revision": "d926382a0c124dcac4562c7c61a5086d71a3aa68",
+    "msrv": "1.92",
+    "dependency_added": false
+  },
+  "cargo_lock": {
+    "path": "sasoo/backend-rust/Cargo.lock",
+    "capture_status": "captured_core_crate_only",
+    "sha256": "1b8a5c078b23fa0c7de4e0a4a01cc5226e0684ebac593ed7b4cefa9f06c39cd8",
+    "package_count": 153,
+    "target": "aarch64-apple-darwin",
+    "receipt": "docs/validation/rust-backend/assets/dependency-lock.json",
+    "xberg_in_graph": false
+  },
+  "profiles": {
+    "x-native": {
+      "features": [
+        "tokio-runtime",
+        "pdf"
+      ],
+      "required_resources": [
+        "xberg-source"
+      ],
+      "requirements_complete": false,
+      "default_features": false,
+      "target_builds": {
+        "aarch64-apple-darwin": "not_run",
+        "x86_64-pc-windows-msvc": "not_run"
+      },
+      "gaps": [
+        "resolved native/transitive dependency inventory",
+        "target build/load/probe evidence",
+        "pinned file-level native/model licenses and hashes"
+      ]
+    },
+    "x-layout-table": {
+      "features": [
+        "tokio-runtime",
+        "pdf",
+        "layout-detection"
+      ],
+      "required_resources": [
+        "xberg-source",
+        "ort-runtime",
+        "rtdetr",
+        "tatr"
+      ],
+      "requirements_complete": false,
+      "default_features": false,
+      "target_builds": {
+        "aarch64-apple-darwin": "not_run",
+        "x86_64-pc-windows-msvc": "not_run"
+      },
+      "gaps": [
+        "resolved native/transitive dependency inventory",
+        "target build/load/probe evidence",
+        "pinned file-level native/model licenses and hashes"
+      ]
+    },
+    "x-ocr": {
+      "features": [
+        "tokio-runtime",
+        "pdf",
+        "ocr"
+      ],
+      "required_resources": [
+        "xberg-source",
+        "tesseract-source",
+        "leptonica-source",
+        "eng-traineddata",
+        "kor-traineddata"
+      ],
+      "requirements_complete": false,
+      "default_features": false,
+      "target_builds": {
+        "aarch64-apple-darwin": "not_run",
+        "x86_64-pc-windows-msvc": "not_run"
+      },
+      "gaps": [
+        "resolved native/transitive dependency inventory",
+        "target build/load/probe evidence",
+        "pinned file-level native/model licenses and hashes"
+      ]
+    },
+    "x-formula": {
+      "features": [
+        "tokio-runtime",
+        "pdf",
+        "formula-recognition"
+      ],
+      "runtime_formula_model": "RapidLatexOcr",
+      "required_resources": [
+        "xberg-source",
+        "ort-runtime",
+        "tesseract-source",
+        "leptonica-source",
+        "eng-traineddata",
+        "kor-traineddata",
+        "rapid-latex-resizer",
+        "rapid-latex-encoder",
+        "rapid-latex-decoder",
+        "rapid-latex-tokenizer"
+      ],
+      "requirements_complete": false,
+      "default_features": false,
+      "target_builds": {
+        "aarch64-apple-darwin": "not_run",
+        "x86_64-pc-windows-msvc": "not_run"
+      },
+      "gaps": [
+        "resolved native/transitive dependency inventory",
+        "target build/load/probe evidence",
+        "pinned file-level native/model licenses and hashes"
+      ]
+    },
+    "x-pdfium": {
+      "features": [
+        "tokio-runtime",
+        "pdf",
+        "pdf-pdfium"
+      ],
+      "required_resources": [
+        "xberg-source",
+        "pdfium"
+      ],
+      "requirements_complete": false,
+      "default_features": false,
+      "target_builds": {
+        "aarch64-apple-darwin": "not_run",
+        "x86_64-pc-windows-msvc": "not_run"
+      },
+      "gaps": [
+        "resolved native/transitive dependency inventory",
+        "target build/load/probe evidence",
+        "pinned file-level native/model licenses and hashes"
+      ]
+    }
+  },
+  "resources": [
+    {
+      "id": "xberg-source",
+      "origin_url": "https://github.com/xberg-io/xberg/tree/d926382a0c124dcac4562c7c61a5086d71a3aa68",
+      "revision": "d926382a0c124dcac4562c7c61a5086d71a3aa68",
+      "filename": "xberg-source.tar.gz",
+      "sha256": null,
+      "license": "MIT",
+      "targets": [
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc"
+      ],
+      "load_path": "xberg-source/xberg-source.tar.gz",
+      "download_policy": "forbidden",
+      "verification": "upstream_declaration_from_plan_only",
+      "locally_verified": false
+    },
+    {
+      "id": "ort-runtime",
+      "origin_url": null,
+      "revision": "1.24.2",
+      "filename": "target-specific-ort-runtime",
+      "sha256": null,
+      "license": null,
+      "targets": [
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc"
+      ],
+      "load_path": "ort-runtime/target-specific-ort-runtime",
+      "download_policy": "forbidden",
+      "verification": "upstream_declaration_from_plan_only",
+      "locally_verified": false
+    },
+    {
+      "id": "rtdetr",
+      "origin_url": "https://huggingface.co/xberg-io/layout-models/blob/c6bf493e2f7b0b9a29a5870da9880c14e20ff0a3/rtdetr/model.onnx",
+      "revision": "c6bf493e2f7b0b9a29a5870da9880c14e20ff0a3",
+      "filename": "model.onnx",
+      "sha256": "3bf2fb0ee6df87435b7ae47f0f3930ec3dc97ec56fd824acc6d57bc7a6b89ef2",
+      "license": "Apache-2.0",
+      "targets": [
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc"
+      ],
+      "load_path": "rtdetr/model.onnx",
+      "download_policy": "forbidden",
+      "verification": "upstream_declaration_from_plan_only",
+      "locally_verified": false
+    },
+    {
+      "id": "tatr",
+      "origin_url": "https://huggingface.co/xberg-io/layout-models/blob/c6bf493e2f7b0b9a29a5870da9880c14e20ff0a3/tatr/model.onnx",
+      "revision": "c6bf493e2f7b0b9a29a5870da9880c14e20ff0a3",
+      "filename": "model.onnx",
+      "sha256": "c11f4033da75e9c4d41c403ef356e89caa0a37a7d111b55461e7d5ba856bb6b6",
+      "license": "MIT",
+      "targets": [
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc"
+      ],
+      "load_path": "tatr/model.onnx",
+      "download_policy": "forbidden",
+      "verification": "upstream_declaration_from_plan_only",
+      "locally_verified": false
+    },
+    {
+      "id": "tesseract-source",
+      "origin_url": "https://github.com/tesseract-ocr/tesseract",
+      "revision": "db0ec62f81b0737fbbe184d8fea40af5738f8eef",
+      "filename": "tesseract-source.tar.gz",
+      "sha256": "d2470cc33ee34deeae6fc47809d0b33a3623a4343d92ff317ac3b9903c507bad",
+      "license": null,
+      "targets": [
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc"
+      ],
+      "load_path": "tesseract-source/tesseract-source.tar.gz",
+      "download_policy": "forbidden",
+      "verification": "upstream_declaration_from_plan_only",
+      "locally_verified": false
+    },
+    {
+      "id": "leptonica-source",
+      "origin_url": "https://github.com/DanBloomberg/leptonica",
+      "revision": "13275a278eb55b5746e33f95fbf5a2c8f604b3ab",
+      "filename": "leptonica-source.tar.gz",
+      "sha256": "0febcd4fc5cdc9c52d59509b45483d107f9f40922899e3f134ea615094ecbc77",
+      "license": null,
+      "targets": [
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc"
+      ],
+      "load_path": "leptonica-source/leptonica-source.tar.gz",
+      "download_policy": "forbidden",
+      "verification": "upstream_declaration_from_plan_only",
+      "locally_verified": false
+    },
+    {
+      "id": "eng-traineddata",
+      "origin_url": "https://github.com/tesseract-ocr/tessdata_fast",
+      "revision": "87416418657359cb625c412a48b6e1d6d41c29bd",
+      "filename": "eng.traineddata",
+      "sha256": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+      "license": null,
+      "targets": [
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc"
+      ],
+      "load_path": "eng-traineddata/eng.traineddata",
+      "download_policy": "forbidden",
+      "verification": "upstream_declaration_from_plan_only",
+      "locally_verified": false
+    },
+    {
+      "id": "kor-traineddata",
+      "origin_url": null,
+      "revision": null,
+      "filename": "kor.traineddata",
+      "sha256": null,
+      "license": null,
+      "targets": [
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc"
+      ],
+      "load_path": "kor-traineddata/kor.traineddata",
+      "download_policy": "forbidden",
+      "verification": "upstream_declaration_from_plan_only",
+      "locally_verified": false
+    },
+    {
+      "id": "rapid-latex-resizer",
+      "origin_url": null,
+      "revision": "v0.0.0",
+      "filename": "image_resizer.onnx",
+      "sha256": "e0b075c39700f64d50400f39c8fc186bbb3b5d84d31864008313f376603aca9d",
+      "license": null,
+      "targets": [
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc"
+      ],
+      "load_path": "rapid-latex-resizer/image_resizer.onnx",
+      "download_policy": "forbidden",
+      "verification": "upstream_declaration_from_plan_only",
+      "locally_verified": false
+    },
+    {
+      "id": "rapid-latex-encoder",
+      "origin_url": null,
+      "revision": "v0.0.0",
+      "filename": "encoder.onnx",
+      "sha256": "01bf5dc25539ca0cd5b1bd29296ea495977a6ba5f629dc4178277809d26e5e7d",
+      "license": null,
+      "targets": [
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc"
+      ],
+      "load_path": "rapid-latex-encoder/encoder.onnx",
+      "download_policy": "forbidden",
+      "verification": "upstream_declaration_from_plan_only",
+      "locally_verified": false
+    },
+    {
+      "id": "rapid-latex-decoder",
+      "origin_url": null,
+      "revision": "v0.0.0",
+      "filename": "decoder.onnx",
+      "sha256": "bd695497bf1b22279b7626f5916c79226e1e244c84355f8da7edfd2d921d0072",
+      "license": null,
+      "targets": [
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc"
+      ],
+      "load_path": "rapid-latex-decoder/decoder.onnx",
+      "download_policy": "forbidden",
+      "verification": "upstream_declaration_from_plan_only",
+      "locally_verified": false
+    },
+    {
+      "id": "rapid-latex-tokenizer",
+      "origin_url": null,
+      "revision": "v0.0.0",
+      "filename": "tokenizer.json",
+      "sha256": "1dc27b18d6a518d0d5ff3f4bb7bd98521fe80ad39e5b2a246d4109f1bb9d5019",
+      "license": null,
+      "targets": [
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc"
+      ],
+      "load_path": "rapid-latex-tokenizer/tokenizer.json",
+      "download_policy": "forbidden",
+      "verification": "upstream_declaration_from_plan_only",
+      "locally_verified": false
+    },
+    {
+      "id": "pdfium",
+      "origin_url": null,
+      "revision": null,
+      "filename": "target-specific-pdfium-library",
+      "sha256": null,
+      "license": null,
+      "targets": [
+        "aarch64-apple-darwin",
+        "x86_64-pc-windows-msvc"
+      ],
+      "load_path": "pdfium/target-specific-pdfium-library",
+      "download_policy": "forbidden",
+      "verification": "upstream_declaration_from_plan_only",
+      "locally_verified": false
+    }
+  ],
+  "download_policy_scope": "pdf_engine_sources_native_runtimes_and_models",
+  "cargo_download_permission": "ordinary Cargo dependencies separately authorized by user; PDF resources remain unprepared"
+}

@@ -1,0 +1,65 @@
+{
+  "format_version": 1,
+  "status": "draft",
+  "frozen_at_utc": null,
+  "required_features": [
+    "digital",
+    "cjk",
+    "scan",
+    "multi_column",
+    "footnotes",
+    "rotation_0",
+    "rotation_90",
+    "rotation_180",
+    "rotation_270",
+    "crop_box",
+    "user_unit",
+    "merged_cells",
+    "multipage_table",
+    "vector_figure",
+    "formula",
+    "malformed",
+    "encrypted",
+    "large_document"
+  ],
+  "required_targets": [
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc"
+  ],
+  "metric_names": [
+    "character_error_rate",
+    "reading_order_errors",
+    "equation_semantic_errors",
+    "unit_errors",
+    "table_cell_errors",
+    "merged_cell_errors",
+    "bbox_error_pdf_user_units",
+    "figure_caption_errors"
+  ],
+  "thresholds": {
+    "character_error_rate": null,
+    "reading_order_errors": null,
+    "equation_semantic_errors": null,
+    "unit_errors": null,
+    "table_cell_errors": null,
+    "merged_cell_errors": null,
+    "bbox_error_pdf_user_units": null,
+    "figure_caption_errors": null
+  },
+  "budgets": {
+    "wall_time_s": null,
+    "peak_rss_bytes": null,
+    "installed_bytes": null
+  },
+  "policy": {
+    "automatic_download": false,
+    "automatic_engine_fallback": false,
+    "automatic_provider_fallback": false,
+    "candidate_results_may_change_thresholds": false
+  },
+  "notes": [
+    "Thresholds and budgets require source annotations and target measurements.",
+    "No acceptance number is supplied by this preparation step.",
+    "This tool validates stored evidence structure and cannot approve production adoption."
+  ]
+}

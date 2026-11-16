@@ -1,0 +1,353 @@
+{
+  "format_version": 1,
+  "evidence": "source_inventory",
+  "git_head": "1440342a2ddcd7eaa674c6df7a6704b64ceded01",
+  "working_tree_basis": "Current file SHA-256 values; HEAD is not a clean baseline",
+  "source_sha256": {
+    "backend/main.py": "81dae24f3e6d08138fd83ebf92a01e6441b4c03ac35a112a29be7ffc8784f117",
+    "backend/api/papers.py": "89c7aa1e05eb642a542d8ba6bc6ba4c09693abedce5e33a110633615cc34b8c3",
+    "backend/api/analysis_routes.py": "a3e1e726f3788174f76109c16c22399f9b8b2813aa485685e12b77788ceda76c",
+    "backend/api/settings.py": "6712cdff6a2ff1d1eac70591581c141e08f6528e829cf7d4df6fbefda27d8a35",
+    "backend/api/agents.py": "ed510c32c878680c1f245f7ffe6430518fd26483ac6b569e8bade88bbfd6544c"
+  },
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/",
+      "feature_id": "H1",
+      "test_owner": "backend/api/test_security_boundaries.py",
+      "source": "backend/main.py:299",
+      "capture_status": "partial"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "feature_id": "H1",
+      "test_owner": "backend/api/test_security_boundaries.py",
+      "source": "backend/main.py:309",
+      "capture_status": "partial"
+    },
+    {
+      "method": "GET",
+      "path": "/static/library/{requested_path:path}",
+      "feature_id": "H2",
+      "test_owner": "backend/api/test_security_boundaries.py",
+      "source": "backend/main.py:322",
+      "capture_status": "partial"
+    },
+    {
+      "method": "POST",
+      "path": "/shutdown",
+      "feature_id": "H1",
+      "test_owner": "backend/api/test_security_boundaries.py",
+      "source": "backend/main.py:353",
+      "capture_status": "partial"
+    },
+    {
+      "method": "POST",
+      "path": "/api/papers/upload",
+      "feature_id": "P1",
+      "test_owner": "backend/api/test_papers_efficiency.py",
+      "source": "backend/api/papers.py:183",
+      "capture_status": "gap"
+    },
+    {
+      "method": "GET",
+      "path": "/api/papers",
+      "feature_id": "P2",
+      "test_owner": "backend/api/test_papers_params.py",
+      "source": "backend/api/papers.py:298",
+      "capture_status": "gap"
+    },
+    {
+      "method": "GET",
+      "path": "/api/papers/{paper_id}",
+      "feature_id": "P2",
+      "test_owner": "backend/api/test_papers_params.py",
+      "source": "backend/api/papers.py:378",
+      "capture_status": "gap"
+    },
+    {
+      "method": "GET",
+      "path": "/api/papers/{paper_id}/pdf",
+      "feature_id": "P3",
+      "test_owner": "backend/api/test_security_boundaries.py",
+      "source": "backend/api/papers.py:393",
+      "capture_status": "partial"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/papers/{paper_id}",
+      "feature_id": "P4",
+      "test_owner": "backend/api/test_papers_params.py",
+      "source": "backend/api/papers.py:435",
+      "capture_status": "gap"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/papers/{paper_id}",
+      "feature_id": "P4",
+      "test_owner": "backend/api/test_papers_params.py",
+      "source": "backend/api/papers.py:482",
+      "capture_status": "gap"
+    },
+    {
+      "method": "POST",
+      "path": "/api/analysis/{paper_id}/run",
+      "feature_id": "A1",
+      "test_owner": "backend/api/test_analysis_routes.py",
+      "source": "backend/api/analysis_routes.py:148",
+      "capture_status": "gap"
+    },
+    {
+      "method": "POST",
+      "path": "/api/analysis/{paper_id}/cancel",
+      "feature_id": "A1",
+      "test_owner": "backend/api/test_analysis_routes.py",
+      "source": "backend/api/analysis_routes.py:255",
+      "capture_status": "gap"
+    },
+    {
+      "method": "GET",
+      "path": "/api/analysis/{paper_id}/status",
+      "feature_id": "A1",
+      "test_owner": "backend/api/test_analysis_routes.py",
+      "source": "backend/api/analysis_routes.py:293",
+      "capture_status": "gap"
+    },
+    {
+      "method": "GET",
+      "path": "/api/analysis/{paper_id}/results",
+      "feature_id": "A1",
+      "test_owner": "backend/api/test_analysis_routes.py",
+      "source": "backend/api/analysis_routes.py:423",
+      "capture_status": "gap"
+    },
+    {
+      "method": "GET",
+      "path": "/api/analysis/{paper_id}/figures",
+      "feature_id": "A2",
+      "test_owner": "backend/services/test_artifact_refresh_contract.py",
+      "source": "backend/api/analysis_routes.py:463",
+      "capture_status": "gap"
+    },
+    {
+      "method": "GET",
+      "path": "/api/analysis/{paper_id}/tables",
+      "feature_id": "A2",
+      "test_owner": "backend/services/test_artifact_refresh_contract.py",
+      "source": "backend/api/analysis_routes.py:497",
+      "capture_status": "gap"
+    },
+    {
+      "method": "GET",
+      "path": "/api/analysis/{paper_id}/recipe",
+      "feature_id": "A3",
+      "test_owner": "backend/services/test_evidence_verifier.py",
+      "source": "backend/api/analysis_routes.py:530",
+      "capture_status": "gap"
+    },
+    {
+      "method": "GET",
+      "path": "/api/analysis/{paper_id}/mermaid",
+      "feature_id": "V1",
+      "test_owner": "backend/api/test_visualization_runs.py",
+      "source": "backend/api/analysis_routes.py:565",
+      "capture_status": "gap"
+    },
+    {
+      "method": "GET",
+      "path": "/api/analysis/{paper_id}/visualizations",
+      "feature_id": "V1",
+      "test_owner": "backend/api/test_visualization_runs.py",
+      "source": "backend/api/analysis_routes.py:627",
+      "capture_status": "gap"
+    },
+    {
+      "method": "POST",
+      "path": "/api/analysis/{paper_id}/mermaid/repair",
+      "feature_id": "V1",
+      "test_owner": "backend/api/test_visualization_runs.py",
+      "source": "backend/api/analysis_routes.py:756",
+      "capture_status": "gap"
+    },
+    {
+      "method": "POST",
+      "path": "/api/analysis/{paper_id}/visualizations/{viz_id}/regenerate",
+      "feature_id": "V1",
+      "test_owner": "backend/api/test_visualization_runs.py",
+      "source": "backend/api/analysis_routes.py:830",
+      "capture_status": "gap"
+    },
+    {
+      "method": "POST",
+      "path": "/api/analysis/{paper_id}/visualizations/{viz_id}/html-check",
+      "feature_id": "V1",
+      "test_owner": "backend/api/test_visualization_runs.py",
+      "source": "backend/api/analysis_routes.py:950",
+      "capture_status": "gap"
+    },
+    {
+      "method": "GET",
+      "path": "/api/analysis/{paper_id}/synthesis",
+      "feature_id": "S1",
+      "test_owner": "backend/services/test_synthesis.py",
+      "source": "backend/api/analysis_routes.py:992",
+      "capture_status": "gap"
+    },
+    {
+      "method": "POST",
+      "path": "/api/analysis/{paper_id}/synthesis",
+      "feature_id": "S1",
+      "test_owner": "backend/services/test_synthesis.py",
+      "source": "backend/api/analysis_routes.py:1005",
+      "capture_status": "gap"
+    },
+    {
+      "method": "GET",
+      "path": "/api/analysis/{paper_id}/report",
+      "feature_id": "R1",
+      "test_owner": "backend/api/test_report_bytes_contract.py",
+      "source": "backend/api/analysis_routes.py:1065",
+      "capture_status": "gap"
+    },
+    {
+      "method": "POST",
+      "path": "/api/analysis/{paper_id}/figures/{figure_id}/explain",
+      "feature_id": "E1",
+      "test_owner": "backend/api/test_figure_stream.py",
+      "source": "backend/api/analysis_routes.py:1095",
+      "capture_status": "gap"
+    },
+    {
+      "method": "POST",
+      "path": "/api/analysis/{paper_id}/figures/{figure_id}/explain/stream",
+      "feature_id": "E1",
+      "test_owner": "backend/api/test_figure_stream.py",
+      "source": "backend/api/analysis_routes.py:1105",
+      "capture_status": "gap"
+    },
+    {
+      "method": "POST",
+      "path": "/api/analysis/{paper_id}/paperbanana",
+      "feature_id": "I1",
+      "test_owner": "backend/services/test_figure_gen.py",
+      "source": "backend/api/analysis_routes.py:1114",
+      "capture_status": "gap"
+    },
+    {
+      "method": "POST",
+      "path": "/api/analysis/{paper_id}/experiment-plan",
+      "feature_id": "X1",
+      "test_owner": "backend/api/test_analysis_routes.py",
+      "source": "backend/api/analysis_routes.py:1177",
+      "capture_status": "gap"
+    },
+    {
+      "method": "GET",
+      "path": "/api/analysis/{paper_id}/experiment-plan",
+      "feature_id": "X1",
+      "test_owner": "backend/api/test_analysis_routes.py",
+      "source": "backend/api/analysis_routes.py:1303",
+      "capture_status": "gap"
+    },
+    {
+      "method": "POST",
+      "path": "/api/analysis/{paper_id}/chat",
+      "feature_id": "C1",
+      "test_owner": "backend/api/test_discussion.py",
+      "source": "backend/api/analysis_routes.py:1370",
+      "capture_status": "gap"
+    },
+    {
+      "method": "GET",
+      "path": "/api/analysis/{paper_id}/discussion",
+      "feature_id": "C1",
+      "test_owner": "backend/api/test_discussion.py",
+      "source": "backend/api/analysis_routes.py:1672",
+      "capture_status": "gap"
+    },
+    {
+      "method": "POST",
+      "path": "/api/analysis/{paper_id}/discussion/reset",
+      "feature_id": "C1",
+      "test_owner": "backend/api/test_discussion.py",
+      "source": "backend/api/analysis_routes.py:1702",
+      "capture_status": "gap"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/analysis/{paper_id}/discussion",
+      "feature_id": "C1",
+      "test_owner": "backend/api/test_discussion.py",
+      "source": "backend/api/analysis_routes.py:1708",
+      "capture_status": "gap"
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings",
+      "feature_id": "T1",
+      "test_owner": "backend/api/test_settings.py",
+      "source": "backend/api/settings.py:282",
+      "capture_status": "gap"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/settings",
+      "feature_id": "T1",
+      "test_owner": "backend/api/test_settings.py",
+      "source": "backend/api/settings.py:328",
+      "capture_status": "gap"
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings/cost",
+      "feature_id": "T1",
+      "test_owner": "backend/api/test_settings.py",
+      "source": "backend/api/settings.py:429",
+      "capture_status": "gap"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents",
+      "feature_id": "G1",
+      "test_owner": "backend/api/test_agents.py",
+      "source": "backend/api/agents.py:31",
+      "capture_status": "gap"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/{name}",
+      "feature_id": "G1",
+      "test_owner": "backend/api/test_agents.py",
+      "source": "backend/api/agents.py:38",
+      "capture_status": "gap"
+    }
+  ],
+  "automatic_surfaces": [
+    {
+      "surface": "openapi",
+      "test_owner": "backend/api/test_rust_contract_capture.py"
+    },
+    {
+      "surface": "docs",
+      "test_owner": "backend/api/test_rust_contract_capture.py"
+    },
+    {
+      "surface": "redoc",
+      "test_owner": "backend/api/test_rust_contract_capture.py"
+    },
+    {
+      "surface": "options",
+      "test_owner": "backend/api/test_rust_contract_capture.py"
+    },
+    {
+      "surface": "head",
+      "test_owner": "backend/api/test_rust_contract_capture.py"
+    },
+    {
+      "surface": "redirect",
+      "test_owner": "backend/api/test_rust_contract_capture.py"
+    }
+  ]
+}

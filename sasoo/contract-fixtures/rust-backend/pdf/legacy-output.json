@@ -1,0 +1,215 @@
+{
+  "format_version": 1,
+  "evidence_kind": "synthetic_adapter_contract",
+  "source_files": [
+    {
+      "path": "sasoo/frontend/src/lib/pdfHighlight.ts",
+      "sha256": "8c454ae552e6de0b8741d7772c3aa089b0b3ac4f8782de4fd4b6451e96fa5f1f"
+    },
+    {
+      "path": "sasoo/backend/services/figure_resolver.py",
+      "sha256": "167f7d43fd6b303e80f11bc89f7ee574a269998c9ad58fd02c12c5bf9c8b8513"
+    },
+    {
+      "path": "sasoo/backend/services/odl_parser.py",
+      "sha256": "6d756d2ec287f3410d04216378293d5a12fd3cebd6deb1f1290dbeb530610942"
+    }
+  ],
+  "limitations": [
+    "No legacy engine was executed.",
+    "Unknown geometry and confidence are not reconstructed.",
+    "Helper process bridge and real PDF.js overlay acceptance remain unverified."
+  ],
+  "document": {
+    "source_sha256": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "engine": {
+      "name": "synthetic-legacy-helper",
+      "version": "fixture-1",
+      "revision": null,
+      "resource_manifest_sha256": null
+    },
+    "pages": [
+      {
+        "page_index0": 0,
+        "page_number1": 1,
+        "media_box": [
+          0,
+          0,
+          640,
+          840
+        ],
+        "crop_box": [
+          20,
+          40,
+          620,
+          800
+        ],
+        "rotation_deg": 0,
+        "user_unit": 1,
+        "source_space": {
+          "kind": "pdf_user_space"
+        }
+      }
+    ],
+    "blocks": [
+      {
+        "native_id": "text-native-1",
+        "page_index0": 0,
+        "reading_order": 0,
+        "source_bbox": {
+          "coords": [
+            70,
+            100,
+            170,
+            200
+          ],
+          "space": {
+            "kind": "pdf_user_space"
+          }
+        },
+        "bbox": {
+          "coords": [
+            70,
+            100,
+            170,
+            200
+          ]
+        },
+        "content": {
+          "kind": "text",
+          "text": "원문 CJK / x² = 10 mm"
+        },
+        "provenance": {
+          "source_kind": "synthetic_contract",
+          "source_native_id": null,
+          "engine_revision": null,
+          "ocr": null,
+          "confidence": null
+        }
+      },
+      {
+        "native_id": "table-native-3",
+        "page_index0": 0,
+        "reading_order": 1,
+        "source_bbox": null,
+        "bbox": null,
+        "content": {
+          "kind": "table",
+          "caption": "Synthetic merged cell",
+          "cells": [
+            {
+              "row": 0,
+              "column": 0,
+              "rowspan": 2,
+              "colspan": 2,
+              "text": "Merged / 단위 mm",
+              "source_bbox": null,
+              "bbox": null
+            }
+          ]
+        },
+        "provenance": {
+          "source_kind": "synthetic_contract",
+          "source_native_id": null,
+          "engine_revision": null,
+          "ocr": null,
+          "confidence": null
+        }
+      },
+      {
+        "native_id": "fig-native-7",
+        "page_index0": 0,
+        "reading_order": null,
+        "source_bbox": null,
+        "bbox": null,
+        "content": {
+          "kind": "figure",
+          "asset_id": null,
+          "caption": "Missing source geometry remains unknown"
+        },
+        "provenance": {
+          "source_kind": "synthetic_contract",
+          "source_native_id": null,
+          "engine_revision": null,
+          "ocr": null,
+          "confidence": null
+        }
+      }
+    ],
+    "assets": [],
+    "warnings": [
+      {
+        "code": "synthetic_only",
+        "message": "This fixture is not a real PDF extraction result.",
+        "page_index0": null
+      }
+    ],
+    "extraction_options_sha256": [
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3
+    ]
+  }
+}

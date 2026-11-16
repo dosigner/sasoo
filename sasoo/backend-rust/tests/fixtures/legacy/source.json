@@ -1,0 +1,21 @@
+{
+  "sources": [
+    {
+      "path": "sasoo/backend/models/database.py",
+      "sha256": "c2b887067ff6018c0affd89c90be32510f5cb483209da978820810c00ac8891e",
+      "constants": [
+        "SCHEMA_SQL",
+        "SETTINGS_SQL"
+      ]
+    },
+    {
+      "path": "sasoo/backend/models/analysis_runs.py",
+      "sha256": "1b277722c08c898113a02e97891f4ad82557298b9cf09a06f53d4f87aa6fa385",
+      "constants": [
+        "ANALYSIS_RUNS_DDL"
+      ]
+    }
+  ],
+  "method": "AST literal extraction, no product imports",
+  "synthetic": true
+}

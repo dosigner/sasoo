@@ -1,0 +1,22 @@
+{
+  "format_version": 1,
+  "source": {
+    "kind": "synthetic_python_asgi",
+    "git_head": "1440342a2ddcd7eaa674c6df7a6704b64ceded01",
+    "source_sha256": {
+      "backend/main.py": "81dae24f3e6d08138fd83ebf92a01e6441b4c03ac35a112a29be7ffc8784f117",
+      "backend/api/papers.py": "89c7aa1e05eb642a542d8ba6bc6ba4c09693abedce5e33a110633615cc34b8c3",
+      "backend/api/analysis_routes.py": "a3e1e726f3788174f76109c16c22399f9b8b2813aa485685e12b77788ceda76c",
+      "backend/api/settings.py": "6712cdff6a2ff1d1eac70591581c141e08f6528e829cf7d4df6fbefda27d8a35",
+      "backend/api/agents.py": "ed510c32c878680c1f245f7ffe6430518fd26483ac6b569e8bade88bbfd6544c"
+    },
+    "provenance": null,
+    "lifespan": "not_run"
+  },
+  "observed": false,
+  "cases": [],
+  "gaps": [
+    "chat disconnect/EOF/terminal/UTF-8 chunks",
+    "figure shared job lifetime"
+  ]
+}
