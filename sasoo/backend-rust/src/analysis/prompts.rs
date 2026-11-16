@@ -19,11 +19,18 @@ pub fn truncate_text(text: &str, limit: usize) -> String {
 // Accept finite JSON values; unsupported Python values need explicit conversion.
 pub fn python_json_bytes(value: &Value, ensure_ascii: bool) -> Result<Vec<u8>> {
     let mut output = String::new();
-    encode_json(value, ensure_ascii, &mut output)?;
+    encode_json(value, ensure_ascii, true, &mut output)?;
     Ok(output.into_bytes())
 }
 
-fn encode_json(value: &Value, ascii: bool, output: &mut String) -> Result<()> {
+/// `json.dumps` without sort_keys: keys keep insertion order.
+pub fn python_json_unsorted(value: &Value, ensure_ascii: bool) -> Result<String> {
+    let mut output = String::new();
+    encode_json(value, ensure_ascii, false, &mut output)?;
+    Ok(output)
+}
+
+fn encode_json(value: &Value, ascii: bool, sort: bool, output: &mut String) -> Result<()> {
     match value {
         Value::Null => output.push_str("null"),
         Value::Bool(v) => output.push_str(if *v { "true" } else { "false" }),
@@ -35,21 +42,23 @@ fn encode_json(value: &Value, ascii: bool, output: &mut String) -> Result<()> {
                 if index > 0 {
                     output.push_str(", ");
                 }
-                encode_json(item, ascii, output)?;
+                encode_json(item, ascii, sort, output)?;
             }
             output.push(']');
         }
         Value::Object(values) => {
             output.push('{');
             let mut keys: Vec<&String> = values.keys().collect();
-            keys.sort();
+            if sort {
+                keys.sort();
+            }
             for (index, key) in keys.iter().enumerate() {
                 if index > 0 {
                     output.push_str(", ");
                 }
                 encode_string(key, ascii, output);
                 output.push_str(": ");
-                encode_json(&values[*key], ascii, output)?;
+                encode_json(&values[*key], ascii, sort, output)?;
             }
             output.push('}');
         }
