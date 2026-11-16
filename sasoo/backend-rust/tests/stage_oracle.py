@@ -96,9 +96,10 @@ def screening_cases():
             {"name": f"screening_{provider}_invalid_then_ok", "responses": [body("not json"), body(SCREEN_OK)]},
             {"name": f"screening_{provider}_incomplete", "responses": [body(SCREEN_OK, status="incomplete")]},
             {"name": f"screening_{provider}_usage_missing", "responses": [body(SCREEN_OK, usage=False)]},
+            {"name": f"screening_{provider}_invalid_twice", "responses": [body("{bad"), body("still {bad")]},
             {"name": f"screening_{provider}_invalid_then_incomplete", "responses": [body("{bad"), body("{bad", status="incomplete")]},
         ]
-        for c in out[-8:]:
+        for c in out[-9:]:
             c["provider"] = provider
             c["screening_input"] = SCREENING_INPUT
     return out
@@ -126,9 +127,10 @@ def visual_cases(fixture_dir):
              "system_instruction": "페르소나 지시"},
             {"name": f"visual_{provider}_fallback_no_source", "snapshot": [READY, FIGURES, TABLES], "source": {}, "responses": [body(VISUAL_OK)]},
             {"name": f"visual_{provider}_invalid_then_ok", "snapshot": [READY, FIGURES, TABLES], "source": source, "responses": [body("oops"), body(VISUAL_OK)]},
+            {"name": f"visual_{provider}_invalid_twice", "snapshot": [READY, FIGURES, TABLES], "source": source, "responses": [body("x"), body("[1, 2")]},
             {"name": f"visual_{provider}_truncated_salvaged", "snapshot": [READY, FIGURES, TABLES], "source": source, "responses": [body(VISUAL_OK[:-30]), body(VISUAL_OK)]},
         ]
-        for c in out[-6:]:
+        for c in out[-7:]:
             c["provider"] = provider
             c["visual_input"] = VISUAL_INPUT
     out.append({"name": "visual_openai_doc_text", "provider": "openai", "snapshot": [READY, FIGURES, TABLES],
@@ -165,6 +167,7 @@ def recipe_cases():
             {**base, "name": f"recipe_{provider}_fallback_ai", "screening": screening_text(domain="ai_ml"), "source": {}, "responses": [body(RECIPE_OK)]},
             {**base, "name": f"recipe_{provider}_ee_error_visual", "screening": screening_text(domain="ee"), "visual_text": '{"_raw": "x", "_parse_error": "y"}', "responses": [body(RECIPE_OK)]},
             {**base, "name": f"recipe_{provider}_general_retry", "screening": screening_text(domain="general"), "responses": [body("nope"), body(RECIPE_OK)]},
+            {**base, "name": f"recipe_{provider}_invalid_twice", "screening": screening_text(), "responses": [body("{"), body('{"a": 1,}')]},
             {**base, "name": f"recipe_{provider}_invalid_screening", "screening": "not json", "responses": [body(RECIPE_OK)]},
         ]
     return out
@@ -228,6 +231,7 @@ def deep_cases():
             {**base, "name": f"deep_{provider}_fallback", "source": {}, "citation_text": "plain citation text", "responses": [body(DEEP_OK)]},
             {**base, "name": f"deep_{provider}_missing_fields", "responses": [body(DEEP_MISSING)]},
             {**base, "name": f"deep_{provider}_duplicate_key", "responses": [body(DEEP_DUP)]},
+            {**base, "name": f"deep_{provider}_invalid_twice", "responses": [body("{"), body('{"a" 1}')]},
             {**base, "name": f"deep_{provider}_incomplete", "responses": [body(DEEP_OK, status="incomplete")]},
             {**base, "name": f"deep_{provider}_skip_low", "screening": screening_text(relevance_score=0.1), "responses": []},
             {**base, "name": f"deep_{provider}_review_map_ok", "screening": review, "previous_id": "prev_recipe", "responses": [body(REVIEW_OK)]},

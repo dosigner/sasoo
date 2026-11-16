@@ -132,9 +132,7 @@ impl PhaseExecutor for ScreeningExecutor {
             result["text"] = if python_loads(&cleaned).is_some() {
                 json!(cleaned)
             } else {
-                // shortcut: Python stores str(json.JSONDecodeError) here; serde has other
-                // messages. Only reached when a retry still returns invalid JSON.
-                json!(parse_error_text(&cleaned, "JSON parse failed"))
+                json!(parse_error_text(&cleaned, &crate::analysis::screening::stage::json_error_message(&cleaned)))
             };
             let cost = result_cost_or_mark(&mut result, at);
             let row = result_row("screening", &result, cost, &cache_key, &choice);

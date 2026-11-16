@@ -113,8 +113,7 @@ impl PhaseExecutor for RecipeExecutor {
                     }
                     json!(python_dumps(&payload, false))
                 }
-                // shortcut: Python stores str(json.JSONDecodeError) here.
-                None => json!(parse_error_text(&cleaned, "JSON parse failed")),
+                None => json!(parse_error_text(&cleaned, &crate::analysis::screening::stage::json_error_message(&cleaned))),
             };
             let cost = result_cost_or_mark(&mut result, at);
             Ok(stage_output(result_row("recipe", &result, cost, &cache_key, &choice), ids, None))

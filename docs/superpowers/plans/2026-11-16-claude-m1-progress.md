@@ -6,18 +6,19 @@
 
 1. W03 원장 `runtime/ledger.rs`, 테스트 `tests/ledger.rs` 9건. 커밋 `b8d517f`.
 2. F02/F03 `providers/openai.rs`, `gemini.rs`, `transport.rs`(reqwest), `types.rs` 도우미. 오라클 `tests/provider_wire_oracle.py`가 Python 어댑터를 가로챈 httpx/httpx2로 실행해 `tests/fixtures/provider/wire-v1.json`(21케이스 + 업로드)을 만든다. 테스트 `tests/provider_wire.rs` 6건. 커밋 `ccb23d9`.
-3. 단계 공통 도우미 `analysis/stage.rs`(오라클 `tests/stage_helpers_oracle.py`, fixture `tests/fixtures/stage/helpers-v1.json`, 테스트 `tests/stage_helpers.rs`). 미커밋.
-4. screening 실행기 `analysis/screening.rs`(오라클 `tests/stage_oracle.py`, fixture `stages-v1.json`, 테스트 `tests/stage_screening.rs` 16케이스 일치). 미커밋.
+3. 문서 문맥 `analysis/document_context.rs`(합성 19건, 코퍼스 17편 일치), 단계 공통 도우미 `analysis/stage.rs`, screening, visual, recipe, deep_dive, review_map 실행기. 커밋 `146977c`.
+4. F04/F05 `agents.rs`, `selection.rs`, 지시문 조립 `prompts.rs`. 커밋 `9dabe88`.
+5. citation 실행기와 `citation_analyzer.rs`(32 단계 케이스). 커밋 `29b5b13`.
+6. 재시도 후 무효 JSON의 `_parse_error`를 CPython 문구로 맞춤(`stage::json_error_message`).
 
 ## 진행 중 (백그라운드 에이전트)
 
-- `analysis/document_context.rs`: document_context.py + section_splitter.py 이식, 테스트 `tests/document_context.rs`, 코퍼스 대조는 `SASOO_M1_CORPUS_ORACLE`.
-- `analysis/citation.rs`: citation_analyzer.py + `_run_citation` 이식, 테스트 `tests/stage_citation.rs`.
+- `analysis/synthesis.rs`: `_run_synthesis` + evidence_verifier 수치 비교 이식, 테스트 `tests/stage_synthesis.rs`.
 
 ## 남은 것
 
-1. `_run_chain_stage` 이식 후 visual, recipe(+evidence), deep_dive(+summary_contract), review_map, synthesis(+evidence_verifier 수치).
-2. F04 agent .md 파서와 F05 domain 선택, persona, reader profile, chain system instruction.
+1. synthesis(에이전트 진행 중).
+2. recipe evidence 앵커(`_ensure_recipe_evidence`)는 이식하지 않았다.
 3. 응답 기록(유료, 사용자 승인 필요).
 
 ## Codex 요청 목록 (PR 설명에 넣는다)
@@ -29,7 +30,9 @@
 
 ## 알려진 차이
 
-- `json.loads` NaN/Infinity, `json.JSONDecodeError` 메시지 문자열(screening의 재시도 후 무효 JSON 경로)은 Rust가 다르게 적는다.
+- `json.loads`가 받는 NaN/Infinity와 짝 없는 surrogate는 serde가 거부한다.
+- 공급사 호출 자체가 실패할 때(HTTP 오류) Python은 SDK 예외 문구를 저장하고 Rust는 SasooError 문구를 저장한다(citation 실패 행).
+- 문서 문맥 에이전트가 찾은 Python 쪽 이상 동작 3건(캡션 정규식 `{2}` 치환, `%` 뒤 `\b`, Materials and Methods 이중 매치)은 그대로 재현했다. Python 수정 후보다.
 - 스트리밍(`stream`)은 M1 분석 단계가 쓰지 않아 구현하지 않았다.
 - OpenAI 이미지 입력(PDF 없을 때 visual 그림 8장)은 `InputPart`에 없다.
 

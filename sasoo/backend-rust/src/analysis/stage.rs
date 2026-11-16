@@ -837,13 +837,16 @@ pub fn loads_unique(text: &str) -> std::result::Result<Json, String> {
         }
     }
     let mut de = serde_json::Deserializer::from_str(text);
-    let value = de.deserialize_any(Unique).map_err(|e| {
+    let parsed = de.deserialize_any(Unique).and_then(|v| de.end().map(|()| v));
+    parsed.map_err(|e| {
         let msg = e.to_string();
-        // serde appends " at line L column C"; keep only the duplicate-key message.
-        msg.split(" at line ").next().unwrap_or(&msg).to_owned()
-    })?;
-    de.end().map_err(|e| e.to_string())?;
-    Ok(value)
+        if msg.starts_with("심층 분석 응답에 중복된 키가 있습니다") {
+            // serde appends " at line L column C"; keep only the duplicate-key message.
+            msg.split(" at line ").next().unwrap_or(&msg).to_owned()
+        } else {
+            json_error_message(text)
+        }
+    })
 }
 
 /// `parse_summary_json`.
@@ -925,4 +928,9 @@ mod stage_schemas;
 pub fn stage_schema(stage: &str) -> SasooResult<Json> {
     let text = stage_schemas::stage_schema(stage).ok_or_else(|| SasooError::NotFound(format!("Unknown stage schema {stage}")))?;
     serde_json::from_str(text).map_err(|_| SasooError::Internal("Stage schema is invalid".into()))
+}
+
+/// `str(json.JSONDecodeError)` for invalid JSON, as Python stores it in `_parse_error`.
+pub fn json_error_message(text: &str) -> String {
+    crate::analysis::citation::py_json_loads(text).err().unwrap_or_else(|| "JSON parse failed".into())
 }
