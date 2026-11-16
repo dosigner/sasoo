@@ -32,13 +32,32 @@ def _executor_for(lane: Lane):
     raise ValueError(f"unknown lane: {lane!r}")
 
 
-async def _run_on_lane(lane: Lane, fn):
+async def _submit_on_lane(lane: Lane, fn):
     loop = asyncio.get_running_loop()
-    if lane == "pipeline":
-        # 현재 루프 전용 세마포어(크로스루프 바인딩 방지 — concurrency.pipeline_llm_sem 참조).
-        async with pipeline_llm_sem():
-            return await loop.run_in_executor(PIPELINE_EXECUTOR, fn)
-    return await loop.run_in_executor(_executor_for(lane), fn)
+    sem = pipeline_llm_sem() if lane == "pipeline" else None
+    if sem is not None:
+        await sem.acquire()
+    try:
+        future = _executor_for(lane).submit(fn)
+    except BaseException:
+        if sem is not None:
+            sem.release()
+        raise
+    if sem is not None:
+        def release_when_finished(_future):
+            # Only the physical worker owns this permit, even after caller cancellation.
+            try:
+                loop.call_soon_threadsafe(sem.release)
+            except RuntimeError:
+                # A closed loop has no remaining semaphore waiters.
+                pass
+        future.add_done_callback(release_when_finished)
+    return future
+
+
+async def _run_on_lane(lane: Lane, fn):
+    future = await _submit_on_lane(lane, fn)
+    return await asyncio.wrap_future(future)
 
 _SYSTEM_INSTRUCTION_KO = (
     "너는 Sasoo(사수)라는 한국어 AI Co-Scientist야.\n"
@@ -153,6 +172,29 @@ def _apply_media_resolution(prompt, media_resolution: str | None):
     return new_parts if changed else prompt
 
 
+def _response_metadata(interaction, *, model: str, completed: bool = False) -> dict:
+    usage = getattr(interaction, "usage", None)
+    tokens_in = getattr(usage, "total_input_tokens", None)
+    tokens_output = getattr(usage, "total_output_tokens", None)
+    tokens_thought = getattr(usage, "total_thought_tokens", None)
+    # Gemini bills output and thought tokens together; a missing part stays unknown.
+    tokens_out = None if tokens_output is None or tokens_thought is None else tokens_output + tokens_thought
+    usage_complete = tokens_in is not None and tokens_out is not None
+    status = getattr(interaction, "status", None) or ("completed" if completed else None)
+    missing_completion = interaction is None
+    return {
+        "model": model,
+        "response_status": status,
+        "incomplete": missing_completion or not usage_complete or status in {"incomplete", "failed", "cancelled"},
+        "incomplete_reason": "missing_completion" if missing_completion else ("missing_usage" if not usage_complete else None),
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
+        "tokens_thought": tokens_thought,
+        "interaction_id": getattr(interaction, "id", None),
+        "usage_complete": usage_complete,
+    }
+
+
 async def call_interaction(
     prompt,
     *,
@@ -198,21 +240,9 @@ async def call_interaction(
             }
 
         interaction = client.interactions.create(**kwargs)
-        usage = getattr(interaction, "usage", None)
-        # VERIFY(확인됨): interactions.md.txt 기준 usage.total_input_tokens / total_output_tokens.
-        tokens_in = getattr(usage, "total_input_tokens", 0) or 0
-        # 라이브 실측: total_output_tokens는 thinking 미포함, 과금은
-        # 출력 단가 — 합산해 청구 기준으로 반환한다.
-        tokens_thought = getattr(usage, "total_thought_tokens", 0) or 0
-        tokens_out = (getattr(usage, "total_output_tokens", 0) or 0) + tokens_thought
         return {
-            "text": interaction.output_text or "",
-            "incomplete": getattr(interaction, "status", None) in ("incomplete", "failed", "cancelled"),
-            "model": model,
-            "tokens_in": tokens_in,
-            "tokens_out": tokens_out,
-            "tokens_thought": tokens_thought,
-            "interaction_id": getattr(interaction, "id", None),
+            "text": getattr(interaction, "output_text", "") or "",
+            **_response_metadata(interaction, model=model),
         }
 
     # 재시도 루프는 코루틴 레벨에 둔다 — 백오프 대기가 asyncio.sleep이라 그동안
@@ -265,9 +295,8 @@ async def stream_interaction(
     를 yield한다. sync SDK 스트림은 스레드에서 돌리고 asyncio.Queue로 브릿지해
     이벤트 루프를 막지 않는다(기존 채팅 엔드포인트의 관용구 이동).
     스트림 중 오류는 RuntimeError로 전파한다.
-    SDK 스트림이 interaction.completed 이벤트 없이 정상 종료하면 폴백 done
-    (`tokens_in/out/thought=0, interaction_id=None`)을 yield해 소비자가
-    항상 종료 신호를 받도록 보장한다.
+    SDK 스트림이 interaction.completed 없이 끝나면 incomplete done을 전달한다.
+    사용량을 알 수 없으면 None으로 보존한다.
     """
     if not store and previous_interaction_id:
         raise ValueError("previous_interaction_id requires store=True")
@@ -305,20 +334,10 @@ async def stream_interaction(
                     # event.interaction.usage.total_input_tokens / total_output_tokens /
                     # total_thought_tokens, id는 event.interaction.id.
                     interaction = getattr(event, "interaction", None)
-                    usage = getattr(interaction, "usage", None)
-                    # 라이브 실측: total_output_tokens는 thinking 미포함, 과금은
-                    # 출력 단가 — 합산해 청구 기준으로 반환한다.
-                    _tokens_thought = getattr(usage, "total_thought_tokens", 0) or 0
                     asyncio.run_coroutine_threadsafe(
                         q.put((
                             "done",
-                            {
-                                "tokens_in": getattr(usage, "total_input_tokens", 0) or 0,
-                                "tokens_out": (getattr(usage, "total_output_tokens", 0) or 0)
-                                + _tokens_thought,
-                                "tokens_thought": _tokens_thought,
-                                "interaction_id": getattr(interaction, "id", None),
-                            },
+                            _response_metadata(interaction, model=model, completed=True),
                         )),
                         loop,
                     )
@@ -327,41 +346,21 @@ async def stream_interaction(
         finally:
             asyncio.run_coroutine_threadsafe(q.put(("__end__", None)), loop)
 
-    # pipeline lane은 스트림이 살아있는 동안 세마포어 슬롯 하나를 점유한다.
-    # 현재 루프 전용 세마포어를 쓴다(크로스루프 바인딩 방지).
-    sem = pipeline_llm_sem() if lane == "pipeline" else None
-    if sem is not None:
-        await sem.acquire()
-    try:
-        loop.run_in_executor(_executor_for(lane), _sync_stream)
-
-        done_seen = False
-        while True:
-            kind, data = await q.get()
-            if kind == "token":
-                yield {"type": "token", "text": data}
-            elif kind == "done":
-                done_seen = True
-                yield {"type": "done", **data}
-            elif kind == "error":
-                raise RuntimeError(f"Interactions API stream failed: {data}")
-            else:  # "__end__"
-                if not done_seen:
-                    # SDK 스트림이 interaction.completed 없이 정상 종료한 경우
-                    # (예: 서버가 종료 이벤트를 누락) — done 없이 조용히 끝나면
-                    # 프론트 onDone(비용 집계·액션 버튼)이 영영 호출되지 않는다.
-                    # 폴백 done을 yield해 소비자가 항상 종료를 인지하게 한다.
-                    yield {
-                        "type": "done",
-                        "tokens_in": 0,
-                        "tokens_out": 0,
-                        "tokens_thought": 0,
-                        "interaction_id": None,
-                    }
-                break
-    finally:
-        if sem is not None:
-            sem.release()
+    await _submit_on_lane(lane, _sync_stream)
+    done_seen = False
+    while True:
+        kind, data = await q.get()
+        if kind == "token":
+            yield {"type": "token", "text": data}
+        elif kind == "done":
+            done_seen = True
+            yield {"type": "done", **data}
+        elif kind == "error":
+            raise RuntimeError(f"Interactions API stream failed: {data}")
+        else:  # "__end__"
+            if not done_seen:
+                yield {"type": "done", **_response_metadata(None, model=model)}
+            break
 
 
 async def _cached_pdf_uri(paper_id: int) -> str | None:

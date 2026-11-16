@@ -1095,10 +1095,15 @@ export async function chatWithAgent(
     } else if (data.type === 'token') {
       onToken(data.content ?? '');
     } else if (data.type === 'done') {
+      if (typeof data.tokens_in !== 'number' || typeof data.tokens_out !== 'number'
+        || typeof data.cost_usd !== 'number'
+        || [data.tokens_in, data.tokens_out, data.cost_usd].some((value) => !Number.isFinite(value) || value < 0)) {
+        throw new ChatStreamError('응답 사용량을 확인하지 못했습니다.');
+      }
       onDone({
-        tokens_in: data.tokens_in ?? 0,
-        tokens_out: data.tokens_out ?? 0,
-        cost_usd: data.cost_usd ?? 0,
+        tokens_in: data.tokens_in,
+        tokens_out: data.tokens_out,
+        cost_usd: data.cost_usd,
         message_id: data.message_id,
         context_tokens: data.context_tokens,
       });

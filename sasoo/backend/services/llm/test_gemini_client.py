@@ -1,6 +1,7 @@
 import asyncio
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -333,10 +334,8 @@ def test_stream_interaction_does_not_block_event_loop():
     assert result[-1]["type"] == "done"
 
 
-def test_stream_interaction_yields_fallback_done_when_stream_ends_without_completed():
-    """SDK 스트림이 interaction.completed 없이 정상 종료(__end__만 도달)해도
-    done을 조용히 누락시키지 않고 폴백 done을 yield해야 한다 —
-    안 그러면 프론트 onDone(비용 집계·액션 버튼)이 영영 호출되지 않는다."""
+def test_stream_interaction_missing_completion_keeps_usage_unknown():
+    """Missing completion must not become a zero-cost successful answer."""
     events = [_delta_event("안"), _delta_event("녕")]
     fake_client = MagicMock()
     fake_client.interactions.create.return_value = iter(events)
@@ -347,13 +346,183 @@ def test_stream_interaction_yields_fallback_done_when_stream_ends_without_comple
     assert result[0] == {"type": "token", "text": "안"}
     assert result[1] == {"type": "token", "text": "녕"}
     assert len(result) == 3
-    assert result[2] == {
-        "type": "done",
-        "tokens_in": 0,
-        "tokens_out": 0,
-        "tokens_thought": 0,
-        "interaction_id": None,
-    }
+    assert result[2]["type"] == "done"
+    for field in ("tokens_in", "tokens_out", "tokens_thought", "interaction_id"):
+        assert result[2][field] is None
+    assert result[2]["usage_complete"] is False
+    assert result[2]["incomplete"] is True
+    assert result[2]["incomplete_reason"] == "missing_completion"
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("counts", [None, (10, None, 2), (None, 5, 2), (10, 5, None)])
+def test_missing_or_partial_usage_stays_unknown(streaming, counts):
+    from services.pricing import PricingUsageError, calc_result_cost
+
+    response = _fake_interaction()
+    response.usage = None if counts is None else SimpleNamespace(
+        total_input_tokens=counts[0], total_output_tokens=counts[1], total_thought_tokens=counts[2]
+    )
+    client = MagicMock()
+    if streaming:
+        client.interactions.create.return_value = iter([
+            SimpleNamespace(event_type="interaction.completed", interaction=response)
+        ])
+    else:
+        client.interactions.create.return_value = response
+    with patch.object(gemini_client, "_get_client", return_value=client):
+        if streaming:
+            result = asyncio.run(_collect(gemini_client.stream_interaction("source", lane="chat")))[-1]
+        else:
+            result = asyncio.run(call_interaction("source", lane="chat"))
+    assert result["usage_complete"] is False
+    assert result["incomplete"] is True
+    assert result["incomplete_reason"] == "missing_usage"
+    assert result["tokens_in"] == (None if counts is None else counts[0])
+    expected_out = None if counts is None or None in counts[1:] else counts[1] + counts[2]
+    assert result["tokens_out"] == expected_out
+    with pytest.raises(PricingUsageError):
+        calc_result_cost(result, model=MODEL_FLASH_HQ)
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_reported_zero_usage_remains_complete_and_free(streaming):
+    from services.pricing import calc_result_cost
+
+    response = _fake_interaction()
+    response.usage = SimpleNamespace(total_input_tokens=0, total_output_tokens=0, total_thought_tokens=0)
+    client = MagicMock()
+    client.interactions.create.return_value = iter([
+        SimpleNamespace(event_type="interaction.completed", interaction=response)
+    ]) if streaming else response
+    with patch.object(gemini_client, "_get_client", return_value=client):
+        if streaming:
+            result = asyncio.run(_collect(gemini_client.stream_interaction("source", lane="chat")))[-1]
+        else:
+            result = asyncio.run(call_interaction("source", lane="chat"))
+    assert result["usage_complete"] is True
+    assert result["incomplete"] is False
+    assert result["tokens_in"] == result["tokens_out"] == result["tokens_thought"] == 0
+    assert calc_result_cost(result, model=MODEL_FLASH_HQ) == 0
+
+
+@pytest.mark.parametrize("close_mode", ["aclose", "cancel", "repeated_cancel"])
+def test_pipeline_stream_producer_owns_permit_after_consumer_leaves(close_mode):
+    async def run():
+        release, blocked, closed = threading.Event(), threading.Event(), threading.Event()
+        sem = asyncio.Semaphore(1)
+        client = MagicMock()
+
+        def stream(**kwargs):
+            try:
+                yield _delta_event("first")
+                blocked.set()
+                assert release.wait(5), "Test producer was not released"
+            finally:
+                closed.set()
+
+        client.interactions.create.side_effect = stream
+        with ThreadPoolExecutor(max_workers=1) as executor, \
+             patch.object(gemini_client, "_get_client", return_value=client), \
+             patch.object(gemini_client, "_executor_for", return_value=executor), \
+             patch.object(gemini_client, "pipeline_llm_sem", return_value=sem):
+            generator = gemini_client.stream_interaction("source", lane="pipeline")
+            waiter = None
+            try:
+                assert (await asyncio.wait_for(anext(generator), 5))["text"] == "first"
+                assert await asyncio.to_thread(blocked.wait, 5)
+                assert sem._value == 0
+                if close_mode == "aclose":
+                    await asyncio.wait_for(generator.aclose(), 5)
+                else:
+                    consumer = asyncio.create_task(anext(generator))
+                    await asyncio.sleep(0)
+                    consumer.cancel()
+                    if close_mode == "repeated_cancel":
+                        await asyncio.sleep(0)
+                        consumer.cancel()
+                    with pytest.raises(asyncio.CancelledError):
+                        await consumer
+                assert not closed.is_set()
+                assert sem._value == 0, "Consumer close released a live producer's permit"
+                waiter = asyncio.create_task(sem.acquire())
+                await asyncio.sleep(0)
+                assert not waiter.done()
+                release.set()
+                assert await asyncio.to_thread(closed.wait, 5)
+                await asyncio.wait_for(waiter, 5)
+                assert sem._value == 0
+                sem.release()
+                await asyncio.sleep(0)
+                assert sem._value == 1
+            finally:
+                release.set()
+                assert await asyncio.to_thread(closed.wait, 5)
+                if waiter is not None and not waiter.done():
+                    waiter.cancel()
+                    await asyncio.gather(waiter, return_exceptions=True)
+                await generator.aclose()
+                await asyncio.sleep(0)
+
+    asyncio.run(run())
+
+
+def test_pipeline_call_producer_owns_permit_after_repeated_cancellation():
+    async def run():
+        release, blocked, closed = threading.Event(), threading.Event(), threading.Event()
+        sem = asyncio.Semaphore(1)
+
+        def work():
+            try:
+                blocked.set()
+                assert release.wait(5), "Test producer was not released"
+                return "finished"
+            finally:
+                closed.set()
+
+        with ThreadPoolExecutor(max_workers=1) as executor, \
+             patch.object(gemini_client, "_executor_for", return_value=executor), \
+             patch.object(gemini_client, "PIPELINE_EXECUTOR", executor), \
+             patch.object(gemini_client, "pipeline_llm_sem", return_value=sem):
+            task = asyncio.create_task(gemini_client._run_on_lane("pipeline", work))
+            try:
+                assert await asyncio.to_thread(blocked.wait, 5)
+                task.cancel()
+                await asyncio.sleep(0)
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+                assert not closed.is_set()
+                assert sem._value == 0
+                release.set()
+                await asyncio.wait_for(sem.acquire(), 5)
+                sem.release()
+                await asyncio.sleep(0)
+                assert closed.is_set() and sem._value == 1
+            finally:
+                release.set()
+                assert await asyncio.to_thread(closed.wait, 5)
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_failed_producer_submission_returns_permit_once(streaming):
+    async def run():
+        sem = asyncio.Semaphore(1)
+        executor = MagicMock()
+        executor.submit.side_effect = RuntimeError("synthetic submission failure")
+        with patch.object(gemini_client, "_executor_for", return_value=executor), \
+             patch.object(gemini_client, "PIPELINE_EXECUTOR", executor), \
+             patch.object(gemini_client, "pipeline_llm_sem", return_value=sem):
+            with pytest.raises(RuntimeError, match="synthetic submission failure"):
+                if streaming:
+                    await anext(gemini_client.stream_interaction("source", lane="pipeline"))
+                else:
+                    await gemini_client._run_on_lane("pipeline", lambda: None)
+            await asyncio.sleep(0)
+            assert sem._value == 1
+    asyncio.run(run())
 
 
 def test_stream_interaction_raises_on_stream_error():

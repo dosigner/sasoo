@@ -129,6 +129,53 @@ class FigureStreamTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(events[-1]["type"], "error")
         self.update.assert_not_awaited()
 
+    async def test_postprocessed_empty_result_never_succeeds_or_caches(self):
+        calls = []
+        for raw_text in (
+            "{}", '{"explanation":""}', '{"explanation":" \\n "}',
+            '{"sections":[]}', '{"sections":{"text":""}}', "```json\n{}\n```",
+        ):
+            with self.subTest(raw_text=raw_text):
+                async def stream(parts, **kwargs):
+                    calls.append(kwargs)
+                    yield {"type": "token", "text": raw_text}
+                    yield {"type": "done", "response_status": "completed", "tokens_in": 100,
+                           "tokens_out": 50, "tokens_cached": 0, "tokens_cache_write": 0}
+
+                before_calls = len(calls)
+                with patch.object(figure_service, "stream_interaction", new=stream):
+                    events = [event(chunk) async for chunk in figure_service.stream_figure_explanation(7, 1)]
+                self.assertEqual(events[-1]["type"], "error")
+                self.assertFalse(any(item["type"] == "done" for item in events))
+                self.assertEqual(events[-1]["usage"]["tokens_in"], 100)
+                self.assertEqual(events[-1]["usage"]["tokens_out"], 50)
+                self.assertGreater(events[-1]["usage"]["cost_usd"], 0)
+                self.assertEqual(len(calls) - before_calls, 1)
+                self.update.assert_not_awaited()
+
+    async def test_nonempty_postprocessing_and_plain_text_keep_existing_results(self):
+        for raw_text, expected in (
+            ('{"explanation":"설명"}', "설명"),
+            ('{"sections":{"text":"설명"}}', "설명"),
+            ('{"sections":["첫째","둘째"]}', "첫째\n둘째"),
+            ('```json\n{"explanation":"설명"}\n```', "설명"),
+            ("  일반 설명  ", "일반 설명"), ("{broken", "{broken"),
+        ):
+            with self.subTest(raw_text=raw_text):
+                self.figures[1]["detailed_explanation"] = None
+                self.update.reset_mock()
+
+                async def stream(parts, **kwargs):
+                    yield {"type": "token", "text": raw_text}
+                    yield {"type": "done", "response_status": "completed", "tokens_in": 100,
+                           "tokens_out": 50, "tokens_cached": 0, "tokens_cache_write": 0}
+
+                with patch.object(figure_service, "stream_interaction", new=stream):
+                    response = await figure_service.explain_figure_handler(7, 1)
+                self.assertEqual(response.explanation, expected)
+                self.update.assert_awaited_once()
+                self.assertEqual(self.figures[1]["detailed_explanation"], expected)
+
     async def test_gemini_has_no_openai_cache_fields_and_requires_completion_id(self):
         inputs = []
 
