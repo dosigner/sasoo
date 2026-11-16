@@ -614,6 +614,14 @@ Inspect the attached image directly. Distinguish visible observations, statement
         except (json.JSONDecodeError, TypeError):
             pass  # Not valid JSON, use as-is
 
+    # JSON extraction can turn a nonempty response into an empty explanation.
+    if not explanation.strip():
+        raise HTTPException(status_code=502, detail={
+            "_raw": result["text"],
+            "_parse_error": "그림 설명의 최종 내용이 비어 있습니다",
+            "_usage": usage,
+        })
+
     # Cache the explanation in the figures table
     await execute_update(
         "UPDATE figures SET detailed_explanation = ? WHERE id = ?",
