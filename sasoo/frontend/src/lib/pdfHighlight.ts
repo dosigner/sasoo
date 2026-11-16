@@ -1,15 +1,9 @@
-/**
- * 백엔드 bbox(PDF 포인트, 좌하단 원점)를 페이지 div 안의 퍼센트 사각형으로 바꾼다.
- *
- * 직접 `pageHeight - y`를 계산하지 않고 pdf.js의 convertToViewportRectangle을 쓴다 —
- * 회전과 CropBox 오프셋을 pdf.js가 흡수한다. 결과를 퍼센트로 두면 줌이 바뀌어도
- * 다시 계산할 필요가 없다.
- */
+/** Convert an unrotated PDF user-space box to percentages of the page viewport. */
 
 export interface ViewportLike {
   width: number;
   height: number;
-  convertToViewportRectangle(rect: number[]): number[];
+  convertToViewportPoint(x: number, y: number): number[];
 }
 
 export interface PercentRect {
@@ -23,35 +17,55 @@ export function bboxToPercentRect(
   bbox: readonly number[],
   viewport: ViewportLike,
 ): PercentRect | null {
-  if (!Array.isArray(bbox) || bbox.length !== 4 || bbox.some((n) => !Number.isFinite(n))) {
+  if (!Array.isArray(bbox) || bbox.length !== 4 || bbox.some((n) => !Number.isFinite(n))
+    || !Number.isFinite(viewport.width) || !Number.isFinite(viewport.height)
+    || viewport.width <= 0 || viewport.height <= 0) {
     return null;
   }
-  let converted: number[];
+  let points: number[][];
   try {
-    converted = viewport.convertToViewportRectangle([bbox[0], bbox[1], bbox[2], bbox[3]]);
+    // The viewport owns rotation, CropBox offsets and UserUnit scaling.
+    points = [
+      viewport.convertToViewportPoint(bbox[0], bbox[1]),
+      viewport.convertToViewportPoint(bbox[2], bbox[1]),
+      viewport.convertToViewportPoint(bbox[0], bbox[3]),
+      viewport.convertToViewportPoint(bbox[2], bbox[3]),
+    ];
   } catch {
-    // pdf.js 뷰포트 변환 실패는 하이라이트만 조용히 생략한다 — 페이지 이동/렌더 이벤트를
-    // 죽이면 안 된다(리뷰 지적 I-3).
+    // A failed highlight must not interrupt page navigation.
     return null;
   }
-  if (!converted || converted.length !== 4 || converted.some((n) => !Number.isFinite(n))) {
+  if (points.some((point) => !Array.isArray(point) || point.length !== 2
+    || point.some((n) => !Number.isFinite(n)))) {
     return null;
   }
 
-  const left = Math.min(converted[0], converted[2]);
-  const right = Math.max(converted[0], converted[2]);
-  const top = Math.min(converted[1], converted[3]);
-  const bottom = Math.max(converted[1], converted[3]);
+  const left = Math.min(...points.map(([x]) => x));
+  const right = Math.max(...points.map(([x]) => x));
+  const top = Math.min(...points.map(([, y]) => y));
+  const bottom = Math.max(...points.map(([, y]) => y));
   const width = right - left;
   const height = bottom - top;
-  if (width <= 0 || height <= 0 || viewport.width <= 0 || viewport.height <= 0) {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
     return null;
   }
 
-  return {
+  const edgeX = points[1].map((value, index) => value - points[0][index]);
+  const edgeY = points[2].map((value, index) => value - points[0][index]);
+  const scaleX = Math.max(...edgeX.map(Math.abs));
+  const scaleY = Math.max(...edgeY.map(Math.abs));
+  // Normalize before the determinant to avoid overflow for large valid scales.
+  const area = (edgeX[0] / scaleX) * (edgeY[1] / scaleY)
+    - (edgeX[1] / scaleX) * (edgeY[0] / scaleY);
+  if (!Number.isFinite(area) || area === 0) {
+    return null;
+  }
+
+  const rect = {
     leftPct: (left / viewport.width) * 100,
     topPct: (top / viewport.height) * 100,
     widthPct: (width / viewport.width) * 100,
     heightPct: (height / viewport.height) * 100,
   };
+  return Object.values(rect).every(Number.isFinite) ? rect : null;
 }
