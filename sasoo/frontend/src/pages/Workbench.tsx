@@ -17,6 +17,7 @@ import { useAnalysis } from '@/hooks/useAnalysis';
 import { useToast } from '@/components/Toast';
 import { S } from '@/lib/strings';
 import {
+  artifactsPending,
   buildAnalysisConfirmCopy,
   buildChatStarterPrompts,
   buildWorkbenchStatusSummary,
@@ -148,24 +149,25 @@ export default function Workbench() {
   }, [id]);
 
   useEffect(() => {
-    if (!id || paper?.id !== Number(id) || paper?.text_ready) return;
+    // 본문 준비 중이거나 시각 자료 동기화 중이면 끝날 때까지 다시 불러온다.
+    if (!id || paper?.id !== Number(id) || !artifactsPending(paper)) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
-    const pollText = async () => {
-      let ready = false;
+    const pollArtifacts = async () => {
+      let pending = true;
       try {
         const updated = await getPaper(id);
         if (cancelled) return;
         setPaper(updated);
-        ready = updated.text_ready;
+        pending = artifactsPending(updated);
       } catch {
-        // Keep the last known state and retry while text is being prepared.
+        // Keep the last known state and retry while artifacts are being prepared.
       }
-      if (!cancelled && !ready) timer = setTimeout(pollText, 1500);
+      if (!cancelled && pending) timer = setTimeout(pollArtifacts, 1500);
     };
-    timer = setTimeout(pollText, 1500);
+    timer = setTimeout(pollArtifacts, 1500);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [id, paper?.id, paper?.text_ready]);
+  }, [id, paper?.id, paper?.text_ready, paper?.visual_state]);
 
   // 분석 확인 모달에 실제 공급사·실측 비용을 보여주기 위해 모달을 열 때 한 번 조회한다.
   // 실패해도 상태를 덮어쓰지 않아 이전에 불러온 값이 있으면 그대로 유지되고, 없으면
