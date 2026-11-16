@@ -139,6 +139,7 @@ Rust에 HTTP handler가 연결되어야 합니다(구현 계획 A04-A06). 분석
 | 사용량 미확인 | `gemini_client.py`, `openai_client.py`, `api.ts` | 사용량 부재는 `None`, `usage_complete`, `incomplete_reason`. 0으로 채우지 않음 |
 | 빈 그림 설명 | `figure_service.py` | JSON 추출 뒤 빈 설명은 502와 `_usage` |
 | pipeline 세마포어 | `gemini_client.py` | 실제 작업이 끝날 때 반납 |
+| Review recipe 생략 문구 | `analysis_execution.py` `_run_recipe` | Review이고 이유가 `not_applicable_recipe`면 문구 "Review 논문이라 재현 레시피를 만들지 않았습니다.". 이유 코드는 그대로 (PR #140) |
 
 ## 7. 착수 순서
 
