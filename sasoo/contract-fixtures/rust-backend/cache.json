@@ -1,0 +1,175 @@
+{
+  "cases": [
+    {
+      "byte_length": 97,
+      "expected": "2026-08-06-ev1\n\u001f\nfixture-model\n\u001f\nhigh\n\u001f\n한국어 é\n\u001f\n자료\n\u001f\n보존\n\u001f\nsynthetic-sha256\n\u001f\nNone",
+      "id": "phase_cache:max_output_tokens=None",
+      "input": {
+        "max_output_tokens": null,
+        "model": "fixture-model",
+        "prompt": "자료\n\u001f\n보존",
+        "source_signature": "synthetic-sha256",
+        "system_instruction": "한국어 é",
+        "thinking": "high"
+      },
+      "provenance": {
+        "path": "backend/services/analysis_execution.py",
+        "symbol": "_phase_cache_key"
+      },
+      "serializer": {
+        "kind": "python_str_join",
+        "none_string": "None",
+        "separator": "\n\u001f\n"
+      },
+      "sha256": "c3edb55cb04ef78b8f240fcdffb776336a7ccf226fba1ea4299c348a48464cb5",
+      "utf8_base64": "MjAyNi0wOC0wNi1ldjEKHwpmaXh0dXJlLW1vZGVsCh8KaGlnaAofCu2VnOq1reyWtCBlzIEKHwrsnpDro4wKHwrrs7TsobQKHwpzeW50aGV0aWMtc2hhMjU2Ch8KTm9uZQ=="
+    },
+    {
+      "byte_length": 94,
+      "expected": "2026-08-06-ev1\n\u001f\nfixture-model\n\u001f\nhigh\n\u001f\n한국어 é\n\u001f\n자료\n\u001f\n보존\n\u001f\nsynthetic-sha256\n\u001f\n0",
+      "id": "phase_cache:max_output_tokens=0",
+      "input": {
+        "max_output_tokens": 0,
+        "model": "fixture-model",
+        "prompt": "자료\n\u001f\n보존",
+        "source_signature": "synthetic-sha256",
+        "system_instruction": "한국어 é",
+        "thinking": "high"
+      },
+      "provenance": {
+        "path": "backend/services/analysis_execution.py",
+        "symbol": "_phase_cache_key"
+      },
+      "serializer": {
+        "kind": "python_str_join",
+        "none_string": "None",
+        "separator": "\n\u001f\n"
+      },
+      "sha256": "6ed7932ac46bcbbb4572fb61534d901d01dcf807ee6d00fbbb86a805aae6e1bb",
+      "utf8_base64": "MjAyNi0wOC0wNi1ldjEKHwpmaXh0dXJlLW1vZGVsCh8KaGlnaAofCu2VnOq1reyWtCBlzIEKHwrsnpDro4wKHwrrs7TsobQKHwpzeW50aGV0aWMtc2hhMjU2Ch8KMA=="
+    },
+    {
+      "byte_length": 97,
+      "expected": "2026-08-06-ev1\n\u001f\nfixture-model\n\u001f\nhigh\n\u001f\n한국어 é\n\u001f\n자료\n\u001f\n보존\n\u001f\nsynthetic-sha256\n\u001f\n8192",
+      "id": "phase_cache:max_output_tokens=8192",
+      "input": {
+        "max_output_tokens": 8192,
+        "model": "fixture-model",
+        "prompt": "자료\n\u001f\n보존",
+        "source_signature": "synthetic-sha256",
+        "system_instruction": "한국어 é",
+        "thinking": "high"
+      },
+      "provenance": {
+        "path": "backend/services/analysis_execution.py",
+        "symbol": "_phase_cache_key"
+      },
+      "serializer": {
+        "kind": "python_str_join",
+        "none_string": "None",
+        "separator": "\n\u001f\n"
+      },
+      "sha256": "6a2d8785202ab18dd6ad68f18863b287a368bbafd5d963d919f0d23fc1874adb",
+      "utf8_base64": "MjAyNi0wOC0wNi1ldjEKHwpmaXh0dXJlLW1vZGVsCh8KaGlnaAofCu2VnOq1reyWtCBlzIEKHwrsnpDro4wKHwrrs7TsobQKHwpzeW50aGV0aWMtc2hhMjU2Ch8KODE5Mg=="
+    },
+    {
+      "byte_length": 84,
+      "expected": {
+        "_CHAIN_CACHE_VERSION": "2026-08-06-ev1",
+        "_CITATION_PROMPT_VERSION": "2026-09-01"
+      },
+      "id": "versions",
+      "provenance": {
+        "path": "backend/services/analysis_execution.py"
+      },
+      "serializer": {
+        "default": "str",
+        "ensure_ascii": false,
+        "kind": "json.dumps",
+        "separators": [
+          ", ",
+          ": "
+        ],
+        "sort_keys": true
+      },
+      "sha256": "f0d92d48842d8b55e9ffb013676604eda49399b84958b01205843f8de2d5e8d8",
+      "utf8_base64": "eyJfQ0hBSU5fQ0FDSEVfVkVSU0lPTiI6ICIyMDI2LTA4LTA2LWV2MSIsICJfQ0lUQVRJT05fUFJPTVBUX1ZFUlNJT04iOiAiMjAyNi0wOS0wMSJ9"
+    }
+  ],
+  "evidence_layer": "source_and_synthetic_fixture",
+  "format_version": 1,
+  "limitations": [
+    "No provider calls, live database, credential access, or scientific validation.",
+    "Artifact refresh behavior remains owned by test_artifact_refresh_contract.py."
+  ],
+  "source_files": [
+    {
+      "path": "backend/services/analysis_execution.py",
+      "sha256": "9658283f8164318efa33b0b740606f780e7aff8c2ea3ecd9fe22b16d8cd3309d"
+    },
+    {
+      "path": "backend/services/summary_contract.py",
+      "sha256": "5748673b8ffe393ea389cbea74436702f980d799a8a142bb0e6dde2051c91856"
+    },
+    {
+      "path": "backend/services/analysis_completion.py",
+      "sha256": "8f9d9d54f735a2dad8f1c2c9e0d121d790e4e0141af60e02e6d742d94c730e65"
+    },
+    {
+      "path": "backend/services/document_context.py",
+      "sha256": "1a0e65f2867365df5c45ca5275f28a3e8ae159da7b654cc50bc7226004a6d896"
+    },
+    {
+      "path": "backend/services/section_splitter.py",
+      "sha256": "d8d94160d9bc767acf193e1e3060633dc5753a72b8313841ee92c8cc8fa73e2b"
+    },
+    {
+      "path": "backend/services/llm/gemini_client.py",
+      "sha256": "e87b5b443ee0036a7c6c8ae9aed992a63e09596f30b294b79040218693cd97a5"
+    },
+    {
+      "path": "backend/services/pricing.py",
+      "sha256": "1667bf86faa63cc1652aab82469030e6362967ce88878592b7d33616d8a1934b"
+    },
+    {
+      "path": "backend/services/test_schema_hash_contract.py",
+      "sha256": "6488fe9884036b917c8f2c690d155388a669c34f74d2b0da59a941aed950c575"
+    },
+    {
+      "path": "backend/services/test_instruction_contract.py",
+      "sha256": "d1746114a9b80a00aa6f767143b63da4796884a93ae7fd2b63cab583f87a32f8"
+    },
+    {
+      "path": "backend/services/test_phase_input_hash_contract.py",
+      "sha256": "316597319bc5318fa942b0f4df3049e8a56e1d8bd5f9ae6032630bef34525133"
+    },
+    {
+      "path": "backend/services/test_viz_plan_snapshot_contract.py",
+      "sha256": "ebb331a0045a52cd779653081a9dc78d4aac5e6550eb68b6688558cc127e0f38"
+    },
+    {
+      "path": "backend/services/fixtures/viz_plan_snapshot.json",
+      "sha256": "144e5b30dcca2e5a5d5064cd2c17016acb1f8114f05904ca9514021453d78576"
+    },
+    {
+      "path": "backend/services/test_artifact_refresh_contract.py",
+      "sha256": "02f2b0d7d650a9224f8c417461037fa00db3024d89bbc9d8d56477c1dfb4a917"
+    },
+    {
+      "path": "backend/services/test_analysis_completion.py",
+      "sha256": "a0c39fedcfa5386e9ee518389e3f843707d4c4ea325cf9469b1fdfb0ef359c77"
+    },
+    {
+      "path": "backend/api/test_report_bytes_contract.py",
+      "sha256": "23d7615bb33e8860c8d161e89b8316d91faa770760aa1dd6227f370ff0f27221"
+    },
+    {
+      "path": "backend/api/fixtures/report_snapshot.md",
+      "sha256": "dd0a9510e0faf6f584fba45f49c9cde7254fbd81c58d104e72a836e103251694"
+    },
+    {
+      "path": "contract-fixtures/hmac-vectors.json",
+      "sha256": "66137e77944b57618ff8c44623cbe3952b6722432931e77c6bc2f65c3d40ffec"
+    }
+  ]
+}

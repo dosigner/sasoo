@@ -1,0 +1,201 @@
+//! Kangxi Radical to CJK Unified Ideograph normalization.
+//!
+//! Maps Kangxi Radical characters (U+2F00–U+2FD5) and CJK Radicals Supplement
+//! (U+2E80–U+2EFF) to their corresponding CJK Unified Ideographs.
+//!
+//! Some PDF fonts/CMaps emit Kangxi Radicals instead of standard ideographs.
+//! While visually identical, they are different Unicode codepoints and will
+//! break text search, string matching, and NLP processing.
+//!
+//! Reference: Unicode Standard, Chapter 12 (CJK Unified Ideographs)
+
+/// Map a Kangxi Radical or CJK Radical Supplement character to its
+/// corresponding CJK Unified Ideograph.
+///
+/// Returns `Some(ideograph)` if the input is a Kangxi Radical (U+2F00–U+2FD5)
+/// or CJK Radical Supplement character with a known mapping, `None` otherwise.
+pub fn kangxi_to_unified(c: char) -> Option<char> {
+    let cp = c as u32;
+
+    if (0x2F00..=0x2FD5).contains(&cp) {
+        let idx = (cp - 0x2F00) as usize;
+        if idx < KANGXI_TO_UNIFIED.len() {
+            return char::from_u32(KANGXI_TO_UNIFIED[idx]);
+        }
+    }
+
+    if (0x2E80..=0x2EFF).contains(&cp) {
+        return kangxi_supplement_to_unified(cp);
+    }
+
+    None
+}
+
+/// Kangxi Radical U+2F00–U+2FD5 → CJK Unified Ideograph mapping table.
+/// Index 0 = U+2F00 (radical 1: 一), index 213 = U+2FD5 (radical 214: 龠).
+static KANGXI_TO_UNIFIED: [u32; 214] = [
+    0x4E00, 0x4E28, 0x4E36, 0x4E3F, 0x4E59, 0x4E85, 0x4E8C, 0x4EA0, 0x4EBA, 0x513F, 0x5165, 0x516B, 0x5182, 0x5196,
+    0x51AB, 0x51E0, 0x51F5, 0x5200, 0x529B, 0x52F9, 0x5315, 0x531A, 0x5338, 0x5341, 0x535C, 0x5369, 0x5382, 0x53B6,
+    0x53C8, 0x53E3, 0x56D7, 0x571F, 0x58EB, 0x5902, 0x590A, 0x5915, 0x5927, 0x5973, 0x5B50, 0x5B80, 0x5BF8, 0x5C0F,
+    0x5C22, 0x5C38, 0x5C6E, 0x5C71, 0x5DDB, 0x5DE5, 0x5DF1, 0x5DFE, 0x5E72, 0x5E7A, 0x5E7F, 0x5EF4, 0x5EFE, 0x5F0B,
+    0x5F13, 0x5F50, 0x5F61, 0x5F73, 0x5FC3, 0x6208, 0x6236, 0x624B, 0x652F, 0x6534, 0x6587, 0x6597, 0x65A4, 0x65B9,
+    0x65E0, 0x65E5, 0x66F0, 0x6708, 0x6728, 0x6B20, 0x6B62, 0x6B79, 0x6BB3, 0x6BCB, 0x6BD4, 0x6BDB, 0x6C0F, 0x6C14,
+    0x6C34, 0x706B, 0x722A, 0x7236, 0x723B, 0x723F, 0x7247, 0x7259, 0x725B, 0x72AC, 0x7384, 0x7389, 0x74DC, 0x74E6,
+    0x7518, 0x751F, 0x7528, 0x7530, 0x758B, 0x7592, 0x7676, 0x767D, 0x76AE, 0x76BF, 0x76EE, 0x77DB, 0x77E2, 0x77F3,
+    0x793A, 0x79B8, 0x79BE, 0x7A74, 0x7ACB, 0x7AF9, 0x7C73, 0x7CF8, 0x7F36, 0x7F51, 0x7F8A, 0x7FBD, 0x8001, 0x800C,
+    0x8012, 0x8033, 0x807F, 0x8089, 0x81E3, 0x81EA, 0x81F3, 0x81FC, 0x820C, 0x821B, 0x821F, 0x826E, 0x8272, 0x8278,
+    0x864D, 0x866B, 0x8840, 0x884C, 0x8863, 0x897E, 0x898B, 0x89D2, 0x8A00, 0x8C37, 0x8C46, 0x8C55, 0x8C78, 0x8C9D,
+    0x8D64, 0x8D70, 0x8DB3, 0x8EAB, 0x8ECA, 0x8F9B, 0x8FB0, 0x8FB5, 0x9091, 0x9149, 0x91C6, 0x91CC, 0x91D1, 0x9577,
+    0x9580, 0x961C, 0x96B6, 0x96B9, 0x96E8, 0x9751, 0x975E, 0x9762, 0x9769, 0x97CB, 0x97ED, 0x97F3, 0x9801, 0x98A8,
+    0x98DB, 0x98DF, 0x9996, 0x9999, 0x99AC, 0x9AA8, 0x9AD8, 0x9ADF, 0x9B25, 0x9B2F, 0x9B32, 0x9B3C, 0x9B5A, 0x9CE5,
+    0x9E75, 0x9E7F, 0x9EA5, 0x9EBB, 0x9EC3, 0x9ECD, 0x9ED1, 0x9EF9, 0x9EFD, 0x9F0E, 0x9F13, 0x9F20, 0x9F3B, 0x9F4A,
+    0x9F52, 0x9F8D, 0x9F9C, 0x9FA0,
+];
+
+/// First half of the CJK Radicals Supplement mapping table (U+2E80–U+2EA9).
+/// Split from [`kangxi_supplement_to_unified`] to keep each lookup function short.
+fn kangxi_supplement_to_unified_part1(cp: u32) -> Option<u32> {
+    let unified = match cp {
+        0x2E80 => 0x2E81_u32,
+        0x2E81 => 0x5382,
+        0x2E82 => 0x4E5B,
+        0x2E84 => 0x4E01,
+        0x2E85 => 0x4E85,
+        0x2E86 => 0x4EBA,
+        0x2E87 => 0x4EBA,
+        0x2E88 => 0x4EBA,
+        0x2E89 => 0x5200,
+        0x2E8A => 0x529B,
+        0x2E8B => 0x52F9,
+        0x2E8C => 0x5165,
+        0x2E8D => 0x516B,
+        0x2E8E => 0x5182,
+        0x2E8F => 0x5196,
+        0x2E90 => 0x51AB,
+        0x2E91 => 0x5200,
+        0x2E92 => 0x5200,
+        0x2E93 => 0x529B,
+        0x2E94 => 0x53E3,
+        0x2E95 => 0x56D7,
+        0x2E96 => 0x571F,
+        0x2E97 => 0x5915,
+        0x2E98 => 0x5927,
+        0x2E99 => 0x5973,
+        0x2E9B => 0x5B50,
+        0x2E9C => 0x5C0F,
+        0x2E9D => 0x5C38,
+        0x2E9E => 0x5C71,
+        0x2E9F => 0x5DDB,
+        0x2EA0 => 0x5DE5,
+        0x2EA1 => 0x5DF1,
+        0x2EA2 => 0x5DFE,
+        0x2EA3 => 0x5E72,
+        0x2EA4 => 0x5E7A,
+        0x2EA5 => 0x5E7F,
+        0x2EA6 => 0x5F13,
+        0x2EA7 => 0x5FC3,
+        0x2EA8 => 0x5FC3,
+        0x2EA9 => 0x5FC3,
+        _ => return None,
+    };
+    Some(unified)
+}
+
+/// Second half of the CJK Radicals Supplement mapping table (U+2EAA–U+2ECE).
+/// Split from [`kangxi_supplement_to_unified`] to keep each lookup function short.
+fn kangxi_supplement_to_unified_part2(cp: u32) -> Option<u32> {
+    let unified = match cp {
+        0x2EAA => 0x6208,
+        0x2EAB => 0x6236,
+        0x2EAC => 0x793A,
+        0x2EAD => 0x793A,
+        0x2EAE => 0x7CF8,
+        0x2EAF => 0x7CF8,
+        0x2EB0 => 0x7F8A,
+        0x2EB1 => 0x8001,
+        0x2EB2 => 0x8089,
+        0x2EB3 => 0x8278,
+        0x2EB4 => 0x8278,
+        0x2EB5 => 0x8278,
+        0x2EB6 => 0x864D,
+        0x2EB7 => 0x866B,
+        0x2EB8 => 0x884C,
+        0x2EB9 => 0x8863,
+        0x2EBA => 0x8863,
+        0x2EBB => 0x898B,
+        0x2EBC => 0x8A00,
+        0x2EBD => 0x8C37,
+        0x2EBE => 0x8C9D,
+        0x2EBF => 0x8D70,
+        0x2EC0 => 0x8DB3,
+        0x2EC1 => 0x91D1,
+        0x2EC2 => 0x9577,
+        0x2EC3 => 0x9580,
+        0x2EC4 => 0x961C,
+        0x2EC5 => 0x96B9,
+        0x2EC6 => 0x96E8,
+        0x2EC7 => 0x975E,
+        0x2EC8 => 0x9B5A,
+        0x2EC9 => 0x9CE5,
+        0x2ECA => 0x9EA5,
+        0x2ECB => 0x9EC3,
+        0x2ECC => 0x9F52,
+        0x2ECD => 0x9F8D,
+        0x2ECE => 0x9F9C,
+        _ => return None,
+    };
+    Some(unified)
+}
+
+/// Map CJK Radicals Supplement (U+2E80–U+2EFF) to CJK Unified Ideographs.
+/// Only maps characters that have clear unified equivalents.
+fn kangxi_supplement_to_unified(cp: u32) -> Option<char> {
+    let unified = kangxi_supplement_to_unified_part1(cp).or_else(|| kangxi_supplement_to_unified_part2(cp))?;
+    // Don't return self-mapping (e.g., 0x2E80 → 0x2E81) ~keep
+    if unified >= 0x4E00 {
+        char::from_u32(unified)
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_kangxi_radicals() {
+        assert_eq!(kangxi_to_unified('⾮'), Some('非'));
+        assert_eq!(kangxi_to_unified('⽴'), Some('立'));
+        assert_eq!(kangxi_to_unified('⼀'), Some('一'));
+        assert_eq!(kangxi_to_unified('⽅'), Some('方'));
+        assert_eq!(kangxi_to_unified('⾼'), Some('高'));
+        assert_eq!(kangxi_to_unified('⽋'), Some('欠'));
+    }
+
+    #[test]
+    fn test_kangxi_supplement() {
+        assert_eq!(kangxi_to_unified('⺬'), Some('示'));
+    }
+
+    #[test]
+    fn test_non_kangxi() {
+        assert_eq!(kangxi_to_unified('A'), None);
+        assert_eq!(kangxi_to_unified('非'), None);
+        assert_eq!(kangxi_to_unified('あ'), None);
+    }
+
+    #[test]
+    fn test_first_and_last_radical() {
+        assert_eq!(kangxi_to_unified('\u{2F00}'), Some('一'));
+        assert_eq!(kangxi_to_unified('\u{2FD5}'), Some('龠'));
+    }
+
+    #[test]
+    fn test_full_text_normalization() {
+        let input = "⾮完備の場合";
+        let expected = "非完備の場合";
+        let result: String = input.chars().map(|c| kangxi_to_unified(c).unwrap_or(c)).collect();
+        assert_eq!(result, expected);
+    }
+}

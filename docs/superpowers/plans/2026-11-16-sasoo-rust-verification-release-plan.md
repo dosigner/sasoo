@@ -141,6 +141,20 @@ Rust에 HTTP handler가 연결되어야 합니다(구현 계획 A04-A06). 분석
 | pipeline 세마포어 | `gemini_client.py` | 실제 작업이 끝날 때 반납 |
 | Review recipe 생략 문구 | `analysis_execution.py` `_run_recipe` | Review이고 이유가 `not_applicable_recipe`면 문구 "Review 논문이라 재현 레시피를 만들지 않았습니다.". 이유 코드는 그대로 (PR #140) |
 
+### Phase 13-17 동작 계약 보충
+
+기존 목록과 릴리스 관문은 유지한다. 아래 항목은 합성 검증에서 확인한 추가 이식 계약이다.
+
+| 항목 | Python 또는 frontend 위치 | 지켜야 할 계약 |
+| --- | --- | --- |
+| producer permit 소유권 | `services/concurrency.py`, Gemini/OpenAI adapter | stream/nonstream 네 경로 모두 raw Future의 실제 종료가 한 번만 반납한다. acquire 대기 취소는 submit/반납이 없고 closed loop에서 semaphore를 다른 thread로 변경하지 않는다 |
+| 그림 설명 최종 빈 값 | `api/figure_service.py` | 중첩 JSON, 배열과 code fence 후처리가 끝난 결과가 비면 cache UPDATE와 성공 응답을 막고 raw/partial/known usage를 보존한다 |
+| 독립 waiter와 저장 확인 | `frontend/src/lib/api.ts`, FigureGallery/Lightbox, `api/analysis_routes.py` | 명시적 생성, 개별 abort/callback 예외 격리, nullable usage와 실제 0 보존. EOF는 미확인이다. 저장 확인 GET은 refresh_artifacts=false이며 생성/refresh/쓰기 0회다 |
+| PDF 하이라이트 | `frontend/src/lib/pdfHighlight.ts` | 설치된 PDF.js point API로 네 모서리 변환, 회전/CropBox/min-max/finite/양수 크기/singular 검사를 보존한다 |
+| 비용과 공개 권한 | FigureExplain 합성 코어 | request ID와 raw outcome을 보존하고 stale/cancel/delete/owner 인계로 결과 채택이 거절돼도 late usage는 별도 저장한다 |
+
+Phase 16의 settings fence는 settings revision 전체에 적용된다. 외부 파일 수정과 SQLite transaction 사이의 원자성은 보장하지 않는다. Phase 17은 SQLite를 열기 전에 rollback-journal 형식과 sidecar 부재를 확인한다. 일반 ReadOnly WAL open도 sidecar를 만들 수 있어서 WAL/hot journal root는 변경 없이 거절한다. 이는 격리 snapshot 제한이며 live DB 호환 완료가 아니다.
+
 ## 7. 착수 순서
 
 1. Rust 코드와 fixture v2를 커밋합니다([후속 계획](2026-11-16-sasoo-review-followup-and-rust-prep-plan.md) 3단계). 코드가 저장소에 없으면 CI가 테스트할 수 없습니다.

@@ -1,0 +1,218 @@
+{
+  "format_version": 1,
+  "evidence_kind": "analytical_vectors",
+  "source_files": [
+    {
+      "path": "sasoo/frontend/src/lib/pdfHighlight.ts",
+      "sha256": "8c454ae552e6de0b8741d7772c3aa089b0b3ac4f8782de4fd4b6451e96fa5f1f"
+    },
+    {
+      "path": "sasoo/backend/services/figure_resolver.py",
+      "sha256": "167f7d43fd6b303e80f11bc89f7ee574a269998c9ad58fd02c12c5bf9c8b8513"
+    },
+    {
+      "path": "sasoo/backend/services/odl_parser.py",
+      "sha256": "6d756d2ec287f3410d04216378293d5a12fd3cebd6deb1f1290dbeb530610942"
+    }
+  ],
+  "conventions": {
+    "pdf_user_space": "Unrotated default PDF user space, lower-left origin, absolute raw coordinates.",
+    "physical_points": "raw user coordinate multiplied by UserUnit, one physical point is 1/72 inch.",
+    "display_top_left": "Named page box after clockwise page rotation, top-left origin, raw user units. Raw CropBox and effective PDF.js crop/media intersection are separate frames.",
+    "legacy_mapping_limit": "ODL to fitz crop uses a y flip at page.rect.height; this is not a verified general rotation/CropBox/UserUnit conversion.",
+    "acceptance": "Analytical comparison tolerance 1e-10 raw user units for these finite fixture values; rendered PDF.js overlay is not run.",
+    "effective_crop": "Intersection of raw CropBox and MediaBox; if disjoint, MediaBox. Use this frame for PDF.js viewport coordinates.",
+    "source_bbox_verification_tolerance": "16 * f64::EPSILON * max(1, abs(actual), abs(expected)), only for arithmetic roundoff, not extraction quality."
+  },
+  "cases": [
+    {
+      "id": "crop-rotation-0-userunit-2",
+      "page": {
+        "media_box": [
+          0,
+          0,
+          640,
+          840
+        ],
+        "crop_box": [
+          20,
+          40,
+          620,
+          800
+        ],
+        "rotation_deg": 0,
+        "user_unit": 2,
+        "engine_to_pdf_user_space": null
+      },
+      "input": {
+        "coords": [
+          50,
+          600,
+          150,
+          700
+        ],
+        "space": {
+          "kind": "display_top_left",
+          "reference": "crop"
+        }
+      },
+      "expected_pdf_user_space": [
+        70,
+        100,
+        170,
+        200
+      ]
+    },
+    {
+      "id": "crop-rotation-90-userunit-2",
+      "page": {
+        "media_box": [
+          0,
+          0,
+          640,
+          840
+        ],
+        "crop_box": [
+          20,
+          40,
+          620,
+          800
+        ],
+        "rotation_deg": 90,
+        "user_unit": 2,
+        "engine_to_pdf_user_space": null
+      },
+      "input": {
+        "coords": [
+          60,
+          50,
+          160,
+          150
+        ],
+        "space": {
+          "kind": "display_top_left",
+          "reference": "crop"
+        }
+      },
+      "expected_pdf_user_space": [
+        70,
+        100,
+        170,
+        200
+      ]
+    },
+    {
+      "id": "crop-rotation-180-userunit-2",
+      "page": {
+        "media_box": [
+          0,
+          0,
+          640,
+          840
+        ],
+        "crop_box": [
+          20,
+          40,
+          620,
+          800
+        ],
+        "rotation_deg": 180,
+        "user_unit": 2,
+        "engine_to_pdf_user_space": null
+      },
+      "input": {
+        "coords": [
+          450,
+          60,
+          550,
+          160
+        ],
+        "space": {
+          "kind": "display_top_left",
+          "reference": "crop"
+        }
+      },
+      "expected_pdf_user_space": [
+        70,
+        100,
+        170,
+        200
+      ]
+    },
+    {
+      "id": "crop-rotation-270-userunit-2",
+      "page": {
+        "media_box": [
+          0,
+          0,
+          640,
+          840
+        ],
+        "crop_box": [
+          20,
+          40,
+          620,
+          800
+        ],
+        "rotation_deg": 270,
+        "user_unit": 2,
+        "engine_to_pdf_user_space": null
+      },
+      "input": {
+        "coords": [
+          600,
+          450,
+          700,
+          550
+        ],
+        "space": {
+          "kind": "display_top_left",
+          "reference": "crop"
+        }
+      },
+      "expected_pdf_user_space": [
+        70,
+        100,
+        170,
+        200
+      ]
+    },
+    {
+      "id": "pdf-user-space-not-double-scaled",
+      "page": {
+        "media_box": [
+          0,
+          0,
+          640,
+          840
+        ],
+        "crop_box": [
+          20,
+          40,
+          620,
+          800
+        ],
+        "rotation_deg": 90,
+        "user_unit": 2,
+        "engine_to_pdf_user_space": null
+      },
+      "input": {
+        "coords": [
+          70,
+          100,
+          170,
+          200
+        ],
+        "space": {
+          "kind": "pdf_user_space"
+        }
+      },
+      "expected_pdf_user_space": [
+        70,
+        100,
+        170,
+        200
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+--- a/src/document/spans_text.rs
++++ b/src/document/spans_text.rs
+@@ -483,7 +483,15 @@
+                 let tol_prev = Self::same_line_threshold(prev, cur);
+                 let tol_anchor = Self::same_line_threshold(anchor, cur);
+ 
+-                if to_prev > tol_prev || to_anchor > tol_anchor {
++                // Equal-size overlapping runs on separate baselines are separate lines,
++                // including lines represented by just one span.
++                let same_size = (anchor.font_size - cur.font_size).abs() < 0.1;
++                let overlap = (anchor.bbox.x + anchor.bbox.width).min(cur.bbox.x + cur.bbox.width)
++                    - anchor.bbox.x.max(cur.bbox.x);
++                let stacked = same_size
++                    && to_anchor > 0.5 * anchor.font_size.max(1.0)
++                    && overlap > 0.5 * anchor.font_size.max(1.0);
++                if to_prev > tol_prev || to_anchor > tol_anchor || stacked {
+                     break;
+                 }
+ 

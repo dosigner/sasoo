@@ -1,0 +1,2687 @@
+{
+  "format_version": 1,
+  "pin": "PIN-01",
+  "revision": "context-snapshot-v4",
+  "observed": true,
+  "source": {
+    "kind": "synthetic_provider_real_python_app_and_sqlite",
+    "git_head": "24de77f9705cb42570abf835f552aa558380ba55",
+    "source_sha256": {
+      "backend/main.py": "81dae24f3e6d08138fd83ebf92a01e6441b4c03ac35a112a29be7ffc8784f117",
+      "backend/api/analysis_routes.py": "accff219edab81a8f669d634aa2ddf641194461ef03a9eac92bc1b7ce6468627",
+      "backend/models/database.py": "01eda91c7909840cba02836af47322b61b204f0769e6d07cc690bc05998ee5d6",
+      "backend/services/discussion.py": "41053babba12c1f3f9fbf4d191a687e834b08dbe548a384265bd060ab5926320",
+      "backend/services/pricing.py": "1667bf86faa63cc1652aab82469030e6362967ce88878592b7d33616d8a1934b",
+      "frontend/src/lib/api.ts": "d7f44bbaf9e9a7fdc485c9af5c53192bbf32baa80a3a5ecfbcf29cafdc3d0b58",
+      "scripts/rust-contract-harness.py": "dd650ad01d148882e9514d7f0e3d093c2d03ac9b6c77a75fc878a9395581fd96",
+      "scripts/rust-sse-contract-capture.py": "37f3e351209a2371ada2a3c0f05c19ca791b34b567c088b90123f956579d52fe",
+      "backend/api/test_rust_sse_chat_capture.py": "36363ec3e3d7495a0c98526d4ef41a366a01878048164d3fc72727c93ae3eaeb"
+    },
+    "lifespan": "not_run; database.init_db only; no reconciler",
+    "provenance": "synthetic inputs only",
+    "runtime": {
+      "python": "3.14.6",
+      "fastapi": "0.141.1",
+      "starlette": "1.6.0",
+      "anyio": "4.12.1",
+      "aiosqlite": "0.22.1"
+    }
+  },
+  "normalization": {
+    "discussion_rows.created_at": "{sqlite_current_timestamp}; SQLite CURRENT_TIMESTAMP only",
+    "context.requested_at": "Synthetic clock input: 2026-11-16T00:00:00+00:00; retained in actual SSE/storage bytes",
+    "ids": "retained; deterministic insertion order in empty database",
+    "stream": "ordered app events and joined bytes; ASGI/TCP chunk boundaries are not equality criteria",
+    "unknowns": "preserve null; never replace missing usage/cost with zero"
+  },
+  "asgi_final_body_sent_meaning": "Outer middleware sent more_body=false, including after disconnect; not a done event or proof of client delivery",
+  "reproduce": "cd sasoo && backend/.venv/bin/python scripts/rust-sse-contract-capture.py --fixture-root NEW_EMPTY_ROOT --deny-network",
+  "synthetic_boundaries": [
+    "_build_chat_context",
+    "active_provider",
+    "resolve_model",
+    "stream_interaction"
+  ],
+  "observation_wrapper": "append_sasoo calls real SQLite INSERT then signals completion, including shielded disconnect save",
+  "cases": [
+    {
+      "id": "complete_persist",
+      "request": {
+        "method": "POST",
+        "path": "/api/analysis/7/chat",
+        "headers": {
+          "host": "contract.test",
+          "content-type": "application/json",
+          "origin": "null",
+          "authorization": "Bearer synthetic-chat-token"
+        },
+        "json": {
+          "message": "합성 질문",
+          "persist": true,
+          "history": [
+            {
+              "role": "user",
+              "content": "무시할 본문 기록"
+            }
+          ]
+        },
+        "body_base64": "eyJtZXNzYWdlIjogIu2VqeyEsSDsp4jrrLgiLCAicGVyc2lzdCI6IHRydWUsICJoaXN0b3J5IjogW3sicm9sZSI6ICJ1c2VyIiwgImNvbnRlbnQiOiAi66y07Iuc7ZWgIOuzuOusuCDquLDroZ0ifV19",
+        "body_sha256": "b8b98a3847fc160877670a3bb5a3203f2d5060fc108839987b26946323b2ee76"
+      },
+      "synthetic_environment": {
+        "SASOO_ENV": "production",
+        "SASOO_API_TOKEN": "synthetic-chat-token"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-cache",
+          "x-accel-buffering": "no",
+          "content-type": "text/event-stream; charset=utf-8",
+          "access-control-allow-credentials": "true",
+          "access-control-allow-origin": "null",
+          "vary": "Origin"
+        },
+        "events": [
+          {
+            "type": "meta",
+            "user_message_id": 1,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          },
+          {
+            "type": "token",
+            "content": "합성 "
+          },
+          {
+            "type": "token",
+            "content": "답변"
+          },
+          {
+            "type": "done",
+            "tokens_in": 1000,
+            "tokens_out": 10,
+            "cost_usd": 0.00013,
+            "message_id": 2,
+            "context_tokens": 1000
+          }
+        ],
+        "body_base64": "ZGF0YTogeyJ0eXBlIjogIm1ldGEiLCAidXNlcl9tZXNzYWdlX2lkIjogMSwgInJlc2V0IjogbnVsbCwgImNvbnRleHQiOiB7InJlcXVlc3RlZF9hdCI6ICIyMDI2LTExLTE2VDAwOjAwOjAwKzAwOjAwIiwgInNvdXJjZXMiOiBbXX19CgpkYXRhOiB7InR5cGUiOiAidG9rZW4iLCAiY29udGVudCI6ICLtlanshLEgIn0KCmRhdGE6IHsidHlwZSI6ICJ0b2tlbiIsICJjb250ZW50IjogIuuLteuzgCJ9CgpkYXRhOiB7InR5cGUiOiAiZG9uZSIsICJ0b2tlbnNfaW4iOiAxMDAwLCAidG9rZW5zX291dCI6IDEwLCAiY29zdF91c2QiOiAwLjAwMDEzLCAibWVzc2FnZV9pZCI6IDIsICJjb250ZXh0X3Rva2VucyI6IDEwMDB9Cgo=",
+        "body_sha256": "0cfd232d991e7d77182250b06841a4c654f9b00aba7ffbe2d0b78b98a32c68ce",
+        "asgi_final_body_sent": true
+      },
+      "provider": {
+        "calls": [
+          {
+            "input": "사용자: 합성 질문",
+            "options": {
+              "lane": "chat",
+              "model": "gpt-6-luna",
+              "thinking_level": "low",
+              "system_instruction": "SYNTHETIC SYS",
+              "store": false
+            }
+          }
+        ],
+        "events": [
+          {
+            "type": "token",
+            "text": "합성 "
+          },
+          {
+            "type": "token",
+            "text": "답변"
+          },
+          {
+            "type": "done",
+            "tokens_in": 1000,
+            "tokens_out": 10
+          }
+        ],
+        "exceptions": [],
+        "closed": true,
+        "cancelled": false,
+        "usage_reached": true
+      },
+      "transport": {
+        "asgi_spec": "2.3",
+        "first_token_delivered": true,
+        "provider_barrier_reached": false,
+        "disconnect_consumed": false,
+        "app_returned": true
+      },
+      "storage": {
+        "rows": [
+          {
+            "id": 1,
+            "paper_id": 7,
+            "kind": "user",
+            "content": "합성 질문",
+            "status": "complete",
+            "reset_reason": null,
+            "model_used": null,
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "created_at": "{sqlite_current_timestamp}",
+            "context": null
+          },
+          {
+            "id": 2,
+            "paper_id": 7,
+            "kind": "sasoo",
+            "content": "합성 답변",
+            "status": "complete",
+            "reset_reason": null,
+            "model_used": "gpt-6-luna",
+            "tokens_in": 1000,
+            "tokens_out": 10,
+            "cost_usd": 0.00013,
+            "created_at": "{sqlite_current_timestamp}",
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "active_context": [
+          {
+            "id": 1,
+            "paper_id": 7,
+            "kind": "user",
+            "content": "합성 질문",
+            "status": "complete",
+            "reset_reason": null,
+            "model_used": null,
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "context_json": null,
+            "created_at": "{sqlite_current_timestamp}"
+          },
+          {
+            "id": 2,
+            "paper_id": 7,
+            "kind": "sasoo",
+            "content": "합성 답변",
+            "status": "complete",
+            "reset_reason": null,
+            "model_used": "gpt-6-luna",
+            "tokens_in": 1000,
+            "tokens_out": 10,
+            "cost_usd": 0.00013,
+            "context_json": "{\"requested_at\": \"2026-11-16T00:00:00+00:00\", \"sources\": []}",
+            "created_at": "{sqlite_current_timestamp}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "complete_ephemeral",
+      "request": {
+        "method": "POST",
+        "path": "/api/analysis/8/chat",
+        "headers": {
+          "host": "contract.test",
+          "content-type": "application/json",
+          "origin": "null",
+          "authorization": "Bearer synthetic-chat-token"
+        },
+        "json": {
+          "message": "합성 질문",
+          "persist": false,
+          "history": [
+            {
+              "role": "user",
+              "content": "무시할 본문 기록"
+            }
+          ]
+        },
+        "body_base64": "eyJtZXNzYWdlIjogIu2VqeyEsSDsp4jrrLgiLCAicGVyc2lzdCI6IGZhbHNlLCAiaGlzdG9yeSI6IFt7InJvbGUiOiAidXNlciIsICJjb250ZW50IjogIuustOyLnO2VoCDrs7jrrLgg6riw66GdIn1dfQ==",
+        "body_sha256": "4a543db6cffbf5634991a63e3eef326d8e2ce55c867fab47512e9ec96ff1f332"
+      },
+      "synthetic_environment": {
+        "SASOO_ENV": "production",
+        "SASOO_API_TOKEN": "synthetic-chat-token"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-cache",
+          "x-accel-buffering": "no",
+          "content-type": "text/event-stream; charset=utf-8",
+          "access-control-allow-credentials": "true",
+          "access-control-allow-origin": "null",
+          "vary": "Origin"
+        },
+        "events": [
+          {
+            "type": "token",
+            "content": "합성 "
+          },
+          {
+            "type": "token",
+            "content": "답변"
+          },
+          {
+            "type": "done",
+            "tokens_in": 1000,
+            "tokens_out": 10,
+            "cost_usd": 0.00013,
+            "message_id": null,
+            "context_tokens": 1000
+          }
+        ],
+        "body_base64": "ZGF0YTogeyJ0eXBlIjogInRva2VuIiwgImNvbnRlbnQiOiAi7ZWp7ISxICJ9CgpkYXRhOiB7InR5cGUiOiAidG9rZW4iLCAiY29udGVudCI6ICLri7Xrs4AifQoKZGF0YTogeyJ0eXBlIjogImRvbmUiLCAidG9rZW5zX2luIjogMTAwMCwgInRva2Vuc19vdXQiOiAxMCwgImNvc3RfdXNkIjogMC4wMDAxMywgIm1lc3NhZ2VfaWQiOiBudWxsLCAiY29udGV4dF90b2tlbnMiOiAxMDAwfQoK",
+        "body_sha256": "ed255757fd4519110fd634ff3b276795cb50f304c1e01751b6f7c07f4aed6c22",
+        "asgi_final_body_sent": true
+      },
+      "provider": {
+        "calls": [
+          {
+            "input": "사용자: 무시할 본문 기록\n사용자: 합성 질문",
+            "options": {
+              "lane": "chat",
+              "model": "gpt-6-luna",
+              "thinking_level": "low",
+              "system_instruction": "SYNTHETIC SYS",
+              "store": false
+            }
+          }
+        ],
+        "events": [
+          {
+            "type": "token",
+            "text": "합성 "
+          },
+          {
+            "type": "token",
+            "text": "답변"
+          },
+          {
+            "type": "done",
+            "tokens_in": 1000,
+            "tokens_out": 10
+          }
+        ],
+        "exceptions": [],
+        "closed": true,
+        "cancelled": false,
+        "usage_reached": true
+      },
+      "transport": {
+        "asgi_spec": "2.3",
+        "first_token_delivered": true,
+        "provider_barrier_reached": false,
+        "disconnect_consumed": false,
+        "app_returned": true
+      },
+      "storage": {
+        "rows": [],
+        "active_context": []
+      }
+    },
+    {
+      "id": "token_eof",
+      "request": {
+        "method": "POST",
+        "path": "/api/analysis/9/chat",
+        "headers": {
+          "host": "contract.test",
+          "content-type": "application/json",
+          "origin": "null",
+          "authorization": "Bearer synthetic-chat-token"
+        },
+        "json": {
+          "message": "합성 질문",
+          "persist": true,
+          "history": [
+            {
+              "role": "user",
+              "content": "무시할 본문 기록"
+            }
+          ]
+        },
+        "body_base64": "eyJtZXNzYWdlIjogIu2VqeyEsSDsp4jrrLgiLCAicGVyc2lzdCI6IHRydWUsICJoaXN0b3J5IjogW3sicm9sZSI6ICJ1c2VyIiwgImNvbnRlbnQiOiAi66y07Iuc7ZWgIOuzuOusuCDquLDroZ0ifV19",
+        "body_sha256": "b8b98a3847fc160877670a3bb5a3203f2d5060fc108839987b26946323b2ee76"
+      },
+      "synthetic_environment": {
+        "SASOO_ENV": "production",
+        "SASOO_API_TOKEN": "synthetic-chat-token"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-cache",
+          "x-accel-buffering": "no",
+          "content-type": "text/event-stream; charset=utf-8",
+          "access-control-allow-credentials": "true",
+          "access-control-allow-origin": "null",
+          "vary": "Origin"
+        },
+        "events": [
+          {
+            "type": "meta",
+            "user_message_id": 3,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          },
+          {
+            "type": "token",
+            "content": "합성 "
+          },
+          {
+            "type": "token",
+            "content": "답변"
+          }
+        ],
+        "body_base64": "ZGF0YTogeyJ0eXBlIjogIm1ldGEiLCAidXNlcl9tZXNzYWdlX2lkIjogMywgInJlc2V0IjogbnVsbCwgImNvbnRleHQiOiB7InJlcXVlc3RlZF9hdCI6ICIyMDI2LTExLTE2VDAwOjAwOjAwKzAwOjAwIiwgInNvdXJjZXMiOiBbXX19CgpkYXRhOiB7InR5cGUiOiAidG9rZW4iLCAiY29udGVudCI6ICLtlanshLEgIn0KCmRhdGE6IHsidHlwZSI6ICJ0b2tlbiIsICJjb250ZW50IjogIuuLteuzgCJ9Cgo=",
+        "body_sha256": "776af412839c0d8a31e863619f022912f2ed69eba1f4cbaa1c9b8c71c3759ec0",
+        "asgi_final_body_sent": true
+      },
+      "provider": {
+        "calls": [
+          {
+            "input": "사용자: 합성 질문",
+            "options": {
+              "lane": "chat",
+              "model": "gpt-6-luna",
+              "thinking_level": "low",
+              "system_instruction": "SYNTHETIC SYS",
+              "store": false
+            }
+          }
+        ],
+        "events": [
+          {
+            "type": "token",
+            "text": "합성 "
+          },
+          {
+            "type": "token",
+            "text": "답변"
+          }
+        ],
+        "exceptions": [],
+        "closed": true,
+        "cancelled": false,
+        "usage_reached": false
+      },
+      "transport": {
+        "asgi_spec": "2.3",
+        "first_token_delivered": true,
+        "provider_barrier_reached": false,
+        "disconnect_consumed": false,
+        "app_returned": true
+      },
+      "storage": {
+        "rows": [
+          {
+            "id": 3,
+            "paper_id": 9,
+            "kind": "user",
+            "content": "합성 질문",
+            "status": "complete",
+            "reset_reason": null,
+            "model_used": null,
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "created_at": "{sqlite_current_timestamp}",
+            "context": null
+          },
+          {
+            "id": 4,
+            "paper_id": 9,
+            "kind": "sasoo",
+            "content": "합성 답변",
+            "status": "interrupted",
+            "reset_reason": null,
+            "model_used": "gpt-6-luna",
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "created_at": "{sqlite_current_timestamp}",
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "active_context": [
+          {
+            "id": 3,
+            "paper_id": 9,
+            "kind": "user",
+            "content": "합성 질문",
+            "status": "complete",
+            "reset_reason": null,
+            "model_used": null,
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "context_json": null,
+            "created_at": "{sqlite_current_timestamp}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "incomplete",
+      "request": {
+        "method": "POST",
+        "path": "/api/analysis/10/chat",
+        "headers": {
+          "host": "contract.test",
+          "content-type": "application/json",
+          "origin": "null",
+          "authorization": "Bearer synthetic-chat-token"
+        },
+        "json": {
+          "message": "합성 질문",
+          "persist": true,
+          "history": [
+            {
+              "role": "user",
+              "content": "무시할 본문 기록"
+            }
+          ]
+        },
+        "body_base64": "eyJtZXNzYWdlIjogIu2VqeyEsSDsp4jrrLgiLCAicGVyc2lzdCI6IHRydWUsICJoaXN0b3J5IjogW3sicm9sZSI6ICJ1c2VyIiwgImNvbnRlbnQiOiAi66y07Iuc7ZWgIOuzuOusuCDquLDroZ0ifV19",
+        "body_sha256": "b8b98a3847fc160877670a3bb5a3203f2d5060fc108839987b26946323b2ee76"
+      },
+      "synthetic_environment": {
+        "SASOO_ENV": "production",
+        "SASOO_API_TOKEN": "synthetic-chat-token"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-cache",
+          "x-accel-buffering": "no",
+          "content-type": "text/event-stream; charset=utf-8",
+          "access-control-allow-credentials": "true",
+          "access-control-allow-origin": "null",
+          "vary": "Origin"
+        },
+        "events": [
+          {
+            "type": "meta",
+            "user_message_id": 5,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          },
+          {
+            "type": "token",
+            "content": "합성 "
+          },
+          {
+            "type": "token",
+            "content": "답변"
+          },
+          {
+            "type": "error",
+            "message": "응답이 완료되지 않았습니다",
+            "tokens_in": 1000,
+            "tokens_out": 10,
+            "cost_usd": 0.00013
+          }
+        ],
+        "body_base64": "ZGF0YTogeyJ0eXBlIjogIm1ldGEiLCAidXNlcl9tZXNzYWdlX2lkIjogNSwgInJlc2V0IjogbnVsbCwgImNvbnRleHQiOiB7InJlcXVlc3RlZF9hdCI6ICIyMDI2LTExLTE2VDAwOjAwOjAwKzAwOjAwIiwgInNvdXJjZXMiOiBbXX19CgpkYXRhOiB7InR5cGUiOiAidG9rZW4iLCAiY29udGVudCI6ICLtlanshLEgIn0KCmRhdGE6IHsidHlwZSI6ICJ0b2tlbiIsICJjb250ZW50IjogIuuLteuzgCJ9CgpkYXRhOiB7InR5cGUiOiAiZXJyb3IiLCAibWVzc2FnZSI6ICLsnZHri7XsnbQg7JmE66OM65CY7KeAIOyViuyVmOyKteuLiOuLpCIsICJ0b2tlbnNfaW4iOiAxMDAwLCAidG9rZW5zX291dCI6IDEwLCAiY29zdF91c2QiOiAwLjAwMDEzfQoK",
+        "body_sha256": "2f456dcb9c6a0d69aaa18f438685c3ff3d79f8efc21115db82f52def24cbb17e",
+        "asgi_final_body_sent": true
+      },
+      "provider": {
+        "calls": [
+          {
+            "input": "사용자: 합성 질문",
+            "options": {
+              "lane": "chat",
+              "model": "gpt-6-luna",
+              "thinking_level": "low",
+              "system_instruction": "SYNTHETIC SYS",
+              "store": false
+            }
+          }
+        ],
+        "events": [
+          {
+            "type": "token",
+            "text": "합성 "
+          },
+          {
+            "type": "token",
+            "text": "답변"
+          },
+          {
+            "type": "done",
+            "tokens_in": 1000,
+            "tokens_out": 10,
+            "response_status": "incomplete",
+            "incomplete": true
+          }
+        ],
+        "exceptions": [],
+        "closed": true,
+        "cancelled": false,
+        "usage_reached": true
+      },
+      "transport": {
+        "asgi_spec": "2.3",
+        "first_token_delivered": true,
+        "provider_barrier_reached": false,
+        "disconnect_consumed": false,
+        "app_returned": true
+      },
+      "storage": {
+        "rows": [
+          {
+            "id": 5,
+            "paper_id": 10,
+            "kind": "user",
+            "content": "합성 질문",
+            "status": "complete",
+            "reset_reason": null,
+            "model_used": null,
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "created_at": "{sqlite_current_timestamp}",
+            "context": null
+          },
+          {
+            "id": 6,
+            "paper_id": 10,
+            "kind": "sasoo",
+            "content": "합성 답변",
+            "status": "interrupted",
+            "reset_reason": null,
+            "model_used": "gpt-6-luna",
+            "tokens_in": 1000,
+            "tokens_out": 10,
+            "cost_usd": 0.00013,
+            "created_at": "{sqlite_current_timestamp}",
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "active_context": [
+          {
+            "id": 5,
+            "paper_id": 10,
+            "kind": "user",
+            "content": "합성 질문",
+            "status": "complete",
+            "reset_reason": null,
+            "model_used": null,
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "context_json": null,
+            "created_at": "{sqlite_current_timestamp}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "failed",
+      "request": {
+        "method": "POST",
+        "path": "/api/analysis/11/chat",
+        "headers": {
+          "host": "contract.test",
+          "content-type": "application/json",
+          "origin": "null",
+          "authorization": "Bearer synthetic-chat-token"
+        },
+        "json": {
+          "message": "합성 질문",
+          "persist": true,
+          "history": [
+            {
+              "role": "user",
+              "content": "무시할 본문 기록"
+            }
+          ]
+        },
+        "body_base64": "eyJtZXNzYWdlIjogIu2VqeyEsSDsp4jrrLgiLCAicGVyc2lzdCI6IHRydWUsICJoaXN0b3J5IjogW3sicm9sZSI6ICJ1c2VyIiwgImNvbnRlbnQiOiAi66y07Iuc7ZWgIOuzuOusuCDquLDroZ0ifV19",
+        "body_sha256": "b8b98a3847fc160877670a3bb5a3203f2d5060fc108839987b26946323b2ee76"
+      },
+      "synthetic_environment": {
+        "SASOO_ENV": "production",
+        "SASOO_API_TOKEN": "synthetic-chat-token"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-cache",
+          "x-accel-buffering": "no",
+          "content-type": "text/event-stream; charset=utf-8",
+          "access-control-allow-credentials": "true",
+          "access-control-allow-origin": "null",
+          "vary": "Origin"
+        },
+        "events": [
+          {
+            "type": "meta",
+            "user_message_id": 7,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          },
+          {
+            "type": "token",
+            "content": "합성 "
+          },
+          {
+            "type": "token",
+            "content": "답변"
+          },
+          {
+            "type": "error",
+            "message": "응답이 완료되지 않았습니다",
+            "tokens_in": 1000,
+            "tokens_out": 10,
+            "cost_usd": 0.00013
+          }
+        ],
+        "body_base64": "ZGF0YTogeyJ0eXBlIjogIm1ldGEiLCAidXNlcl9tZXNzYWdlX2lkIjogNywgInJlc2V0IjogbnVsbCwgImNvbnRleHQiOiB7InJlcXVlc3RlZF9hdCI6ICIyMDI2LTExLTE2VDAwOjAwOjAwKzAwOjAwIiwgInNvdXJjZXMiOiBbXX19CgpkYXRhOiB7InR5cGUiOiAidG9rZW4iLCAiY29udGVudCI6ICLtlanshLEgIn0KCmRhdGE6IHsidHlwZSI6ICJ0b2tlbiIsICJjb250ZW50IjogIuuLteuzgCJ9CgpkYXRhOiB7InR5cGUiOiAiZXJyb3IiLCAibWVzc2FnZSI6ICLsnZHri7XsnbQg7JmE66OM65CY7KeAIOyViuyVmOyKteuLiOuLpCIsICJ0b2tlbnNfaW4iOiAxMDAwLCAidG9rZW5zX291dCI6IDEwLCAiY29zdF91c2QiOiAwLjAwMDEzfQoK",
+        "body_sha256": "5b4a5c1077a82e4b402b9a47f589e0b78a23e8580b1271f7f98d2acb4f323e00",
+        "asgi_final_body_sent": true
+      },
+      "provider": {
+        "calls": [
+          {
+            "input": "사용자: 합성 질문",
+            "options": {
+              "lane": "chat",
+              "model": "gpt-6-luna",
+              "thinking_level": "low",
+              "system_instruction": "SYNTHETIC SYS",
+              "store": false
+            }
+          }
+        ],
+        "events": [
+          {
+            "type": "token",
+            "text": "합성 "
+          },
+          {
+            "type": "token",
+            "text": "답변"
+          },
+          {
+            "type": "done",
+            "tokens_in": 1000,
+            "tokens_out": 10,
+            "response_status": "failed",
+            "incomplete": false
+          }
+        ],
+        "exceptions": [],
+        "closed": true,
+        "cancelled": false,
+        "usage_reached": true
+      },
+      "transport": {
+        "asgi_spec": "2.3",
+        "first_token_delivered": true,
+        "provider_barrier_reached": false,
+        "disconnect_consumed": false,
+        "app_returned": true
+      },
+      "storage": {
+        "rows": [
+          {
+            "id": 7,
+            "paper_id": 11,
+            "kind": "user",
+            "content": "합성 질문",
+            "status": "complete",
+            "reset_reason": null,
+            "model_used": null,
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "created_at": "{sqlite_current_timestamp}",
+            "context": null
+          },
+          {
+            "id": 8,
+            "paper_id": 11,
+            "kind": "sasoo",
+            "content": "합성 답변",
+            "status": "interrupted",
+            "reset_reason": null,
+            "model_used": "gpt-6-luna",
+            "tokens_in": 1000,
+            "tokens_out": 10,
+            "cost_usd": 0.00013,
+            "created_at": "{sqlite_current_timestamp}",
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "active_context": [
+          {
+            "id": 7,
+            "paper_id": 11,
+            "kind": "user",
+            "content": "합성 질문",
+            "status": "complete",
+            "reset_reason": null,
+            "model_used": null,
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "context_json": null,
+            "created_at": "{sqlite_current_timestamp}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "cancelled",
+      "request": {
+        "method": "POST",
+        "path": "/api/analysis/12/chat",
+        "headers": {
+          "host": "contract.test",
+          "content-type": "application/json",
+          "origin": "null",
+          "authorization": "Bearer synthetic-chat-token"
+        },
+        "json": {
+          "message": "합성 질문",
+          "persist": true,
+          "history": [
+            {
+              "role": "user",
+              "content": "무시할 본문 기록"
+            }
+          ]
+        },
+        "body_base64": "eyJtZXNzYWdlIjogIu2VqeyEsSDsp4jrrLgiLCAicGVyc2lzdCI6IHRydWUsICJoaXN0b3J5IjogW3sicm9sZSI6ICJ1c2VyIiwgImNvbnRlbnQiOiAi66y07Iuc7ZWgIOuzuOusuCDquLDroZ0ifV19",
+        "body_sha256": "b8b98a3847fc160877670a3bb5a3203f2d5060fc108839987b26946323b2ee76"
+      },
+      "synthetic_environment": {
+        "SASOO_ENV": "production",
+        "SASOO_API_TOKEN": "synthetic-chat-token"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-cache",
+          "x-accel-buffering": "no",
+          "content-type": "text/event-stream; charset=utf-8",
+          "access-control-allow-credentials": "true",
+          "access-control-allow-origin": "null",
+          "vary": "Origin"
+        },
+        "events": [
+          {
+            "type": "meta",
+            "user_message_id": 9,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          },
+          {
+            "type": "token",
+            "content": "합성 "
+          },
+          {
+            "type": "token",
+            "content": "답변"
+          },
+          {
+            "type": "error",
+            "message": "응답이 완료되지 않았습니다",
+            "tokens_in": 1000,
+            "tokens_out": 10,
+            "cost_usd": 0.00013
+          }
+        ],
+        "body_base64": "ZGF0YTogeyJ0eXBlIjogIm1ldGEiLCAidXNlcl9tZXNzYWdlX2lkIjogOSwgInJlc2V0IjogbnVsbCwgImNvbnRleHQiOiB7InJlcXVlc3RlZF9hdCI6ICIyMDI2LTExLTE2VDAwOjAwOjAwKzAwOjAwIiwgInNvdXJjZXMiOiBbXX19CgpkYXRhOiB7InR5cGUiOiAidG9rZW4iLCAiY29udGVudCI6ICLtlanshLEgIn0KCmRhdGE6IHsidHlwZSI6ICJ0b2tlbiIsICJjb250ZW50IjogIuuLteuzgCJ9CgpkYXRhOiB7InR5cGUiOiAiZXJyb3IiLCAibWVzc2FnZSI6ICLsnZHri7XsnbQg7JmE66OM65CY7KeAIOyViuyVmOyKteuLiOuLpCIsICJ0b2tlbnNfaW4iOiAxMDAwLCAidG9rZW5zX291dCI6IDEwLCAiY29zdF91c2QiOiAwLjAwMDEzfQoK",
+        "body_sha256": "cfa3d2ac6f307bed81620d037b2db03f34ab4ef10bcbef7bf32b6be7e3383557",
+        "asgi_final_body_sent": true
+      },
+      "provider": {
+        "calls": [
+          {
+            "input": "사용자: 합성 질문",
+            "options": {
+              "lane": "chat",
+              "model": "gpt-6-luna",
+              "thinking_level": "low",
+              "system_instruction": "SYNTHETIC SYS",
+              "store": false
+            }
+          }
+        ],
+        "events": [
+          {
+            "type": "token",
+            "text": "합성 "
+          },
+          {
+            "type": "token",
+            "text": "답변"
+          },
+          {
+            "type": "done",
+            "tokens_in": 1000,
+            "tokens_out": 10,
+            "response_status": "cancelled",
+            "incomplete": false
+          }
+        ],
+        "exceptions": [],
+        "closed": true,
+        "cancelled": false,
+        "usage_reached": true
+      },
+      "transport": {
+        "asgi_spec": "2.3",
+        "first_token_delivered": true,
+        "provider_barrier_reached": false,
+        "disconnect_consumed": false,
+        "app_returned": true
+      },
+      "storage": {
+        "rows": [
+          {
+            "id": 9,
+            "paper_id": 12,
+            "kind": "user",
+            "content": "합성 질문",
+            "status": "complete",
+            "reset_reason": null,
+            "model_used": null,
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "created_at": "{sqlite_current_timestamp}",
+            "context": null
+          },
+          {
+            "id": 10,
+            "paper_id": 12,
+            "kind": "sasoo",
+            "content": "합성 답변",
+            "status": "interrupted",
+            "reset_reason": null,
+            "model_used": "gpt-6-luna",
+            "tokens_in": 1000,
+            "tokens_out": 10,
+            "cost_usd": 0.00013,
+            "created_at": "{sqlite_current_timestamp}",
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "active_context": [
+          {
+            "id": 9,
+            "paper_id": 12,
+            "kind": "user",
+            "content": "합성 질문",
+            "status": "complete",
+            "reset_reason": null,
+            "model_used": null,
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "context_json": null,
+            "created_at": "{sqlite_current_timestamp}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "missing_usage",
+      "request": {
+        "method": "POST",
+        "path": "/api/analysis/13/chat",
+        "headers": {
+          "host": "contract.test",
+          "content-type": "application/json",
+          "origin": "null",
+          "authorization": "Bearer synthetic-chat-token"
+        },
+        "json": {
+          "message": "합성 질문",
+          "persist": true,
+          "history": [
+            {
+              "role": "user",
+              "content": "무시할 본문 기록"
+            }
+          ]
+        },
+        "body_base64": "eyJtZXNzYWdlIjogIu2VqeyEsSDsp4jrrLgiLCAicGVyc2lzdCI6IHRydWUsICJoaXN0b3J5IjogW3sicm9sZSI6ICJ1c2VyIiwgImNvbnRlbnQiOiAi66y07Iuc7ZWgIOuzuOusuCDquLDroZ0ifV19",
+        "body_sha256": "b8b98a3847fc160877670a3bb5a3203f2d5060fc108839987b26946323b2ee76"
+      },
+      "synthetic_environment": {
+        "SASOO_ENV": "production",
+        "SASOO_API_TOKEN": "synthetic-chat-token"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-cache",
+          "x-accel-buffering": "no",
+          "content-type": "text/event-stream; charset=utf-8",
+          "access-control-allow-credentials": "true",
+          "access-control-allow-origin": "null",
+          "vary": "Origin"
+        },
+        "events": [
+          {
+            "type": "meta",
+            "user_message_id": 11,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          },
+          {
+            "type": "token",
+            "content": "합성 "
+          },
+          {
+            "type": "token",
+            "content": "답변"
+          },
+          {
+            "type": "error",
+            "message": "응답 사용량을 확인하지 못했습니다",
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null
+          }
+        ],
+        "body_base64": "ZGF0YTogeyJ0eXBlIjogIm1ldGEiLCAidXNlcl9tZXNzYWdlX2lkIjogMTEsICJyZXNldCI6IG51bGwsICJjb250ZXh0IjogeyJyZXF1ZXN0ZWRfYXQiOiAiMjAyNi0xMS0xNlQwMDowMDowMCswMDowMCIsICJzb3VyY2VzIjogW119fQoKZGF0YTogeyJ0eXBlIjogInRva2VuIiwgImNvbnRlbnQiOiAi7ZWp7ISxICJ9CgpkYXRhOiB7InR5cGUiOiAidG9rZW4iLCAiY29udGVudCI6ICLri7Xrs4AifQoKZGF0YTogeyJ0eXBlIjogImVycm9yIiwgIm1lc3NhZ2UiOiAi7J2R64u1IOyCrOyaqeufieydhCDtmZXsnbjtlZjsp4Ag66q77ZaI7Iq164uI64ukIiwgInRva2Vuc19pbiI6IG51bGwsICJ0b2tlbnNfb3V0IjogbnVsbCwgImNvc3RfdXNkIjogbnVsbH0KCg==",
+        "body_sha256": "6df91a44fccdcdfe78fc9bf3ef55eaf722c2918fc2e114f31d6f6bf143e0f196",
+        "asgi_final_body_sent": true
+      },
+      "provider": {
+        "calls": [
+          {
+            "input": "사용자: 합성 질문",
+            "options": {
+              "lane": "chat",
+              "model": "gpt-6-luna",
+              "thinking_level": "low",
+              "system_instruction": "SYNTHETIC SYS",
+              "store": false
+            }
+          }
+        ],
+        "events": [
+          {
+            "type": "token",
+            "text": "합성 "
+          },
+          {
+            "type": "token",
+            "text": "답변"
+          },
+          {
+            "type": "done"
+          }
+        ],
+        "exceptions": [],
+        "closed": true,
+        "cancelled": false,
+        "usage_reached": false
+      },
+      "transport": {
+        "asgi_spec": "2.3",
+        "first_token_delivered": true,
+        "provider_barrier_reached": false,
+        "disconnect_consumed": false,
+        "app_returned": true
+      },
+      "storage": {
+        "rows": [
+          {
+            "id": 11,
+            "paper_id": 13,
+            "kind": "user",
+            "content": "합성 질문",
+            "status": "complete",
+            "reset_reason": null,
+            "model_used": null,
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "created_at": "{sqlite_current_timestamp}",
+            "context": null
+          },
+          {
+            "id": 12,
+            "paper_id": 13,
+            "kind": "sasoo",
+            "content": "합성 답변",
+            "status": "interrupted",
+            "reset_reason": null,
+            "model_used": "gpt-6-luna",
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "created_at": "{sqlite_current_timestamp}",
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "active_context": [
+          {
+            "id": 11,
+            "paper_id": 13,
+            "kind": "user",
+            "content": "합성 질문",
+            "status": "complete",
+            "reset_reason": null,
+            "model_used": null,
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "context_json": null,
+            "created_at": "{sqlite_current_timestamp}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "token_exception",
+      "request": {
+        "method": "POST",
+        "path": "/api/analysis/14/chat",
+        "headers": {
+          "host": "contract.test",
+          "content-type": "application/json",
+          "origin": "null",
+          "authorization": "Bearer synthetic-chat-token"
+        },
+        "json": {
+          "message": "합성 질문",
+          "persist": true,
+          "history": [
+            {
+              "role": "user",
+              "content": "무시할 본문 기록"
+            }
+          ]
+        },
+        "body_base64": "eyJtZXNzYWdlIjogIu2VqeyEsSDsp4jrrLgiLCAicGVyc2lzdCI6IHRydWUsICJoaXN0b3J5IjogW3sicm9sZSI6ICJ1c2VyIiwgImNvbnRlbnQiOiAi66y07Iuc7ZWgIOuzuOusuCDquLDroZ0ifV19",
+        "body_sha256": "b8b98a3847fc160877670a3bb5a3203f2d5060fc108839987b26946323b2ee76"
+      },
+      "synthetic_environment": {
+        "SASOO_ENV": "production",
+        "SASOO_API_TOKEN": "synthetic-chat-token"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-cache",
+          "x-accel-buffering": "no",
+          "content-type": "text/event-stream; charset=utf-8",
+          "access-control-allow-credentials": "true",
+          "access-control-allow-origin": "null",
+          "vary": "Origin"
+        },
+        "events": [
+          {
+            "type": "meta",
+            "user_message_id": 13,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          },
+          {
+            "type": "token",
+            "content": "합성 "
+          },
+          {
+            "type": "token",
+            "content": "답변"
+          },
+          {
+            "type": "error",
+            "message": "synthetic provider failure after token"
+          }
+        ],
+        "body_base64": "ZGF0YTogeyJ0eXBlIjogIm1ldGEiLCAidXNlcl9tZXNzYWdlX2lkIjogMTMsICJyZXNldCI6IG51bGwsICJjb250ZXh0IjogeyJyZXF1ZXN0ZWRfYXQiOiAiMjAyNi0xMS0xNlQwMDowMDowMCswMDowMCIsICJzb3VyY2VzIjogW119fQoKZGF0YTogeyJ0eXBlIjogInRva2VuIiwgImNvbnRlbnQiOiAi7ZWp7ISxICJ9CgpkYXRhOiB7InR5cGUiOiAidG9rZW4iLCAiY29udGVudCI6ICLri7Xrs4AifQoKZGF0YTogeyJ0eXBlIjogImVycm9yIiwgIm1lc3NhZ2UiOiAic3ludGhldGljIHByb3ZpZGVyIGZhaWx1cmUgYWZ0ZXIgdG9rZW4ifQoK",
+        "body_sha256": "4b3fb623dc6dd4acb8df123317d44164fc7308cb694d09349e9b3ed5a1b8931d",
+        "asgi_final_body_sent": true
+      },
+      "provider": {
+        "calls": [
+          {
+            "input": "사용자: 합성 질문",
+            "options": {
+              "lane": "chat",
+              "model": "gpt-6-luna",
+              "thinking_level": "low",
+              "system_instruction": "SYNTHETIC SYS",
+              "store": false
+            }
+          }
+        ],
+        "events": [
+          {
+            "type": "token",
+            "text": "합성 "
+          },
+          {
+            "type": "token",
+            "text": "답변"
+          }
+        ],
+        "exceptions": [
+          "synthetic provider failure after token"
+        ],
+        "closed": true,
+        "cancelled": false,
+        "usage_reached": false
+      },
+      "transport": {
+        "asgi_spec": "2.3",
+        "first_token_delivered": true,
+        "provider_barrier_reached": false,
+        "disconnect_consumed": false,
+        "app_returned": true
+      },
+      "storage": {
+        "rows": [
+          {
+            "id": 13,
+            "paper_id": 14,
+            "kind": "user",
+            "content": "합성 질문",
+            "status": "complete",
+            "reset_reason": null,
+            "model_used": null,
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "created_at": "{sqlite_current_timestamp}",
+            "context": null
+          },
+          {
+            "id": 14,
+            "paper_id": 14,
+            "kind": "sasoo",
+            "content": "합성 답변",
+            "status": "interrupted",
+            "reset_reason": null,
+            "model_used": "gpt-6-luna",
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "created_at": "{sqlite_current_timestamp}",
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "active_context": [
+          {
+            "id": 13,
+            "paper_id": 14,
+            "kind": "user",
+            "content": "합성 질문",
+            "status": "complete",
+            "reset_reason": null,
+            "model_used": null,
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "context_json": null,
+            "created_at": "{sqlite_current_timestamp}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "disconnect",
+      "request": {
+        "method": "POST",
+        "path": "/api/analysis/15/chat",
+        "headers": {
+          "host": "contract.test",
+          "content-type": "application/json",
+          "origin": "null",
+          "authorization": "Bearer synthetic-chat-token"
+        },
+        "json": {
+          "message": "합성 질문",
+          "persist": true,
+          "history": [
+            {
+              "role": "user",
+              "content": "무시할 본문 기록"
+            }
+          ]
+        },
+        "body_base64": "eyJtZXNzYWdlIjogIu2VqeyEsSDsp4jrrLgiLCAicGVyc2lzdCI6IHRydWUsICJoaXN0b3J5IjogW3sicm9sZSI6ICJ1c2VyIiwgImNvbnRlbnQiOiAi66y07Iuc7ZWgIOuzuOusuCDquLDroZ0ifV19",
+        "body_sha256": "b8b98a3847fc160877670a3bb5a3203f2d5060fc108839987b26946323b2ee76"
+      },
+      "synthetic_environment": {
+        "SASOO_ENV": "production",
+        "SASOO_API_TOKEN": "synthetic-chat-token"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-cache",
+          "x-accel-buffering": "no",
+          "content-type": "text/event-stream; charset=utf-8",
+          "access-control-allow-credentials": "true",
+          "access-control-allow-origin": "null",
+          "vary": "Origin"
+        },
+        "events": [
+          {
+            "type": "meta",
+            "user_message_id": 15,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          },
+          {
+            "type": "token",
+            "content": "합성 "
+          }
+        ],
+        "body_base64": "ZGF0YTogeyJ0eXBlIjogIm1ldGEiLCAidXNlcl9tZXNzYWdlX2lkIjogMTUsICJyZXNldCI6IG51bGwsICJjb250ZXh0IjogeyJyZXF1ZXN0ZWRfYXQiOiAiMjAyNi0xMS0xNlQwMDowMDowMCswMDowMCIsICJzb3VyY2VzIjogW119fQoKZGF0YTogeyJ0eXBlIjogInRva2VuIiwgImNvbnRlbnQiOiAi7ZWp7ISxICJ9Cgo=",
+        "body_sha256": "b5c529b048bdf77fe9a1e796838a16b349377271314ef3b5ea619803241f019d",
+        "asgi_final_body_sent": true
+      },
+      "provider": {
+        "calls": [
+          {
+            "input": "사용자: 합성 질문",
+            "options": {
+              "lane": "chat",
+              "model": "gpt-6-luna",
+              "thinking_level": "low",
+              "system_instruction": "SYNTHETIC SYS",
+              "store": false
+            }
+          }
+        ],
+        "events": [
+          {
+            "type": "token",
+            "text": "합성 "
+          }
+        ],
+        "exceptions": [],
+        "closed": true,
+        "cancelled": true,
+        "usage_reached": false
+      },
+      "transport": {
+        "asgi_spec": "2.3",
+        "first_token_delivered": true,
+        "provider_barrier_reached": true,
+        "disconnect_consumed": true,
+        "app_returned": true
+      },
+      "storage": {
+        "rows": [
+          {
+            "id": 15,
+            "paper_id": 15,
+            "kind": "user",
+            "content": "합성 질문",
+            "status": "complete",
+            "reset_reason": null,
+            "model_used": null,
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "created_at": "{sqlite_current_timestamp}",
+            "context": null
+          },
+          {
+            "id": 16,
+            "paper_id": 15,
+            "kind": "sasoo",
+            "content": "합성 ",
+            "status": "interrupted",
+            "reset_reason": null,
+            "model_used": "gpt-6-luna",
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "created_at": "{sqlite_current_timestamp}",
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "active_context": [
+          {
+            "id": 15,
+            "paper_id": 15,
+            "kind": "user",
+            "content": "합성 질문",
+            "status": "complete",
+            "reset_reason": null,
+            "model_used": null,
+            "tokens_in": null,
+            "tokens_out": null,
+            "cost_usd": null,
+            "context_json": null,
+            "created_at": "{sqlite_current_timestamp}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "unauthorized",
+      "request": {
+        "method": "POST",
+        "path": "/api/analysis/16/chat",
+        "headers": {
+          "host": "contract.test",
+          "content-type": "application/json",
+          "origin": "null"
+        },
+        "json": {
+          "message": "합성 질문",
+          "persist": true,
+          "history": [
+            {
+              "role": "user",
+              "content": "무시할 본문 기록"
+            }
+          ]
+        },
+        "body_base64": "eyJtZXNzYWdlIjogIu2VqeyEsSDsp4jrrLgiLCAicGVyc2lzdCI6IHRydWUsICJoaXN0b3J5IjogW3sicm9sZSI6ICJ1c2VyIiwgImNvbnRlbnQiOiAi66y07Iuc7ZWgIOuzuOusuCDquLDroZ0ifV19",
+        "body_sha256": "b8b98a3847fc160877670a3bb5a3203f2d5060fc108839987b26946323b2ee76"
+      },
+      "synthetic_environment": {
+        "SASOO_ENV": "production",
+        "SASOO_API_TOKEN": "synthetic-chat-token"
+      },
+      "response": {
+        "status": 401,
+        "headers": {
+          "content-length": "47",
+          "content-type": "application/json"
+        },
+        "events": [],
+        "body_base64": "eyJkZXRhaWwiOiJNaXNzaW5nIG9yIGludmFsaWQgbG9jYWwgQVBJIHRva2VuIn0=",
+        "body_sha256": "f131d0d3c64d9b861e94ed6ec5a7746474ae8ed36639b0b1db1fbd0e10a68a58",
+        "asgi_final_body_sent": true
+      },
+      "provider": {
+        "calls": [],
+        "events": [],
+        "exceptions": [],
+        "closed": false,
+        "cancelled": false,
+        "usage_reached": false
+      },
+      "transport": {
+        "asgi_spec": "2.3",
+        "first_token_delivered": false,
+        "provider_barrier_reached": false,
+        "disconnect_consumed": false,
+        "app_returned": true
+      },
+      "storage": {
+        "rows": [],
+        "active_context": []
+      }
+    },
+    {
+      "id": "missing_runtime_token",
+      "request": {
+        "method": "POST",
+        "path": "/api/analysis/17/chat",
+        "headers": {
+          "host": "contract.test",
+          "content-type": "application/json",
+          "origin": "null"
+        },
+        "json": {
+          "message": "합성 질문",
+          "persist": true,
+          "history": [
+            {
+              "role": "user",
+              "content": "무시할 본문 기록"
+            }
+          ]
+        },
+        "body_base64": "eyJtZXNzYWdlIjogIu2VqeyEsSDsp4jrrLgiLCAicGVyc2lzdCI6IHRydWUsICJoaXN0b3J5IjogW3sicm9sZSI6ICJ1c2VyIiwgImNvbnRlbnQiOiAi66y07Iuc7ZWgIOuzuOusuCDquLDroZ0ifV19",
+        "body_sha256": "b8b98a3847fc160877670a3bb5a3203f2d5060fc108839987b26946323b2ee76"
+      },
+      "synthetic_environment": {
+        "SASOO_ENV": "production",
+        "SASOO_API_TOKEN": ""
+      },
+      "response": {
+        "status": 503,
+        "headers": {
+          "content-length": "46",
+          "content-type": "application/json"
+        },
+        "events": [],
+        "body_base64": "eyJkZXRhaWwiOiJMb2NhbCBBUEkgdG9rZW4gaXMgbm90IGNvbmZpZ3VyZWQifQ==",
+        "body_sha256": "883b31fff9180c485d13cf0804b7e4aedbfdad7560f2a6ec77ccf719e3b9499c",
+        "asgi_final_body_sent": true
+      },
+      "provider": {
+        "calls": [],
+        "events": [],
+        "exceptions": [],
+        "closed": false,
+        "cancelled": false,
+        "usage_reached": false
+      },
+      "transport": {
+        "asgi_spec": "2.3",
+        "first_token_delivered": false,
+        "provider_barrier_reached": false,
+        "disconnect_consumed": false,
+        "app_returned": true
+      },
+      "storage": {
+        "rows": [],
+        "active_context": []
+      }
+    }
+  ],
+  "isolation": {
+    "product_external_attempts": 0,
+    "product_outside_write_attempts": 0,
+    "product_guard_denials": 0,
+    "keyring_calls": 0,
+    "intentional_denial_probes": {
+      "network": true,
+      "database": true,
+      "library": true,
+      "legacy_key": true,
+      "outside_write": true,
+      "keyring": true,
+      "directory_fd": true
+    },
+    "allowed_write_paths": [
+      "app",
+      "app/library",
+      "app/sasoo.db",
+      "configured-library",
+      "keyring"
+    ],
+    "guard": "reused CaptureConfig and Python audit guard; sanitized child environment; synthetic keyring denial",
+    "scope": "app child only; parent runs controlled Node VM with synthetic fetch; no OS-wide/native sandbox claim"
+  },
+  "contract_changes": {
+    "chat_done_usage": "Required usage must be numeric, finite and nonnegative; genuine zero remains valid. Historical v1/v2 fixtures are preserved."
+  },
+  "known_gaps": [
+    "figure_sse_not_captured",
+    "real_provider_sdk_thread_remote_usage_lifetime_not_observed",
+    "asgi_2_4_transport_not_observed",
+    "electron_gui_and_real_tcp_not_observed",
+    "other_C01_feature_gaps_remain"
+  ],
+  "consumer": {
+    "engine": "Node Web Streams and actual transpiled api.ts chatWithAgent",
+    "node": "26.13.0",
+    "typescript": "6.0.3",
+    "network": "fetch replaced; VM has no require/process",
+    "cases": [
+      {
+        "id": "normal",
+        "tokens": [
+          "합성 ",
+          "답변"
+        ],
+        "meta": [
+          {
+            "user_message_id": 1,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "done": [
+          {
+            "tokens_in": 1000,
+            "tokens_out": 10,
+            "cost_usd": 0.00013,
+            "message_id": 2,
+            "context_tokens": 1000
+          }
+        ],
+        "outcome": "complete",
+        "error": null,
+        "cancel_observed": true,
+        "request": {
+          "url": "/api/analysis/7/chat",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer synthetic-chat-token"
+          },
+          "json": {
+            "message": "합성 질문",
+            "persist": true,
+            "history": []
+          }
+        },
+        "input": {
+          "id": "normal",
+          "chunks": [
+            "ZGF0YTogeyJ0eXBlIjogIm1ldGEiLCAidXNlcl9tZXNzYWdlX2lkIjogMSwgInJlc2V0IjogbnVsbCwgImNvbnRleHQiOiB7InJlcXVlc3RlZF9hdCI6ICIyMDI2LTExLTE2VDAwOjAwOjAwKzAwOjAwIiwgInNvdXJjZXMiOiBbXX19CgpkYXRhOiB7InR5cGUiOiAidG9rZW4iLCAiY29udGVudCI6ICLtlanshLEgIn0KCmRhdGE6IHsidHlwZSI6ICJ0b2tlbiIsICJjb250ZW50IjogIuuLteuzgCJ9CgpkYXRhOiB7InR5cGUiOiAiZG9uZSIsICJ0b2tlbnNfaW4iOiAxMDAwLCAidG9rZW5zX291dCI6IDEwLCAiY29zdF91c2QiOiAwLjAwMDEzLCAibWVzc2FnZV9pZCI6IDIsICJjb250ZXh0X3Rva2VucyI6IDEwMDB9Cgo="
+          ]
+        }
+      },
+      {
+        "id": "utf8_byte_split",
+        "tokens": [
+          "합성 ",
+          "답변"
+        ],
+        "meta": [
+          {
+            "user_message_id": 1,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "done": [
+          {
+            "tokens_in": 1000,
+            "tokens_out": 10,
+            "cost_usd": 0.00013,
+            "message_id": 2,
+            "context_tokens": 1000
+          }
+        ],
+        "outcome": "complete",
+        "error": null,
+        "cancel_observed": true,
+        "request": {
+          "url": "/api/analysis/7/chat",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer synthetic-chat-token"
+          },
+          "json": {
+            "message": "합성 질문",
+            "persist": true,
+            "history": []
+          }
+        },
+        "input": {
+          "id": "utf8_byte_split",
+          "chunks": [
+            "ZA==",
+            "YQ==",
+            "dA==",
+            "YQ==",
+            "Og==",
+            "IA==",
+            "ew==",
+            "Ig==",
+            "dA==",
+            "eQ==",
+            "cA==",
+            "ZQ==",
+            "Ig==",
+            "Og==",
+            "IA==",
+            "Ig==",
+            "bQ==",
+            "ZQ==",
+            "dA==",
+            "YQ==",
+            "Ig==",
+            "LA==",
+            "IA==",
+            "Ig==",
+            "dQ==",
+            "cw==",
+            "ZQ==",
+            "cg==",
+            "Xw==",
+            "bQ==",
+            "ZQ==",
+            "cw==",
+            "cw==",
+            "YQ==",
+            "Zw==",
+            "ZQ==",
+            "Xw==",
+            "aQ==",
+            "ZA==",
+            "Ig==",
+            "Og==",
+            "IA==",
+            "MQ==",
+            "LA==",
+            "IA==",
+            "Ig==",
+            "cg==",
+            "ZQ==",
+            "cw==",
+            "ZQ==",
+            "dA==",
+            "Ig==",
+            "Og==",
+            "IA==",
+            "bg==",
+            "dQ==",
+            "bA==",
+            "bA==",
+            "LA==",
+            "IA==",
+            "Ig==",
+            "Yw==",
+            "bw==",
+            "bg==",
+            "dA==",
+            "ZQ==",
+            "eA==",
+            "dA==",
+            "Ig==",
+            "Og==",
+            "IA==",
+            "ew==",
+            "Ig==",
+            "cg==",
+            "ZQ==",
+            "cQ==",
+            "dQ==",
+            "ZQ==",
+            "cw==",
+            "dA==",
+            "ZQ==",
+            "ZA==",
+            "Xw==",
+            "YQ==",
+            "dA==",
+            "Ig==",
+            "Og==",
+            "IA==",
+            "Ig==",
+            "Mg==",
+            "MA==",
+            "Mg==",
+            "Ng==",
+            "LQ==",
+            "MQ==",
+            "MQ==",
+            "LQ==",
+            "MQ==",
+            "Ng==",
+            "VA==",
+            "MA==",
+            "MA==",
+            "Og==",
+            "MA==",
+            "MA==",
+            "Og==",
+            "MA==",
+            "MA==",
+            "Kw==",
+            "MA==",
+            "MA==",
+            "Og==",
+            "MA==",
+            "MA==",
+            "Ig==",
+            "LA==",
+            "IA==",
+            "Ig==",
+            "cw==",
+            "bw==",
+            "dQ==",
+            "cg==",
+            "Yw==",
+            "ZQ==",
+            "cw==",
+            "Ig==",
+            "Og==",
+            "IA==",
+            "Ww==",
+            "XQ==",
+            "fQ==",
+            "fQ==",
+            "Cg==",
+            "Cg==",
+            "ZA==",
+            "YQ==",
+            "dA==",
+            "YQ==",
+            "Og==",
+            "IA==",
+            "ew==",
+            "Ig==",
+            "dA==",
+            "eQ==",
+            "cA==",
+            "ZQ==",
+            "Ig==",
+            "Og==",
+            "IA==",
+            "Ig==",
+            "dA==",
+            "bw==",
+            "aw==",
+            "ZQ==",
+            "bg==",
+            "Ig==",
+            "LA==",
+            "IA==",
+            "Ig==",
+            "Yw==",
+            "bw==",
+            "bg==",
+            "dA==",
+            "ZQ==",
+            "bg==",
+            "dA==",
+            "Ig==",
+            "Og==",
+            "IA==",
+            "Ig==",
+            "7Q==",
+            "lQ==",
+            "qQ==",
+            "7A==",
+            "hA==",
+            "sQ==",
+            "IA==",
+            "Ig==",
+            "fQ==",
+            "Cg==",
+            "Cg==",
+            "ZA==",
+            "YQ==",
+            "dA==",
+            "YQ==",
+            "Og==",
+            "IA==",
+            "ew==",
+            "Ig==",
+            "dA==",
+            "eQ==",
+            "cA==",
+            "ZQ==",
+            "Ig==",
+            "Og==",
+            "IA==",
+            "Ig==",
+            "dA==",
+            "bw==",
+            "aw==",
+            "ZQ==",
+            "bg==",
+            "Ig==",
+            "LA==",
+            "IA==",
+            "Ig==",
+            "Yw==",
+            "bw==",
+            "bg==",
+            "dA==",
+            "ZQ==",
+            "bg==",
+            "dA==",
+            "Ig==",
+            "Og==",
+            "IA==",
+            "Ig==",
+            "6w==",
+            "iw==",
+            "tQ==",
+            "6w==",
+            "sw==",
+            "gA==",
+            "Ig==",
+            "fQ==",
+            "Cg==",
+            "Cg==",
+            "ZA==",
+            "YQ==",
+            "dA==",
+            "YQ==",
+            "Og==",
+            "IA==",
+            "ew==",
+            "Ig==",
+            "dA==",
+            "eQ==",
+            "cA==",
+            "ZQ==",
+            "Ig==",
+            "Og==",
+            "IA==",
+            "Ig==",
+            "ZA==",
+            "bw==",
+            "bg==",
+            "ZQ==",
+            "Ig==",
+            "LA==",
+            "IA==",
+            "Ig==",
+            "dA==",
+            "bw==",
+            "aw==",
+            "ZQ==",
+            "bg==",
+            "cw==",
+            "Xw==",
+            "aQ==",
+            "bg==",
+            "Ig==",
+            "Og==",
+            "IA==",
+            "MQ==",
+            "MA==",
+            "MA==",
+            "MA==",
+            "LA==",
+            "IA==",
+            "Ig==",
+            "dA==",
+            "bw==",
+            "aw==",
+            "ZQ==",
+            "bg==",
+            "cw==",
+            "Xw==",
+            "bw==",
+            "dQ==",
+            "dA==",
+            "Ig==",
+            "Og==",
+            "IA==",
+            "MQ==",
+            "MA==",
+            "LA==",
+            "IA==",
+            "Ig==",
+            "Yw==",
+            "bw==",
+            "cw==",
+            "dA==",
+            "Xw==",
+            "dQ==",
+            "cw==",
+            "ZA==",
+            "Ig==",
+            "Og==",
+            "IA==",
+            "MA==",
+            "Lg==",
+            "MA==",
+            "MA==",
+            "MA==",
+            "MQ==",
+            "Mw==",
+            "LA==",
+            "IA==",
+            "Ig==",
+            "bQ==",
+            "ZQ==",
+            "cw==",
+            "cw==",
+            "YQ==",
+            "Zw==",
+            "ZQ==",
+            "Xw==",
+            "aQ==",
+            "ZA==",
+            "Ig==",
+            "Og==",
+            "IA==",
+            "Mg==",
+            "LA==",
+            "IA==",
+            "Ig==",
+            "Yw==",
+            "bw==",
+            "bg==",
+            "dA==",
+            "ZQ==",
+            "eA==",
+            "dA==",
+            "Xw==",
+            "dA==",
+            "bw==",
+            "aw==",
+            "ZQ==",
+            "bg==",
+            "cw==",
+            "Ig==",
+            "Og==",
+            "IA==",
+            "MQ==",
+            "MA==",
+            "MA==",
+            "MA==",
+            "fQ==",
+            "Cg==",
+            "Cg=="
+          ]
+        }
+      },
+      {
+        "id": "crlf",
+        "tokens": [
+          "합성 ",
+          "답변"
+        ],
+        "meta": [
+          {
+            "user_message_id": 1,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "done": [
+          {
+            "tokens_in": 1000,
+            "tokens_out": 10,
+            "cost_usd": 0.00013,
+            "message_id": 2,
+            "context_tokens": 1000
+          }
+        ],
+        "outcome": "complete",
+        "error": null,
+        "cancel_observed": true,
+        "request": {
+          "url": "/api/analysis/7/chat",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer synthetic-chat-token"
+          },
+          "json": {
+            "message": "합성 질문",
+            "persist": true,
+            "history": []
+          }
+        },
+        "input": {
+          "id": "crlf",
+          "chunks": [
+            "ZGF0YTogeyJ0eXBlIjogIm1ldGEiLCAidXNlcl9tZXNzYWdlX2lkIjogMSwgInJlc2V0IjogbnVsbCwgImNvbnRleHQiOiB7InJlcXVlc3RlZF9hdCI6ICIyMDI2LTExLTE2VDAwOjAwOjAwKzAwOjAwIiwgInNvdXJjZXMiOiBbXX19DQoNCmRhdGE6IHsidHlwZSI6ICJ0b2tlbiIsICJjb250ZW50IjogIu2VqeyEsSAifQ0KDQpkYXRhOiB7InR5cGUiOiAidG9rZW4iLCAiY29udGVudCI6ICLri7Xrs4AifQ0KDQpkYXRhOiB7InR5cGUiOiAiZG9uZSIsICJ0b2tlbnNfaW4iOiAxMDAwLCAidG9rZW5zX291dCI6IDEwLCAiY29zdF91c2QiOiAwLjAwMDEzLCAibWVzc2FnZV9pZCI6IDIsICJjb250ZXh0X3Rva2VucyI6IDEwMDB9DQoNCg=="
+          ]
+        }
+      },
+      {
+        "id": "no_final_newline",
+        "tokens": [
+          "합성 ",
+          "답변"
+        ],
+        "meta": [
+          {
+            "user_message_id": 1,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "done": [
+          {
+            "tokens_in": 1000,
+            "tokens_out": 10,
+            "cost_usd": 0.00013,
+            "message_id": 2,
+            "context_tokens": 1000
+          }
+        ],
+        "outcome": "complete",
+        "error": null,
+        "cancel_observed": false,
+        "request": {
+          "url": "/api/analysis/7/chat",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer synthetic-chat-token"
+          },
+          "json": {
+            "message": "합성 질문",
+            "persist": true,
+            "history": []
+          }
+        },
+        "input": {
+          "id": "no_final_newline",
+          "chunks": [
+            "ZGF0YTogeyJ0eXBlIjogIm1ldGEiLCAidXNlcl9tZXNzYWdlX2lkIjogMSwgInJlc2V0IjogbnVsbCwgImNvbnRleHQiOiB7InJlcXVlc3RlZF9hdCI6ICIyMDI2LTExLTE2VDAwOjAwOjAwKzAwOjAwIiwgInNvdXJjZXMiOiBbXX19CgpkYXRhOiB7InR5cGUiOiAidG9rZW4iLCAiY29udGVudCI6ICLtlanshLEgIn0KCmRhdGE6IHsidHlwZSI6ICJ0b2tlbiIsICJjb250ZW50IjogIuuLteuzgCJ9CgpkYXRhOiB7InR5cGUiOiAiZG9uZSIsICJ0b2tlbnNfaW4iOiAxMDAwLCAidG9rZW5zX291dCI6IDEwLCAiY29zdF91c2QiOiAwLjAwMDEzLCAibWVzc2FnZV9pZCI6IDIsICJjb250ZXh0X3Rva2VucyI6IDEwMDB9"
+          ]
+        }
+      },
+      {
+        "id": "malformed",
+        "tokens": [],
+        "meta": [],
+        "done": [],
+        "outcome": "error",
+        "error": {
+          "name": "ChatStreamError",
+          "message": "응답 스트림을 해석하지 못했습니다."
+        },
+        "cancel_observed": true,
+        "request": {
+          "url": "/api/analysis/7/chat",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer synthetic-chat-token"
+          },
+          "json": {
+            "message": "합성 질문",
+            "persist": true,
+            "history": []
+          }
+        },
+        "input": {
+          "id": "malformed",
+          "chunks": [
+            "ZGF0YToge21hbGZvcm1lZH0KCg=="
+          ]
+        }
+      },
+      {
+        "id": "duplicate_terminal",
+        "tokens": [
+          "합성 ",
+          "답변"
+        ],
+        "meta": [
+          {
+            "user_message_id": 1,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "done": [
+          {
+            "tokens_in": 1000,
+            "tokens_out": 10,
+            "cost_usd": 0.00013,
+            "message_id": 2,
+            "context_tokens": 1000
+          }
+        ],
+        "outcome": "complete",
+        "error": null,
+        "cancel_observed": true,
+        "request": {
+          "url": "/api/analysis/7/chat",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer synthetic-chat-token"
+          },
+          "json": {
+            "message": "합성 질문",
+            "persist": true,
+            "history": []
+          }
+        },
+        "input": {
+          "id": "duplicate_terminal",
+          "chunks": [
+            "ZGF0YTogeyJ0eXBlIjogIm1ldGEiLCAidXNlcl9tZXNzYWdlX2lkIjogMSwgInJlc2V0IjogbnVsbCwgImNvbnRleHQiOiB7InJlcXVlc3RlZF9hdCI6ICIyMDI2LTExLTE2VDAwOjAwOjAwKzAwOjAwIiwgInNvdXJjZXMiOiBbXX19CgpkYXRhOiB7InR5cGUiOiAidG9rZW4iLCAiY29udGVudCI6ICLtlanshLEgIn0KCmRhdGE6IHsidHlwZSI6ICJ0b2tlbiIsICJjb250ZW50IjogIuuLteuzgCJ9CgpkYXRhOiB7InR5cGUiOiAiZG9uZSIsICJ0b2tlbnNfaW4iOiAxMDAwLCAidG9rZW5zX291dCI6IDEwLCAiY29zdF91c2QiOiAwLjAwMDEzLCAibWVzc2FnZV9pZCI6IDIsICJjb250ZXh0X3Rva2VucyI6IDEwMDB9CgpkYXRhOiB7InR5cGUiOiJkb25lIn0KCg=="
+          ]
+        }
+      },
+      {
+        "id": "unknown_event",
+        "tokens": [
+          "합성 ",
+          "답변"
+        ],
+        "meta": [
+          {
+            "user_message_id": 1,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "done": [
+          {
+            "tokens_in": 1000,
+            "tokens_out": 10,
+            "cost_usd": 0.00013,
+            "message_id": 2,
+            "context_tokens": 1000
+          }
+        ],
+        "outcome": "complete",
+        "error": null,
+        "cancel_observed": true,
+        "request": {
+          "url": "/api/analysis/7/chat",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer synthetic-chat-token"
+          },
+          "json": {
+            "message": "합성 질문",
+            "persist": true,
+            "history": []
+          }
+        },
+        "input": {
+          "id": "unknown_event",
+          "chunks": [
+            "ZGF0YTogeyJ0eXBlIjoidW5rbm93biIsInZhbHVlIjoxfQoKZGF0YTogeyJ0eXBlIjogIm1ldGEiLCAidXNlcl9tZXNzYWdlX2lkIjogMSwgInJlc2V0IjogbnVsbCwgImNvbnRleHQiOiB7InJlcXVlc3RlZF9hdCI6ICIyMDI2LTExLTE2VDAwOjAwOjAwKzAwOjAwIiwgInNvdXJjZXMiOiBbXX19CgpkYXRhOiB7InR5cGUiOiAidG9rZW4iLCAiY29udGVudCI6ICLtlanshLEgIn0KCmRhdGE6IHsidHlwZSI6ICJ0b2tlbiIsICJjb250ZW50IjogIuuLteuzgCJ9CgpkYXRhOiB7InR5cGUiOiAiZG9uZSIsICJ0b2tlbnNfaW4iOiAxMDAwLCAidG9rZW5zX291dCI6IDEwLCAiY29zdF91c2QiOiAwLjAwMDEzLCAibWVzc2FnZV9pZCI6IDIsICJjb250ZXh0X3Rva2VucyI6IDEwMDB9Cgo="
+          ]
+        }
+      },
+      {
+        "id": "done_without_usage_rejected",
+        "tokens": [],
+        "meta": [],
+        "done": [],
+        "outcome": "error",
+        "error": {
+          "name": "ChatStreamError",
+          "message": "응답 사용량을 확인하지 못했습니다."
+        },
+        "cancel_observed": true,
+        "request": {
+          "url": "/api/analysis/7/chat",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer synthetic-chat-token"
+          },
+          "json": {
+            "message": "합성 질문",
+            "persist": true,
+            "history": []
+          }
+        },
+        "input": {
+          "id": "done_without_usage_rejected",
+          "chunks": [
+            "ZGF0YTogeyJ0eXBlIjoiZG9uZSJ9Cgo="
+          ]
+        }
+      },
+      {
+        "id": "done_null_usage_rejected",
+        "tokens": [],
+        "meta": [],
+        "done": [],
+        "outcome": "error",
+        "error": {
+          "name": "ChatStreamError",
+          "message": "응답 사용량을 확인하지 못했습니다."
+        },
+        "cancel_observed": true,
+        "request": {
+          "url": "/api/analysis/7/chat",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer synthetic-chat-token"
+          },
+          "json": {
+            "message": "합성 질문",
+            "persist": true,
+            "history": []
+          }
+        },
+        "input": {
+          "id": "done_null_usage_rejected",
+          "chunks": [
+            "ZGF0YTogeyJ0eXBlIjoiZG9uZSIsInRva2Vuc19pbiI6bnVsbCwidG9rZW5zX291dCI6NSwiY29zdF91c2QiOjAuMX0KCg=="
+          ]
+        }
+      },
+      {
+        "id": "done_negative_cost_rejected",
+        "tokens": [],
+        "meta": [],
+        "done": [],
+        "outcome": "error",
+        "error": {
+          "name": "ChatStreamError",
+          "message": "응답 사용량을 확인하지 못했습니다."
+        },
+        "cancel_observed": true,
+        "request": {
+          "url": "/api/analysis/7/chat",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer synthetic-chat-token"
+          },
+          "json": {
+            "message": "합성 질문",
+            "persist": true,
+            "history": []
+          }
+        },
+        "input": {
+          "id": "done_negative_cost_rejected",
+          "chunks": [
+            "ZGF0YTogeyJ0eXBlIjoiZG9uZSIsInRva2Vuc19pbiI6MTAsInRva2Vuc19vdXQiOjUsImNvc3RfdXNkIjotMX0KCg=="
+          ]
+        }
+      },
+      {
+        "id": "done_string_usage_rejected",
+        "tokens": [],
+        "meta": [],
+        "done": [],
+        "outcome": "error",
+        "error": {
+          "name": "ChatStreamError",
+          "message": "응답 사용량을 확인하지 못했습니다."
+        },
+        "cancel_observed": true,
+        "request": {
+          "url": "/api/analysis/7/chat",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer synthetic-chat-token"
+          },
+          "json": {
+            "message": "합성 질문",
+            "persist": true,
+            "history": []
+          }
+        },
+        "input": {
+          "id": "done_string_usage_rejected",
+          "chunks": [
+            "ZGF0YTogeyJ0eXBlIjoiZG9uZSIsInRva2Vuc19pbiI6IjEwIiwidG9rZW5zX291dCI6NSwiY29zdF91c2QiOjAuMX0KCg=="
+          ]
+        }
+      },
+      {
+        "id": "done_overflow_cost_rejected",
+        "tokens": [],
+        "meta": [],
+        "done": [],
+        "outcome": "error",
+        "error": {
+          "name": "ChatStreamError",
+          "message": "응답 사용량을 확인하지 못했습니다."
+        },
+        "cancel_observed": true,
+        "request": {
+          "url": "/api/analysis/7/chat",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer synthetic-chat-token"
+          },
+          "json": {
+            "message": "합성 질문",
+            "persist": true,
+            "history": []
+          }
+        },
+        "input": {
+          "id": "done_overflow_cost_rejected",
+          "chunks": [
+            "ZGF0YTogeyJ0eXBlIjoiZG9uZSIsInRva2Vuc19pbiI6MTAsInRva2Vuc19vdXQiOjUsImNvc3RfdXNkIjoxZTk5OX0KCg=="
+          ]
+        }
+      },
+      {
+        "id": "done_actual_zero_valid",
+        "tokens": [],
+        "meta": [],
+        "done": [
+          {
+            "tokens_in": 0,
+            "tokens_out": 0,
+            "cost_usd": 0
+          }
+        ],
+        "outcome": "complete",
+        "error": null,
+        "cancel_observed": true,
+        "request": {
+          "url": "/api/analysis/7/chat",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer synthetic-chat-token"
+          },
+          "json": {
+            "message": "합성 질문",
+            "persist": true,
+            "history": []
+          }
+        },
+        "input": {
+          "id": "done_actual_zero_valid",
+          "chunks": [
+            "ZGF0YTogeyJ0eXBlIjoiZG9uZSIsInRva2Vuc19pbiI6MCwidG9rZW5zX291dCI6MCwiY29zdF91c2QiOjB9Cgo="
+          ]
+        }
+      },
+      {
+        "id": "token_eof",
+        "tokens": [
+          "합성 ",
+          "답변"
+        ],
+        "meta": [
+          {
+            "user_message_id": 3,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "done": [],
+        "outcome": "error",
+        "error": {
+          "name": "ChatStreamError",
+          "message": "응답이 완료되기 전에 연결이 끊겼습니다."
+        },
+        "cancel_observed": false,
+        "request": {
+          "url": "/api/analysis/7/chat",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer synthetic-chat-token"
+          },
+          "json": {
+            "message": "합성 질문",
+            "persist": true,
+            "history": []
+          }
+        },
+        "input": {
+          "id": "token_eof",
+          "chunks": [
+            "ZGF0YTogeyJ0eXBlIjogIm1ldGEiLCAidXNlcl9tZXNzYWdlX2lkIjogMywgInJlc2V0IjogbnVsbCwgImNvbnRleHQiOiB7InJlcXVlc3RlZF9hdCI6ICIyMDI2LTExLTE2VDAwOjAwOjAwKzAwOjAwIiwgInNvdXJjZXMiOiBbXX19CgpkYXRhOiB7InR5cGUiOiAidG9rZW4iLCAiY29udGVudCI6ICLtlanshLEgIn0KCmRhdGE6IHsidHlwZSI6ICJ0b2tlbiIsICJjb250ZW50IjogIuuLteuzgCJ9Cgo="
+          ]
+        }
+      },
+      {
+        "id": "incomplete",
+        "tokens": [
+          "합성 ",
+          "답변"
+        ],
+        "meta": [
+          {
+            "user_message_id": 5,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "done": [],
+        "outcome": "error",
+        "error": {
+          "name": "ChatStreamError",
+          "message": "응답이 완료되지 않았습니다"
+        },
+        "cancel_observed": true,
+        "request": {
+          "url": "/api/analysis/7/chat",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer synthetic-chat-token"
+          },
+          "json": {
+            "message": "합성 질문",
+            "persist": true,
+            "history": []
+          }
+        },
+        "input": {
+          "id": "incomplete",
+          "chunks": [
+            "ZGF0YTogeyJ0eXBlIjogIm1ldGEiLCAidXNlcl9tZXNzYWdlX2lkIjogNSwgInJlc2V0IjogbnVsbCwgImNvbnRleHQiOiB7InJlcXVlc3RlZF9hdCI6ICIyMDI2LTExLTE2VDAwOjAwOjAwKzAwOjAwIiwgInNvdXJjZXMiOiBbXX19CgpkYXRhOiB7InR5cGUiOiAidG9rZW4iLCAiY29udGVudCI6ICLtlanshLEgIn0KCmRhdGE6IHsidHlwZSI6ICJ0b2tlbiIsICJjb250ZW50IjogIuuLteuzgCJ9CgpkYXRhOiB7InR5cGUiOiAiZXJyb3IiLCAibWVzc2FnZSI6ICLsnZHri7XsnbQg7JmE66OM65CY7KeAIOyViuyVmOyKteuLiOuLpCIsICJ0b2tlbnNfaW4iOiAxMDAwLCAidG9rZW5zX291dCI6IDEwLCAiY29zdF91c2QiOiAwLjAwMDEzfQoK"
+          ]
+        }
+      },
+      {
+        "id": "failed",
+        "tokens": [
+          "합성 ",
+          "답변"
+        ],
+        "meta": [
+          {
+            "user_message_id": 7,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "done": [],
+        "outcome": "error",
+        "error": {
+          "name": "ChatStreamError",
+          "message": "응답이 완료되지 않았습니다"
+        },
+        "cancel_observed": true,
+        "request": {
+          "url": "/api/analysis/7/chat",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer synthetic-chat-token"
+          },
+          "json": {
+            "message": "합성 질문",
+            "persist": true,
+            "history": []
+          }
+        },
+        "input": {
+          "id": "failed",
+          "chunks": [
+            "ZGF0YTogeyJ0eXBlIjogIm1ldGEiLCAidXNlcl9tZXNzYWdlX2lkIjogNywgInJlc2V0IjogbnVsbCwgImNvbnRleHQiOiB7InJlcXVlc3RlZF9hdCI6ICIyMDI2LTExLTE2VDAwOjAwOjAwKzAwOjAwIiwgInNvdXJjZXMiOiBbXX19CgpkYXRhOiB7InR5cGUiOiAidG9rZW4iLCAiY29udGVudCI6ICLtlanshLEgIn0KCmRhdGE6IHsidHlwZSI6ICJ0b2tlbiIsICJjb250ZW50IjogIuuLteuzgCJ9CgpkYXRhOiB7InR5cGUiOiAiZXJyb3IiLCAibWVzc2FnZSI6ICLsnZHri7XsnbQg7JmE66OM65CY7KeAIOyViuyVmOyKteuLiOuLpCIsICJ0b2tlbnNfaW4iOiAxMDAwLCAidG9rZW5zX291dCI6IDEwLCAiY29zdF91c2QiOiAwLjAwMDEzfQoK"
+          ]
+        }
+      },
+      {
+        "id": "cancelled",
+        "tokens": [
+          "합성 ",
+          "답변"
+        ],
+        "meta": [
+          {
+            "user_message_id": 9,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "done": [],
+        "outcome": "error",
+        "error": {
+          "name": "ChatStreamError",
+          "message": "응답이 완료되지 않았습니다"
+        },
+        "cancel_observed": true,
+        "request": {
+          "url": "/api/analysis/7/chat",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer synthetic-chat-token"
+          },
+          "json": {
+            "message": "합성 질문",
+            "persist": true,
+            "history": []
+          }
+        },
+        "input": {
+          "id": "cancelled",
+          "chunks": [
+            "ZGF0YTogeyJ0eXBlIjogIm1ldGEiLCAidXNlcl9tZXNzYWdlX2lkIjogOSwgInJlc2V0IjogbnVsbCwgImNvbnRleHQiOiB7InJlcXVlc3RlZF9hdCI6ICIyMDI2LTExLTE2VDAwOjAwOjAwKzAwOjAwIiwgInNvdXJjZXMiOiBbXX19CgpkYXRhOiB7InR5cGUiOiAidG9rZW4iLCAiY29udGVudCI6ICLtlanshLEgIn0KCmRhdGE6IHsidHlwZSI6ICJ0b2tlbiIsICJjb250ZW50IjogIuuLteuzgCJ9CgpkYXRhOiB7InR5cGUiOiAiZXJyb3IiLCAibWVzc2FnZSI6ICLsnZHri7XsnbQg7JmE66OM65CY7KeAIOyViuyVmOyKteuLiOuLpCIsICJ0b2tlbnNfaW4iOiAxMDAwLCAidG9rZW5zX291dCI6IDEwLCAiY29zdF91c2QiOiAwLjAwMDEzfQoK"
+          ]
+        }
+      },
+      {
+        "id": "missing_usage",
+        "tokens": [
+          "합성 ",
+          "답변"
+        ],
+        "meta": [
+          {
+            "user_message_id": 11,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "done": [],
+        "outcome": "error",
+        "error": {
+          "name": "ChatStreamError",
+          "message": "응답 사용량을 확인하지 못했습니다"
+        },
+        "cancel_observed": true,
+        "request": {
+          "url": "/api/analysis/7/chat",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer synthetic-chat-token"
+          },
+          "json": {
+            "message": "합성 질문",
+            "persist": true,
+            "history": []
+          }
+        },
+        "input": {
+          "id": "missing_usage",
+          "chunks": [
+            "ZGF0YTogeyJ0eXBlIjogIm1ldGEiLCAidXNlcl9tZXNzYWdlX2lkIjogMTEsICJyZXNldCI6IG51bGwsICJjb250ZXh0IjogeyJyZXF1ZXN0ZWRfYXQiOiAiMjAyNi0xMS0xNlQwMDowMDowMCswMDowMCIsICJzb3VyY2VzIjogW119fQoKZGF0YTogeyJ0eXBlIjogInRva2VuIiwgImNvbnRlbnQiOiAi7ZWp7ISxICJ9CgpkYXRhOiB7InR5cGUiOiAidG9rZW4iLCAiY29udGVudCI6ICLri7Xrs4AifQoKZGF0YTogeyJ0eXBlIjogImVycm9yIiwgIm1lc3NhZ2UiOiAi7J2R64u1IOyCrOyaqeufieydhCDtmZXsnbjtlZjsp4Ag66q77ZaI7Iq164uI64ukIiwgInRva2Vuc19pbiI6IG51bGwsICJ0b2tlbnNfb3V0IjogbnVsbCwgImNvc3RfdXNkIjogbnVsbH0KCg=="
+          ]
+        }
+      },
+      {
+        "id": "token_exception",
+        "tokens": [
+          "합성 ",
+          "답변"
+        ],
+        "meta": [
+          {
+            "user_message_id": 13,
+            "reset": null,
+            "context": {
+              "requested_at": "2026-11-16T00:00:00+00:00",
+              "sources": []
+            }
+          }
+        ],
+        "done": [],
+        "outcome": "error",
+        "error": {
+          "name": "ChatStreamError",
+          "message": "synthetic provider failure after token"
+        },
+        "cancel_observed": true,
+        "request": {
+          "url": "/api/analysis/7/chat",
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer synthetic-chat-token"
+          },
+          "json": {
+            "message": "합성 질문",
+            "persist": true,
+            "history": []
+          }
+        },
+        "input": {
+          "id": "token_exception",
+          "chunks": [
+            "ZGF0YTogeyJ0eXBlIjogIm1ldGEiLCAidXNlcl9tZXNzYWdlX2lkIjogMTMsICJyZXNldCI6IG51bGwsICJjb250ZXh0IjogeyJyZXF1ZXN0ZWRfYXQiOiAiMjAyNi0xMS0xNlQwMDowMDowMCswMDowMCIsICJzb3VyY2VzIjogW119fQoKZGF0YTogeyJ0eXBlIjogInRva2VuIiwgImNvbnRlbnQiOiAi7ZWp7ISxICJ9CgpkYXRhOiB7InR5cGUiOiAidG9rZW4iLCAiY29udGVudCI6ICLri7Xrs4AifQoKZGF0YTogeyJ0eXBlIjogImVycm9yIiwgIm1lc3NhZ2UiOiAic3ludGhldGljIHByb3ZpZGVyIGZhaWx1cmUgYWZ0ZXIgdG9rZW4ifQoK"
+          ]
+        }
+      }
+    ]
+  }
+}

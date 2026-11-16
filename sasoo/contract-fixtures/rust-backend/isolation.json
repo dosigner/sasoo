@@ -1,0 +1,57 @@
+{
+  "format_version": 1,
+  "synthetic": true,
+  "guard": "Python audit hook plus subprocess with sanitized credentials",
+  "denial_probes": {
+    "database": true,
+    "library": true,
+    "write": true,
+    "keyring": true,
+    "network": true
+  },
+  "startup_lifespan": "not_run",
+  "defaults": "not_run",
+  "key_migration": "not_run",
+  "reconciler": "not_run",
+  "runtime": {
+    "python": "3.14.6 (main, Jun 10 2026, 10:03:53) [Clang 21.0.0 (clang-2100.0.123.102)]",
+    "packages": {
+      "fastapi": "0.141.1",
+      "starlette": "1.6.0",
+      "httpx": "0.28.1",
+      "pydantic": "2.13.5",
+      "aiosqlite": "0.22.1",
+      "filelock": "3.32.5",
+      "opendataloader-pdf": "2.5.7"
+    },
+    "jars": [
+      {
+        "path": "backend/java-runtime/lib/jrt-fs.jar",
+        "sha256": "c182853a89adbb6dbeb78c3b19a189883a9b05ea142dd716bf97677322c71696"
+      },
+      {
+        "path": "opendataloader_pdf/jar/opendataloader-pdf-cli.jar",
+        "distribution": "opendataloader-pdf",
+        "sha256": "74f0d797bea8088bd4a58137e372eb38a5fa24639e06b633cef7f78eba14cd62"
+      }
+    ],
+    "jre": {
+      "status": "static_release_metadata_only",
+      "executed": false,
+      "release_sha256": "1feb4ff39ed681cc5bda503c86bc4f791c0ce8b41dc97c571986a42406d40b7f",
+      "java_binary_sha256": "19f2cd660267f4fb79a83debff11e8c3d509cd06beb499297e6558b030b8789a",
+      "release": {
+        "IMPLEMENTOR_VERSION": "Temurin-21.0.10+7",
+        "JAVA_VERSION": "21.0.10",
+        "OS_ARCH": "aarch64",
+        "OS_NAME": "Darwin"
+      }
+    }
+  },
+  "external_product_attempts": 0,
+  "outside_product_write_attempts": 0,
+  "limitations": [
+    "Audit hooks do not sandbox native extension syscalls",
+    "No live database, key migration, or provider calls"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "format_version": 1,
+  "status": "blocked_pending_measurement",
+  "documents": [],
+  "notes": [
+    "No user PDF has been opened or copied.",
+    "Add only PDFs with recorded origin and usage rights.",
+    "Source hashes must be full SHA-256 values."
+  ]
+}

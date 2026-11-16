@@ -1,0 +1,10 @@
+{
+  "format_version": 1,
+  "status": "not_started",
+  "ground_truth_policy": "human_reviewed_original",
+  "items": [],
+  "notes": [
+    "Existing engine output is comparison evidence, never ground truth.",
+    "Record original page, equation, unit, merged cell and reading order annotations before candidate evaluation."
+  ]
+}

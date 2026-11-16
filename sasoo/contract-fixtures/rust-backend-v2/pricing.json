@@ -1,0 +1,393 @@
+{
+  "cases": [
+    {
+      "byte_length": 21,
+      "expected": {
+        "cost_usd": 0.00015
+      },
+      "id": "cost:gpt-6-luna:1000:2026-11-13",
+      "input": {
+        "as_of": "2026-11-13",
+        "model": "gpt-6-luna",
+        "tokens_in": 1000,
+        "tokens_out": 100
+      },
+      "provenance": {
+        "path": "backend/services/pricing.py",
+        "symbol": "calc_cost"
+      },
+      "serializer": {
+        "default": "str",
+        "ensure_ascii": false,
+        "kind": "json.dumps",
+        "separators": [
+          ", ",
+          ": "
+        ],
+        "sort_keys": true
+      },
+      "sha256": "984fdb312b8e03e77d9632a9dbf3c6d145a8a4b07b7a1e6153928e897cb75969",
+      "utf8_base64": "eyJjb3N0X3VzZCI6IDAuMDAwMTV9"
+    },
+    {
+      "byte_length": 24,
+      "expected": {
+        "cost_usd": 0.05440095
+      },
+      "id": "cost:gpt-6-luna:272001:2026-11-13",
+      "input": {
+        "as_of": "2026-11-13",
+        "model": "gpt-6-luna",
+        "tokens_in": 272001,
+        "tokens_out": 1
+      },
+      "provenance": {
+        "path": "backend/services/pricing.py",
+        "symbol": "calc_cost"
+      },
+      "serializer": {
+        "default": "str",
+        "ensure_ascii": false,
+        "kind": "json.dumps",
+        "separators": [
+          ", ",
+          ": "
+        ],
+        "sort_keys": true
+      },
+      "sha256": "6130c6953bce4a736ec3f453abf0e344d2b1c3d87c0cf1a03dd6361a080191bd",
+      "utf8_base64": "eyJjb3N0X3VzZCI6IDAuMDU0NDAwOTV9"
+    },
+    {
+      "byte_length": 18,
+      "expected": {
+        "cost_usd": 0.75
+      },
+      "id": "cost:gemini-3.8-flash:1000000:2026-12-31",
+      "input": {
+        "as_of": "2026-12-31",
+        "model": "gemini-3.8-flash",
+        "tokens_in": 1000000,
+        "tokens_out": 0
+      },
+      "provenance": {
+        "path": "backend/services/pricing.py",
+        "symbol": "calc_cost"
+      },
+      "serializer": {
+        "default": "str",
+        "ensure_ascii": false,
+        "kind": "json.dumps",
+        "separators": [
+          ", ",
+          ": "
+        ],
+        "sort_keys": true
+      },
+      "sha256": "edd8eff94d4d41f9cd129a02d217753a0eb2ba060c4b77e6794caf82b2d8e3c1",
+      "utf8_base64": "eyJjb3N0X3VzZCI6IDAuNzV9"
+    },
+    {
+      "byte_length": 17,
+      "expected": {
+        "cost_usd": 1.5
+      },
+      "id": "cost:gemini-3.8-flash:1000000:2027-01-01",
+      "input": {
+        "as_of": "2027-01-01",
+        "model": "gemini-3.8-flash",
+        "tokens_in": 1000000,
+        "tokens_out": 0
+      },
+      "provenance": {
+        "path": "backend/services/pricing.py",
+        "symbol": "calc_cost"
+      },
+      "serializer": {
+        "default": "str",
+        "ensure_ascii": false,
+        "kind": "json.dumps",
+        "separators": [
+          ", ",
+          ": "
+        ],
+        "sort_keys": true
+      },
+      "sha256": "7115a0e0f516836381f284a0807b636a7b828c5677ad2c51faa7d6b2e318942f",
+      "utf8_base64": "eyJjb3N0X3VzZCI6IDEuNX0="
+    },
+    {
+      "byte_length": 22,
+      "expected": {
+        "cost_usd": 0.800022
+      },
+      "id": "cost:gemini-3.1-pro-preview:200001:2026-11-13",
+      "input": {
+        "as_of": "2026-11-13",
+        "model": "gemini-3.1-pro-preview",
+        "tokens_in": 200001,
+        "tokens_out": 1
+      },
+      "provenance": {
+        "path": "backend/services/pricing.py",
+        "symbol": "calc_cost"
+      },
+      "serializer": {
+        "default": "str",
+        "ensure_ascii": false,
+        "kind": "json.dumps",
+        "separators": [
+          ", ",
+          ": "
+        ],
+        "sort_keys": true
+      },
+      "sha256": "80580c08b58db74844c382015225a1d3f1e57c066d45403375b97e3b4115da33",
+      "utf8_base64": "eyJjb3N0X3VzZCI6IDAuODAwMDIyfQ=="
+    },
+    {
+      "byte_length": 4,
+      "expected": "0E-8",
+      "id": "decimal:tie:0.000000005",
+      "input": "0.000000005",
+      "provenance": {
+        "path": "backend/services/pricing.py",
+        "symbol": "calc_cost"
+      },
+      "serializer": {
+        "kind": "Decimal.quantize",
+        "quantum": "0.00000001",
+        "rounding": "ROUND_HALF_EVEN"
+      },
+      "sha256": "8005ae285e433a84d27f2f619b89091cdba9de51b557f5cce80ac1909b990291",
+      "utf8_base64": "MEUtOA=="
+    },
+    {
+      "byte_length": 4,
+      "expected": "2E-8",
+      "id": "decimal:tie:0.000000015",
+      "input": "0.000000015",
+      "provenance": {
+        "path": "backend/services/pricing.py",
+        "symbol": "calc_cost"
+      },
+      "serializer": {
+        "kind": "Decimal.quantize",
+        "quantum": "0.00000001",
+        "rounding": "ROUND_HALF_EVEN"
+      },
+      "sha256": "c0d2267b0d9ed878cc5c5822e8982fdf3e75c48ebc16a1efc4c60e0b1bb9445d",
+      "utf8_base64": "MkUtOA=="
+    },
+    {
+      "byte_length": 4,
+      "expected": "2E-8",
+      "id": "decimal:tie:0.000000025",
+      "input": "0.000000025",
+      "provenance": {
+        "path": "backend/services/pricing.py",
+        "symbol": "calc_cost"
+      },
+      "serializer": {
+        "kind": "Decimal.quantize",
+        "quantum": "0.00000001",
+        "rounding": "ROUND_HALF_EVEN"
+      },
+      "sha256": "c0d2267b0d9ed878cc5c5822e8982fdf3e75c48ebc16a1efc4c60e0b1bb9445d",
+      "utf8_base64": "MkUtOA=="
+    },
+    {
+      "byte_length": 10,
+      "expected": "1.23456788",
+      "id": "decimal:tie:1.234567885",
+      "input": "1.234567885",
+      "provenance": {
+        "path": "backend/services/pricing.py",
+        "symbol": "calc_cost"
+      },
+      "serializer": {
+        "kind": "Decimal.quantize",
+        "quantum": "0.00000001",
+        "rounding": "ROUND_HALF_EVEN"
+      },
+      "sha256": "e1c7f9c06a8d8d857cd829a8882477de5e989ed8849bd7a76b8a581a886da730",
+      "utf8_base64": "MS4yMzQ1Njc4OA=="
+    },
+    {
+      "byte_length": 10,
+      "expected": "1.23456790",
+      "id": "decimal:tie:1.234567895",
+      "input": "1.234567895",
+      "provenance": {
+        "path": "backend/services/pricing.py",
+        "symbol": "calc_cost"
+      },
+      "serializer": {
+        "kind": "Decimal.quantize",
+        "quantum": "0.00000001",
+        "rounding": "ROUND_HALF_EVEN"
+      },
+      "sha256": "31e14f641ee639776d0e23fb5f38469e6e003425bd5ed587068ceb1b827ebeca",
+      "utf8_base64": "MS4yMzQ1Njc5MA=="
+    },
+    {
+      "byte_length": 112,
+      "expected": {
+        "cost_usd": null,
+        "provider_provenance": null,
+        "tokens_in": null,
+        "tokens_out": null,
+        "usage_state": "unknown"
+      },
+      "id": "usage:unknown",
+      "provenance": null,
+      "serializer": {
+        "default": "str",
+        "ensure_ascii": false,
+        "kind": "json.dumps",
+        "separators": [
+          ", ",
+          ": "
+        ],
+        "sort_keys": true
+      },
+      "sha256": "14bb48c306d0aa6598d196d34936d5796255bda770b029d744b0eef9c82c7789",
+      "utf8_base64": "eyJjb3N0X3VzZCI6IG51bGwsICJwcm92aWRlcl9wcm92ZW5hbmNlIjogbnVsbCwgInRva2Vuc19pbiI6IG51bGwsICJ0b2tlbnNfb3V0IjogbnVsbCwgInVzYWdlX3N0YXRlIjogInVua25vd24ifQ=="
+    },
+    {
+      "byte_length": 89,
+      "expected": {
+        "error_type": "PricingUsageError",
+        "reason": "tokens_in must be a non-negative integer"
+      },
+      "id": "usage:missing_tokens",
+      "input": {
+        "model": "gpt-6-luna",
+        "tokens_in": null,
+        "tokens_out": null
+      },
+      "provenance": {
+        "path": "backend/services/pricing.py",
+        "symbol": "calc_result_cost"
+      },
+      "serializer": {
+        "default": "str",
+        "ensure_ascii": false,
+        "kind": "json.dumps",
+        "separators": [
+          ", ",
+          ": "
+        ],
+        "sort_keys": true
+      },
+      "sha256": "42fc7ed3ffbf5b9588542a05a994f3850b4a542ab9ebdfec79eea3f63f8cc3fc",
+      "utf8_base64": "eyJlcnJvcl90eXBlIjogIlByaWNpbmdVc2FnZUVycm9yIiwgInJlYXNvbiI6ICJ0b2tlbnNfaW4gbXVzdCBiZSBhIG5vbi1uZWdhdGl2ZSBpbnRlZ2VyIn0="
+    },
+    {
+      "byte_length": 82,
+      "expected": {
+        "error_type": "PricingUsageError",
+        "reason": "Incomplete usage cannot be priced"
+      },
+      "id": "usage:incomplete",
+      "input": {
+        "model": "gpt-6-luna",
+        "tokens_in": 100,
+        "tokens_out": 5,
+        "usage_complete": false
+      },
+      "provenance": {
+        "path": "backend/services/pricing.py",
+        "symbol": "calc_result_cost"
+      },
+      "serializer": {
+        "default": "str",
+        "ensure_ascii": false,
+        "kind": "json.dumps",
+        "separators": [
+          ", ",
+          ": "
+        ],
+        "sort_keys": true
+      },
+      "sha256": "6158635dd4e369ff62d0ead7d25d9650718894a0cea0c1c06bd7eaf00b0ee90b",
+      "utf8_base64": "eyJlcnJvcl90eXBlIjogIlByaWNpbmdVc2FnZUVycm9yIiwgInJlYXNvbiI6ICJJbmNvbXBsZXRlIHVzYWdlIGNhbm5vdCBiZSBwcmljZWQifQ=="
+    }
+  ],
+  "evidence_layer": "source_and_synthetic_fixture",
+  "format_version": 1,
+  "limitations": [
+    "No provider calls, live database, credential access, or scientific validation.",
+    "Artifact refresh behavior remains owned by test_artifact_refresh_contract.py."
+  ],
+  "source_files": [
+    {
+      "path": "backend/services/analysis_execution.py",
+      "sha256": "dc51feca43f17ade364e39e10f3462f1519477ffaab4541b398863c69fcc810a"
+    },
+    {
+      "path": "backend/services/summary_contract.py",
+      "sha256": "5748673b8ffe393ea389cbea74436702f980d799a8a142bb0e6dde2051c91856"
+    },
+    {
+      "path": "backend/services/analysis_completion.py",
+      "sha256": "01382e0fb8d48511e841096a5ced1b89f2c8cf10c6846da203dc082516e44b90"
+    },
+    {
+      "path": "backend/services/document_context.py",
+      "sha256": "1a0e65f2867365df5c45ca5275f28a3e8ae159da7b654cc50bc7226004a6d896"
+    },
+    {
+      "path": "backend/services/section_splitter.py",
+      "sha256": "d8d94160d9bc767acf193e1e3060633dc5753a72b8313841ee92c8cc8fa73e2b"
+    },
+    {
+      "path": "backend/services/llm/gemini_client.py",
+      "sha256": "e87b5b443ee0036a7c6c8ae9aed992a63e09596f30b294b79040218693cd97a5"
+    },
+    {
+      "path": "backend/services/pricing.py",
+      "sha256": "1667bf86faa63cc1652aab82469030e6362967ce88878592b7d33616d8a1934b"
+    },
+    {
+      "path": "backend/services/test_schema_hash_contract.py",
+      "sha256": "ed2a16ea802fc78b9eb868d68d797935f523f9f16b5955247823c567e7a2c687"
+    },
+    {
+      "path": "backend/services/test_instruction_contract.py",
+      "sha256": "d1746114a9b80a00aa6f767143b63da4796884a93ae7fd2b63cab583f87a32f8"
+    },
+    {
+      "path": "backend/services/test_phase_input_hash_contract.py",
+      "sha256": "316597319bc5318fa942b0f4df3049e8a56e1d8bd5f9ae6032630bef34525133"
+    },
+    {
+      "path": "backend/services/test_viz_plan_snapshot_contract.py",
+      "sha256": "ebb331a0045a52cd779653081a9dc78d4aac5e6550eb68b6688558cc127e0f38"
+    },
+    {
+      "path": "backend/services/fixtures/viz_plan_snapshot.json",
+      "sha256": "144e5b30dcca2e5a5d5064cd2c17016acb1f8114f05904ca9514021453d78576"
+    },
+    {
+      "path": "backend/services/test_artifact_refresh_contract.py",
+      "sha256": "02f2b0d7d650a9224f8c417461037fa00db3024d89bbc9d8d56477c1dfb4a917"
+    },
+    {
+      "path": "backend/services/test_analysis_completion.py",
+      "sha256": "7aa63fe03ebffbc9b2d31d619ad8a355903ac1aec67b32315b75e7160f74225a"
+    },
+    {
+      "path": "backend/api/test_report_bytes_contract.py",
+      "sha256": "23d7615bb33e8860c8d161e89b8316d91faa770760aa1dd6227f370ff0f27221"
+    },
+    {
+      "path": "backend/api/fixtures/report_snapshot.md",
+      "sha256": "dd0a9510e0faf6f584fba45f49c9cde7254fbd81c58d104e72a836e103251694"
+    },
+    {
+      "path": "contract-fixtures/hmac-vectors.json",
+      "sha256": "66137e77944b57618ff8c44623cbe3952b6722432931e77c6bc2f65c3d40ffec"
+    }
+  ]
+}

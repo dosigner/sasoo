@@ -1,0 +1,1056 @@
+{
+  "cases": [
+    {
+      "byte_length": 1058,
+      "expected": {
+        "properties": {
+          "agent_recommended": {
+            "enum": [
+              "photon",
+              "cell",
+              "neural",
+              "circuit"
+            ],
+            "type": "string"
+          },
+          "applicability_reason": {
+            "type": "string"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "type": "number"
+          },
+          "deep_dive_applicable": {
+            "type": "boolean"
+          },
+          "domain": {
+            "enum": [
+              "optics",
+              "bio",
+              "ai_ml",
+              "ee",
+              "general"
+            ],
+            "type": "string"
+          },
+          "estimated_complexity": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "type": "string"
+          },
+          "has_figures": {
+            "type": "boolean"
+          },
+          "is_experimental": {
+            "type": "boolean"
+          },
+          "key_topics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "methodology_type": {
+            "enum": [
+              "experimental",
+              "computational",
+              "theoretical",
+              "review"
+            ],
+            "type": "string"
+          },
+          "paper_type": {
+            "enum": [
+              "article",
+              "letter",
+              "review"
+            ],
+            "type": "string"
+          },
+          "recipe_applicable": {
+            "type": "boolean"
+          },
+          "relevance_score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "type": "number"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain",
+          "summary",
+          "relevance_score",
+          "key_topics",
+          "is_experimental",
+          "methodology_type",
+          "recipe_applicable",
+          "deep_dive_applicable"
+        ],
+        "type": "object"
+      },
+      "id": "screening",
+      "provenance": {
+        "path": "backend/services/analysis_execution.py",
+        "symbol": "_SCREENING_SCHEMA"
+      },
+      "serializer": {
+        "default": "str",
+        "ensure_ascii": true,
+        "kind": "json.dumps",
+        "separators": [
+          ", ",
+          ": "
+        ],
+        "sort_keys": true
+      },
+      "sha256": "03fc1f653b514d383cc3b3ddfa1bfe75b7856b74e562a4a0557bc86ccab56a51",
+      "utf8_base64": "eyJwcm9wZXJ0aWVzIjogeyJhZ2VudF9yZWNvbW1lbmRlZCI6IHsiZW51bSI6IFsicGhvdG9uIiwgImNlbGwiLCAibmV1cmFsIiwgImNpcmN1aXQiXSwgInR5cGUiOiAic3RyaW5nIn0sICJhcHBsaWNhYmlsaXR5X3JlYXNvbiI6IHsidHlwZSI6ICJzdHJpbmcifSwgImNvbmZpZGVuY2UiOiB7Im1heGltdW0iOiAxLjAsICJtaW5pbXVtIjogMC4wLCAidHlwZSI6ICJudW1iZXIifSwgImRlZXBfZGl2ZV9hcHBsaWNhYmxlIjogeyJ0eXBlIjogImJvb2xlYW4ifSwgImRvbWFpbiI6IHsiZW51bSI6IFsib3B0aWNzIiwgImJpbyIsICJhaV9tbCIsICJlZSIsICJnZW5lcmFsIl0sICJ0eXBlIjogInN0cmluZyJ9LCAiZXN0aW1hdGVkX2NvbXBsZXhpdHkiOiB7ImVudW0iOiBbImxvdyIsICJtZWRpdW0iLCAiaGlnaCJdLCAidHlwZSI6ICJzdHJpbmcifSwgImhhc19maWd1cmVzIjogeyJ0eXBlIjogImJvb2xlYW4ifSwgImlzX2V4cGVyaW1lbnRhbCI6IHsidHlwZSI6ICJib29sZWFuIn0sICJrZXlfdG9waWNzIjogeyJpdGVtcyI6IHsidHlwZSI6ICJzdHJpbmcifSwgInR5cGUiOiAiYXJyYXkifSwgIm1ldGhvZG9sb2d5X3R5cGUiOiB7ImVudW0iOiBbImV4cGVyaW1lbnRhbCIsICJjb21wdXRhdGlvbmFsIiwgInRoZW9yZXRpY2FsIiwgInJldmlldyJdLCAidHlwZSI6ICJzdHJpbmcifSwgInBhcGVyX3R5cGUiOiB7ImVudW0iOiBbImFydGljbGUiLCAibGV0dGVyIiwgInJldmlldyJdLCAidHlwZSI6ICJzdHJpbmcifSwgInJlY2lwZV9hcHBsaWNhYmxlIjogeyJ0eXBlIjogImJvb2xlYW4ifSwgInJlbGV2YW5jZV9zY29yZSI6IHsibWF4aW11bSI6IDEuMCwgIm1pbmltdW0iOiAwLjAsICJ0eXBlIjogIm51bWJlciJ9LCAic3VtbWFyeSI6IHsidHlwZSI6ICJzdHJpbmcifX0sICJyZXF1aXJlZCI6IFsiZG9tYWluIiwgInN1bW1hcnkiLCAicmVsZXZhbmNlX3Njb3JlIiwgImtleV90b3BpY3MiLCAiaXNfZXhwZXJpbWVudGFsIiwgIm1ldGhvZG9sb2d5X3R5cGUiLCAicmVjaXBlX2FwcGxpY2FibGUiLCAiZGVlcF9kaXZlX2FwcGxpY2FibGUiXSwgInR5cGUiOiAib2JqZWN0In0="
+    },
+    {
+      "byte_length": 715,
+      "expected": {
+        "properties": {
+          "citation_balance": {
+            "enum": [
+              "balanced",
+              "heavily_reliant",
+              "self_citation_heavy",
+              "diverse"
+            ],
+            "type": "string"
+          },
+          "key_influences": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "limitations": {
+            "type": "string"
+          },
+          "ref_analyses": {
+            "items": {
+              "properties": {
+                "citation_role": {
+                  "enum": [
+                    "foundational",
+                    "methodological",
+                    "comparative",
+                    "supporting",
+                    "contrasting",
+                    "unclear"
+                  ],
+                  "type": "string"
+                },
+                "evidence_context": {
+                  "type": "string"
+                },
+                "ref_id": {
+                  "type": "string"
+                },
+                "why_cited": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "ref_id",
+                "citation_role",
+                "why_cited"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref_analyses",
+          "summary",
+          "citation_balance"
+        ],
+        "type": "object"
+      },
+      "id": "citation",
+      "provenance": {
+        "path": "backend/services/analysis_execution.py",
+        "symbol": "_CITATION_SCHEMA"
+      },
+      "serializer": {
+        "default": "str",
+        "ensure_ascii": true,
+        "kind": "json.dumps",
+        "separators": [
+          ", ",
+          ": "
+        ],
+        "sort_keys": true
+      },
+      "sha256": "4644840cbf94c145c01931773981bd273e74a8fead6415f3bffdc2896144eb68",
+      "utf8_base64": "eyJwcm9wZXJ0aWVzIjogeyJjaXRhdGlvbl9iYWxhbmNlIjogeyJlbnVtIjogWyJiYWxhbmNlZCIsICJoZWF2aWx5X3JlbGlhbnQiLCAic2VsZl9jaXRhdGlvbl9oZWF2eSIsICJkaXZlcnNlIl0sICJ0eXBlIjogInN0cmluZyJ9LCAia2V5X2luZmx1ZW5jZXMiOiB7Iml0ZW1zIjogeyJ0eXBlIjogInN0cmluZyJ9LCAidHlwZSI6ICJhcnJheSJ9LCAibGltaXRhdGlvbnMiOiB7InR5cGUiOiAic3RyaW5nIn0sICJyZWZfYW5hbHlzZXMiOiB7Iml0ZW1zIjogeyJwcm9wZXJ0aWVzIjogeyJjaXRhdGlvbl9yb2xlIjogeyJlbnVtIjogWyJmb3VuZGF0aW9uYWwiLCAibWV0aG9kb2xvZ2ljYWwiLCAiY29tcGFyYXRpdmUiLCAic3VwcG9ydGluZyIsICJjb250cmFzdGluZyIsICJ1bmNsZWFyIl0sICJ0eXBlIjogInN0cmluZyJ9LCAiZXZpZGVuY2VfY29udGV4dCI6IHsidHlwZSI6ICJzdHJpbmcifSwgInJlZl9pZCI6IHsidHlwZSI6ICJzdHJpbmcifSwgIndoeV9jaXRlZCI6IHsidHlwZSI6ICJzdHJpbmcifX0sICJyZXF1aXJlZCI6IFsicmVmX2lkIiwgImNpdGF0aW9uX3JvbGUiLCAid2h5X2NpdGVkIl0sICJ0eXBlIjogIm9iamVjdCJ9LCAidHlwZSI6ICJhcnJheSJ9LCAic3VtbWFyeSI6IHsidHlwZSI6ICJzdHJpbmcifX0sICJyZXF1aXJlZCI6IFsicmVmX2FuYWx5c2VzIiwgInN1bW1hcnkiLCAiY2l0YXRpb25fYmFsYW5jZSJdLCAidHlwZSI6ICJvYmplY3QifQ=="
+    },
+    {
+      "byte_length": 391,
+      "expected": {
+        "properties": {
+          "diagram_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "equations_found": {
+            "type": "integer"
+          },
+          "figure_count": {
+            "type": "integer"
+          },
+          "key_findings_from_visuals": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "quality_summary": {
+            "type": "string"
+          },
+          "tables_found": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "quality_summary",
+          "key_findings_from_visuals"
+        ],
+        "type": "object"
+      },
+      "id": "visual",
+      "provenance": {
+        "path": "backend/services/analysis_execution.py",
+        "symbol": "_VISUAL_SCHEMA"
+      },
+      "serializer": {
+        "default": "str",
+        "ensure_ascii": true,
+        "kind": "json.dumps",
+        "separators": [
+          ", ",
+          ": "
+        ],
+        "sort_keys": true
+      },
+      "sha256": "bde9bc15b2c121d322c6871916f3648b912b03f09685bec2b0aa255f700bc174",
+      "utf8_base64": "eyJwcm9wZXJ0aWVzIjogeyJkaWFncmFtX3R5cGVzIjogeyJpdGVtcyI6IHsidHlwZSI6ICJzdHJpbmcifSwgInR5cGUiOiAiYXJyYXkifSwgImVxdWF0aW9uc19mb3VuZCI6IHsidHlwZSI6ICJpbnRlZ2VyIn0sICJmaWd1cmVfY291bnQiOiB7InR5cGUiOiAiaW50ZWdlciJ9LCAia2V5X2ZpbmRpbmdzX2Zyb21fdmlzdWFscyI6IHsiaXRlbXMiOiB7InR5cGUiOiAic3RyaW5nIn0sICJ0eXBlIjogImFycmF5In0sICJxdWFsaXR5X3N1bW1hcnkiOiB7InR5cGUiOiAic3RyaW5nIn0sICJ0YWJsZXNfZm91bmQiOiB7InR5cGUiOiAiaW50ZWdlciJ9fSwgInJlcXVpcmVkIjogWyJxdWFsaXR5X3N1bW1hcnkiLCAia2V5X2ZpbmRpbmdzX2Zyb21fdmlzdWFscyJdLCAidHlwZSI6ICJvYmplY3QifQ=="
+    },
+    {
+      "byte_length": 1000,
+      "expected": {
+        "properties": {
+          "confidence": {
+            "type": "number"
+          },
+          "critical_notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "equipment": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "expected_results": {
+            "type": "string"
+          },
+          "materials": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "missing_info": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "objective": {
+            "type": "string"
+          },
+          "parameters": {
+            "items": {
+              "properties": {
+                "evidence_page": {
+                  "type": "integer"
+                },
+                "evidence_quote": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "source_tag": {
+                  "enum": [
+                    "explicit",
+                    "inferred"
+                  ],
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "value",
+                "source_tag"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "reproducibility_score": {
+            "type": "number"
+          },
+          "safety_notes": {
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "objective",
+          "parameters",
+          "steps"
+        ],
+        "type": "object"
+      },
+      "id": "recipe",
+      "provenance": {
+        "path": "backend/services/analysis_execution.py",
+        "symbol": "_RECIPE_SCHEMA"
+      },
+      "serializer": {
+        "default": "str",
+        "ensure_ascii": true,
+        "kind": "json.dumps",
+        "separators": [
+          ", ",
+          ": "
+        ],
+        "sort_keys": true
+      },
+      "sha256": "c67fd25ba323358a55a9c187738cde292ea4ce616e5a1f8ca5409342157eac63",
+      "utf8_base64": "eyJwcm9wZXJ0aWVzIjogeyJjb25maWRlbmNlIjogeyJ0eXBlIjogIm51bWJlciJ9LCAiY3JpdGljYWxfbm90ZXMiOiB7Iml0ZW1zIjogeyJ0eXBlIjogInN0cmluZyJ9LCAidHlwZSI6ICJhcnJheSJ9LCAiZXF1aXBtZW50IjogeyJpdGVtcyI6IHsidHlwZSI6ICJzdHJpbmcifSwgInR5cGUiOiAiYXJyYXkifSwgImV4cGVjdGVkX3Jlc3VsdHMiOiB7InR5cGUiOiAic3RyaW5nIn0sICJtYXRlcmlhbHMiOiB7Iml0ZW1zIjogeyJ0eXBlIjogInN0cmluZyJ9LCAidHlwZSI6ICJhcnJheSJ9LCAibWlzc2luZ19pbmZvIjogeyJpdGVtcyI6IHsidHlwZSI6ICJzdHJpbmcifSwgInR5cGUiOiAiYXJyYXkifSwgIm9iamVjdGl2ZSI6IHsidHlwZSI6ICJzdHJpbmcifSwgInBhcmFtZXRlcnMiOiB7Iml0ZW1zIjogeyJwcm9wZXJ0aWVzIjogeyJldmlkZW5jZV9wYWdlIjogeyJ0eXBlIjogImludGVnZXIifSwgImV2aWRlbmNlX3F1b3RlIjogeyJ0eXBlIjogInN0cmluZyJ9LCAibmFtZSI6IHsidHlwZSI6ICJzdHJpbmcifSwgIm5vdGVzIjogeyJ0eXBlIjogInN0cmluZyJ9LCAic291cmNlX3RhZyI6IHsiZW51bSI6IFsiZXhwbGljaXQiLCAiaW5mZXJyZWQiXSwgInR5cGUiOiAic3RyaW5nIn0sICJ1bml0IjogeyJ0eXBlIjogInN0cmluZyJ9LCAidmFsdWUiOiB7InR5cGUiOiAic3RyaW5nIn19LCAicmVxdWlyZWQiOiBbIm5hbWUiLCAidmFsdWUiLCAic291cmNlX3RhZyJdLCAidHlwZSI6ICJvYmplY3QifSwgInR5cGUiOiAiYXJyYXkifSwgInJlcHJvZHVjaWJpbGl0eV9zY29yZSI6IHsidHlwZSI6ICJudW1iZXIifSwgInNhZmV0eV9ub3RlcyI6IHsidHlwZSI6ICJzdHJpbmcifSwgInN0ZXBzIjogeyJpdGVtcyI6IHsidHlwZSI6ICJzdHJpbmcifSwgInR5cGUiOiAiYXJyYXkifSwgInRpdGxlIjogeyJ0eXBlIjogInN0cmluZyJ9fSwgInJlcXVpcmVkIjogWyJ0aXRsZSIsICJvYmplY3RpdmUiLCAicGFyYW1ldGVycyIsICJzdGVwcyJdLCAidHlwZSI6ICJvYmplY3QifQ=="
+    },
+    {
+      "byte_length": 1915,
+      "expected": {
+        "properties": {
+          "as_is": {
+            "type": "string"
+          },
+          "comparison_scope": {
+            "enum": [
+              "in_paper_only"
+            ],
+            "type": "string"
+          },
+          "comparison_to_prior_work": {
+            "type": "string"
+          },
+          "follow_up_questions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "key_results": {
+            "type": "string"
+          },
+          "method_summary": {
+            "type": "string"
+          },
+          "novelty_assessment": {
+            "type": "string"
+          },
+          "practical_applications": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "problem_definition": {
+            "type": "string"
+          },
+          "section_answers": {
+            "items": {
+              "properties": {
+                "answer": {
+                  "type": "string"
+                },
+                "explanation": {
+                  "type": "string"
+                },
+                "question": {
+                  "type": "string"
+                },
+                "section_title": {
+                  "type": "string"
+                },
+                "source_refs": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 4,
+                  "minItems": 1,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "section_title",
+                "question",
+                "answer",
+                "explanation",
+                "source_refs"
+              ],
+              "type": "object"
+            },
+            "maxItems": 12,
+            "type": "array"
+          },
+          "solution": {
+            "type": "string"
+          },
+          "strengths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "suggested_improvements": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "to_be": {
+            "type": "string"
+          },
+          "transfer_checks": {
+            "items": {
+              "properties": {
+                "check_before_transfer": {
+                  "type": "string"
+                },
+                "condition_basis": {
+                  "enum": [
+                    "reported",
+                    "inferred",
+                    "not_reported"
+                  ],
+                  "type": "string"
+                },
+                "item": {
+                  "type": "string"
+                },
+                "paper_condition": {
+                  "type": "string"
+                },
+                "source_refs": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 4,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "item",
+                "paper_condition",
+                "condition_basis",
+                "check_before_transfer",
+                "source_refs"
+              ],
+              "type": "object"
+            },
+            "maxItems": 8,
+            "type": "array"
+          },
+          "weaknesses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "problem_definition",
+          "solution",
+          "method_summary",
+          "key_results",
+          "strengths",
+          "weaknesses",
+          "comparison_scope",
+          "novelty_assessment",
+          "comparison_to_prior_work",
+          "suggested_improvements",
+          "follow_up_questions",
+          "practical_applications",
+          "section_answers",
+          "transfer_checks"
+        ],
+        "type": "object"
+      },
+      "id": "deep_dive",
+      "provenance": {
+        "path": "backend/services/analysis_execution.py",
+        "symbol": "_DEEP_DIVE_SCHEMA"
+      },
+      "serializer": {
+        "default": "str",
+        "ensure_ascii": true,
+        "kind": "json.dumps",
+        "separators": [
+          ", ",
+          ": "
+        ],
+        "sort_keys": true
+      },
+      "sha256": "be3010c070a8ca472155761f4f588fbddc7bd8e773e60aaa6d0b436441fe0e39",
+      "utf8_base64": "eyJwcm9wZXJ0aWVzIjogeyJhc19pcyI6IHsidHlwZSI6ICJzdHJpbmcifSwgImNvbXBhcmlzb25fc2NvcGUiOiB7ImVudW0iOiBbImluX3BhcGVyX29ubHkiXSwgInR5cGUiOiAic3RyaW5nIn0sICJjb21wYXJpc29uX3RvX3ByaW9yX3dvcmsiOiB7InR5cGUiOiAic3RyaW5nIn0sICJmb2xsb3dfdXBfcXVlc3Rpb25zIjogeyJpdGVtcyI6IHsidHlwZSI6ICJzdHJpbmcifSwgInR5cGUiOiAiYXJyYXkifSwgImtleV9yZXN1bHRzIjogeyJ0eXBlIjogInN0cmluZyJ9LCAibWV0aG9kX3N1bW1hcnkiOiB7InR5cGUiOiAic3RyaW5nIn0sICJub3ZlbHR5X2Fzc2Vzc21lbnQiOiB7InR5cGUiOiAic3RyaW5nIn0sICJwcmFjdGljYWxfYXBwbGljYXRpb25zIjogeyJpdGVtcyI6IHsidHlwZSI6ICJzdHJpbmcifSwgInR5cGUiOiAiYXJyYXkifSwgInByb2JsZW1fZGVmaW5pdGlvbiI6IHsidHlwZSI6ICJzdHJpbmcifSwgInNlY3Rpb25fYW5zd2VycyI6IHsiaXRlbXMiOiB7InByb3BlcnRpZXMiOiB7ImFuc3dlciI6IHsidHlwZSI6ICJzdHJpbmcifSwgImV4cGxhbmF0aW9uIjogeyJ0eXBlIjogInN0cmluZyJ9LCAicXVlc3Rpb24iOiB7InR5cGUiOiAic3RyaW5nIn0sICJzZWN0aW9uX3RpdGxlIjogeyJ0eXBlIjogInN0cmluZyJ9LCAic291cmNlX3JlZnMiOiB7Iml0ZW1zIjogeyJ0eXBlIjogInN0cmluZyJ9LCAibWF4SXRlbXMiOiA0LCAibWluSXRlbXMiOiAxLCAidHlwZSI6ICJhcnJheSJ9fSwgInJlcXVpcmVkIjogWyJzZWN0aW9uX3RpdGxlIiwgInF1ZXN0aW9uIiwgImFuc3dlciIsICJleHBsYW5hdGlvbiIsICJzb3VyY2VfcmVmcyJdLCAidHlwZSI6ICJvYmplY3QifSwgIm1heEl0ZW1zIjogMTIsICJ0eXBlIjogImFycmF5In0sICJzb2x1dGlvbiI6IHsidHlwZSI6ICJzdHJpbmcifSwgInN0cmVuZ3RocyI6IHsiaXRlbXMiOiB7InR5cGUiOiAic3RyaW5nIn0sICJ0eXBlIjogImFycmF5In0sICJzdWdnZXN0ZWRfaW1wcm92ZW1lbnRzIjogeyJpdGVtcyI6IHsidHlwZSI6ICJzdHJpbmcifSwgInR5cGUiOiAiYXJyYXkifSwgInRvX2JlIjogeyJ0eXBlIjogInN0cmluZyJ9LCAidHJhbnNmZXJfY2hlY2tzIjogeyJpdGVtcyI6IHsicHJvcGVydGllcyI6IHsiY2hlY2tfYmVmb3JlX3RyYW5zZmVyIjogeyJ0eXBlIjogInN0cmluZyJ9LCAiY29uZGl0aW9uX2Jhc2lzIjogeyJlbnVtIjogWyJyZXBvcnRlZCIsICJpbmZlcnJlZCIsICJub3RfcmVwb3J0ZWQiXSwgInR5cGUiOiAic3RyaW5nIn0sICJpdGVtIjogeyJ0eXBlIjogInN0cmluZyJ9LCAicGFwZXJfY29uZGl0aW9uIjogeyJ0eXBlIjogInN0cmluZyJ9LCAic291cmNlX3JlZnMiOiB7Iml0ZW1zIjogeyJ0eXBlIjogInN0cmluZyJ9LCAibWF4SXRlbXMiOiA0LCAidHlwZSI6ICJhcnJheSJ9fSwgInJlcXVpcmVkIjogWyJpdGVtIiwgInBhcGVyX2NvbmRpdGlvbiIsICJjb25kaXRpb25fYmFzaXMiLCAiY2hlY2tfYmVmb3JlX3RyYW5zZmVyIiwgInNvdXJjZV9yZWZzIl0sICJ0eXBlIjogIm9iamVjdCJ9LCAibWF4SXRlbXMiOiA4LCAidHlwZSI6ICJhcnJheSJ9LCAid2Vha25lc3NlcyI6IHsiaXRlbXMiOiB7InR5cGUiOiAic3RyaW5nIn0sICJ0eXBlIjogImFycmF5In19LCAicmVxdWlyZWQiOiBbInByb2JsZW1fZGVmaW5pdGlvbiIsICJzb2x1dGlvbiIsICJtZXRob2Rfc3VtbWFyeSIsICJrZXlfcmVzdWx0cyIsICJzdHJlbmd0aHMiLCAid2Vha25lc3NlcyIsICJjb21wYXJpc29uX3Njb3BlIiwgIm5vdmVsdHlfYXNzZXNzbWVudCIsICJjb21wYXJpc29uX3RvX3ByaW9yX3dvcmsiLCAic3VnZ2VzdGVkX2ltcHJvdmVtZW50cyIsICJmb2xsb3dfdXBfcXVlc3Rpb25zIiwgInByYWN0aWNhbF9hcHBsaWNhdGlvbnMiLCAic2VjdGlvbl9hbnN3ZXJzIiwgInRyYW5zZmVyX2NoZWNrcyJdLCAidHlwZSI6ICJvYmplY3QifQ=="
+    },
+    {
+      "byte_length": 1862,
+      "expected": {
+        "properties": {
+          "diagram_count": {
+            "type": "integer"
+          },
+          "diagrams": {
+            "items": {
+              "properties": {
+                "block": {
+                  "enum": [
+                    "method",
+                    "result"
+                  ],
+                  "type": "string"
+                },
+                "category": {
+                  "enum": [
+                    "experimental_protocol",
+                    "algorithm_flow",
+                    "signal_flow",
+                    "system_architecture",
+                    "component_relationships",
+                    "timeline",
+                    "comparison",
+                    "equipment_appearance",
+                    "optical_table_layout",
+                    "cell_molecule_schematic",
+                    "physical_setup",
+                    "conceptual_illustration"
+                  ],
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "diagram_type": {
+                  "enum": [
+                    "flowchart",
+                    "sequence"
+                  ],
+                  "type": "string"
+                },
+                "importance": {
+                  "maximum": 100,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "title",
+                "block",
+                "diagram_type",
+                "description",
+                "category",
+                "importance"
+              ],
+              "type": "object"
+            },
+            "maxItems": 3,
+            "type": "array"
+          },
+          "illustrations": {
+            "items": {
+              "properties": {
+                "category": {
+                  "enum": [
+                    "experimental_protocol",
+                    "algorithm_flow",
+                    "signal_flow",
+                    "system_architecture",
+                    "component_relationships",
+                    "timeline",
+                    "comparison",
+                    "equipment_appearance",
+                    "optical_table_layout",
+                    "cell_molecule_schematic",
+                    "physical_setup",
+                    "conceptual_illustration"
+                  ],
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "difficulty": {
+                  "maximum": 100,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "importance": {
+                  "maximum": 100,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "purpose": {
+                  "enum": [
+                    "structure",
+                    "process",
+                    "comparison",
+                    "additional"
+                  ],
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "title",
+                "purpose",
+                "description",
+                "category",
+                "importance",
+                "difficulty"
+              ],
+              "type": "object"
+            },
+            "maxItems": 5,
+            "type": "array"
+          },
+          "interactive_html": {
+            "properties": {
+              "applicable": {
+                "type": "boolean"
+              },
+              "description": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "description",
+              "applicable"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "illustrations",
+          "diagrams",
+          "interactive_html",
+          "diagram_count"
+        ],
+        "type": "object"
+      },
+      "id": "viz_plan",
+      "provenance": {
+        "path": "backend/services/analysis_execution.py",
+        "symbol": "_VIZ_PLAN_SCHEMA"
+      },
+      "serializer": {
+        "default": "str",
+        "ensure_ascii": true,
+        "kind": "json.dumps",
+        "separators": [
+          ", ",
+          ": "
+        ],
+        "sort_keys": true
+      },
+      "sha256": "e5fe4b9819ac909c3c9c25abdb9bd687acd07893958109e30f5e6874f36e7ed3",
+      "utf8_base64": "eyJwcm9wZXJ0aWVzIjogeyJkaWFncmFtX2NvdW50IjogeyJ0eXBlIjogImludGVnZXIifSwgImRpYWdyYW1zIjogeyJpdGVtcyI6IHsicHJvcGVydGllcyI6IHsiYmxvY2siOiB7ImVudW0iOiBbIm1ldGhvZCIsICJyZXN1bHQiXSwgInR5cGUiOiAic3RyaW5nIn0sICJjYXRlZ29yeSI6IHsiZW51bSI6IFsiZXhwZXJpbWVudGFsX3Byb3RvY29sIiwgImFsZ29yaXRobV9mbG93IiwgInNpZ25hbF9mbG93IiwgInN5c3RlbV9hcmNoaXRlY3R1cmUiLCAiY29tcG9uZW50X3JlbGF0aW9uc2hpcHMiLCAidGltZWxpbmUiLCAiY29tcGFyaXNvbiIsICJlcXVpcG1lbnRfYXBwZWFyYW5jZSIsICJvcHRpY2FsX3RhYmxlX2xheW91dCIsICJjZWxsX21vbGVjdWxlX3NjaGVtYXRpYyIsICJwaHlzaWNhbF9zZXR1cCIsICJjb25jZXB0dWFsX2lsbHVzdHJhdGlvbiJdLCAidHlwZSI6ICJzdHJpbmcifSwgImRlc2NyaXB0aW9uIjogeyJ0eXBlIjogInN0cmluZyJ9LCAiZGlhZ3JhbV90eXBlIjogeyJlbnVtIjogWyJmbG93Y2hhcnQiLCAic2VxdWVuY2UiXSwgInR5cGUiOiAic3RyaW5nIn0sICJpbXBvcnRhbmNlIjogeyJtYXhpbXVtIjogMTAwLCAibWluaW11bSI6IDAsICJ0eXBlIjogImludGVnZXIifSwgInRpdGxlIjogeyJ0eXBlIjogInN0cmluZyJ9fSwgInJlcXVpcmVkIjogWyJ0aXRsZSIsICJibG9jayIsICJkaWFncmFtX3R5cGUiLCAiZGVzY3JpcHRpb24iLCAiY2F0ZWdvcnkiLCAiaW1wb3J0YW5jZSJdLCAidHlwZSI6ICJvYmplY3QifSwgIm1heEl0ZW1zIjogMywgInR5cGUiOiAiYXJyYXkifSwgImlsbHVzdHJhdGlvbnMiOiB7Iml0ZW1zIjogeyJwcm9wZXJ0aWVzIjogeyJjYXRlZ29yeSI6IHsiZW51bSI6IFsiZXhwZXJpbWVudGFsX3Byb3RvY29sIiwgImFsZ29yaXRobV9mbG93IiwgInNpZ25hbF9mbG93IiwgInN5c3RlbV9hcmNoaXRlY3R1cmUiLCAiY29tcG9uZW50X3JlbGF0aW9uc2hpcHMiLCAidGltZWxpbmUiLCAiY29tcGFyaXNvbiIsICJlcXVpcG1lbnRfYXBwZWFyYW5jZSIsICJvcHRpY2FsX3RhYmxlX2xheW91dCIsICJjZWxsX21vbGVjdWxlX3NjaGVtYXRpYyIsICJwaHlzaWNhbF9zZXR1cCIsICJjb25jZXB0dWFsX2lsbHVzdHJhdGlvbiJdLCAidHlwZSI6ICJzdHJpbmcifSwgImRlc2NyaXB0aW9uIjogeyJ0eXBlIjogInN0cmluZyJ9LCAiZGlmZmljdWx0eSI6IHsibWF4aW11bSI6IDEwMCwgIm1pbmltdW0iOiAwLCAidHlwZSI6ICJpbnRlZ2VyIn0sICJpbXBvcnRhbmNlIjogeyJtYXhpbXVtIjogMTAwLCAibWluaW11bSI6IDAsICJ0eXBlIjogImludGVnZXIifSwgInB1cnBvc2UiOiB7ImVudW0iOiBbInN0cnVjdHVyZSIsICJwcm9jZXNzIiwgImNvbXBhcmlzb24iLCAiYWRkaXRpb25hbCJdLCAidHlwZSI6ICJzdHJpbmcifSwgInRpdGxlIjogeyJ0eXBlIjogInN0cmluZyJ9fSwgInJlcXVpcmVkIjogWyJ0aXRsZSIsICJwdXJwb3NlIiwgImRlc2NyaXB0aW9uIiwgImNhdGVnb3J5IiwgImltcG9ydGFuY2UiLCAiZGlmZmljdWx0eSJdLCAidHlwZSI6ICJvYmplY3QifSwgIm1heEl0ZW1zIjogNSwgInR5cGUiOiAiYXJyYXkifSwgImludGVyYWN0aXZlX2h0bWwiOiB7InByb3BlcnRpZXMiOiB7ImFwcGxpY2FibGUiOiB7InR5cGUiOiAiYm9vbGVhbiJ9LCAiZGVzY3JpcHRpb24iOiB7InR5cGUiOiAic3RyaW5nIn0sICJ0aXRsZSI6IHsidHlwZSI6ICJzdHJpbmcifX0sICJyZXF1aXJlZCI6IFsidGl0bGUiLCAiZGVzY3JpcHRpb24iLCAiYXBwbGljYWJsZSJdLCAidHlwZSI6ICJvYmplY3QifX0sICJyZXF1aXJlZCI6IFsiaWxsdXN0cmF0aW9ucyIsICJkaWFncmFtcyIsICJpbnRlcmFjdGl2ZV9odG1sIiwgImRpYWdyYW1fY291bnQiXSwgInR5cGUiOiAib2JqZWN0In0="
+    },
+    {
+      "byte_length": 1348,
+      "expected": {
+        "properties": {
+          "equation_count": {
+            "type": "integer"
+          },
+          "equations": {
+            "items": {
+              "properties": {
+                "latex": {
+                  "type": "string"
+                },
+                "meaning": {
+                  "type": "string"
+                },
+                "paper_number": {
+                  "type": "string"
+                },
+                "symbols": {
+                  "items": {
+                    "properties": {
+                      "meaning": {
+                        "type": "string"
+                      },
+                      "symbol": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "symbol",
+                      "meaning"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 4,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "latex",
+                "meaning",
+                "symbols",
+                "paper_number"
+              ],
+              "type": "object"
+            },
+            "maxItems": 5,
+            "type": "array"
+          },
+          "key_metrics": {
+            "items": {
+              "properties": {
+                "evidence": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label",
+                "value",
+                "unit",
+                "evidence"
+              ],
+              "type": "object"
+            },
+            "maxItems": 3,
+            "type": "array"
+          },
+          "key_parameters": {
+            "items": {
+              "properties": {
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            "maxItems": 5,
+            "type": "array"
+          },
+          "method_sentence": {
+            "type": "string"
+          },
+          "problem_sentence": {
+            "type": "string"
+          },
+          "result_figures": {
+            "items": {
+              "properties": {
+                "figure_num": {
+                  "type": "string"
+                },
+                "interpretation": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "figure_num",
+                "interpretation"
+              ],
+              "type": "object"
+            },
+            "maxItems": 4,
+            "type": "array"
+          }
+        },
+        "required": [
+          "problem_sentence",
+          "method_sentence",
+          "key_metrics",
+          "equations",
+          "result_figures",
+          "key_parameters",
+          "equation_count"
+        ],
+        "type": "object"
+      },
+      "id": "synthesis",
+      "provenance": {
+        "path": "backend/services/analysis_execution.py",
+        "symbol": "_SYNTHESIS_SCHEMA"
+      },
+      "serializer": {
+        "default": "str",
+        "ensure_ascii": true,
+        "kind": "json.dumps",
+        "separators": [
+          ", ",
+          ": "
+        ],
+        "sort_keys": true
+      },
+      "sha256": "0d1a2f38fe37b2ceb0bb9edcaddcb1067a409e746bd6d30d05f11eadb5244e3e",
+      "utf8_base64": "eyJwcm9wZXJ0aWVzIjogeyJlcXVhdGlvbl9jb3VudCI6IHsidHlwZSI6ICJpbnRlZ2VyIn0sICJlcXVhdGlvbnMiOiB7Iml0ZW1zIjogeyJwcm9wZXJ0aWVzIjogeyJsYXRleCI6IHsidHlwZSI6ICJzdHJpbmcifSwgIm1lYW5pbmciOiB7InR5cGUiOiAic3RyaW5nIn0sICJwYXBlcl9udW1iZXIiOiB7InR5cGUiOiAic3RyaW5nIn0sICJzeW1ib2xzIjogeyJpdGVtcyI6IHsicHJvcGVydGllcyI6IHsibWVhbmluZyI6IHsidHlwZSI6ICJzdHJpbmcifSwgInN5bWJvbCI6IHsidHlwZSI6ICJzdHJpbmcifX0sICJyZXF1aXJlZCI6IFsic3ltYm9sIiwgIm1lYW5pbmciXSwgInR5cGUiOiAib2JqZWN0In0sICJtYXhJdGVtcyI6IDQsICJ0eXBlIjogImFycmF5In19LCAicmVxdWlyZWQiOiBbImxhdGV4IiwgIm1lYW5pbmciLCAic3ltYm9scyIsICJwYXBlcl9udW1iZXIiXSwgInR5cGUiOiAib2JqZWN0In0sICJtYXhJdGVtcyI6IDUsICJ0eXBlIjogImFycmF5In0sICJrZXlfbWV0cmljcyI6IHsiaXRlbXMiOiB7InByb3BlcnRpZXMiOiB7ImV2aWRlbmNlIjogeyJ0eXBlIjogInN0cmluZyJ9LCAibGFiZWwiOiB7InR5cGUiOiAic3RyaW5nIn0sICJ1bml0IjogeyJ0eXBlIjogInN0cmluZyJ9LCAidmFsdWUiOiB7InR5cGUiOiAic3RyaW5nIn19LCAicmVxdWlyZWQiOiBbImxhYmVsIiwgInZhbHVlIiwgInVuaXQiLCAiZXZpZGVuY2UiXSwgInR5cGUiOiAib2JqZWN0In0sICJtYXhJdGVtcyI6IDMsICJ0eXBlIjogImFycmF5In0sICJrZXlfcGFyYW1ldGVycyI6IHsiaXRlbXMiOiB7InByb3BlcnRpZXMiOiB7Im5hbWUiOiB7InR5cGUiOiAic3RyaW5nIn19LCAicmVxdWlyZWQiOiBbIm5hbWUiXSwgInR5cGUiOiAib2JqZWN0In0sICJtYXhJdGVtcyI6IDUsICJ0eXBlIjogImFycmF5In0sICJtZXRob2Rfc2VudGVuY2UiOiB7InR5cGUiOiAic3RyaW5nIn0sICJwcm9ibGVtX3NlbnRlbmNlIjogeyJ0eXBlIjogInN0cmluZyJ9LCAicmVzdWx0X2ZpZ3VyZXMiOiB7Iml0ZW1zIjogeyJwcm9wZXJ0aWVzIjogeyJmaWd1cmVfbnVtIjogeyJ0eXBlIjogInN0cmluZyJ9LCAiaW50ZXJwcmV0YXRpb24iOiB7InR5cGUiOiAic3RyaW5nIn19LCAicmVxdWlyZWQiOiBbImZpZ3VyZV9udW0iLCAiaW50ZXJwcmV0YXRpb24iXSwgInR5cGUiOiAib2JqZWN0In0sICJtYXhJdGVtcyI6IDQsICJ0eXBlIjogImFycmF5In19LCAicmVxdWlyZWQiOiBbInByb2JsZW1fc2VudGVuY2UiLCAibWV0aG9kX3NlbnRlbmNlIiwgImtleV9tZXRyaWNzIiwgImVxdWF0aW9ucyIsICJyZXN1bHRfZmlndXJlcyIsICJrZXlfcGFyYW1ldGVycyIsICJlcXVhdGlvbl9jb3VudCJdLCAidHlwZSI6ICJvYmplY3QifQ=="
+    },
+    {
+      "byte_length": 972,
+      "expected": {
+        "properties": {
+          "field_overview": {
+            "type": "string"
+          },
+          "future_directions": {
+            "items": {
+              "properties": {
+                "need": {
+                  "type": "string"
+                },
+                "research": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "need",
+                "research"
+              ],
+              "type": "object"
+            },
+            "maxItems": 8,
+            "type": "array"
+          },
+          "part_count": {
+            "type": "integer"
+          },
+          "parts": {
+            "items": {
+              "properties": {
+                "development": {
+                  "type": "string"
+                },
+                "page": {
+                  "type": "integer"
+                },
+                "subfield": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "takeaway": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "title",
+                "subfield",
+                "summary",
+                "development",
+                "takeaway"
+              ],
+              "type": "object"
+            },
+            "maxItems": 14,
+            "type": "array"
+          },
+          "reading_paths": {
+            "items": {
+              "properties": {
+                "goal": {
+                  "type": "string"
+                },
+                "order": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 14,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "goal",
+                "order"
+              ],
+              "type": "object"
+            },
+            "maxItems": 4,
+            "type": "array"
+          }
+        },
+        "required": [
+          "field_overview",
+          "parts",
+          "future_directions",
+          "reading_paths",
+          "part_count"
+        ],
+        "type": "object"
+      },
+      "id": "review_map",
+      "provenance": {
+        "path": "backend/services/analysis_execution.py",
+        "symbol": "_REVIEW_MAP_SCHEMA"
+      },
+      "serializer": {
+        "default": "str",
+        "ensure_ascii": true,
+        "kind": "json.dumps",
+        "separators": [
+          ", ",
+          ": "
+        ],
+        "sort_keys": true
+      },
+      "sha256": "d9b4c5bf2ca2b74c082927cbe27781de9c6d82a400f63cf488e1ea17695e0cac",
+      "utf8_base64": "eyJwcm9wZXJ0aWVzIjogeyJmaWVsZF9vdmVydmlldyI6IHsidHlwZSI6ICJzdHJpbmcifSwgImZ1dHVyZV9kaXJlY3Rpb25zIjogeyJpdGVtcyI6IHsicHJvcGVydGllcyI6IHsibmVlZCI6IHsidHlwZSI6ICJzdHJpbmcifSwgInJlc2VhcmNoIjogeyJ0eXBlIjogInN0cmluZyJ9fSwgInJlcXVpcmVkIjogWyJuZWVkIiwgInJlc2VhcmNoIl0sICJ0eXBlIjogIm9iamVjdCJ9LCAibWF4SXRlbXMiOiA4LCAidHlwZSI6ICJhcnJheSJ9LCAicGFydF9jb3VudCI6IHsidHlwZSI6ICJpbnRlZ2VyIn0sICJwYXJ0cyI6IHsiaXRlbXMiOiB7InByb3BlcnRpZXMiOiB7ImRldmVsb3BtZW50IjogeyJ0eXBlIjogInN0cmluZyJ9LCAicGFnZSI6IHsidHlwZSI6ICJpbnRlZ2VyIn0sICJzdWJmaWVsZCI6IHsidHlwZSI6ICJzdHJpbmcifSwgInN1bW1hcnkiOiB7InR5cGUiOiAic3RyaW5nIn0sICJ0YWtlYXdheSI6IHsidHlwZSI6ICJzdHJpbmcifSwgInRpdGxlIjogeyJ0eXBlIjogInN0cmluZyJ9fSwgInJlcXVpcmVkIjogWyJ0aXRsZSIsICJzdWJmaWVsZCIsICJzdW1tYXJ5IiwgImRldmVsb3BtZW50IiwgInRha2Vhd2F5Il0sICJ0eXBlIjogIm9iamVjdCJ9LCAibWF4SXRlbXMiOiAxNCwgInR5cGUiOiAiYXJyYXkifSwgInJlYWRpbmdfcGF0aHMiOiB7Iml0ZW1zIjogeyJwcm9wZXJ0aWVzIjogeyJnb2FsIjogeyJ0eXBlIjogInN0cmluZyJ9LCAib3JkZXIiOiB7Iml0ZW1zIjogeyJ0eXBlIjogInN0cmluZyJ9LCAibWF4SXRlbXMiOiAxNCwgInR5cGUiOiAiYXJyYXkifX0sICJyZXF1aXJlZCI6IFsiZ29hbCIsICJvcmRlciJdLCAidHlwZSI6ICJvYmplY3QifSwgIm1heEl0ZW1zIjogNCwgInR5cGUiOiAiYXJyYXkifX0sICJyZXF1aXJlZCI6IFsiZmllbGRfb3ZlcnZpZXciLCAicGFydHMiLCAiZnV0dXJlX2RpcmVjdGlvbnMiLCAicmVhZGluZ19wYXRocyIsICJwYXJ0X2NvdW50Il0sICJ0eXBlIjogIm9iamVjdCJ9"
+    }
+  ],
+  "evidence_layer": "source_and_synthetic_fixture",
+  "format_version": 1,
+  "limitations": [
+    "No provider calls, live database, credential access, or scientific validation.",
+    "Artifact refresh behavior remains owned by test_artifact_refresh_contract.py."
+  ],
+  "source_files": [
+    {
+      "path": "backend/services/analysis_execution.py",
+      "sha256": "dc51feca43f17ade364e39e10f3462f1519477ffaab4541b398863c69fcc810a"
+    },
+    {
+      "path": "backend/services/summary_contract.py",
+      "sha256": "5748673b8ffe393ea389cbea74436702f980d799a8a142bb0e6dde2051c91856"
+    },
+    {
+      "path": "backend/services/analysis_completion.py",
+      "sha256": "01382e0fb8d48511e841096a5ced1b89f2c8cf10c6846da203dc082516e44b90"
+    },
+    {
+      "path": "backend/services/document_context.py",
+      "sha256": "1a0e65f2867365df5c45ca5275f28a3e8ae159da7b654cc50bc7226004a6d896"
+    },
+    {
+      "path": "backend/services/section_splitter.py",
+      "sha256": "d8d94160d9bc767acf193e1e3060633dc5753a72b8313841ee92c8cc8fa73e2b"
+    },
+    {
+      "path": "backend/services/llm/gemini_client.py",
+      "sha256": "e87b5b443ee0036a7c6c8ae9aed992a63e09596f30b294b79040218693cd97a5"
+    },
+    {
+      "path": "backend/services/pricing.py",
+      "sha256": "1667bf86faa63cc1652aab82469030e6362967ce88878592b7d33616d8a1934b"
+    },
+    {
+      "path": "backend/services/test_schema_hash_contract.py",
+      "sha256": "ed2a16ea802fc78b9eb868d68d797935f523f9f16b5955247823c567e7a2c687"
+    },
+    {
+      "path": "backend/services/test_instruction_contract.py",
+      "sha256": "d1746114a9b80a00aa6f767143b63da4796884a93ae7fd2b63cab583f87a32f8"
+    },
+    {
+      "path": "backend/services/test_phase_input_hash_contract.py",
+      "sha256": "316597319bc5318fa942b0f4df3049e8a56e1d8bd5f9ae6032630bef34525133"
+    },
+    {
+      "path": "backend/services/test_viz_plan_snapshot_contract.py",
+      "sha256": "ebb331a0045a52cd779653081a9dc78d4aac5e6550eb68b6688558cc127e0f38"
+    },
+    {
+      "path": "backend/services/fixtures/viz_plan_snapshot.json",
+      "sha256": "144e5b30dcca2e5a5d5064cd2c17016acb1f8114f05904ca9514021453d78576"
+    },
+    {
+      "path": "backend/services/test_artifact_refresh_contract.py",
+      "sha256": "02f2b0d7d650a9224f8c417461037fa00db3024d89bbc9d8d56477c1dfb4a917"
+    },
+    {
+      "path": "backend/services/test_analysis_completion.py",
+      "sha256": "7aa63fe03ebffbc9b2d31d619ad8a355903ac1aec67b32315b75e7160f74225a"
+    },
+    {
+      "path": "backend/api/test_report_bytes_contract.py",
+      "sha256": "23d7615bb33e8860c8d161e89b8316d91faa770760aa1dd6227f370ff0f27221"
+    },
+    {
+      "path": "backend/api/fixtures/report_snapshot.md",
+      "sha256": "dd0a9510e0faf6f584fba45f49c9cde7254fbd81c58d104e72a836e103251694"
+    },
+    {
+      "path": "contract-fixtures/hmac-vectors.json",
+      "sha256": "66137e77944b57618ff8c44623cbe3952b6722432931e77c6bc2f65c3d40ffec"
+    }
+  ]
+}
